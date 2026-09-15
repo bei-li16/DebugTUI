@@ -6,6 +6,5 @@
 *.ps1 text eol=lf
 *.bat text eol=crlf
 tools/bin/** -text -filter -whitespace
-bin/*.exe binary
 licenses/** -text -whitespace
 THIRD_PARTY_NOTICES.md -whitespace

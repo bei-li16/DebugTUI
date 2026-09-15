@@ -1,5 +1,7 @@
 /.dev/
 /target/
+# Generated native executable staged for npm and Release packages.
+/bin/
 /artifacts/
 /node_modules/
 *.tgz

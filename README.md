@@ -145,6 +145,8 @@ npm 注册的命令直接运行 `bin/debugtui.exe`，运行调试不需要常驻
 
 需要 Rust 1.88+ 和可用的 Windows 原生链接器。开发缓存不进入 npm 包。
 
+Git 不跟踪 DebugTUI 编译产物：`target/` 和打包暂存目录 `bin/` 均已忽略。克隆仓库后需自行构建；直接运行请下载 Release。打包脚本将 `target/release/debugtui.exe` 复制到 `bin/debugtui.exe`，并将其包含在 npm 包和 Release ZIP 中。
+
 ```powershell
 .\scripts\build.ps1 -Test
 .\scripts\build.ps1 -Release
