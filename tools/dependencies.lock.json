@@ -1,0 +1,50 @@
+{
+  "format": 2,
+  "profile": "windows-x64-native-gdb-jlink",
+  "files": {
+    "bin/gdb/ST-about.html": {
+      "bytes": 6606,
+      "sha256": "04f1469f8fc7e9e2e83ca682f22c385fa156e818099d2e99f687a41d94fa2454"
+    },
+    "bin/gdb/arm-none-eabi/share/gdb/auto-load/.keep": {
+      "bytes": 44,
+      "sha256": "c63409f3734bec4e8839c778fb4d2a77d01f966de0561c39d079d9d44624cda8"
+    },
+    "bin/gdb/bin/arm-none-eabi-gdb.exe": {
+      "bytes": 9290384,
+      "sha256": "79ea63ed5aae5b13b5282f0729ddd99d705e01bb87ea2f5989def38518cf9be9"
+    },
+    "bin/gdb/lib/debug/.keep": {
+      "bytes": 45,
+      "sha256": "04e3480456e51b2859b326b072b68d43d70ba1f2e5ef759d6941c7ca1542f1c3"
+    },
+    "bin/gdb/lib/gdb/.keep": {
+      "bytes": 38,
+      "sha256": "c1ec662c2b0b598cfc4241a34ad4b7c775decb28f99673dfb7c299471689994a"
+    },
+    "bin/gdb/license.txt": {
+      "bytes": 1106766,
+      "sha256": "6d9899e9c31de128a0821207c234e9d7a1abeaab33bb22c3f56e4158b29e22af"
+    },
+    "bin/gdb/x86_64-w64-mingw32/arm-none-eabi/lib/gdbinit": {
+      "bytes": 73,
+      "sha256": "4432f08f85f4209a55e9778f8a1e1e7c5b2473fd3c4fde96a3c0d77b4f346e2b"
+    },
+    "bin/jlink/Doc/LicenseIncGUI.txt": {
+      "bytes": 36963,
+      "sha256": "d33dfb36fd3d86fac76a9e61a3fb17a0b638b457cc96618a8133b26b2727035d"
+    },
+    "bin/jlink/JLinkGDBServerCL.exe": {
+      "bytes": 516248,
+      "sha256": "f93e8a80ad89e3bbf48451bbed1ee71a25bad1737eba3da9df8713fd13ac04a5"
+    },
+    "bin/jlink/JLink_x64.dll": {
+      "bytes": 22584992,
+      "sha256": "934fe2b55e45e5fb9cdec1da7b12f5e4e3ab6950963a7f3c45ed7b343d8c8162"
+    },
+    "bin/jlink/ST-about.html": {
+      "bytes": 6573,
+      "sha256": "f74c8ef44abba1202fabbad7162d0035c34446973a60d60f18b8b10687df376c"
+    }
+  }
+}

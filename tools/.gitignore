@@ -1,0 +1,15 @@
+# Generated reports, firmware and distribution archives.
+/runtime/
+/debug_reports/
+/dist/
+*.log
+*.zip
+*.7z
+*.tmp
+*.elf
+*.hex
+*.bin
+*.map
+
+# Preserve GDB's resource directory despite the repository's Debug ignore rule.
+!/bin/gdb/lib/debug/

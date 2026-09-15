@@ -1,0 +1,7 @@
+/.dev/
+/target/
+/artifacts/
+/node_modules/
+*.tgz
+*.log
+*.pdb

@@ -1,0 +1,16 @@
+version = 1
+watch = ["xTickCount"]
+[tools]
+root = "tools"
+[program]
+elf = "../Keil/STM32_CubeIDE/FreeRTOS_Project/Debug/FreeRTOS_Project.elf"
+source_root = "../Keil/STM32_CubeIDE/FreeRTOS_Project"
+[server]
+mode = "managed"
+device = "STM32F429IG"
+interface = "SWD"
+speed_khz = 4000
+host = "127.0.0.1"
+port = 3333
+[session]
+on_exit = "resume"
