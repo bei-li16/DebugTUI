@@ -1,3 +1,4 @@
+* text=auto eol=lf
 *.rs text eol=lf
 *.toml text eol=lf
 *.json text eol=lf
@@ -8,4 +9,3 @@ tools/bin/** -text -filter -whitespace
 bin/*.exe binary
 licenses/** -text -whitespace
 THIRD_PARTY_NOTICES.md -whitespace
-* text=auto eol=lf
