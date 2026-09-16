@@ -632,7 +632,10 @@ impl Setup {
         let area = f.area();
         if area.width < 45 || area.height < 12 {
             f.render_widget(
-                Paragraph::new("DebugTUI\nEnlarge terminal to at least 45 x 12.\nCtrl+Q exits."),
+                Paragraph::new(format!(
+                    "DebugTUI v{}\nEnlarge terminal to at least 45 x 12.\nCtrl+Q exits.",
+                    env!("CARGO_PKG_VERSION")
+                )),
                 area,
             );
             return;
@@ -650,7 +653,7 @@ impl Setup {
         f.render_widget(
             Paragraph::new(vec![
                 Line::from(Span::styled(
-                    " DebugTUI  /  Launch setup",
+                    format!(" DebugTUI v{}  /  Launch setup", env!("CARGO_PKG_VERSION")),
                     Style::default()
                         .fg(Color::Cyan)
                         .add_modifier(Modifier::BOLD),

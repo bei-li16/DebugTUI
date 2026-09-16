@@ -145,6 +145,20 @@ impl Drop for EngineHandle {
     }
 }
 
+#[cfg(test)]
+pub(crate) fn test_channel() -> (EngineHandle, Receiver<Request>) {
+    let (commands, requests) = mpsc::channel();
+    let (_, events) = mpsc::channel();
+    (
+        EngineHandle {
+            commands,
+            events,
+            cancellation: Arc::new(AtomicBool::new(false)),
+        },
+        requests,
+    )
+}
+
 pub fn spawn(project: Project) -> EngineHandle {
     let (commands, requests) = mpsc::channel();
     let (events, receiver) = mpsc::sync_channel(512);
@@ -363,6 +377,9 @@ impl Engine {
     fn record(&mut self, incoming: Incoming) {
         match incoming {
             Incoming::Record(r) => {
+                if matches!(r.kind, '*' | '=') {
+                    self.log("mi<", serde_json::to_string(&r).unwrap_or_default());
+                }
                 if r.kind == '*' && r.class == "running" {
                     self.state("RUNNING");
                 } else if r.kind == '*' && r.class == "stopped" {
@@ -376,6 +393,8 @@ impl Engine {
                     }
                     self.snapshot.generation += 1;
                     self.snapshot.state = "STOPPED".into();
+                    self.snapshot.assembly.clear();
+                    self.snapshot.memory.clear();
                     self.snapshot.stop_reason = r.data.string("reason");
                     if let Some(frame) = r.data.field("frame") {
                         self.snapshot.frame = Frame::from_mi(frame);
@@ -779,10 +798,84 @@ impl Engine {
             json!({"connected":true,"async_supported":self.snapshot.async_supported,"gdb":portable_path(&self.project.gdb.executable),"state":self.snapshot.state}),
         )
     }
+    // An interrupt acknowledgement is not a stop notification. GDB can already
+    // have stopped at a breakpoint by the time it handles the interrupt, in
+    // which case another *stopped notification may never arrive.
+    fn reconcile_stop(&mut self, timeout: Duration) -> Result<bool, String> {
+        let response = self.request("-thread-info", timeout)?;
+        if self.snapshot.state == "STOPPED" {
+            return Ok(true); // A concurrent async notification is authoritative.
+        }
+        let threads = response
+            .data
+            .field("threads")
+            .ok_or("GDB omitted thread states")?
+            .items();
+        if threads.is_empty() {
+            self.snapshot.generation += 1;
+            self.snapshot.frame = Frame::default();
+            self.snapshot.stop_reason = "no-inferior".into();
+            self.refresh_pending = false;
+            self.state("READY");
+            return Ok(true);
+        }
+        if !threads
+            .iter()
+            .all(|thread| thread.string("state") == "stopped")
+        {
+            return Ok(false);
+        }
+        self.snapshot.generation += 1;
+        self.snapshot.assembly.clear();
+        self.snapshot.memory.clear();
+        self.snapshot.stop_reason = "state-synchronized".into();
+        self.refresh_pending = true;
+        self.log(
+            "session",
+            "GDB confirms stopped threads; synchronizing the session without reconnecting.",
+        );
+        self.state("STOPPED");
+        Ok(true)
+    }
+    fn interrupt_target(&mut self) -> Result<(), String> {
+        if let Err(error) = self.mi("-exec-interrupt --all") {
+            if self.snapshot.state == "FAULT" {
+                return Err(error);
+            }
+            // Includes the valid race where the target stopped just before
+            // interrupt and GDB replies "Inferior not executing".
+            if self.snapshot.state != "STOPPED"
+                && !self.reconcile_stop(Duration::from_millis(self.project.session.timeout_ms))?
+            {
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+    fn pause(&mut self) -> Result<Json, String> {
+        if self.snapshot.state == "STOPPED" {
+            return Ok(json!({"stopped":true}));
+        }
+        self.log(
+            "session",
+            format!("Pause requested; cached state={}", self.snapshot.state),
+        );
+        self.interrupt_target()?;
+        self.wait_for_stop(Duration::from_secs(5), true)
+    }
     fn wait_stopped(&mut self, timeout: Duration) -> Result<Json, String> {
+        self.wait_for_stop(timeout, false)
+    }
+    fn wait_for_stop(&mut self, timeout: Duration, retry_interrupt: bool) -> Result<Json, String> {
+        let started = Instant::now();
         let deadline = Instant::now() + timeout;
+        let mut check_at = started + Duration::from_millis(250);
+        let mut retried = false;
         loop {
-            if self.snapshot.state == "READY" && self.snapshot.stop_reason.starts_with("exited") {
+            if self.snapshot.state == "READY"
+                && (self.snapshot.stop_reason.starts_with("exited")
+                    || self.snapshot.stop_reason == "no-inferior")
+            {
                 return Ok(
                     json!({"reason":self.snapshot.stop_reason,"state":"READY","frame":self.snapshot.frame}),
                 );
@@ -797,6 +890,25 @@ impl Engine {
             }
             if Instant::now() >= deadline {
                 return Err("Timed out waiting for target to stop; it may still be running".into());
+            }
+            if Instant::now() >= check_at {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining >= Duration::from_millis(100) {
+                    if self.reconcile_stop(
+                        remaining.min(Duration::from_millis(self.project.session.timeout_ms)),
+                    )? {
+                        continue;
+                    }
+                    if retry_interrupt && !retried && started.elapsed() >= Duration::from_secs(1) {
+                        self.log(
+                            "session",
+                            "GDB still reports running threads; retrying interrupt once.",
+                        );
+                        self.interrupt_target()?;
+                        retried = true;
+                    }
+                }
+                check_at = Instant::now() + Duration::from_millis(250);
             }
             let incoming = self
                 .gdb
@@ -814,7 +926,14 @@ impl Engine {
         self.stopped()?;
         let r = self.mi("-stack-info-frame")?;
         if let Some(f) = r.data.field("frame") {
-            self.snapshot.frame = Frame::from_mi(f);
+            let frame = Frame::from_mi(f);
+            if frame.address != self.snapshot.frame.address
+                || frame.level != self.snapshot.frame.level
+            {
+                self.snapshot.assembly.clear();
+                self.snapshot.memory.clear();
+            }
+            self.snapshot.frame = frame;
         }
         if let Ok(r) = self.mi("-stack-list-frames 0 31") {
             self.snapshot.stack = r
@@ -962,9 +1081,7 @@ impl Engine {
         let mut failure = None;
         if self.gdb.is_some() {
             if self.snapshot.state == "RUNNING"
-                && let Err(e) = self
-                    .mi("-exec-interrupt --all")
-                    .and_then(|_| self.wait_stopped(Duration::from_secs(5)).map(|_| ()))
+                && let Err(e) = self.pause()
                 && self.snapshot.state != "READY"
             {
                 failure = Some(e);
@@ -1044,6 +1161,10 @@ impl Engine {
         };
         match method {
             "connect" => self.connect(),
+            "reconnect" => {
+                self.disconnect()?;
+                self.connect()
+            }
             "disconnect" => self.disconnect(),
             "quit" => {
                 let result = self.disconnect();
@@ -1082,13 +1203,7 @@ impl Engine {
                 }
                 Ok(json!({"running":self.snapshot.state=="RUNNING"}))
             }
-            "pause" => {
-                if self.snapshot.state == "STOPPED" {
-                    return Ok(json!({"stopped":true}));
-                }
-                self.mi("-exec-interrupt --all")?;
-                self.wait_stopped(Duration::from_secs(5))
-            }
+            "pause" => self.pause(),
             "wait_stopped" => self.wait_stopped(Duration::from_millis(
                 p.get("timeout_ms")
                     .and_then(Json::as_u64)
@@ -1104,7 +1219,12 @@ impl Engine {
                     "stepi" => "-exec-step-instruction",
                     _ => "-exec-finish",
                 };
-                self.mi(cmd)?;
+                self.mi(cmd).map_err(|error| {
+                    format!(
+                        "{method} at {} ({}): {error}",
+                        self.snapshot.frame.address, self.snapshot.frame.function
+                    )
+                })?;
                 if self.snapshot.generation == generation {
                     self.state("RUNNING");
                 }
@@ -1254,7 +1374,13 @@ impl Engine {
                     .map(|v| {
                         v.items()
                             .iter()
-                            .map(|i| format!("{}  {}", i.string("address"), i.string("inst")))
+                            .map(|i| {
+                                format!(
+                                    "{}  {}",
+                                    i.string("address"),
+                                    i.string("inst").replace('\t', "    ")
+                                )
+                            })
                             .collect()
                     })
                     .unwrap_or_default();

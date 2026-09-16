@@ -5,6 +5,8 @@ const names = JSON.parse(process.env.DEBUGTUI_TEST_REGISTERS);
 const transcript = process.env.DEBUGTUI_TEST_TRANSCRIPT;
 let state = 'ready';
 let line = 10;
+const pauseMode = process.env.DEBUGTUI_TEST_PAUSE;
+let interrupts = 0;
 const frame = () => `frame={level="0",addr="0x100000008",func="main",file="sample.c",line="${line}"}`;
 const send = value => process.stdout.write(value + '\n');
 readline.createInterface({ input: process.stdin }).on('line', input => {
@@ -29,10 +31,23 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   }
   if (cmd === '-break-list') return done('BreakpointTable={body=[]}');
   if (cmd === '-interpreter-exec console "delete breakpoints"') return done();
+  if (cmd === '-exec-interrupt --all' && pauseMode) {
+    interrupts++;
+    if (pauseMode === 'running' || (pauseMode === 'retry' && interrupts === 1)) return done();
+    if (pauseMode === 'late') {
+      setTimeout(() => { state = 'stopped'; line++; send(`*stopped,reason="signal-received",${frame()}`); }, 150);
+      return done();
+    }
+    state = 'stopped';
+    line++;
+    if (pauseMode === 'already-stopped') return send(`${token}^error,msg="Inferior not executing."`);
+    return done(); // Deliberately omit *stopped to exercise state reconciliation.
+  }
   if (cmd === '-target-detach' || cmd === '-target-disconnect') { state = 'ready'; return done(); }
   if (cmd === '-gdb-exit') { send(`${token}^exit`); process.exit(0); }
   if (/^-exec-(run|continue|step|next|step-instruction|finish)$/.test(cmd)) {
     state = 'running'; send(`${token}^running`); send('*running,thread-id="all"');
+    if (pauseMode) return;
     setTimeout(() => { state = 'stopped'; line++; send(`*stopped,reason="end-stepping-range",${frame()}`); }, 10);
     return;
   }

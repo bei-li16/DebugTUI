@@ -6,7 +6,7 @@ use crate::{
 use crossterm::{
     event::{
         self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        Event as Input, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind,
+        Event as Input, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
     },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
@@ -14,26 +14,35 @@ use crossterm::{
 use ratatui::{
     Frame as UiFrame, Terminal,
     backend::{CrosstermBackend, TestBackend},
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Tabs, Wrap},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 use serde_json::{Value, json};
 use std::{
-    collections::VecDeque,
+    collections::{HashSet, VecDeque},
     fs,
     io::{self, IsTerminal},
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
-const PANES: [&str; 9] = [
-    "Source", "Watch", "Stack", "Regs", "Memory", "Asm", "Breaks", "Files", "Log",
+const PANES: [&str; 10] = [
+    "Source", "Watch", "Stack", "Regs", "Memory", "Asm", "Breaks", "Files", "Log", "Locals",
 ];
-const COMMANDS: [&str; 24] = [
+mod render;
+mod source_tabs;
+pub use render::draw;
+use source_tabs::SourceTabs;
+
+const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
+const SIDE_PANES: [usize; 4] = [3, 2, 4, 6];
+const VARIABLE_PANES: [usize; 2] = [1, 9];
+const COMMANDS: [&str; 29] = [
     "setup",
     "connect",
+    "reconnect",
     "run",
     "continue",
     "pause",
@@ -54,12 +63,57 @@ const COMMANDS: [&str; 24] = [
     "files",
     "open PATH",
     "frame NUMBER",
+    "find TEXT",
+    "elf PATH",
+    "refresh",
     "build",
+    "help",
     "quit",
 ];
 const DEMO_SOURCE: &str = "/* DebugTUI demo: no target connected */\n#include <stdint.h>\n\n\nvolatile uint32_t counter;\nvolatile uint8_t flag = 1;\n\nvoid process_items(void)\n{\n    for (unsigned i = 0; i < 100; ++i) {\n        update_value(\"sample\\n\");\n        counter++;\n    }\n}\n\nvoid update_value(const char *format)\n{\n    uint8_t ret = 0;\n    flag = 0;\n    /* Place a data breakpoint on flag. */\n}\n";
-const HELP: &str = "DebugTUI — keyboard-first GDB debugger\n\nF2 Launch setup / switch project\nF5 Continue      F6 Pause          F9 Toggle line breakpoint\nF10 Next         F11 Step          Shift+F11 Finish\nTab Next panel   Shift+Tab Previous panel\nArrows / PgUp / PgDn Scroll or select\nEnter Open selected file / select stack frame\n: or / Focus command line         Ctrl+P Command palette\nCtrl+C Pause target               Ctrl+Q End session and quit\n? Help           Esc Close dialog / cancel input\n\nWorkstation commands start with ':'\n:setup  :connect  :run  :disconnect  :restart  :download\n:watch counter        variable display; no hardware slot\n:data-break flag    hardware data breakpoint\n:break main   :delete 2  :frame 1\n:memory $sp 256   :disasm $pc\n:files  :open source.c   :elf app.elf\n:refresh  :build  :quit\n\nOther input is sent to the GDB console, e.g. p/x variable,\nx/8wx address, set variable name=value, info registers.\nRunning views show the last stopped snapshot.\nRestart/download behavior comes from the environment profile.\nExit behavior is controlled by session.on_exit.\n\nEsc / ? closes this help.";
+const HELP: &str = r#"DebugTUI — GDB debugging workspace
 
+Left: Source / Asm / Files / Log
+Right top: Regs / Stack / Memory / Breaks
+Right bottom: Watch / Locals
+Tab / Shift+Tab switches view and keyboard focus.
+Click tabs to change only that group; source stays visible.
+Wheel over a view or drag its scrollbar to browse content.
+Click Stack rows to select a frame; Delete removes a breakpoint.
+Narrow terminals show the focused group; Tab reaches all views.
+Source files stay open in tabs; click a name or × to close.
+< / > and the tab-strip wheel browse hidden tabs; [Files N] lists all.
+Ctrl+PgUp / Ctrl+PgDn switches files; Ctrl+W closes; Ctrl+O lists.
+
+Toolbar buttons: Run, Continue, Pause, Reset, Reconnect,
+Step, Next, Finish, CommandList. Unavailable actions are dimmed.
+CommandList / Ctrl+P lists commands; click or Enter selects.
+Commands with arguments open the command line for editing.
+Asm loads at $pc on entry and updates after each stop.
+Memory loads at $sp; :memory ADDRESS [COUNT] reads another range.
+
+F2 Setup         F5 Continue      F6 Pause
+F9 Breakpoint    F10 Next         F11 Step / Shift+F11 Finish
+Arrows / PgUp / PgDn / Home / End scroll or select
+Enter opens a file / selects a stack frame
+: Command line   / GDB console   Ctrl+F Find source
+Click the Console input to type GDB commands or :commands.
+Enter submits; Up / Down recalls history; Esc leaves input.
+Ctrl+C Pause     Ctrl+Q Quit      Esc Cancel / close dialog
+
+:setup :connect :reconnect :run :continue :pause :disconnect
+:step :next :stepi :finish :restart :download :refresh
+:watch counter   :unwatch counter   :data-break flag
+:break main   :delete 2   :frame 1
+:memory $sp 256   :disasm $pc   :files   :open source.c
+:find text   :elf app.elf   :build   :help   :quit
+
+Other input goes to GDB, e.g. p/x variable or info registers.
+Running views show the last stopped snapshot.
+Run / reset / download behavior comes from the environment.
+Exit behavior is controlled by session.on_exit.
+
+Esc / ? closes this help."#;
 pub struct App {
     project: Project,
     document: Document,
@@ -67,11 +121,16 @@ pub struct App {
     launch: Option<Launch>,
     snapshot: Snapshot,
     pane: usize,
+    main_pane: usize,
+    side_pane: usize,
+    variable_pane: usize,
+    selections: [usize; 10],
     selection: usize,
     source: Vec<String>,
     source_file: String,
     source_line: usize,
     source_top: usize,
+    sources: SourceTabs,
     logs: VecDeque<String>,
     console: VecDeque<String>,
     input: String,
@@ -87,8 +146,20 @@ pub struct App {
     demo: bool,
     quitting: bool,
     source_rect: Rect,
-    tab_rect: Rect,
-    visible_tabs: Vec<usize>,
+    side_rect: Rect,
+    console_input_rect: Rect,
+    view_rects: [Rect; 10],
+    view_tops: [usize; 10],
+    log_follow: bool,
+    pane_hits: Vec<(Rect, usize)>,
+    action_hits: Vec<(Rect, &'static str)>,
+    palette_hits: Vec<(Rect, usize)>,
+    scrollbars: [Rect; 10],
+    scroll_drag: Option<(usize, u16)>,
+    view_stamps: [Option<String>; 10],
+    view_errors: [Option<String>; 10],
+    pending_view: Option<(u64, usize)>,
+    pending_commands: HashSet<u64>,
     help_scroll: u16,
 }
 impl App {
@@ -104,11 +175,16 @@ impl App {
             project,
             snapshot: Snapshot::default(),
             pane: 0,
+            main_pane: 0,
+            side_pane: 3,
+            variable_pane: 1,
+            selections: [0; 10],
             selection: 0,
             source: vec![],
             source_file: String::new(),
             source_line: 0,
             source_top: 0,
+            sources: SourceTabs::default(),
             logs: VecDeque::new(),
             console: VecDeque::new(),
             input: String::new(),
@@ -124,8 +200,20 @@ impl App {
             demo,
             quitting: false,
             source_rect: Rect::default(),
-            tab_rect: Rect::default(),
-            visible_tabs: vec![],
+            side_rect: Rect::default(),
+            console_input_rect: Rect::default(),
+            view_rects: [Rect::default(); 10],
+            view_tops: [0; 10],
+            log_follow: true,
+            pane_hits: vec![],
+            action_hits: vec![],
+            palette_hits: vec![],
+            scrollbars: [Rect::default(); 10],
+            scroll_drag: None,
+            view_stamps: Default::default(),
+            view_errors: Default::default(),
+            pending_view: None,
+            pending_commands: HashSet::new(),
             help_scroll: 0,
         };
         if demo {
@@ -133,6 +221,7 @@ impl App {
             a.source_file = "demo/sample.c".into();
             a.source_line = 17;
             a.source_top = 9;
+            a.remember_demo_source();
             a.snapshot.state = "DEMO / STOPPED".into();
             a.snapshot.stop_reason = "breakpoint-hit".into();
             a.snapshot.frame = Frame {
@@ -194,6 +283,12 @@ impl App {
                     ..Default::default()
                 },
             ];
+            a.snapshot.assembly = vec![
+                "0x0800068c  push {r7, lr}".into(),
+                "0x0800068e  mov r7, sp".into(),
+                "0x08000690  movs r3, #0".into(),
+                "0x08000692  strb r3, [r7, #7]".into(),
+            ];
             a.log("[demo] Terminal UI preview; commands will not access hardware.".into());
             a.notice = "DEMO — Tab switches panels; Ctrl+P opens commands; q exits".into();
         }
@@ -209,45 +304,33 @@ impl App {
         }
         if self.logs.len() >= 1000 {
             self.logs.pop_front();
+            self.view_tops[8] = self.view_tops[8].saturating_sub(1);
         }
         self.logs.push_back(text);
-    }
-    fn load_source(&mut self, file: &str) {
-        self.source_file = file.into();
-        self.source_top = 0;
-        self.source = if let Some(path) = self.project.source_path(file) {
-            match fs::metadata(&path) {
-                Ok(meta) if meta.len() <= 2 * 1024 * 1024 => fs::read(&path)
-                    .map(|bytes| {
-                        String::from_utf8_lossy(&bytes)
-                            .lines()
-                            .take(30000)
-                            .map(str::to_owned)
-                            .collect()
-                    })
-                    .unwrap_or_else(|e| vec![format!("Cannot read source: {e}")]),
-                _ => vec!["Source file exceeds 2 MiB; use an external editor.".into()],
-            }
-        } else {
-            vec![
-                format!("Source not found: {file}"),
-                "Add [[source_map]] to debug.toml or use :open PATH.".into(),
-                "Use the Assembly panel (:disasm) when source is unavailable.".into(),
-            ]
-        };
     }
     fn update(&mut self, event: Event) -> bool {
         match event {
             Event::Snapshot { snapshot } => {
+                if matches!(
+                    snapshot.state.as_str(),
+                    "DISCONNECTED" | "STARTING GDB" | "FAULT"
+                ) {
+                    self.view_stamps.fill(None);
+                }
                 let moved = snapshot.generation != self.snapshot.generation
                     || snapshot.frame.file != self.snapshot.frame.file
-                    || snapshot.frame.line != self.snapshot.frame.line;
-                if moved && !snapshot.frame.file.is_empty() {
-                    if self.source_file != snapshot.frame.file {
-                        self.load_source(&snapshot.frame.file);
-                    }
+                    || snapshot.frame.line != self.snapshot.frame.line
+                    || snapshot.frame.level != self.snapshot.frame.level;
+                if moved && snapshot.state == "STOPPED" && !snapshot.frame.file.is_empty() {
+                    self.sources.frame_key = self.source_key(&snapshot.frame.file);
+                    self.load_source(&snapshot.frame.file);
                     self.source_line = snapshot.frame.line.saturating_sub(1) as usize;
                     self.source_top = self.source_line.saturating_sub(8);
+                } else if moved && snapshot.state == "STOPPED" {
+                    // Preserve open tabs, but never present the old source as the
+                    // current stop when the new PC has no source information.
+                    self.sources.frame_key.clear();
+                    self.hide_source();
                 }
                 self.snapshot = *snapshot;
             }
@@ -264,12 +347,20 @@ impl App {
                 result,
                 error,
             } => {
+                let background_view = self.pending_view.is_some_and(|(pending, _)| pending == id);
+                self.pending_commands.remove(&id);
+                if let Some((pending, pane)) = self.pending_view
+                    && pending == id
+                {
+                    self.view_errors[pane] = if ok { None } else { error.clone() };
+                    self.pending_view = None;
+                }
                 self.notice = if ok {
                     format!("Command {id} completed")
                 } else {
                     format!("Error: {}", error.unwrap_or_default())
                 };
-                if !result.is_null() && result.to_string().len() < 3000 {
+                if !background_view && !result.is_null() && result.to_string().len() < 3000 {
                     self.log(format!("[result {id}] {result}"));
                 }
             }
@@ -302,10 +393,13 @@ impl App {
             self.quitting = true;
         }
         self.notice = format!("{}…", request.method);
-        if let Some(engine) = engine
-            && let Err(e) = engine.send(request)
-        {
-            self.notice = format!("Session worker unavailable: {e}");
+        if let Some(engine) = engine {
+            let id = request.id;
+            self.pending_commands.insert(id);
+            if let Err(e) = engine.send(request) {
+                self.pending_commands.remove(&id);
+                self.notice = format!("Session worker unavailable: {e}");
+            }
         }
     }
     fn command(&mut self, engine: Option<&EngineHandle>, input: &str) {
@@ -325,8 +419,12 @@ impl App {
         let unquote = |s: &str| s.trim().trim_matches('"').to_string();
         match name {
             "setup" => self.open_setup(),
-            "connect" | "run" | "disconnect" | "continue" | "pause" | "step" | "next" | "stepi"
-            | "finish" | "restart" | "download" | "refresh" | "build" | "quit" => {
+            "connect" | "reconnect" | "run" | "disconnect" | "continue" | "pause" | "step"
+            | "next" | "stepi" | "finish" | "restart" | "download" | "refresh" | "build"
+            | "quit" => {
+                if name == "refresh" {
+                    self.view_stamps.fill(None);
+                }
                 self.submit(engine, name, json!({}))
             }
             "watch" | "unwatch" => self.submit(engine, name, json!({"expression":arg})),
@@ -345,25 +443,24 @@ impl App {
                     .next()
                     .and_then(|v| v.parse::<u64>().ok())
                     .unwrap_or(256);
-                self.pane = 4;
-                self.selection = 0;
+                self.select_pane(4);
+                self.view_stamps[4] = Some(self.view_stamp());
                 self.submit(engine, "memory", json!({"address":address,"count":count}));
             }
             "disasm" => {
-                self.pane = 5;
-                self.selection = 0;
+                self.select_pane(5);
+                self.view_stamps[5] = Some(self.view_stamp());
                 self.submit(engine, "disassemble", json!({"address":arg}));
             }
             "files" => {
-                self.pane = 7;
-                self.selection = 0;
+                self.select_pane(7);
+                self.view_stamps[7] = Some("files".into());
                 self.submit(engine, "files", json!({}));
             }
             "open" => {
                 let path = unquote(arg);
                 self.load_source(&path);
-                self.source_line = 0;
-                self.pane = 0;
+                self.select_pane(0);
             }
             "find" => {
                 if !arg.is_empty() {
@@ -374,7 +471,7 @@ impl App {
                     {
                         self.source_line = index;
                         self.source_top = index.saturating_sub(4);
-                        self.pane = 0;
+                        self.select_pane(0);
                         self.notice = format!("Found {arg} at line {}", index + 1);
                     } else {
                         self.notice = format!("No match: {arg}");
@@ -400,14 +497,13 @@ impl App {
             self.source_file.replace('\\', "/"),
             self.source_line + 1
         );
+        let source_key = self.source_key(&self.source_file);
         if let Some(b) = self.snapshot.breakpoints.iter().find(|b| {
             b.location
                 .replace('\\', "/")
                 .eq_ignore_ascii_case(&location)
                 || (b.line as usize == self.source_line + 1
-                    && b.file
-                        .replace('\\', "/")
-                        .eq_ignore_ascii_case(&self.source_file.replace('\\', "/")))
+                    && self.source_key(&b.file) == source_key)
         }) {
             let number = b.id.clone();
             self.submit(engine, "delete_break", json!({"number":number}));
@@ -424,25 +520,28 @@ impl App {
             if self.source_line < self.source_top {
                 self.source_top = self.source_line;
             }
-            let height = self.source_rect.height.saturating_sub(2).max(1) as usize;
+            let height = self.source_rect.height.max(1) as usize;
             if self.source_line >= self.source_top + height {
                 self.source_top = self.source_line + 1 - height;
             }
-        } else {
-            let max = match self.pane {
-                1 => self.snapshot.watches.len(),
-                2 => self.snapshot.stack.len(),
-                3 => self.snapshot.registers.len(),
-                4 => self.snapshot.memory.len(),
-                5 => self.snapshot.assembly.len(),
-                6 => self.snapshot.breakpoints.len(),
-                7 => self.snapshot.files.len(),
-                _ => self.logs.len(),
-            };
+        } else if matches!(self.pane, 2 | 6 | 7) {
+            let max = self.view_len(self.pane);
             self.selection = self
                 .selection
                 .saturating_add_signed(delta)
                 .min(max.saturating_sub(1));
+            let height = self.view_rects[self.pane].height.max(1) as usize;
+            let top = self.view_tops[self.pane];
+            if self.selection < top {
+                self.view_tops[self.pane] = self.selection;
+            } else if self.selection >= top + height {
+                self.view_tops[self.pane] = self.selection + 1 - height;
+            }
+        } else {
+            self.set_view_top(
+                self.pane,
+                self.view_tops[self.pane].saturating_add_signed(delta),
+            );
         }
     }
     fn key(&mut self, key: KeyEvent, engine: Option<&EngineHandle>) -> bool {
@@ -485,6 +584,10 @@ impl App {
             }
             return false;
         }
+        if self.sources.list_open {
+            self.source_list_key(key);
+            return false;
+        }
         if self.palette {
             match key.code {
                 KeyCode::Esc => self.palette = false,
@@ -493,20 +596,38 @@ impl App {
                     self.palette_index = (self.palette_index + COMMANDS.len() - 1) % COMMANDS.len()
                 }
                 KeyCode::Enter => {
-                    let command = COMMANDS[self.palette_index];
-                    self.palette = false;
-                    if command.contains(' ') {
-                        self.input = format!(":{} ", command.split_whitespace().next().unwrap());
-                        self.editing = true;
-                    } else {
-                        self.command(engine, &format!(":{command}"));
-                    }
+                    self.activate_palette(engine);
                 }
                 _ => {}
             }
             return false;
         }
-        if self.editing {
+        if !self.editing && key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::PageUp => {
+                    self.cycle_source(-1);
+                    return false;
+                }
+                KeyCode::PageDown => {
+                    self.cycle_source(1);
+                    return false;
+                }
+                KeyCode::Char('w') if self.main_pane == 0 => {
+                    if let Some(index) = self.sources.active {
+                        self.close_source(index);
+                    }
+                    return false;
+                }
+                KeyCode::Char('o') => {
+                    self.open_source_list();
+                    return false;
+                }
+                _ => {}
+            }
+        }
+        let workspace_shortcut = matches!(key.code, KeyCode::F(_))
+            || (key.code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL));
+        if self.editing && !workspace_shortcut {
             match key.code {
                 KeyCode::Esc => {
                     self.editing = false;
@@ -514,10 +635,11 @@ impl App {
                 }
                 KeyCode::Enter => {
                     let input = std::mem::take(&mut self.input);
-                    self.editing = false;
-                    self.history.push(input.clone());
-                    self.history_index = self.history.len();
-                    self.command(engine, &input);
+                    if !input.trim().is_empty() {
+                        self.history.push(input.clone());
+                        self.history_index = self.history.len();
+                        self.command(engine, &input);
+                    }
                 }
                 KeyCode::Backspace => {
                     self.input.pop();
@@ -596,12 +718,10 @@ impl App {
                 self.submit(engine, "quit", json!({}));
             }
             KeyCode::Tab => {
-                self.pane = (self.pane + 1) % PANES.len();
-                self.selection = 0;
+                self.cycle_pane(1);
             }
             KeyCode::BackTab => {
-                self.pane = (self.pane + PANES.len() - 1) % PANES.len();
-                self.selection = 0;
+                self.cycle_pane(-1);
             }
             KeyCode::Down => self.move_selection(1),
             KeyCode::Up => self.move_selection(-1),
@@ -609,21 +729,29 @@ impl App {
             KeyCode::PageUp => self.move_selection(-12),
             KeyCode::Home => {
                 self.selection = 0;
-                self.source_line = 0;
-                self.source_top = 0;
+                self.set_view_top(self.pane, 0);
+                if self.pane == 8 {
+                    self.log_follow = false;
+                }
+                if self.pane == 0 {
+                    self.source_line = 0;
+                    self.source_top = 0;
+                }
             }
+            KeyCode::End => self.move_selection(isize::MAX),
             KeyCode::Enter => {
                 if self.pane == 7 {
                     if let Some(file) = self.snapshot.files.get(self.selection).cloned() {
                         self.load_source(&file);
-                        self.source_line = 0;
-                        self.pane = 0;
+                        self.select_pane(0);
                     }
                 } else if self.pane == 2
                     && let Some(frame) = self.snapshot.stack.get(self.selection)
                 {
                     let level = frame.level;
                     self.submit(engine, "frame", json!({"level":level}));
+                } else if !matches!(self.pane, 2 | 7) {
+                    self.editing = true;
                 }
             }
             KeyCode::Delete if self.pane == 6 => {
@@ -635,6 +763,306 @@ impl App {
             _ => {}
         }
         false
+    }
+    fn select_pane(&mut self, pane: usize) {
+        self.selections[self.pane] = self.selection;
+        self.pane = pane;
+        self.selection = self.selections[pane];
+        if MAIN_PANES.contains(&pane) {
+            self.main_pane = pane;
+        } else if SIDE_PANES.contains(&pane) {
+            self.side_pane = pane;
+        } else {
+            self.variable_pane = pane;
+        }
+    }
+    fn selected(&self, pane: usize) -> usize {
+        if self.pane == pane {
+            self.selection
+        } else {
+            self.selections[pane]
+        }
+    }
+    fn cycle_pane(&mut self, delta: isize) {
+        let panes = [0, 5, 7, 8, 3, 2, 4, 6, 1, 9];
+        let index = panes.iter().position(|&p| p == self.pane).unwrap_or(0);
+        self.select_pane(panes[(index as isize + delta).rem_euclid(panes.len() as isize) as usize]);
+    }
+    fn view_stamp(&self) -> String {
+        format!(
+            "{}:{}:{}",
+            self.snapshot.generation, self.snapshot.frame.address, self.snapshot.frame.level
+        )
+    }
+    // Fetch expensive views only when visible, once per stopped location. Responses
+    // arrive through the same worker as user actions; rendering never blocks on GDB.
+    fn ensure_visible_data(&mut self, engine: Option<&EngineHandle>) -> bool {
+        if self.demo
+            || self.setup.is_some()
+            || self.quitting
+            || self.pending_view.is_some()
+            || !self.pending_commands.is_empty()
+            || self.snapshot.state != "STOPPED"
+        {
+            return false;
+        }
+        let mut panes = vec![];
+        if self.source_rect.width > 0 {
+            panes.push(self.main_pane);
+        }
+        if self.side_rect.width > 0 {
+            panes.push(self.side_pane);
+        }
+        for pane in panes {
+            let (method, params) = match pane {
+                5 => ("disassemble", json!({"address":"$pc"})),
+                4 => ("memory", json!({"address":"$sp","count":256})),
+                7 => ("files", json!({})),
+                _ => continue,
+            };
+            let stamp = if pane == 7 {
+                "files".into()
+            } else {
+                self.view_stamp()
+            };
+            if self.view_stamps[pane].as_ref() == Some(&stamp) {
+                continue;
+            }
+            self.view_stamps[pane] = Some(stamp);
+            self.view_errors[pane] = None;
+            match pane {
+                5 => {
+                    self.snapshot.assembly.clear();
+                    self.view_tops[5] = 0;
+                }
+                4 => {
+                    self.snapshot.memory.clear();
+                    self.view_tops[4] = 0;
+                }
+                _ => {}
+            }
+            self.pending_view = Some((self.next_id, pane));
+            self.submit(engine, method, params);
+            return true;
+        }
+        false
+    }
+    fn activate_palette(&mut self, engine: Option<&EngineHandle>) {
+        let command = COMMANDS[self.palette_index];
+        self.palette = false;
+        if command.contains(' ') {
+            self.input = format!(":{} ", command.split_whitespace().next().unwrap());
+            self.editing = true;
+        } else {
+            self.command(engine, &format!(":{command}"));
+        }
+    }
+    fn action_enabled(&self, command: &str) -> bool {
+        if self.quitting {
+            return false;
+        }
+        if self.demo {
+            return true;
+        }
+        match command {
+            "commandlist" => true,
+            "reconnect" => {
+                !self.snapshot.state.starts_with("STARTING") && self.snapshot.state != "CONNECTING"
+            }
+            "pause" => self.snapshot.state == "RUNNING",
+            "run" | "continue" => matches!(self.snapshot.state.as_str(), "STOPPED" | "READY"),
+            "restart" => {
+                self.snapshot.state == "STOPPED" && !self.project.actions.restart.is_empty()
+            }
+            _ => self.snapshot.state == "STOPPED",
+        }
+    }
+    fn view_len(&self, pane: usize) -> usize {
+        match pane {
+            0 => self.source.len(),
+            1 => self.snapshot.watches.len() * 2,
+            2 => self.snapshot.stack.len(),
+            3 => self.snapshot.registers.len(),
+            4 => self.snapshot.memory.len(),
+            5 => self.snapshot.assembly.len(),
+            6 => self.snapshot.breakpoints.len(),
+            7 => self.snapshot.files.len(),
+            8 => self.logs.len(),
+            _ => self.snapshot.locals.len() * 2,
+        }
+    }
+    fn set_view_top(&mut self, pane: usize, top: usize) {
+        let visible = self.view_rects[pane].height.max(1) as usize;
+        let len = self.view_len(pane);
+        let max = len.saturating_sub(visible);
+        let top = top.min(max);
+        if pane == 0 {
+            self.source_top = top;
+            self.source_line = self
+                .source_line
+                .clamp(top, (top + visible - 1).min(len.saturating_sub(1)));
+        } else {
+            self.view_tops[pane] = top;
+            if matches!(pane, 2 | 6 | 7) {
+                let selected = self
+                    .selected(pane)
+                    .clamp(top, (top + visible - 1).min(len.saturating_sub(1)));
+                self.selections[pane] = selected;
+                if self.pane == pane {
+                    self.selection = selected;
+                }
+            }
+            if pane == 8 {
+                self.log_follow = top == max;
+            }
+        }
+    }
+    fn scrollbar_thumb(&self, pane: usize) -> (usize, usize, usize) {
+        let height = self.scrollbars[pane].height as usize;
+        let visible = self.view_rects[pane].height as usize;
+        let len = self.view_len(pane);
+        let max = len.saturating_sub(visible);
+        let thumb = (height * visible / len.max(1)).clamp(1, height.max(1));
+        let travel = height.saturating_sub(thumb);
+        let position = if pane == 0 {
+            self.source_top
+        } else {
+            self.view_tops[pane]
+        };
+        let top = (position.min(max) * travel).checked_div(max).unwrap_or(0);
+        (top, thumb, max)
+    }
+    fn drag_scrollbar(&mut self, pane: usize, row: u16, offset: u16) {
+        let (_, thumb, max) = self.scrollbar_thumb(pane);
+        let travel = (self.scrollbars[pane].height as usize).saturating_sub(thumb);
+        let position = row
+            .saturating_sub(self.scrollbars[pane].y)
+            .saturating_sub(offset) as usize;
+        let top = (position.min(travel) * max)
+            .checked_div(travel)
+            .unwrap_or(0);
+        self.set_view_top(pane, top);
+    }
+    fn mouse(&mut self, mouse: MouseEvent, engine: Option<&EngineHandle>) {
+        if self.setup.is_some() || self.help || self.confirm.is_some() || self.quitting {
+            return;
+        }
+        let point = (mouse.column, mouse.row).into();
+        if self.source_tabs_mouse(mouse) {
+            return;
+        }
+        if self.palette {
+            match mouse.kind {
+                MouseEventKind::ScrollDown => {
+                    self.palette_index = (self.palette_index + 1).min(COMMANDS.len() - 1)
+                }
+                MouseEventKind::ScrollUp => {
+                    self.palette_index = self.palette_index.saturating_sub(1)
+                }
+                MouseEventKind::Down(event::MouseButton::Left) => {
+                    if let Some((_, index)) = self
+                        .palette_hits
+                        .iter()
+                        .find(|(rect, _)| rect.contains(point))
+                    {
+                        self.palette_index = *index;
+                        self.activate_palette(engine);
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
+        match mouse.kind {
+            MouseEventKind::Up(event::MouseButton::Left) => self.scroll_drag = None,
+            MouseEventKind::Drag(event::MouseButton::Left) => {
+                if let Some((pane, offset)) = self.scroll_drag {
+                    self.drag_scrollbar(pane, mouse.row, offset);
+                }
+            }
+            MouseEventKind::ScrollDown | MouseEventKind::ScrollUp => {
+                let delta = if mouse.kind == MouseEventKind::ScrollDown {
+                    3
+                } else {
+                    -3
+                };
+                if let Some(pane) = (0..PANES.len()).find(|&pane| {
+                    self.view_rects[pane].contains(point) || self.scrollbars[pane].contains(point)
+                }) {
+                    self.select_pane(pane);
+                    let top = if pane == 0 {
+                        self.source_top
+                    } else {
+                        self.view_tops[pane]
+                    };
+                    self.set_view_top(pane, top.saturating_add_signed(delta));
+                }
+            }
+            MouseEventKind::Down(event::MouseButton::Left) => {
+                if self.console_input_rect.contains(point) {
+                    self.editing = true;
+                    self.history_index = self.history.len();
+                    return;
+                }
+                self.editing = false;
+                if let Some((_, pane)) =
+                    self.pane_hits.iter().find(|(rect, _)| rect.contains(point))
+                {
+                    self.select_pane(*pane);
+                } else if let Some((_, action)) = self
+                    .action_hits
+                    .iter()
+                    .find(|(rect, _)| rect.contains(point))
+                {
+                    let action = *action;
+                    if self.action_enabled(action) {
+                        if action == "commandlist" {
+                            self.palette = true;
+                            self.palette_index = 0;
+                        } else {
+                            self.command(engine, &format!(":{action}"));
+                        }
+                    }
+                } else if let Some(pane) =
+                    self.scrollbars.iter().position(|rect| rect.contains(point))
+                {
+                    self.select_pane(pane);
+                    let (top, thumb, _) = self.scrollbar_thumb(pane);
+                    let click = mouse.row.saturating_sub(self.scrollbars[pane].y) as usize;
+                    let offset = if (top..top + thumb).contains(&click) {
+                        click - top
+                    } else {
+                        thumb / 2
+                    } as u16;
+                    self.scroll_drag = Some((pane, offset));
+                    self.drag_scrollbar(pane, mouse.row, offset);
+                } else if let Some(pane) =
+                    self.view_rects.iter().position(|rect| rect.contains(point))
+                {
+                    self.select_pane(pane);
+                    let rect = self.view_rects[pane];
+                    if pane == 0 {
+                        self.source_line = (self.source_top
+                            + mouse.row.saturating_sub(self.source_rect.y) as usize)
+                            .min(self.source.len().saturating_sub(1));
+                        if mouse.column < self.source_rect.x + 7 {
+                            self.toggle_break(engine);
+                        }
+                    } else if matches!(pane, 2 | 6 | 7) {
+                        let clicked =
+                            self.view_tops[pane] + mouse.row.saturating_sub(rect.y) as usize;
+                        if clicked >= self.view_len(pane) {
+                            return;
+                        }
+                        self.selection = clicked;
+                        if matches!(pane, 2 | 7) {
+                            self.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), engine);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
     }
     fn open_setup(&mut self) {
         let mut setup = Setup::new(self.document.clone());
@@ -733,497 +1161,6 @@ fn syntax(line: &str) -> Vec<Span<'static>> {
     }
     flush(&mut word, &mut spans);
     spans
-}
-pub fn draw(f: &mut UiFrame, a: &mut App) {
-    if let Some(setup) = &a.setup {
-        setup.draw(f);
-        return;
-    }
-    let area = f.area();
-    if area.width < 45 || area.height < 12 {
-        f.render_widget(
-            Paragraph::new("DebugTUI\nEnlarge terminal to at least 45 x 12.\nCtrl+Q exits.")
-                .wrap(Wrap { trim: false }),
-            area,
-        );
-        return;
-    }
-    let rows = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(2),
-            Constraint::Length(1),
-            Constraint::Min(5),
-            Constraint::Length(1),
-            Constraint::Length(2),
-            Constraint::Length(1),
-        ])
-        .split(area);
-    let state_color = if a.snapshot.state.contains("STOPPED") {
-        Color::Green
-    } else if a.snapshot.state == "RUNNING" {
-        Color::Yellow
-    } else if a.snapshot.state == "FAULT" {
-        Color::Red
-    } else {
-        Color::Cyan
-    };
-    let header = Line::from(vec![
-        Span::styled(
-            " DebugTUI ",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(format!(
-            " {} · {}  ",
-            a.project.target.mode, a.project.target.endpoint
-        )),
-        Span::styled(
-            a.snapshot.state.clone(),
-            Style::default()
-                .fg(state_color)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(if a.quitting {
-            "  Closing session…"
-        } else {
-            ""
-        }),
-    ]);
-    f.render_widget(
-        Paragraph::new(vec![
-            header,
-            Line::from(Span::styled(
-                format!(
-                    " {}",
-                    if a.source_file.is_empty() {
-                        a.project.program.elf.to_string_lossy().into_owned()
-                    } else {
-                        format!(
-                            "{}:{}  {}",
-                            a.source_file
-                                .rsplit(['/', '\\'])
-                                .next()
-                                .unwrap_or(&a.source_file),
-                            a.snapshot.frame.line,
-                            a.snapshot.stop_reason
-                        )
-                    }
-                ),
-                Style::default().fg(Color::DarkGray),
-            )),
-        ]),
-        rows[0],
-    );
-    a.tab_rect = rows[1];
-    a.visible_tabs = if area.width >= 80 {
-        (0..PANES.len()).collect()
-    } else {
-        let start = a.pane.saturating_sub(1).min(PANES.len() - 3);
-        (start..start + 3).collect()
-    };
-    let labels: Vec<Line> = a
-        .visible_tabs
-        .iter()
-        .map(|&i| Line::from(PANES[i]))
-        .collect();
-    let selected = a
-        .visible_tabs
-        .iter()
-        .position(|&i| i == a.pane)
-        .unwrap_or(0);
-    f.render_widget(
-        Tabs::new(labels)
-            .select(selected)
-            .highlight_style(
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            )
-            .divider("│"),
-        rows[1],
-    );
-    let body = rows[2];
-    match a.pane {
-        0 => {
-            let split = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(4),
-                    Constraint::Length(if body.height > 15 { 6 } else { 3 }),
-                ])
-                .split(body);
-            let columns = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints(if body.width >= 90 {
-                    vec![Constraint::Percentage(68), Constraint::Percentage(32)]
-                } else {
-                    vec![Constraint::Percentage(100), Constraint::Length(0)]
-                })
-                .split(split[0]);
-            a.source_rect = columns[0];
-            if a.source.is_empty() {
-                f.render_widget(Paragraph::new("\n  F2  Choose project and debug environment\n\n  Browse tools, GDB and program files.\n  Save settings and start with F5.\n\n  Ctrl+P  Command palette\n  ?       Keyboard help\n\n  GDB comes from --gdb / PATH or an environment profile.").block(section(" Source ")),columns[0]);
-            } else {
-                let count = columns[0].height.saturating_sub(1) as usize;
-                let lines: Vec<Line> = a
-                    .source
-                    .iter()
-                    .enumerate()
-                    .skip(a.source_top)
-                    .take(count)
-                    .map(|(i, line)| {
-                        let pc = i + 1 == a.snapshot.frame.line as usize
-                            && a.source_file == a.snapshot.frame.file;
-                        let selected = i == a.source_line;
-                        let bp = a.snapshot.breakpoints.iter().any(|b| {
-                            b.enabled
-                                && b.line as usize == i + 1
-                                && b.file
-                                    .replace('\\', "/")
-                                    .eq_ignore_ascii_case(&a.source_file.replace('\\', "/"))
-                        });
-                        let mut spans = vec![Span::styled(
-                            format!(
-                                "{}{}{:>4} ",
-                                if pc {
-                                    "▶"
-                                } else if selected {
-                                    "›"
-                                } else {
-                                    " "
-                                },
-                                if bp { "●" } else { " " },
-                                i + 1
-                            ),
-                            Style::default().fg(if pc {
-                                Color::Green
-                            } else if bp {
-                                Color::Red
-                            } else if selected {
-                                Color::Cyan
-                            } else {
-                                Color::DarkGray
-                            }),
-                        )];
-                        spans.extend(syntax(line));
-                        let mut row = Line::from(spans);
-                        if pc {
-                            row = row.style(Style::default().add_modifier(Modifier::BOLD));
-                        }
-                        row
-                    })
-                    .collect();
-                f.render_widget(
-                    Paragraph::new(lines).block(section(" Source · F9 breakpoint ")),
-                    columns[0],
-                );
-            }
-            if columns[1].width > 0 {
-                let side = Layout::default()
-                    .direction(Direction::Vertical)
-                    .constraints([Constraint::Percentage(55), Constraint::Percentage(45)])
-                    .split(columns[1]);
-                f.render_widget(
-                    Paragraph::new(variables(&a.snapshot.watches))
-                        .block(section(" Watch · stopped snapshot "))
-                        .wrap(Wrap { trim: false }),
-                    side[0],
-                );
-                f.render_widget(
-                    Paragraph::new(variables(&a.snapshot.locals))
-                        .block(section(" Locals "))
-                        .wrap(Wrap { trim: false }),
-                    side[1],
-                );
-            }
-            let bottom = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(38), Constraint::Percentage(62)])
-                .split(split[1]);
-            f.render_widget(
-                Paragraph::new(
-                    a.snapshot
-                        .stack
-                        .iter()
-                        .map(|s| Line::raw(format!(" #{} {} :{}", s.level, s.function, s.line)))
-                        .collect::<Vec<_>>(),
-                )
-                .block(section(" Call Stack ")),
-                bottom[0],
-            );
-            let height = bottom[1].height.saturating_sub(1) as usize;
-            let logs = a
-                .console
-                .iter()
-                .skip(a.console.len().saturating_sub(height))
-                .map(|s| Line::raw(s.clone()))
-                .collect::<Vec<_>>();
-            f.render_widget(Paragraph::new(logs).block(section(" Console ")), bottom[1]);
-        }
-        1 => f.render_widget(
-            Paragraph::new(variables(&a.snapshot.watches))
-                .block(section(" Watch · :watch EXPR / :unwatch EXPR "))
-                .scroll((
-                    a.selection.saturating_mul(2).min(u16::MAX as usize) as u16,
-                    0,
-                ))
-                .wrap(Wrap { trim: false }),
-            body,
-        ),
-        2 => {
-            let items: Vec<ListItem> = a
-                .snapshot
-                .stack
-                .iter()
-                .enumerate()
-                .map(|(i, s)| {
-                    ListItem::new(format!(
-                        "{} #{} {:20} {}:{}",
-                        if i == a.selection { "›" } else { " " },
-                        s.level,
-                        s.function,
-                        s.file,
-                        s.line
-                    ))
-                    .style(if i == a.selection {
-                        Style::default().fg(Color::Cyan)
-                    } else {
-                        Style::default()
-                    })
-                })
-                .collect();
-            f.render_widget(
-                List::new(items).block(section(" Call Stack · Enter selects frame ")),
-                body,
-            );
-        }
-        3 => f.render_widget(
-            Paragraph::new(
-                a.snapshot
-                    .registers
-                    .iter()
-                    .skip(a.selection)
-                    .map(|v| {
-                        Line::from(Span::styled(
-                            format!(
-                                " {:6} {} {}",
-                                v.name,
-                                v.value,
-                                if v.changed { "*" } else { "" }
-                            ),
-                            Style::default().fg(if v.changed {
-                                Color::Yellow
-                            } else {
-                                Color::Reset
-                            }),
-                        ))
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .block(section(" Registers · last stopped snapshot ")),
-            body,
-        ),
-        4 | 5 => {
-            let lines = if a.pane == 4 {
-                &a.snapshot.memory
-            } else {
-                &a.snapshot.assembly
-            };
-            let title = if a.pane == 4 {
-                " Memory · :memory ADDRESS [COUNT] "
-            } else {
-                " Assembly · :disasm $pc "
-            };
-            f.render_widget(
-                Paragraph::new(
-                    lines
-                        .iter()
-                        .skip(a.selection)
-                        .map(|s| Line::raw(s.clone()))
-                        .collect::<Vec<_>>(),
-                )
-                .block(section(title)),
-                body,
-            );
-        }
-        6 => f.render_widget(
-            Paragraph::new(
-                a.snapshot
-                    .breakpoints
-                    .iter()
-                    .enumerate()
-                    .skip(
-                        a.selection
-                            .saturating_sub(body.height.saturating_sub(2) as usize),
-                    )
-                    .map(|(i, b)| {
-                        Line::from(Span::styled(
-                            format!(
-                                "{} {:3} {:3} {:20} {}",
-                                if i == a.selection { "›" } else { " " },
-                                b.id,
-                                if b.enabled { "on" } else { "off" },
-                                b.kind,
-                                b.location
-                            ),
-                            Style::default().fg(if i == a.selection {
-                                Color::Cyan
-                            } else {
-                                Color::Reset
-                            }),
-                        ))
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .block(section(" Breakpoints · Delete removes selected ")),
-            body,
-        ),
-        7 => f.render_widget(
-            Paragraph::new(
-                a.snapshot
-                    .files
-                    .iter()
-                    .enumerate()
-                    .skip(
-                        a.selection
-                            .saturating_sub(body.height.saturating_sub(2) as usize),
-                    )
-                    .map(|(i, s)| {
-                        Line::from(Span::styled(
-                            format!("{} {s}", if i == a.selection { "›" } else { " " }),
-                            Style::default().fg(if i == a.selection {
-                                Color::Cyan
-                            } else {
-                                Color::Reset
-                            }),
-                        ))
-                    })
-                    .collect::<Vec<_>>(),
-            )
-            .block(section(" Source Files · :files loads list · Enter opens ")),
-            body,
-        ),
-        _ => {
-            let height = body.height.saturating_sub(1) as usize;
-            let start = if a.selection == 0 {
-                a.logs.len().saturating_sub(height)
-            } else {
-                a.selection
-            };
-            f.render_widget(
-                Paragraph::new(
-                    a.logs
-                        .iter()
-                        .skip(start)
-                        .map(|s| Line::raw(s.clone()))
-                        .collect::<Vec<_>>(),
-                )
-                .block(section(" Debug Console · / enters GDB command ")),
-                body,
-            );
-        }
-    }
-    f.render_widget(
-        Paragraph::new(format!(" {}", a.notice)).style(Style::default().fg(
-            if a.notice.starts_with("Error") {
-                Color::Red
-            } else {
-                Color::DarkGray
-            },
-        )),
-        rows[3],
-    );
-    let input = if a.editing {
-        format!(" › {}", a.input)
-    } else {
-        " › F2 Setup   : Commands   / GDB   Ctrl+P Actions".into()
-    };
-    f.render_widget(
-        Paragraph::new(input).block(Block::default().borders(Borders::TOP).border_style(
-            Style::default().fg(if a.editing {
-                Color::Cyan
-            } else {
-                Color::DarkGray
-            }),
-        )),
-        rows[4],
-    );
-    if a.editing {
-        let width = unicode_width::UnicodeWidthStr::width(a.input.as_str()) as u16;
-        f.set_cursor_position((
-            rows[4].x + (3 + width).min(rows[4].width.saturating_sub(1)),
-            rows[4].y + 1,
-        ));
-    }
-    f.render_widget(
-        Paragraph::new(" F5 Continue  F6 Pause  F9 Break  F10 Next  F11 Step  Tab Panels  ? Help")
-            .style(Style::default().fg(Color::DarkGray)),
-        rows[5],
-    );
-    if a.help {
-        let r = center(area, 90, 32);
-        f.render_widget(Clear, r);
-        f.render_widget(
-            Paragraph::new(HELP)
-                .block(
-                    Block::bordered()
-                        .title(" Help · ↑ ↓ scroll · Esc ")
-                        .border_style(Style::default().fg(Color::Cyan)),
-                )
-                .scroll((a.help_scroll, 0))
-                .wrap(Wrap { trim: false }),
-            r,
-        );
-    }
-    if a.palette {
-        let r = center(area, 55, 26);
-        f.render_widget(Clear, r);
-        let start = a
-            .palette_index
-            .saturating_sub(r.height.saturating_sub(3) as usize);
-        let lines: Vec<Line> = COMMANDS
-            .iter()
-            .enumerate()
-            .skip(start)
-            .map(|(i, s)| {
-                Line::from(Span::styled(
-                    format!("{} {s}", if i == a.palette_index { "›" } else { " " }),
-                    Style::default().fg(if i == a.palette_index {
-                        Color::Cyan
-                    } else {
-                        Color::Reset
-                    }),
-                ))
-            })
-            .collect();
-        f.render_widget(
-            Paragraph::new(lines).block(
-                Block::bordered()
-                    .title(" Commands · ↑ ↓ Enter · Esc ")
-                    .border_style(Style::default().fg(Color::Cyan)),
-            ),
-            r,
-        );
-    }
-    if a.confirm.is_some() {
-        let r = center(area, 70, 7);
-        f.render_widget(Clear, r);
-        f.render_widget(
-            Paragraph::new(format!(
-                "Execute the configured download action?\n{}\n\ny: Download    n / Esc: Cancel",
-                a.project.program.elf.display()
-            ))
-            .wrap(Wrap { trim: false })
-            .block(
-                Block::bordered()
-                    .title(" Download firmware ")
-                    .border_style(Style::default().fg(Color::Yellow)),
-            ),
-            r,
-        );
-    }
 }
 fn center(area: Rect, w: u16, h: u16) -> Rect {
     let w = w.min(area.width.saturating_sub(2));
@@ -1366,8 +1303,20 @@ pub fn run(
                     app.source_file.clear();
                     app.source_line = 0;
                     app.source_top = 0;
+                    app.sources = SourceTabs::default();
                     app.selection = 0;
                     app.pane = 0;
+                    app.main_pane = 0;
+                    app.side_pane = 3;
+                    app.variable_pane = 1;
+                    app.selections.fill(0);
+                    app.view_tops.fill(0);
+                    app.log_follow = true;
+                    app.scroll_drag = None;
+                    app.view_stamps.fill(None);
+                    app.view_errors.fill(None);
+                    app.pending_view = None;
+                    app.pending_commands.clear();
                     app.editing = false;
                     app.confirm = None;
                     engine = Some(session::spawn(project));
@@ -1392,6 +1341,9 @@ pub fn run(
                 setup.message = "DEMO: restart without --demo to connect a debugger.".into();
             }
         }
+        if app.ensure_visible_data(engine.as_ref()) {
+            dirty = true;
+        }
         if dirty && last_draw.elapsed() >= Duration::from_millis(25) {
             terminal
                 .draw(|f| draw(f, &mut app))
@@ -1412,43 +1364,19 @@ pub fn run(
                     if let Some(setup) = &mut app.setup {
                         setup.paste(&text);
                         dirty = true;
+                    } else if app.sources.list_open {
+                        app.sources
+                            .query
+                            .extend(text.chars().filter(|c| !c.is_control()));
+                        app.sources.list_index = 0;
+                        dirty = true;
                     } else if app.editing {
                         app.input.push_str(&text);
                         dirty = true;
                     }
                 }
                 Input::Mouse(mouse) => {
-                    if app.setup.is_some() {
-                        continue;
-                    }
-                    match mouse.kind {
-                        MouseEventKind::ScrollDown => app.move_selection(3),
-                        MouseEventKind::ScrollUp => app.move_selection(-3),
-                        MouseEventKind::Down(event::MouseButton::Left) => {
-                            if mouse.row == app.tab_rect.y {
-                                let mut x = app.tab_rect.x + 1;
-                                for &i in &app.visible_tabs {
-                                    let end = x + PANES[i].len() as u16 + 2;
-                                    if mouse.column >= x && mouse.column < end {
-                                        app.pane = i;
-                                        app.selection = 0;
-                                        break;
-                                    }
-                                    x = end + 1;
-                                }
-                            } else if app.pane == 0
-                                && app.source_rect.contains((mouse.column, mouse.row).into())
-                            {
-                                app.source_line = (app.source_top
-                                    + mouse.row.saturating_sub(app.source_rect.y + 1) as usize)
-                                    .min(app.source.len().saturating_sub(1));
-                                if mouse.column < app.source_rect.x + 7 {
-                                    app.toggle_break(engine.as_ref());
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
+                    app.mouse(mouse, engine.as_ref());
                     dirty = true;
                 }
                 _ => {}
@@ -1476,13 +1404,538 @@ pub fn snapshot(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn render(a: &mut App, w: u16, h: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+        terminal.draw(|f| draw(f, a)).unwrap();
+        (0..h)
+            .map(|y| {
+                (0..w)
+                    .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+                    .collect::<String>()
+                    + "\n"
+            })
+            .collect()
+    }
+    fn mouse_at(a: &mut App, kind: MouseEventKind, x: u16, y: u16, engine: Option<&EngineHandle>) {
+        a.mouse(
+            MouseEvent {
+                kind,
+                column: x,
+                row: y,
+                modifiers: KeyModifiers::NONE,
+            },
+            engine,
+        );
+    }
+    #[test]
+    fn inspector_tabs_keep_source_visible_without_duplicate_stack() {
+        let mut a = App::new(Project::default(), true);
+        for pane in SIDE_PANES {
+            render(&mut a, 160, 45);
+            let rect = a.pane_hits.iter().find(|(_, i)| *i == pane).unwrap().0;
+            mouse_at(
+                &mut a,
+                MouseEventKind::Down(event::MouseButton::Left),
+                rect.x,
+                rect.y,
+                None,
+            );
+            let text = render(&mut a, 160, 45);
+            assert_eq!(a.main_pane, 0);
+            assert_eq!(a.side_pane, pane);
+            assert!(text.contains("counter++;"));
+            assert!(!text.contains("Call Stack"));
+            assert!(a.side_rect.x > a.source_rect.right());
+        }
+    }
+    #[test]
+    fn variable_tabs_are_below_registers_and_keep_independent_focus() {
+        let mut a = App::new(Project::default(), true);
+        let text = render(&mut a, 160, 45);
+        assert!(text.contains(&format!("DebugTUI v{}", env!("CARGO_PKG_VERSION"))));
+        let hit = |app: &App, pane| app.pane_hits.iter().find(|(_, id)| *id == pane).unwrap().0;
+        let regs = hit(&a, 3);
+        assert!(regs.x < hit(&a, 2).x);
+        assert!(hit(&a, 1).y > regs.y);
+        assert!(hit(&a, 1).x < hit(&a, 9).x);
+        assert!(text.contains("12345"));
+        let locals = hit(&a, 9);
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            locals.x,
+            locals.y,
+            None,
+        );
+        let text = render(&mut a, 160, 45);
+        assert!(text.contains("process_items\\n"));
+        assert!(!text.contains("12345"));
+        assert_eq!(a.side_pane, 3);
+        assert_eq!(a.main_pane, 0);
+        assert!(a.view_rects[9].height > 0);
+        assert_eq!(a.view_rects[1].height, 0);
+        // A short or narrow terminal must still let Tab reach the variables.
+        for (w, h) in [(80, 24), (120, 12)] {
+            render(&mut a, w, h);
+            assert!(a.view_rects[9].height > 0);
+            assert!(a.console_input_rect.height > 0);
+        }
+    }
+    #[test]
+    fn assembly_files_and_log_scrollbars_browse_all_rows_and_remember_position() {
+        let mut a = App::new(Project::default(), true);
+        a.snapshot.assembly = (0..200).map(|i| format!("instruction-{i:03}")).collect();
+        a.snapshot.files = (0..200).map(|i| format!("file-{i:03}.c")).collect();
+        a.logs = (0..200).map(|i| format!("log-{i:03}")).collect();
+        for (pane, first, last) in [
+            (5, "instruction-000", "instruction-199"),
+            (7, "file-000.c", "file-199.c"),
+            (8, "log-000", "log-199"),
+        ] {
+            a.select_pane(pane);
+            render(&mut a, 140, 40);
+            let bar = a.scrollbars[pane];
+            assert_eq!(bar.height, a.view_rects[pane].height);
+            assert!(bar.height > 0);
+            mouse_at(
+                &mut a,
+                MouseEventKind::Down(event::MouseButton::Left),
+                bar.x,
+                bar.y,
+                None,
+            );
+            mouse_at(
+                &mut a,
+                MouseEventKind::Drag(event::MouseButton::Left),
+                bar.x,
+                0,
+                None,
+            );
+            assert!(render(&mut a, 140, 40).contains(first));
+            mouse_at(
+                &mut a,
+                MouseEventKind::Drag(event::MouseButton::Left),
+                bar.x,
+                bar.bottom() + 20,
+                None,
+            );
+            let text = render(&mut a, 140, 40);
+            assert!(text.contains(last));
+            assert!(!text.contains(first));
+            mouse_at(
+                &mut a,
+                MouseEventKind::Up(event::MouseButton::Left),
+                bar.x,
+                bar.y,
+                None,
+            );
+            let top = a.view_tops[pane];
+            mouse_at(&mut a, MouseEventKind::ScrollUp, bar.x, bar.y, None);
+            assert_eq!(a.view_tops[pane], top - 3);
+            a.select_pane(0);
+            render(&mut a, 140, 40);
+            a.select_pane(pane);
+            render(&mut a, 140, 40);
+            assert_eq!(a.view_tops[pane], top - 3);
+            assert_eq!(a.source_top, 0); // browsing other views never moves source
+        }
+        a.select_pane(7);
+        let text = render(&mut a, 140, 40);
+        let rect = a.view_rects[7];
+        let clicked = a.view_tops[7] + 2;
+        assert!(text.contains(&format!("file-{clicked:03}.c")));
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            rect.x + 3,
+            rect.y + 2,
+            None,
+        );
+        assert_eq!(a.source_file, format!("file-{clicked:03}.c"));
+        assert_eq!(a.main_pane, 0);
+    }
+    #[test]
+    fn log_scrollback_stays_put_until_end_resumes_following() {
+        let mut a = App::new(Project::default(), true);
+        a.logs = (0..1000).map(|i| format!("record-{i:04}")).collect();
+        a.select_pane(8);
+        assert!(render(&mut a, 120, 36).contains("record-0999"));
+        a.key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), None);
+        assert!(render(&mut a, 120, 36).contains("record-0000"));
+        a.move_selection(20);
+        let text = render(&mut a, 120, 36);
+        assert!(text.contains("record-0020"));
+        a.log("record-1000".into());
+        assert!(render(&mut a, 120, 36).contains("record-0020"));
+        assert!(!a.log_follow);
+        a.key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE), None);
+        a.log("record-1001".into());
+        assert!(render(&mut a, 120, 36).contains("record-1001"));
+        assert!(a.log_follow);
+    }
+    #[test]
+    fn console_input_click_submit_history_and_debug_shortcuts() {
+        let (engine, commands) = session::test_channel();
+        let mut a = App::new(Project::default(), false);
+        a.snapshot.state = "STOPPED".into();
+        assert!(render(&mut a, 120, 36).contains("gdb>"));
+        let input = a.console_input_rect;
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            input.x + 8,
+            input.y,
+            Some(&engine),
+        );
+        for ch in "p/x counter".chars() {
+            a.key(
+                KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE),
+                Some(&engine),
+            );
+        }
+        a.key(
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        let request = commands.try_recv().unwrap();
+        assert_eq!(request.method, "console");
+        assert_eq!(request.params["command"], "p/x counter");
+        assert!(a.editing);
+        assert!(a.input.is_empty());
+        for ch in ":watch counter".chars() {
+            a.key(
+                KeyEvent::new(KeyCode::Char(ch), KeyModifiers::NONE),
+                Some(&engine),
+            );
+        }
+        a.key(
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        let request = commands.try_recv().unwrap();
+        assert_eq!(request.method, "watch");
+        assert_eq!(request.params["expression"], "counter");
+        a.key(
+            KeyEvent::new(KeyCode::Up, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert_eq!(a.input, ":watch counter");
+        a.key(
+            KeyEvent::new(KeyCode::Up, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert_eq!(a.input, "p/x counter");
+        a.key(
+            KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        a.key(
+            KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert!(a.input.is_empty());
+        a.key(
+            KeyEvent::new(KeyCode::F(10), KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert_eq!(commands.try_recv().unwrap().method, "next");
+        assert!(a.editing);
+        a.input = "中".repeat(150) + " tail";
+        assert!(render(&mut a, 80, 24).contains("tail"));
+        a.key(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert!(!a.editing);
+        assert!(commands.try_recv().is_err());
+    }
+    #[test]
+    fn stop_without_symbols_does_not_keep_previous_source_location() {
+        let mut a = App::new(Project::default(), true);
+        let mut stopped = a.snapshot.clone();
+        stopped.state = "STOPPED".into();
+        stopped.generation += 1;
+        stopped.stop_reason = "signal-received".into();
+        stopped.frame = Frame {
+            address: "0x00006978".into(),
+            function: "??".into(),
+            ..Default::default()
+        };
+        a.update(Event::Snapshot {
+            snapshot: Box::new(stopped),
+        });
+        let text = render(&mut a, 160, 40);
+        assert!(text.contains("PC 0x00006978"));
+        assert!(text.contains("No source location"));
+        assert!(!text.contains("counter++;"));
+        assert!(!text.contains("sample.c:0"));
+        // Browsing another file must not change the displayed stopped location.
+        a.source_file = "browsed.c".into();
+        a.source = vec!["void browsed(void);".into()];
+        let text = render(&mut a, 160, 40);
+        assert!(text.contains("void browsed"));
+        assert!(text.lines().nth(1).unwrap().contains("PC 0x00006978"));
+    }
+    #[test]
+    fn scrollbar_click_drag_and_wheel_reach_both_ends() {
+        let mut a = App::new(Project::default(), true);
+        a.source = (0..500).map(|i| format!("line {i}")).collect();
+        a.source_top = 0;
+        a.source_line = 0;
+        render(&mut a, 140, 40);
+        let bar = a.scrollbars[0];
+        let max = a.source.len() - a.source_rect.height as usize;
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            bar.x,
+            bar.y,
+            None,
+        );
+        mouse_at(
+            &mut a,
+            MouseEventKind::Drag(event::MouseButton::Left),
+            bar.x,
+            bar.bottom() + 20,
+            None,
+        );
+        assert_eq!(a.source_top, max);
+        mouse_at(
+            &mut a,
+            MouseEventKind::Drag(event::MouseButton::Left),
+            bar.x,
+            0,
+            None,
+        );
+        assert_eq!(a.source_top, 0);
+        mouse_at(
+            &mut a,
+            MouseEventKind::Up(event::MouseButton::Left),
+            bar.x,
+            0,
+            None,
+        );
+        assert!(a.scroll_drag.is_none());
+        let source = a.source_rect;
+        mouse_at(
+            &mut a,
+            MouseEventKind::ScrollDown,
+            source.x + 12,
+            source.y,
+            None,
+        );
+        assert_eq!(a.source_top, 3);
+        mouse_at(
+            &mut a,
+            MouseEventKind::ScrollUp,
+            source.x + 12,
+            source.y,
+            None,
+        );
+        assert_eq!(a.source_top, 0);
+        assert!(render(&mut a, 140, 40).contains("line 0"));
+    }
+    #[test]
+    fn toolbar_dispatches_commands_and_palette_is_clickable() {
+        let (engine, commands) = session::test_channel();
+        let mut a = App::new(Project::default(), false);
+        a.project.actions.restart = vec!["monitor reset".into()];
+        a.snapshot.state = "STOPPED".into();
+        render(&mut a, 120, 36);
+        for action in [
+            "run",
+            "continue",
+            "restart",
+            "reconnect",
+            "step",
+            "next",
+            "finish",
+        ] {
+            let hit = a
+                .action_hits
+                .iter()
+                .find(|(_, id)| *id == action)
+                .unwrap()
+                .0;
+            mouse_at(
+                &mut a,
+                MouseEventKind::Down(event::MouseButton::Left),
+                hit.x,
+                hit.y,
+                Some(&engine),
+            );
+            assert_eq!(commands.try_recv().unwrap().method, action);
+        }
+        let pause = a
+            .action_hits
+            .iter()
+            .find(|(_, id)| *id == "pause")
+            .unwrap()
+            .0;
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            pause.x,
+            pause.y,
+            Some(&engine),
+        );
+        assert!(commands.try_recv().is_err());
+        a.snapshot.state = "RUNNING".into();
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            pause.x,
+            pause.y,
+            Some(&engine),
+        );
+        assert_eq!(commands.try_recv().unwrap().method, "pause");
+        let hit = a
+            .action_hits
+            .iter()
+            .find(|(_, id)| *id == "commandlist")
+            .unwrap()
+            .0;
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            hit.x,
+            hit.y,
+            Some(&engine),
+        );
+        assert!(a.palette);
+        render(&mut a, 120, 36);
+        let index = COMMANDS
+            .iter()
+            .position(|c| *c == "watch EXPRESSION")
+            .unwrap();
+        let hit = a.palette_hits.iter().find(|(_, i)| *i == index).unwrap().0;
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            hit.x,
+            hit.y,
+            Some(&engine),
+        );
+        assert!(!a.palette);
+        assert!(a.editing);
+        assert_eq!(a.input, ":watch ");
+    }
+    #[test]
+    fn assembly_loads_on_entry_and_stop_without_repeated_requests() {
+        let (engine, commands) = session::test_channel();
+        let mut a = App::new(Project::default(), false);
+        a.snapshot.state = "STOPPED".into();
+        a.snapshot.frame.address = "0x08000000".into();
+        render(&mut a, 120, 36);
+        assert!(!a.ensure_visible_data(Some(&engine)));
+        a.select_pane(5);
+        render(&mut a, 120, 36);
+        assert!(a.ensure_visible_data(Some(&engine)));
+        let request = commands.try_recv().unwrap();
+        assert_eq!(request.method, "disassemble");
+        assert_eq!(request.params["address"], "$pc");
+        assert!(!a.ensure_visible_data(Some(&engine)));
+        a.update(Event::Response {
+            id: request.id,
+            ok: true,
+            result: json!({}),
+            error: None,
+        });
+        assert!(!a.ensure_visible_data(Some(&engine)));
+        a.snapshot.generation += 1;
+        a.snapshot.frame.address = "0x08000004".into();
+        assert!(a.ensure_visible_data(Some(&engine)));
+        let request = commands.try_recv().unwrap();
+        a.update(Event::Response {
+            id: request.id,
+            ok: false,
+            result: Value::Null,
+            error: Some("Cannot access memory".into()),
+        });
+        assert!(render(&mut a, 120, 36).contains("Cannot access memory"));
+        assert!(!a.ensure_visible_data(Some(&engine)));
+        a.snapshot.state = "RUNNING".into();
+        a.snapshot.generation += 1;
+        assert!(!a.ensure_visible_data(Some(&engine)));
+    }
+    #[test]
+    fn lazy_views_wait_for_reset_to_finish_before_reading_pc() {
+        let (engine, commands) = session::test_channel();
+        let mut a = App::new(Project::default(), false);
+        a.project.actions.restart = vec!["monitor reset".into()];
+        a.snapshot.state = "STOPPED".into();
+        a.select_pane(5);
+        render(&mut a, 120, 36);
+        a.command(Some(&engine), ":restart");
+        let reset = commands.try_recv().unwrap();
+        assert!(!a.ensure_visible_data(Some(&engine)));
+        a.snapshot.frame.address = "0x08000100".into();
+        a.update(Event::Response {
+            id: reset.id,
+            ok: true,
+            result: json!({}),
+            error: None,
+        });
+        assert!(a.ensure_visible_data(Some(&engine)));
+        assert_eq!(commands.try_recv().unwrap().method, "disassemble");
+        assert!(!a.ensure_visible_data(Some(&engine)));
+    }
+    #[test]
+    fn mouse_selects_sidebar_frame_and_does_not_toggle_source_breakpoint() {
+        let (engine, commands) = session::test_channel();
+        let mut a = App::new(Project::default(), true);
+        a.demo = false;
+        a.snapshot.state = "STOPPED".into();
+        a.select_pane(2);
+        render(&mut a, 140, 40);
+        let side = a.side_rect;
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            side.x,
+            side.y + 1,
+            Some(&engine),
+        );
+        let request = commands.try_recv().unwrap();
+        assert_eq!(request.method, "frame");
+        assert_eq!(request.params["level"], 1);
+        assert_eq!(a.main_pane, 0);
+        assert!(commands.try_recv().is_err());
+    }
+    #[test]
+    fn write_layout_previews_when_requested() {
+        let Ok(path) = std::env::var("DEBUGTUI_RENDER_DIR") else {
+            return;
+        };
+        fs::create_dir_all(&path).unwrap();
+        let mut a = App::new(Project::default(), true);
+        for (name, pane, w, h) in [
+            ("workspace", 0, 160, 45),
+            ("assembly", 5, 120, 36),
+            ("stack", 2, 120, 36),
+            ("compact", 0, 80, 24),
+        ] {
+            a.select_pane(pane);
+            fs::write(
+                Path::new(&path).join(format!("{name}.txt")),
+                render(&mut a, w, h),
+            )
+            .unwrap();
+        }
+        a.palette = true;
+        fs::write(
+            Path::new(&path).join("commands.txt"),
+            render(&mut a, 120, 36),
+        )
+        .unwrap();
+    }
     #[test]
     fn renders_narrow_and_wide_layouts() {
         for (w, h) in [(45, 12), (80, 24), (120, 36), (180, 50)] {
             let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
             let mut a = App::new(Project::default(), true);
             for pane in 0..PANES.len() {
-                a.pane = pane;
+                a.select_pane(pane);
                 t.draw(|f| draw(f, &mut a)).unwrap();
                 let text = t
                     .backend()

@@ -1,5 +1,174 @@
 # DebugTUI 验证记录
 
+## 0.3.4：Source 多文件标签与变量区分割线（2026-09-16）
+
+- Watch / Locals 上方恢复贯穿右侧面板的横向分割线。
+- Source 文件通过暂停/断点停止、栈帧切换、Files 和 `:open` 打开后保留为标签，可点击切换或 `×` 关闭，独立记住浏览位置。真实路径去重、同名文件路径后缀、中文/长文件名显示及关闭按钮命中均有覆盖。
+- `[<]` / `[>]` 与标签栏滚轮支持浏览隐藏标签，`[Files N]` / Ctrl+O 打开可搜索文件列表，Ctrl+PgUp/PgDn 切换，Ctrl+W 关闭。标签仅缓存元数据，当前源码文本仍限制为单文件 2 MiB / 30000 行。
+- 33 项 Rust 测试全部通过；Clippy `--all-targets --locked -- -D warnings` 通过；Release 构建通过。新增测试覆盖 120 个标签、45×12 至 160×45 的缩放与活动标签可见性、筛选隐藏文件、关闭活动/最后一个标签、关闭后普通刷新不重开、新停止重新打开、源码路径别名的断点定位，以及无源码停止时保留标签但不冒充旧执行位置。
+- 真实本机 GDB + Windows 伪终端验证：在 main.c 设置断点运行，Step 进入 helper.c 后显示两个标签；点击 main.c 只浏览源码，GDB 仍停在 helper.c；点击 helper.c 的 `×` 后，下一次 Step 停止重新打开该文件；打开 `[Files 2]`，输入 `main` 筛选并切换成功。正常 Ctrl+Q 退出。
+- GDB 记录：`artifacts/ui-0.3.4/native-tabs/logs/session-1789572980354.log`。第 55、71 行为两次 Step；停止位置分别为 helper.c:2 和 helper.c:3。浏览/关闭标签没有发送 `-stack-select-frame` 或 `-break-delete`。终端输入与 ANSI 输出保存在 `artifacts/ui-0.3.4/native-tabs/terminal-interactions.json`。
+- 布局预览：`artifacts/ui-0.3.4/source-tabs.txt`、`source-tabs-narrow.txt`、`open-files.txt`。
+- Release EXE SHA256：`06E7F0F483E36C0AF8B8FC5351E98058D80739081D69DB21571B58034BFE4B2F`。
+
+本轮为源码浏览交互改动，真实调试验证使用独立的本机测试程序；未重新验证下述 STM32/J-Link 长会话问题。
+
+## 0.3.3：版本标题、统一滚动与 Console 输入（2026-09-16）
+
+- 工作台及启动配置页显示 `DebugTUI v0.3.3`，版本来自 Cargo 元数据。
+- 左侧 Source / Asm / Files / Log 均有滚动轨道，内容超过一页时显示可拖动滑块。右侧为 Regs / Stack / Memory / Breaks，下方为 Watch / Locals，标签独立切换。右侧列表也复用滚动逻辑。
+- Console 内固定显示 `gdb>` 输入框，鼠标点击或 `/` 聚焦。支持 GDB 原生命令、`:命令`、连续提交、↑ / ↓ 历史、Esc 退出输入；输入期间保留功能键调试操作。
+- `cargo test --locked`：28 项全部通过；`cargo clippy --all-targets --locked -- -D warnings`：通过；Release 构建通过。新增覆盖标签位置及窄窗口可达性、Asm/Files/Log 首尾滚动及标签位置保留、滚动后的文件点击定位、Log 旧记录浏览和恢复跟随、Console 请求分发及连续输入/历史/长 Unicode 命令。
+- 布局预览：`artifacts/ui-0.3.3/`。覆盖 45×12、80×24、120×36、180×50 渲染；实际 Windows 伪终端验证 Console 鼠标聚焦与提交。
+- 已安装版本连接真实本机 x86 GDB，在独立 sample.c 测试程序执行 `:break main`、`:run`、`p/x counter`、`next`，再用 ↑ 历史重发 `p/x counter`：结果依次为 `0x1`、`0x2`。Asm 自动加载实际反汇编，鼠标拖动至末尾可浏览后续指令；Files 和 Regs 切换正常。日志：`artifacts/ui-0.3.3/native-console/session-1789571838149.log`，第 54/70/86/102/104 行分别记录求值、Next、再次求值、反汇编及文件列表请求。Ctrl+Q 正常退出并关闭自有 GDB。
+- `scripts/test-native-gdb.ps1`：真实本机 GDB 的启动、断点、变量求值、Step、动态寄存器、反汇编和清理全部通过；记录位于 `artifacts/native-gdb-20260916-231700/`。
+- `scripts/test-npm.ps1`：隔离安装、升级、CMD/PowerShell 入口、配置保留、卸载及重装全部通过。已通过 npm 全局安装更新本机入口，`debugtui --version` 返回 `debugtui 0.3.3`。
+- 安装 EXE 与 Release EXE 的 SHA256 一致：`E0573E7407C802BBB02733D2C8F8009EAC11E3F90C91E46B3A9C8CB633B77B93`。
+
+本轮验证的是界面交互和真实本机 GDB 命令链路，没有重新测试或修复下述 STM32/J-Link 长会话访问异常，没有更换调试环境工具或修改用户固件。
+
+## 追加隔离实验：Next / Step / Stepi / Monitor（2026-09-16）
+
+**新结论：在本套环境中，不发送任何单步命令，停在断点后保持连接 60 秒，也能复现底层读取失效。不能继续将根因概括为 F11 或源码单步算法。根因部件仍未确定，尚未修复。**
+
+### 条件与方法
+
+- 直接运行 tools 中的 ARM GDB/MI 与 J-Link GDB Server 7.94e，绕过 DebugTUI；同一 V8 探针、SWD 4000 kHz、STM32F429IG、同一 ELF。
+- 每组独立启动 Server/GDB，复位到相同程序状态，检查 Flash 的 6 个只读段与 ELF 匹配，然后停在 `user_task.c:40`（`0x080007e2`）。不下载固件。
+- 每轮先 Continue 到该断点，再只执行该组的一种命令；核对 PC、SP、xPSR，不能只以 `^done` / `^running` 判断成功。
+- 预期：Next 到 `0x080007e6` / `user_task.c:44`；Step 到 `0x080005fc` / `bsp_led.c:32`；Stepi、`monitor step` 到 `0x080005f8` / `Led_Task` 入口。Monitor 每轮直接读取 `monitor regs`，并刷新 GDB 寄存器缓存后交叉读取。
+- 日志逐行记录距启动的毫秒时间。发生错误先保留日志并尝试读取寄存器、CPUID、DHCSR、CFSR、HFSR，不在组内复位/重连恢复后继续计数。
+
+### ① 四种操作独立对照
+
+短会话：每种方式 **3 个会话 × 100 次全部通过**，合计 1200 次；每会话约 18–23 秒。初步 5 次校验不计入这些数字。
+
+进一步将每种方式的单会话上限提高至 500 次：
+
+| 分组 | 异常前完整通过轮数 | 首个异常时间（距 Server 启动） | 实际失败阶段及证据 |
+|---|---:|---:|---|
+| Next | 241 | 52.522 s | 第 242 轮 Continue 回断点时异常，Server 的 xPSR 等寄存器读数失真，随后等待停止超时 |
+| Step | 249 | 53.325 s | 第 250 轮 Continue 时 Server 报 `No more breakpoint resources left`、断点插入失败；GDB 返回 `Command aborted` |
+| Stepi | 268 | 52.575 s | 第 269 轮 Continue 时同样发生断点插入失败和 `Command aborted` |
+| Monitor Step | 310 | 52.893 s | 第 311 轮 Continue 后 SP/LR/PC/xPSR 均为 `0xab78`；直接 `monitor regs` 返回全零，系统寄存器读取 Failed |
+
+**注意：本次四个长会话的失败阶段都是重新 Continue 定位断点，并非可以据表格认定四种单步命令本身都失败。** 不同操作次数却在接近的时间失效，因此追加静置对照。
+
+Step/Stepi 的完整协议还显示：同一 token 先返回 `^running`，随后返回 `^error,msg="Command aborted."`。首次测试脚本只收到前者时报告停止等待超时，原始日志保留了后者；脚本现已识别这种后续错误。不能把这两次解释成 CPU 正常运行而单纯丢失停止通知。
+
+### ② 绕过源码单步与静置对照
+
+| 测试 | 结果 |
+|---|---|
+| `monitor step` + `monitor regs` | 短会话 300 次通过；长会话前 310 次通过，失效后直接 monitor 读取也不正常 |
+| 停在同一断点，不发送任何命令 30 秒 | 读取仍正常，后续 10 次 monitor 单步全部通过 |
+| 同样保持 60 秒，第 1 次 | 尚未执行单步，`monitor regs` 已返回全零；刷新缓存后 GDB 的 PC/SP/LR/xPSR 均为 `0x5428` |
+| 同样保持 60 秒，第 2 次 | 尚未执行单步再次失败；GDB 的 PC/SP/LR/xPSR 均为 `0x9768` |
+
+60 秒失败现场直接读取 `0xE000ED00`（CPUID）、`0xE000EDF0`（DHCSR）、`0xE000ED28`（CFSR）、`0xE000ED2C`（HFSR）均返回 `Failed`。这是 monitor 命令的输出内容；即使 MI 外层是 `^done`，也不能算硬件读取成功。
+
+这将问题范围收敛为 **连接/暂停持续一段时间后，Server/探针/目标侧的访问状态失效**，而不是 F10/F11 专属操作。52–53 秒为本次四个连续操作会话的观测值，不等于已经证明存在固定超时设置。仍需区分 J-Link Server/DLL、探针固件/硬件、目标复位/调试状态及连接条件；未验证的软件或硬件原因不得标为已确认。也不能把错误读出的 PC 当作真实程序执行地址。
+
+### 复现与证据
+
+脚本仅用于开发测试，不进入运行时安装包：
+
+```powershell
+node scripts/test-step-isolation.cjs <ELF> 100 3
+node scripts/test-step-isolation.cjs <ELF> 500 1
+node scripts/test-step-isolation.cjs <ELF> 10 1 monitor 30000
+node scripts/test-step-isolation.cjs <ELF> 10 1 monitor 60000
+```
+
+每个会话保存 `trace.log`、`timeline.json`、`result.json`，总目录有 `results.json`。
+
+- 1200 次短会话：`artifacts/step-isolation-2026-09-16T13-50-39-156Z/`
+- 长会话四组：`artifacts/step-isolation-2026-09-16T13-54-58-531Z/`
+- 首次静置 60 秒：`artifacts/step-isolation-2026-09-16T13-59-37-549Z/`
+- 静置 30 秒对照：`artifacts/step-isolation-2026-09-16T14-01-10-862Z/`
+- 重复静置 60 秒：`artifacts/step-isolation-2026-09-16T14-01-45-671Z/`
+
+ELF SHA256：`076B3D1D9CC4DC04BBBBB6269E816673BA78CBF9730E54BF8B9A4718D842FCDD`。本轮未修改 TUI 执行逻辑、工具默认配置或用户工程配置。
+
+## 0.3.2：断点后 Step / Next 异常的实板复现
+
+日期：2026-09-16。结论：**底层异常已经复现，尚未修复；0.3.2 修复的是异常位置显示，不能作为底层稳定性修复。** 未更换工具二进制、未修改默认 SWD 配置、未重新烧写固件。
+
+用户日志：`G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project/debug-logs/session-1789564435915.log`。
+
+- 断点 `user_task.c:40` 正常命中 9 次后，日志第 1573 行发出 `105-exec-continue`。随后 J-Link 报告断点移除/设置失败，GDB 提示程序不可写，PC 变为 `0x00006978`、函数 `??`，多个寄存器返回相同异常数值。
+- 第 1926–1934 行的三次 `-exec-step` 均返回 `Cannot find bounds of current function`。这是异常 PC 之后的结果；本份日志没有 `-exec-next`，不能声称记录到了 Next 的按键操作。
+- 测试前 `compare-sections -r` 的 6 个只读段全部匹配板上 Flash。正常时 Step 进入 `Led_Task` 的 `bsp_led.c:32`，Finish / Next 返回 `user_task.c:44`；当前 ELF 未启用 `VTASKDELAYUNTIL`，实际延时代码在 44 行而非 42 行。
+
+| 对照 | 实际结果 |
+|---|---|
+| 已安装 0.3.1、默认 4000 kHz | 连续命中断点 40 次通过；第 14 轮 Step/Finish/Next 序列中 Next 后 PC 变为 `0x00007efc`，PC/SP/LR/xPSR 返回相同异常数值 |
+| 临时覆盖为 1000 kHz | 第 64 次继续到断点时 PC 变为 `0x00006920`；降频没有解决 |
+| 不启动 DebugTUI，直接 GDB CLI + J-Link | 24 轮完整序列通过，第 25 轮 Step 后 PC 变为 `0x0000a490`、无调用帧；复现不依赖 TUI/MI 调度 |
+| 直接 GDB，关闭 Flash 断点并使用 hbreak | 26 轮完成后再次出现异常寄存器读数并持续等待；终止本次测试的 GDB，Server 随连接关闭退出；该设置也未解决 |
+| 失败后刷新 GDB 寄存器缓存 | 异常读数仍存在；读取 `0xE000ED28` 故障状态寄存器失败 |
+| 本地安装 0.3.2 短程回归 | 10 次继续到断点 + 10 轮 Step/Finish/Continue/Next/Next/Continue 通过，检查了函数、源码行、xPSR 和异步停止通知；没有使用 wait_stopped 掩盖通知问题 |
+| 通用回归 | 24 项 Rust 测试、Clippy 零警告、Release 构建、5 个 Pause 异常分支通过；安装 EXE 与构建 EXE 的 SHA256 相同 |
+
+上述结果把问题范围缩小到 GDB 以下的调试链路及目标状态，尚不能区分 J-Link Server/DLL、探针固件/硬件、SWD/USB 连线或目标侧问题。后续需用另一探针/线缆或另一套已验证驱动做单变量对照，不能把重连恢复、短程测试通过当作长期故障已修复。
+
+0.3.2 的界面修复：没有源码位置的停止事件会清除上一次源码视图，并显示实际 PC、函数名与检查提示；顶部位置取自 GDB 当前帧，手动浏览文件不会改写停止位置；Step/Next 错误附带执行地址和函数。未自动改为 stepi、复位或重连。通用 TUI 没有加入 STM32/J-Link 特例。
+
+复测脚本：`node scripts/test-step-hardware.cjs <ELF> [EXE] [轮数=40] [SWD_KHZ]`。该开发测试针对当前 STM32 FreeRTOS 固件、创建隔离配置，不改用户工程配置；生成命令结果、停止位置及完整 MI/Server 日志，不进入运行时安装包。
+
+证据目录：
+
+- 4000 kHz 复现：`artifacts/step-hardware-2026-09-16T13-22-58-427Z/`
+- 1000 kHz 复现：`artifacts/step-hardware-2026-09-16T13-25-11-193Z/`
+- 直接 GDB 与硬件断点对照：`artifacts/step-direct/`（含 GDB 命令文件、GDB 输出及 Server 日志）
+- 安装版短程：`artifacts/step-hardware-2026-09-16T13-31-06-255Z/`
+- Pause 回归：`artifacts/pause-20260916-213107/`
+
+对照命令依据：[SEGGER 的 GDB Server monitor 命令](https://kb.segger.com/J-Link_GDB_Server)、[GDB Step / Next / Stepi 语义](https://sourceware.org/gdb/current/onlinedocs/gdb.html/Continuing-and-Stepping.html)。
+
+## 0.3.1：Pause 超时后的状态核对
+
+日期：2026-09-16。已本地安装 0.3.1，安装 EXE 的 SHA256 与 Release 构建相同。
+
+用户报告设置源码断点、继续运行后 Pause 等待停止超时。旧版实板连续 50 轮未重现原始间歇故障；在“interrupt 返回确认、GDB 线程已停止，但缺失停止通知”的受控模拟中，旧版稳定出现同样的等待超时，退出清理也重复等待。不能据此断言原始故障一定由 J-Link 或 GDB 丢通知引起。
+
+修复为：保留异步停止通知处理，同时每 250 ms 使用标准 `-thread-info` 核对线程状态；只有线程确认为 stopped 才同步并刷新上下文。若仍运行，最多补发一次 interrupt；无法暂停时仍有界报错，不伪造 STOPPED，不隐式复位或重连。退出清理使用同一逻辑。日志增加 MI 异步记录，便于继续追踪间歇故障。协议依据：[GDB 的异步执行与线程状态查询](https://sourceware.org/gdb/current/onlinedocs/gdb.html/Asynchronous-and-non_002dstop-modes.html)。
+
+| 验证 | 结果 |
+|---|---|
+| 受控旧版复现 | 缺失停止通知时复现 `Timed out waiting for target to stop` |
+| 5 个异常分支 | 缺失通知、目标已停止、通知延迟、首次 interrupt 未生效均可在原连接恢复并继续单步；真正持续运行时仍正确超时 |
+| 安装版 STM32 循环 | 200 轮断点/next/continue/pause 全部通过；重连次数 0；最大 Pause 响应 141 ms |
+| 实板完整回归 | 断点、观察点、内存、反汇编、帧切换、复位、重连、run、错误清理均通过，无重烧写 |
+| 通用环境 | ARM/RISC-V/x64 模拟通过；真实本机 MinGW GDB 回归通过 |
+| 编译检查 | 23 项单元测试通过，Clippy 全目标零警告，Release 构建通过 |
+
+证据：旧版 `artifacts/pause-20260916-210354/`；安装版模拟 `artifacts/pause-20260916-211048/`；200 轮实板 `artifacts/pause-hardware-2026-09-16T13-10-40-349Z/`；完整实板 `artifacts/hardware-20260916-211207/`。
+
+复现：`scripts/test-pause.ps1`；`node scripts/test-pause-hardware.cjs <ELF> [EXE] [循环次数]`。脚本仅用于开发测试，未加入运行时分发。发生现场问题时，可用 `debugtui --project . --log-dir ./debug-logs` 保存 MI 日志。
+
+## 0.3.0：工作台布局与鼠标交互
+
+日期：2026-09-16。本轮编译并安装到本机全局 npm 入口，未发布远端 Release。
+
+| 验证 | 结果 |
+|---|---|
+| Rust / Clippy | 23 项单元测试通过；全目标 Clippy 零警告；Release 构建通过 |
+| 布局 | 45×12、80×24、120×36、180×50 渲染通过；右侧五个标签切换保留源码，无底部重复调用栈 |
+| 鼠标 | 工具栏映射、灰色按钮、CommandList 点击、右侧栈帧选择、源码滚轮与滚动条点击/拖动通过 |
+| 异步视图 | Asm 打开自动加载，停止后刷新；等待复位等前台命令完成后再查询；失败显示错误且不循环重试 |
+| 真实终端 | 安装版通过 ConPTY 点击 Asm、Step、Reset、Run、Reconnect；拖动滚动条可从 tasks.c 首部到末尾 5310 行；CommandList 弹窗可点击打开 |
+| STM32 实板 | 安装版完成断点、源码/指令单步、观察点、内存、反汇编、栈、暂停、复位、run、错误清理；显式断开/连接和 reconnect 动作均通过 |
+| 汇编显示 | 确认实际 GDB 指令非空，制表符展开为可显示的空格；复位后显示 Reset_Handler 的指令，已消除旧指令短暂回填与重复查询 |
+| 通用环境 | ARM / RISC-V / x64 MI 模拟，以及通用服务启动与清理通过 |
+| npm | 打包不含 tools，安装/升级、CMD/PowerShell 入口、配置保留、隔离卸载/重装通过；全局安装版本为 0.3.0，EXE SHA256 与构建产物相同 |
+
+原生 EXE 为 1,431,552 字节，比 0.2.0 增加 8 KiB；没有新增运行依赖。本轮未重新测量内存占用。
+
+测试未重新烧写固件。使用现有 `FreeRTOS_Project/Debug/FreeRTOS_Project.elf` 和 STM32F429IG/J-Link 配置。实板日志：`artifacts/hardware-20260916-203738/`；终端 MI 日志、渲染预览：`artifacts/ui-0.3.0/`；npm 验证：`artifacts/npm test 工程 20260916-203708/`。这些生成文件均忽略入库。
+
+复现新增布局预览：设置 `DEBUGTUI_RENDER_DIR` 为输出目录，再执行 `scripts/build.ps1 -Test`。`scripts/test-hardware.ps1` 新增了 reconnect 动作以及反汇编非空/无制表符断言。
+
 ## 0.2.0：无参数启动与工程选择
 
 日期：2026-09-16。在环境解耦基础上增加启动配置页，仍使用原生 Rust/Ratatui，无新增运行依赖。

@@ -73,6 +73,8 @@ if ($responses['5'].result.frame.function -ne 'DEBUG_PRINTF') { throw 'Source br
 if ($responses['7'].result.frame.line -eq $responses['5'].result.frame.line) { throw 'Source step did not advance' }
 if ($responses['9'].result.frame.address -eq $responses['7'].result.frame.address) { throw 'Instruction step did not advance' }
 if ($responses['12'].result.reason -ne 'watchpoint-trigger') { throw 'Hardware watchpoint did not trigger' }
+$assembly = @($responses['14'].result.assembly)
+if ($assembly.Count -eq 0 -or ($assembly -join '').Contains("`t")) { throw 'Assembly is empty or contains unrenderable tab separators' }
 if ($responses['24'].result.frame.function -ne 'main') { throw 'Reset did not reach main' }
 if (@($events | Where-Object { $_.event -eq 'log' -and $_.channel -eq 'stop' -and $_.text -match '->' }).Count -eq 0) { throw 'Watchpoint values were not recorded' }
 Write-Output 'PASS core: MI async, symbols, breakpoint, source/instruction step, data breakpoint, memory, assembly, source list, frames, pause and reset.'
@@ -87,9 +89,9 @@ if (@($errorEvents | Where-Object { $_.event -eq 'response' -and $_.id -eq 3 }).
 if (-not ($errorEvents | Where-Object { $_.event -eq 'response' -and $_.id -eq [uint64]::MaxValue }).ok) { throw 'Failure cleanup did not resume and disconnect' }
 Write-Output 'PASS failure: invalid expression exits nonzero, later commands are skipped, target cleanup succeeds.'
 
-$reconnect = @(@{id=1;method='connect'},@{id=2;method='disconnect'},@{id=3;method='connect'},@{id=4;method='evaluate';params=@{expression='xTickCount'}})
+$reconnect = @(@{id=1;method='connect'},@{id=2;method='disconnect'},@{id=3;method='connect'},@{id=4;method='evaluate';params=@{expression='xTickCount'}},@{id=5;method='reconnect'},@{id=6;method='evaluate';params=@{expression='xTickCount'}})
 $null = Invoke-Scenario 'reconnect' $reconnect
-Write-Output 'PASS reconnect: fresh server session reconnects.'
+Write-Output 'PASS reconnect: explicit disconnect/connect and the reconnect action both restore a working session.'
 
 $execution = @(
  @{id=1;method='connect'},

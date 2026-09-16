@@ -1,6 +1,6 @@
 # DebugTUI
 
-基于 GDB/MI 的原生终端调试工作台。当前版本 0.2.0，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
+基于 GDB/MI 的原生终端调试工作台。当前源码版本 0.3.2，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
 
 GitHub：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。源码使用 Apache-2.0；依赖声明见 NOTICE。
 
@@ -132,6 +132,21 @@ actions 支持 restart、run、download、before_disconnect；target.after_conne
 
 ## 操作
 
+左侧为 Source / Asm / Files / Log，右上为 Regs / Stack / Memory / Breaks，右下为 Watch / Locals；三组标签独立切换。标题显示当前版本，Console 位于底部。
+
+- Source 内保留会话中打开的文件标签：断点/暂停、栈帧切换、Files 和 `:open PATH` 共用同一组标签。点击名称切换，点击 `×` 关闭，分别记住浏览位置；同一实际文件不会因相对/绝对路径而重复打开，同名文件用路径后缀区分。
+- 标签太多时使用 `[<]` / `[>]` 翻页或在标签栏滚轮浏览；`[Files N]` / `Ctrl+O` 打开可搜索的已打开文件列表。输入文件名或路径过滤，Enter / 点击切换，Delete 关闭选中文件，Esc 退出。`Ctrl+PgUp` / `Ctrl+PgDn` 切换文件，`Ctrl+W` 关闭当前文件（Console 输入时先按 Esc）。
+- 标签上的 `▶` 标记当前停止位置所在文件。浏览其他标签不改变 GDB 栈帧；关闭文件不删除断点。新一次停止会重新打开对应文件；同一停止状态的普通刷新不会重新打开手动关闭的标签。切换调试项目后清空文件标签。
+- Source、Asm、Files、Log 和右侧检查面板都支持鼠标滚轮、点击滚动条轨道、拖动滑块，各标签保留浏览位置；内容不足一页时显示灰色轨道。点击源码行号切换断点。
+- Log 默认跟随最新输出，向上滚动后保持浏览位置，End 恢复跟随。
+- Console 固定显示 `gdb>` 输入框，点击或按 `/` 输入 GDB 命令（例如 `p/x counter`、`next`），也支持 `:watch counter` 等工作台命令。Enter 执行后继续输入，↑ / ↓ 调用历史，Esc 返回面板；输入时仍可使用调试功能键。
+- 源码上方的 Run、Continue、Pause、Reset、Reconnect、Step、Next、Finish 均可点击；不可用操作显示为灰色。Reset 对应环境的 restart 动作，Run 对应 run 动作，Next 为单步越过。
+- CommandList 按钮 / Ctrl+P 打开命令列表，支持鼠标点击和方向键选择。带参数的命令会填入输入栏，补齐参数后执行。
+- Asm 打开时自动请求当前 $pc 的反汇编，每次停止或切换栈帧后刷新；Memory 默认读取 $sp。加载失败会显示具体错误，:refresh 可重试。
+- Pause 同时等待停止通知并核对 GDB 线程状态，处理断点与暂停同时发生的情况；确认为停止后刷新上下文，无需重连。目标确实未停下时仍会报错，日志可用 --log-dir 开启。
+- 点击 Stack 中的栈帧直接切换上下文。Tab / Shift+Tab 轮换视图和键盘焦点；窄于 100 列的终端只显示当前焦点所属的一组面板。
+- VS Code 集成终端可在工作区设置 `"terminal.integrated.sendKeybindingsToShell": true`，使调试按键传入 TUI；也可直接点击工具栏。
+
 | 操作 | 按键/命令 |
 |---|---|
 | 选择工程、tools 和启动参数 | F2 / :setup |
@@ -139,7 +154,7 @@ actions 支持 restart、run、download、before_disconnect；target.after_conne
 | 暂停 | F6 / Ctrl+C |
 | 切换源码断点 | F9 |
 | 单步越过 / 进入 / 跳出 | F10 / F11 / Shift+F11 |
-| 切换面板 | Tab / Shift+Tab |
+| 切换视图和键盘焦点 | Tab / Shift+Tab，或点击标签 |
 | 命令面板 | Ctrl+P |
 | 搜索源码 | Ctrl+F |
 | 工作台命令 / GDB 控制台 | : / / |
@@ -148,6 +163,7 @@ actions 支持 restart、run、download、before_disconnect；target.after_conne
 
 ~~~text
 :connect
+:reconnect
 :run
 :break main
 :watch counter
