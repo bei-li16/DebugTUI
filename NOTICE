@@ -1,10 +1,12 @@
 DebugTUI source code uses the Apache License 2.0 supplied by the upstream
 bei-li16/debugtui repository. See LICENSE.
 
-Bundled third-party software retains its own licenses and notices:
-- GDB: tools/bin/gdb/license.txt and tools/bin/gdb/ST-about.html
-- J-Link: tools/bin/jlink/Doc/LicenseIncGUI.txt and tools/bin/jlink/ST-about.html
+The standalone DebugTUI package contains no GDB, probe server, or probe DLL.
+Its bundled third-party software retains its own licenses and notices:
 - Rust dependencies: THIRD_PARTY_NOTICES.md
 - Rust standard library: licenses/rust/COPYRIGHT-library.html
 
 The DebugTUI source license does not replace these third-party terms.
+
+Optional environment tools distributed separately under tools/ retain their
+GDB and probe-vendor licenses. See that environment's README and notices.

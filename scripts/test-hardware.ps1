@@ -2,7 +2,6 @@ param(
     [Parameter(Mandatory=$true)][string]$Elf,
     [string]$Tools = (Join-Path (Split-Path $PSScriptRoot) 'tools'),
     [string]$Binary = (Join-Path (Split-Path $PSScriptRoot) 'target\release\debugtui.exe'),
-    [int]$Port = 3333,
     [switch]$Download
 )
 $ErrorActionPreference = 'Stop'
@@ -16,16 +15,14 @@ $elfToml = $Elf.Replace('\','/') | ConvertTo-Json -Compress
 $toolsToml = $Tools.Replace('\','/') | ConvertTo-Json -Compress
 $runToml = $runRoot.Replace('\','/') | ConvertTo-Json -Compress
 @"
-version = 1
+version = 2
 watch = ["xTickCount", "g_w25q_jedec_id"]
 [tools]
 root = $toolsToml
 [program]
 elf = $elfToml
-[server]
-port = $Port
 [session]
-on_exit = "resume"
+on_exit = "detach"
 log_dir = $runToml
 "@ | Set-Content "$runRoot\project.toml" -Encoding utf8
 

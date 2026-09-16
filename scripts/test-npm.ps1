@@ -40,18 +40,15 @@ $psVersion = & "$prefix\debugtui.ps1" --version
 if ($LASTEXITCODE -ne 0 -or $psVersion -ne "debugtui $packageVersion") { throw 'PowerShell entry failed' }
 if ((Get-FileHash -LiteralPath $userConfig).Hash -ne $configHash) { throw 'Upgrade changed project configuration' }
 
-$manifest = Get-Content "$installedRoot\tools\dependencies.lock.json" -Raw | ConvertFrom-Json
-foreach ($entry in $manifest.files.PSObject.Properties) {
-    if ((Get-FileHash -LiteralPath (Join-Path "$installedRoot\tools" $entry.Name) -Algorithm SHA256).Hash -ne $entry.Value.sha256) { throw "Installed dependency mismatch: $($entry.Name)" }
-}
+if (Test-Path -LiteralPath "$installedRoot\tools") { throw 'Standalone package contains tools' }
 & "$prefix\debugtui.cmd" --snapshot "$runRoot\installed-ui.txt"
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$runRoot\installed-ui.txt")) { throw 'Installed renderer failed' }
-Write-Output "PASS npm: fixture install, upgrade to $packageName@$packageVersion, CMD/PowerShell entries, unchanged user configuration, all bundled dependency hashes, terminal renderer."
+Write-Output "PASS npm: fixture install, upgrade to $packageName@$packageVersion, CMD/PowerShell entries, unchanged user configuration, no bundled environment, terminal renderer."
 
 # Exercise uninstall only inside this test's dedicated prefix, then restore it for hardware testing.
 & npm.cmd uninstall --global --prefix "$prefix" --ignore-scripts --no-audit --no-fund $packageName
 if ($LASTEXITCODE -ne 0 -or (Test-Path "$prefix\debugtui.cmd")) { throw 'Isolated uninstall failed' }
 & npm.cmd install --global --prefix "$prefix" --ignore-scripts --no-audit --no-fund "$Package"
 if ($LASTEXITCODE -ne 0) { throw 'Clean reinstall failed' }
-@{ prefix=$prefix; packageRoot=$installedRoot; binary="$installedRoot\bin\debugtui.exe"; tools="$installedRoot\tools"; config=$userConfig } | ConvertTo-Json | Set-Content "$projectRoot\artifacts\npm-test-latest.json" -Encoding utf8
+@{ prefix=$prefix; packageRoot=$installedRoot; binary="$installedRoot\bin\debugtui.exe"; config=$userConfig } | ConvertTo-Json | Set-Content "$projectRoot\artifacts\npm-test-latest.json" -Encoding utf8
 Write-Output "PASS npm: isolated uninstall and clean reinstall. Artifacts: $runRoot"

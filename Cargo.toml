@@ -1,8 +1,8 @@
 [package]
 name = "debugtui"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-description = "Native terminal debugger for STM32 using GDB/MI"
+description = "Native terminal debugger using a configurable GDB/MI environment"
 license = "Apache-2.0"
 repository = "https://github.com/bei-li16/debugtui"
 

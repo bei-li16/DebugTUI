@@ -8,7 +8,6 @@ use std::{
     collections::VecDeque,
     fs::{self, File},
     io::{BufRead, BufReader, Read, Write},
-    path::Path,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
         Arc, Mutex,
@@ -169,18 +168,16 @@ fn hidden(command: &mut Command) {
         command.creation_flags(0x08000000);
     }
 }
-fn tool_environment(command: &mut Command) {
-    if let Some(windows) = std::env::var_os("SystemRoot") {
-        let root = Path::new(&windows);
-        command.env(
-            "PATH",
-            format!("{};{}", root.join("System32").display(), root.display()),
-        );
+fn tool_environment(
+    command: &mut Command,
+    values: &std::collections::BTreeMap<String, String>,
+    unset: &[String],
+) {
+    command.env("LC_ALL", "C");
+    for name in unset {
+        command.env_remove(name);
     }
-    command
-        .env_remove("PYTHONHOME")
-        .env_remove("PYTHONPATH")
-        .env("LC_ALL", "C");
+    command.envs(values);
 }
 
 #[derive(Clone)]
@@ -369,6 +366,14 @@ impl Engine {
                 if r.kind == '*' && r.class == "running" {
                     self.state("RUNNING");
                 } else if r.kind == '*' && r.class == "stopped" {
+                    if r.data.string("reason").starts_with("exited") {
+                        self.snapshot.generation += 1;
+                        self.snapshot.frame = Frame::default();
+                        self.snapshot.stop_reason = r.data.string("reason");
+                        self.refresh_pending = false;
+                        self.state("READY");
+                        return;
+                    }
                     self.snapshot.generation += 1;
                     self.snapshot.state = "STOPPED".into();
                     self.snapshot.stop_reason = r.data.string("reason");
@@ -482,6 +487,35 @@ impl Engine {
     fn console(&mut self, command: &str) -> Result<Record, String> {
         self.mi(&format!("-interpreter-exec console {}", mi::quote(command)))
     }
+    fn commands(&mut self, commands: &[String], timeout: Duration) -> Result<(), String> {
+        for command in commands {
+            let command = if command.starts_with('-') {
+                command.clone()
+            } else {
+                format!("-interpreter-exec console {}", mi::quote(command))
+            };
+            self.request(&command, timeout)?;
+        }
+        Ok(())
+    }
+    fn sync_target_state(&mut self) -> Result<(), String> {
+        let threads = self.mi("-thread-info")?;
+        let running = threads
+            .data
+            .field("threads")
+            .is_some_and(|v| v.items().iter().any(|t| t.string("state") == "running"));
+        if running {
+            self.state("RUNNING");
+        } else if self.mi("-stack-info-frame").is_ok() {
+            self.snapshot.generation += 1;
+            self.state("STOPPED");
+            self.refresh_pending = false;
+            self.refresh()?;
+        } else {
+            self.state("READY");
+        }
+        Ok(())
+    }
     fn stopped(&self) -> Result<(), String> {
         if self.snapshot.state == "STOPPED" {
             Ok(())
@@ -492,86 +526,86 @@ impl Engine {
             ))
         }
     }
+    fn inactive(&self) -> Result<(), String> {
+        if self.gdb.is_some() && matches!(self.snapshot.state.as_str(), "READY" | "STOPPED") {
+            Ok(())
+        } else {
+            Err("Operation requires a connected inactive or stopped target".into())
+        }
+    }
     fn start_server(&mut self) -> Result<(), String> {
-        if self.project.server.mode == "external" {
+        let Some(service) = self.project.service.clone() else {
+            return Ok(());
+        };
+        if !service.enabled {
             return Ok(());
         }
         self.state("STARTING SERVER");
-        let mut c = Command::new(
-            self.project
-                .tools
-                .root
-                .join("bin/jlink/JLinkGDBServerCL.exe"),
-        );
-        c.args([
-            "-device",
-            &self.project.server.device,
-            "-if",
-            &self.project.server.interface,
-            "-speed",
-            &self.project.server.speed_khz.to_string(),
-            "-port",
-            &self.project.server.port.to_string(),
-            "-select",
-        ]);
-        c.arg(
-            self.project
-                .server
-                .serial
-                .as_ref()
-                .map(|s| format!("USB={s}"))
-                .unwrap_or("USB".into()),
-        );
-        c.args(["-localhostonly", "-nogui", "-halt", "-singlerun"])
+        let mut c = Command::new(&service.command);
+        c.args(&service.args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if let Some(cwd) = &service.cwd {
+            c.current_dir(cwd);
+        }
         hidden(&mut c);
-        tool_environment(&mut c);
-        let mut child = c.spawn().map_err(|e| format!("Start J-Link Server: {e}"))?;
+        tool_environment(&mut c, &service.env, &service.unset_env);
+        let mut child = c.spawn().map_err(|e| {
+            format!(
+                "Start environment service {}: {e}",
+                service.command.display()
+            )
+        })?;
         self.job
             .as_ref()
             .ok_or("Process job missing")?
             .attach(&mut child)?;
         let (ready_tx, ready_rx) = mpsc::sync_channel(1);
-        let mut stdout = child.stdout.take().unwrap();
-        let logs = self.logs.clone();
-        // The CLI server's final readiness prompt may not end with a newline.
-        thread::spawn(move || {
-            let mut buf = [0u8; 4096];
-            let mut pending = String::new();
-            loop {
-                let n = match stdout.read(&mut buf) {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => n,
-                };
-                pending.push_str(&String::from_utf8_lossy(&buf[..n]));
-                if pending.contains("Waiting for GDB connection")
-                    || pending.contains("Connected to target")
-                {
-                    let _ = ready_tx.try_send(());
+        if service.ready.is_empty() {
+            let _ = ready_tx.try_send(());
+        }
+        let streams: [(Box<dyn Read + Send>, &str); 2] = [
+            (Box::new(child.stdout.take().unwrap()), "server"),
+            (Box::new(child.stderr.take().unwrap()), "server-error"),
+        ];
+        for (mut stream, channel) in streams {
+            let logs = self.logs.clone();
+            let ready_markers = service.ready.clone();
+            let ready_tx = ready_tx.clone();
+            // The CLI server's final readiness prompt may not end with a newline.
+            thread::spawn(move || {
+                let mut buf = [0u8; 4096];
+                let mut pending = String::new();
+                loop {
+                    let n = match stream.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => n,
+                    };
+                    pending.push_str(&String::from_utf8_lossy(&buf[..n]));
+                    if ready_markers.iter().any(|marker| pending.contains(marker)) {
+                        let _ = ready_tx.try_send(());
+                    }
+                    while let Some(end) = pending.find('\n') {
+                        let line = pending[..end].trim_end_matches('\r').to_owned();
+                        pending.drain(..=end);
+                        logs.push(channel, line);
+                    }
+                    if pending.len() > 1024 * 1024 {
+                        logs.push(channel, std::mem::take(&mut pending));
+                    }
                 }
-                while let Some(end) = pending.find('\n') {
-                    let line = pending[..end].trim_end_matches('\r').to_owned();
-                    pending.drain(..=end);
-                    logs.push("server", line);
+                if !pending.is_empty() {
+                    logs.push(channel, pending);
                 }
-                if pending.len() > 1024 * 1024 {
-                    logs.push("server", std::mem::take(&mut pending));
-                }
-            }
-            if !pending.is_empty() {
-                logs.push("server", pending);
-            }
-        });
-        log_reader(
-            child.stderr.take().unwrap(),
-            "server-error",
-            self.logs.clone(),
-        );
+            });
+        }
         self.server = Some(ServerProcess { child });
-        let deadline = Instant::now() + Duration::from_secs(15);
+        let deadline = Instant::now() + Duration::from_millis(service.timeout_ms);
         loop {
+            if self.cancellation.load(Ordering::Relaxed) {
+                return Err("Connection cancelled".into());
+            }
             self.flush_logs();
             if ready_rx.try_recv().is_ok() {
                 return Ok(());
@@ -596,7 +630,10 @@ impl Engine {
         if self.gdb.is_some() {
             return Err("A session already exists. Disconnect before reconnecting.".into());
         }
-        self.project.resolve_tools()?;
+        self.project.prepare()?;
+        self.snapshot = Snapshot::default();
+        self.reg_names.clear();
+        self.refresh_pending = false;
         if self.job.is_none() {
             self.job = Some(crate::process::Job::new()?);
         }
@@ -625,32 +662,17 @@ impl Engine {
     fn connect_inner(&mut self) -> Result<Json, String> {
         self.start_server()?;
         self.state("STARTING GDB");
-        let root = self.project.tools.root.join("bin/gdb");
-        let data = root.join("arm-none-eabi/share/gdb");
-        let mut c = Command::new(root.join("bin/arm-none-eabi-gdb.exe"));
-        c.args(["-nx", "-q", "--interpreter=mi2"])
-            .arg(format!("--data-directory={}", portable_path(&data)));
-        for setting in [
-            format!(
-                "set debug-file-directory {}",
-                portable_path(&root.join("lib/debug"))
-            ),
-            format!(
-                "set auto-load scripts-directory {}",
-                portable_path(&data.join("auto-load"))
-            ),
-            format!(
-                "set auto-load safe-path {}",
-                portable_path(&data.join("auto-load"))
-            ),
-        ] {
-            c.arg("-iex").arg(setting);
+        let mut c = Command::new(&self.project.gdb.executable);
+        c.args(&self.project.gdb.args)
+            .args(["-nx", "-q", "--interpreter=mi2"]);
+        if let Some(cwd) = &self.project.gdb.cwd {
+            c.current_dir(cwd);
         }
         c.stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         hidden(&mut c);
-        tool_environment(&mut c);
+        tool_environment(&mut c, &self.project.gdb.env, &self.project.gdb.unset_env);
         let mut child = c.spawn().map_err(|e| format!("Start GDB: {e}"))?;
         self.job
             .as_ref()
@@ -697,19 +719,21 @@ impl Engine {
             records: rx,
             token: 0,
         });
-        for command in [
-            "-gdb-set pagination off",
-            "-gdb-set confirm off",
-            "-gdb-set mi-async on",
-            "-gdb-set remotetimeout 5",
-            "-gdb-set tcp connect-timeout 5",
-        ] {
+        for command in ["-gdb-set pagination off", "-gdb-set confirm off"] {
             self.mi(command)?;
         }
-        self.mi(&format!(
-            "-file-exec-and-symbols {}",
-            mi::quote(&portable_path(&self.project.program.elf))
-        ))?;
+        if let Err(e) = self.mi("-gdb-set mi-async on") {
+            self.log(
+                "capability",
+                format!("Asynchronous execution unavailable: {e}"),
+            );
+        }
+        if !self.project.program.elf.as_os_str().is_empty() {
+            self.mi(&format!(
+                "-file-exec-and-symbols {}",
+                mi::quote(&portable_path(&self.project.program.elf))
+            ))?;
+        }
         for map in self.project.source_map.clone() {
             self.console(&format!(
                 "set substitute-path {} {}",
@@ -717,47 +741,52 @@ impl Engine {
                 mi::quote(&portable_path(&map.to))
             ))?;
         }
+        self.commands(
+            &self.project.gdb.init.clone(),
+            Duration::from_millis(self.project.session.timeout_ms),
+        )?;
         self.state("CONNECTING");
         // -target-select forwards its target arguments verbatim; quoting an endpoint
         // makes this GDB interpret it as a serial-device filename.
-        self.mi(&format!(
-            "-target-select extended-remote {}:{}",
-            self.project.server.host, self.project.server.port
-        ))?;
-        self.console("monitor halt")?;
-        self.console("maintenance flush register-cache")?;
-        let features = self.mi("-list-target-features")?;
-        self.snapshot.async_supported = features
-            .data
-            .field("features")
-            .is_some_and(|v| v.items().iter().any(|x| x.text() == "async"));
+        if self.project.target.mode != "local" {
+            self.mi(&format!(
+                "-target-select {} {}",
+                self.project.target.mode, self.project.target.endpoint
+            ))?;
+        }
+        self.commands(
+            &self.project.target.after_connect.clone(),
+            Duration::from_millis(self.project.session.timeout_ms),
+        )?;
+        self.snapshot.async_supported = self.mi("-list-target-features").ok().is_some_and(|r| {
+            r.data
+                .field("features")
+                .is_some_and(|v| v.items().iter().any(|x| x.text() == "async"))
+        });
         self.log(
             "session",
             format!("MI target async support: {}", self.snapshot.async_supported),
         );
-        self.snapshot.state = "STOPPED".into();
         self.snapshot.stop_reason = "connected".into();
-        self.snapshot.generation += 1;
-        let names = self.mi("-data-list-register-names")?;
-        self.reg_names = names
-            .data
-            .field("register-names")
-            .map(|v| v.items().iter().map(|x| x.text().to_owned()).collect())
-            .unwrap_or_default();
         for location in self.saved_breakpoints.clone() {
             if let Err(e) = self.mi(&format!("-break-insert {}", mi::quote(&location))) {
                 self.log("error", format!("Restore breakpoint {location}: {e}"));
             }
         }
         self.refresh_pending = false;
-        self.refresh()?;
+        self.sync_target_state()?;
         Ok(
-            json!({"connected":true,"async_supported":self.snapshot.async_supported,"tools":portable_path(&self.project.tools.root)}),
+            json!({"connected":true,"async_supported":self.snapshot.async_supported,"gdb":portable_path(&self.project.gdb.executable),"state":self.snapshot.state}),
         )
     }
     fn wait_stopped(&mut self, timeout: Duration) -> Result<Json, String> {
         let deadline = Instant::now() + timeout;
         loop {
+            if self.snapshot.state == "READY" && self.snapshot.stop_reason.starts_with("exited") {
+                return Ok(
+                    json!({"reason":self.snapshot.stop_reason,"state":"READY","frame":self.snapshot.frame}),
+                );
+            }
             if self.snapshot.state == "STOPPED" {
                 self.refresh_pending = false;
                 self.refresh()?;
@@ -844,33 +873,18 @@ impl Engine {
             });
         }
         self.snapshot.watches = watches;
+        if let Ok(names) = self.mi("-data-list-register-names") {
+            self.reg_names = names
+                .data
+                .field("register-names")
+                .map(|v| v.items().iter().map(|x| x.text().to_owned()).collect())
+                .unwrap_or_default();
+        }
         let indices: Vec<usize> = self
             .reg_names
             .iter()
             .enumerate()
-            .filter(|(_, n)| {
-                matches!(
-                    n.as_str(),
-                    "r0" | "r1"
-                        | "r2"
-                        | "r3"
-                        | "r4"
-                        | "r5"
-                        | "r6"
-                        | "r7"
-                        | "r8"
-                        | "r9"
-                        | "r10"
-                        | "r11"
-                        | "r12"
-                        | "sp"
-                        | "lr"
-                        | "pc"
-                        | "xpsr"
-                        | "msp"
-                        | "psp"
-                )
-            })
+            .filter(|(_, n)| !n.is_empty())
             .map(|(i, _)| i)
             .collect();
         if !indices.is_empty() {
@@ -951,6 +965,7 @@ impl Engine {
                 && let Err(e) = self
                     .mi("-exec-interrupt --all")
                     .and_then(|_| self.wait_stopped(Duration::from_secs(5)).map(|_| ()))
+                && self.snapshot.state != "READY"
             {
                 failure = Some(e);
             }
@@ -966,12 +981,27 @@ impl Engine {
                 if let Err(e) = self.console("delete breakpoints") {
                     failure = Some(e);
                 }
-                if let Err(e) = self.console("monitor go") {
+                if let Err(e) = self.commands(
+                    &self.project.actions.before_disconnect.clone(),
+                    Duration::from_millis(self.project.session.timeout_ms),
+                ) {
+                    failure = Some(e);
+                }
+                if self.project.session.on_exit == "resume"
+                    && let Err(e) = self.mi("-exec-continue")
+                {
                     failure = Some(e);
                 }
             }
+            let attached = matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
+                || self.project.target.mode != "local";
             self.state("DISCONNECTING");
-            if let Err(e) = self.mi("-target-detach") {
+            let command = if self.project.session.on_exit == "disconnect" {
+                "-target-disconnect"
+            } else {
+                "-target-detach"
+            };
+            if attached && let Err(e) = self.mi(command) {
                 failure = Some(e);
             }
             let _ = self.mi("-gdb-exit");
@@ -1022,9 +1052,31 @@ impl Engine {
             }
             "status" => Ok(serde_json::to_value(&self.snapshot).unwrap()),
             "continue" => {
+                if self.snapshot.state == "READY" {
+                    return self.execute("run", p);
+                }
                 self.stopped()?;
                 let generation = self.snapshot.generation;
                 self.mi("-exec-continue")?;
+                if self.snapshot.generation == generation {
+                    self.state("RUNNING");
+                }
+                Ok(json!({"running":self.snapshot.state=="RUNNING"}))
+            }
+            "run" => {
+                if !matches!(self.snapshot.state.as_str(), "READY" | "STOPPED") {
+                    return Err("Run requires a connected, inactive or stopped target".into());
+                }
+                let generation = self.snapshot.generation;
+                let commands = if self.project.actions.run.is_empty() {
+                    vec!["-exec-run".into()]
+                } else {
+                    self.project.actions.run.clone()
+                };
+                self.commands(
+                    &commands,
+                    Duration::from_millis(self.project.session.timeout_ms),
+                )?;
                 if self.snapshot.generation == generation {
                     self.state("RUNNING");
                 }
@@ -1059,13 +1111,16 @@ impl Engine {
                 Ok(json!({"running":self.snapshot.state=="RUNNING"}))
             }
             "restart" => {
+                if self.project.actions.restart.is_empty() {
+                    return Err("Restart is not configured by this environment".into());
+                }
                 self.stopped()?;
-                self.console("monitor reset")?;
-                self.console("monitor halt")?;
-                self.console("maintenance flush register-cache")?;
-                self.snapshot.generation += 1;
-                self.refresh()?;
-                Ok(json!({"reset":true,"state":"STOPPED"}))
+                self.commands(
+                    &self.project.actions.restart.clone(),
+                    Duration::from_millis(self.project.session.timeout_ms),
+                )?;
+                self.sync_target_state()?;
+                Ok(json!({"restarted":true,"state":self.snapshot.state}))
             }
             "evaluate" => {
                 self.stopped()?;
@@ -1100,7 +1155,7 @@ impl Engine {
                 Ok(json!({"watches":self.watch_names}))
             }
             "break" => {
-                self.stopped()?;
+                self.inactive()?;
                 let location = text("location");
                 let temporary = p.get("temporary").and_then(Json::as_bool).unwrap_or(false);
                 let r = self.mi(&format!(
@@ -1120,7 +1175,7 @@ impl Engine {
                 Ok(json!({"breakpoint":r.data}))
             }
             "delete_break" => {
-                self.stopped()?;
+                self.inactive()?;
                 let id = text("number");
                 if id.is_empty() {
                     self.console("delete breakpoints")?;
@@ -1231,39 +1286,40 @@ impl Engine {
                 Ok(json!({"files":self.snapshot.files}))
             }
             "download" => {
+                if self.project.actions.download.is_empty() {
+                    return Err("Download is not configured by this environment".into());
+                }
                 self.stopped()?;
                 self.state("DOWNLOADING");
-                let result = self.request("-target-download", Duration::from_secs(90));
+                let result = self.commands(
+                    &self.project.actions.download.clone(),
+                    Duration::from_secs(90),
+                );
                 if self.snapshot.state != "FAULT" {
                     self.state("STOPPED");
                 }
                 result?;
-                self.console("monitor reset")?;
-                self.console("monitor halt")?;
-                self.console("maintenance flush register-cache")?;
-                self.refresh()?;
+                self.sync_target_state()?;
                 Ok(json!({"downloaded":true}))
             }
             "console" => {
                 let command = text("command");
                 let trimmed = command.trim();
                 match trimmed {
-                    "c" | "continue" | "monitor go" => {
+                    "c" | "continue" => {
                         return self.execute("continue", &Json::Null);
                     }
                     "s" | "step" => return self.execute("step", &Json::Null),
                     "n" | "next" => return self.execute("next", &Json::Null),
                     "si" | "stepi" => return self.execute("stepi", &Json::Null),
-                    "interrupt" | "monitor halt" => return self.execute("pause", &Json::Null),
+                    "interrupt" => return self.execute("pause", &Json::Null),
                     "q" | "quit" => return self.execute("quit", &Json::Null),
-                    "monitor reset" => return self.execute("restart", &Json::Null),
-                    "run" | "r" => {
-                        self.execute("restart", &Json::Null)?;
-                        return self.execute("continue", &Json::Null);
-                    }
+                    "run" | "r" => return self.execute("run", &Json::Null),
                     _ => {}
                 }
-                self.stopped()?;
+                if !matches!(self.snapshot.state.as_str(), "READY" | "STOPPED") {
+                    return Err("Console requires a connected inactive or stopped target".into());
+                }
                 let r = self.console(&command)?;
                 self.refresh_pending = true;
                 Ok(json!({"result":r.data}))

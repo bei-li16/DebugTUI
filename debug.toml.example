@@ -1,16 +1,16 @@
-version = 1
-watch = ["xTickCount"]
-[tools]
-root = "tools"
+version = 2
+watch = []
+[gdb]
+executable = "gdb"
 [program]
-elf = "../Keil/STM32_CubeIDE/FreeRTOS_Project/Debug/FreeRTOS_Project.elf"
-source_root = "../Keil/STM32_CubeIDE/FreeRTOS_Project"
-[server]
-mode = "managed"
-device = "STM32F429IG"
-interface = "SWD"
-speed_khz = 4000
-host = "127.0.0.1"
-port = 3333
+elf = "./build/app.elf"
+source_root = "."
+[target]
+mode = "remote"
+endpoint = "127.0.0.1:3333"
 [session]
-on_exit = "resume"
+on_exit = "detach"
+
+# To use a tools environment instead, remove the [gdb] section above and add:
+# [tools]
+# profile = "./tools/debug-env.toml"

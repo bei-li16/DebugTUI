@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-const HELP: &str = "DebugTUI 0.1.0 - native STM32 terminal debugger\n\nUsage: debugtui [--project debug.toml] [--elf firmware.elf] [options]\n\n  --tools-dir PATH       Bundled GDB / J-Link tools directory\n  --connect HOST:PORT    Use an already running GDB server\n  --port NUMBER          Managed server port (default 3333)\n  --device NAME          J-Link device (default STM32F429IG)\n  --log-dir PATH         Write GDB/MI and server session logs\n  --headless --stdio     JSON Lines automation (send connect to begin)\n  --script FILE          Execute JSON Lines; stop on error, then disconnect\n  --demo                 Explore the terminal UI without hardware\n  --snapshot FILE        Render a 120x36 demo UI to a text file\n  --version             Print version\n  --help                Print help\n\nKeys: F5 continue, F6 pause, F9 breakpoint, F10 next, F11 step,\n      Shift+F11 finish, Ctrl+P command palette, : command input, ? help.\n";
+const HELP: &str = "DebugTUI - native GDB/MI terminal debugger\n\nUsage: debugtui [--project DIR|debug.toml] [options]\n\n  No arguments         Open launch setup; choose project and tools inside TUI\n  --setup              Review startup settings inside TUI before connecting\n  --project PATH       Project directory or configuration file\n  --gdb PATH            GDB executable (default: gdb on PATH)\n  --gdb-arg ARG         Additional GDB argument; may be repeated\n  --environment FILE    Optional tools environment profile\n  --tools-dir PATH      Shorthand for PATH/debug-env.toml\n  --connect ENDPOINT    Connect to an external GDB target; skip service launch\n  --target-mode MODE    remote, extended-remote or local\n  --local               Debug a local inferior; skip service launch\n  --elf FILE            Optional executable/symbol file\n  --log-dir PATH        Write session logs\n  --headless --stdio    JSON Lines automation\n  --script FILE         Execute JSON Lines and disconnect\n  --demo                Preview without GDB\n  --snapshot FILE       Render demo to a text file\n  --version             Print version\n  --help                Print help\n\nKeys: F2 launch setup, F5 continue/run, F6 pause, F9 breakpoint, F10 next, F11 step,\n      Shift+F11 finish, Ctrl+P commands, Ctrl+Q quit.\n";
 fn main() {
     if let Err(e) = run() {
         eprintln!("debugtui: {e}");
@@ -19,79 +19,40 @@ fn main() {
     }
 }
 fn run() -> Result<(), String> {
-    let args: Vec<String> = env::args().skip(1).collect();
-    if args.iter().any(|a| a == "--help" || a == "-h") {
+    let options = debugtui::cli::Options::parse(env::args().skip(1))?;
+    if options.help {
         print!("{HELP}");
         return Ok(());
     }
-    if args.iter().any(|a| a == "--version" || a == "-V") {
+    if options.version {
         println!("debugtui {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
-    let mut project = Project::default();
-    let mut project_path = None;
-    for (i, a) in args.iter().enumerate() {
-        if a == "--project" {
-            project_path = Some(args.get(i + 1).ok_or("--project requires a path")?);
-        }
-    }
-    if let Some(path) = project_path {
-        project = Project::load(&PathBuf::from(path))?;
-    } else if PathBuf::from("debug.toml").is_file() {
-        project = Project::load(&PathBuf::from("debug.toml"))?;
-    }
-    let mut headless = false;
-    let mut script = None;
-    let mut demo = false;
-    let mut snapshot = None;
-    let mut i = 0;
-    while i < args.len() {
-        let arg = &args[i];
-        let mut value = || -> Result<String, String> {
-            i += 1;
-            args.get(i)
-                .cloned()
-                .ok_or_else(|| format!("{arg} requires a value"))
-        };
-        match arg.as_str() {
-            "--project" => {
-                value()?;
-            }
-            "--elf" => project.program.elf = value()?.into(),
-            "--tools-dir" => project.tools.root = value()?.into(),
-            "--connect" => {
-                let address = value()?;
-                let (host, port) = address
-                    .rsplit_once(':')
-                    .ok_or("--connect requires HOST:PORT")?;
-                project.server.host = host.into();
-                project.server.port = port.parse().map_err(|_| "Invalid port")?;
-                project.server.mode = "external".into();
-            }
-            "--port" => project.server.port = value()?.parse().map_err(|_| "Invalid port")?,
-            "--device" => project.server.device = value()?,
-            "--log-dir" => project.session.log_dir = Some(value()?.into()),
-            "--headless" | "--stdio" => headless = true,
-            "--script" => {
-                script = Some(value()?);
-                headless = true;
-            }
-            "--demo" => demo = true,
-            "--snapshot" => snapshot = Some(value()?),
-            _ => return Err(format!("Unknown option: {arg}\nUse --help")),
-        }
-        i += 1;
-    }
-    project.validate()?;
-    if let Some(path) = snapshot {
+    if let Some(path) = &options.snapshot {
         return ui::snapshot(&PathBuf::from(path));
     }
-    if headless {
-        return run_headless(project, script);
+    let (document, initial_error) = match options.document() {
+        Ok(document) => (document, None),
+        Err(e) if !options.headless => (
+            debugtui::launch::Document::empty(options.project_path()),
+            Some(e),
+        ),
+        Err(e) => return Err(e),
+    };
+    if options.headless {
+        let mut project = document.project()?;
+        if !document.path.is_file() {
+            project.path = None;
+        }
+        return run_headless(project, options.script);
     }
-    ui::run(project, demo)
+    ui::run(
+        document,
+        options.demo,
+        options.explicit_launch && !options.setup,
+        initial_error,
+    )
 }
-
 fn run_headless(project: Project, script: Option<String>) -> Result<(), String> {
     let engine = session::spawn(project);
     let (tx, rx) = std::sync::mpsc::channel::<Result<Request, String>>();

@@ -1,11 +1,12 @@
 use crate::{
     config::Project,
+    launch::{Document, Launch, Setup},
     session::{self, EngineHandle, Event, Frame, Request, Snapshot, Variable},
 };
 use crossterm::{
     event::{
-        self, DisableMouseCapture, EnableMouseCapture, Event as Input, KeyCode, KeyEvent,
-        KeyEventKind, KeyModifiers, MouseEventKind,
+        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event as Input, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind,
     },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
@@ -30,8 +31,10 @@ use std::{
 const PANES: [&str; 9] = [
     "Source", "Watch", "Stack", "Regs", "Memory", "Asm", "Breaks", "Files", "Log",
 ];
-const COMMANDS: [&str; 22] = [
+const COMMANDS: [&str; 24] = [
+    "setup",
     "connect",
+    "run",
     "continue",
     "pause",
     "step",
@@ -54,11 +57,14 @@ const COMMANDS: [&str; 22] = [
     "build",
     "quit",
 ];
-const DEMO_SOURCE: &str = "/* DebugTUI demo: no probe connected */\n#include <stdint.h>\n#include \"FreeRTOS.h\"\n\nvolatile uint32_t xTickCount;\nvolatile uint8_t Log_Tx_En = 1;\n\nvoid Task100ms(void *argument)\n{\n    for (;;) {\n        DEBUG_PRINTF(\"Task100ms\\n\");\n        vTaskDelay(pdMS_TO_TICKS(100));\n    }\n}\n\nvoid DEBUG_PRINTF(const char *format)\n{\n    uint8_t ret = 0;\n    Log_Tx_En = 0;\n    /* Place a data breakpoint on Log_Tx_En. */\n}\n";
-const HELP: &str = "DebugTUI — keyboard-first STM32 debugger\n\nF5 Continue      F6 Pause          F9 Toggle line breakpoint\nF10 Next         F11 Step          Shift+F11 Finish\nTab Next panel   Shift+Tab Previous panel\nArrows / PgUp / PgDn Scroll or select\nEnter Open selected file / select stack frame\n: or / Focus command line         Ctrl+P Command palette\nCtrl+C Pause target               Ctrl+Q End session and quit\n? Help           Esc Close dialog / cancel input\n\nWorkstation commands start with ':'\n:connect  :disconnect  :restart  :download\n:watch xTickCount        variable display; no hardware slot\n:data-break Log_Tx_En    hardware data breakpoint\n:break main   :delete 2  :frame 1\n:memory 0x20000000 256   :disasm $pc\n:files  :open source.c   :elf firmware.elf\n:refresh  :build  :quit\n\nOther input is sent to the GDB console, e.g. p/x variable,\nx/8wx address, set variable name=value, info registers.\nRunning views show the last stopped snapshot.\nDownload writes the selected ELF and stops after reset.\nExit behavior is controlled by session.on_exit.\n\nEsc / ? closes this help.";
+const DEMO_SOURCE: &str = "/* DebugTUI demo: no target connected */\n#include <stdint.h>\n\n\nvolatile uint32_t counter;\nvolatile uint8_t flag = 1;\n\nvoid process_items(void)\n{\n    for (unsigned i = 0; i < 100; ++i) {\n        update_value(\"sample\\n\");\n        counter++;\n    }\n}\n\nvoid update_value(const char *format)\n{\n    uint8_t ret = 0;\n    flag = 0;\n    /* Place a data breakpoint on flag. */\n}\n";
+const HELP: &str = "DebugTUI — keyboard-first GDB debugger\n\nF2 Launch setup / switch project\nF5 Continue      F6 Pause          F9 Toggle line breakpoint\nF10 Next         F11 Step          Shift+F11 Finish\nTab Next panel   Shift+Tab Previous panel\nArrows / PgUp / PgDn Scroll or select\nEnter Open selected file / select stack frame\n: or / Focus command line         Ctrl+P Command palette\nCtrl+C Pause target               Ctrl+Q End session and quit\n? Help           Esc Close dialog / cancel input\n\nWorkstation commands start with ':'\n:setup  :connect  :run  :disconnect  :restart  :download\n:watch counter        variable display; no hardware slot\n:data-break flag    hardware data breakpoint\n:break main   :delete 2  :frame 1\n:memory $sp 256   :disasm $pc\n:files  :open source.c   :elf app.elf\n:refresh  :build  :quit\n\nOther input is sent to the GDB console, e.g. p/x variable,\nx/8wx address, set variable name=value, info registers.\nRunning views show the last stopped snapshot.\nRestart/download behavior comes from the environment profile.\nExit behavior is controlled by session.on_exit.\n\nEsc / ? closes this help.";
 
 pub struct App {
     project: Project,
+    document: Document,
+    setup: Option<Setup>,
+    launch: Option<Launch>,
     snapshot: Snapshot,
     pane: usize,
     selection: usize,
@@ -88,6 +94,13 @@ pub struct App {
 impl App {
     pub fn new(project: Project, demo: bool) -> Self {
         let mut a = Self {
+            document: Document::empty(project.path.clone().unwrap_or_else(|| {
+                std::env::current_dir()
+                    .unwrap_or_default()
+                    .join("debug.toml")
+            })),
+            setup: None,
+            launch: None,
             project,
             snapshot: Snapshot::default(),
             pane: 0,
@@ -107,7 +120,7 @@ impl App {
             help: false,
             confirm: None,
             next_id: 1,
-            notice: "Use :connect to start, :elf PATH to select firmware, ? for help".into(),
+            notice: "F2 / :setup selects a project and debug environment; ? for help".into(),
             demo,
             quitting: false,
             source_rect: Rect::default(),
@@ -117,14 +130,14 @@ impl App {
         };
         if demo {
             a.source = DEMO_SOURCE.lines().map(str::to_owned).collect();
-            a.source_file = "demo/bsp_log.c".into();
+            a.source_file = "demo/sample.c".into();
             a.source_line = 17;
             a.source_top = 9;
             a.snapshot.state = "DEMO / STOPPED".into();
             a.snapshot.stop_reason = "breakpoint-hit".into();
             a.snapshot.frame = Frame {
                 level: 0,
-                function: "DEBUG_PRINTF".into(),
+                function: "update_value".into(),
                 file: a.source_file.clone(),
                 line: 18,
                 address: "0x0800068c".into(),
@@ -133,7 +146,7 @@ impl App {
                 a.snapshot.frame.clone(),
                 Frame {
                     level: 1,
-                    function: "Task100ms".into(),
+                    function: "process_items".into(),
                     line: 11,
                     file: a.source_file.clone(),
                     address: "0x080007e2".into(),
@@ -141,18 +154,18 @@ impl App {
             ];
             a.snapshot.watches = vec![
                 Variable {
-                    name: "xTickCount".into(),
+                    name: "counter".into(),
                     value: "12345".into(),
                     ..Default::default()
                 },
                 Variable {
-                    name: "Log_Tx_En".into(),
+                    name: "flag".into(),
                     value: "1".into(),
                     changed: true,
                     error: false,
                 },
                 Variable {
-                    name: "g_w25q_jedec_id".into(),
+                    name: "checksum".into(),
                     value: "0xef4018".into(),
                     ..Default::default()
                 },
@@ -165,7 +178,7 @@ impl App {
                 },
                 Variable {
                     name: "format".into(),
-                    value: "0x08006824 \"Task100ms\\n\"".into(),
+                    value: "0x08006824 \"process_items\\n\"".into(),
                     ..Default::default()
                 },
             ];
@@ -270,6 +283,12 @@ impl App {
             self.log(self.notice.clone());
             return;
         }
+        if (method == "download" && self.project.actions.download.is_empty())
+            || (method == "restart" && self.project.actions.restart.is_empty())
+        {
+            self.notice = format!("{method} is not configured by this environment");
+            return;
+        }
         let request = Request::new(self.next_id, method, params);
         self.next_id += 1;
         if method == "download" {
@@ -305,7 +324,8 @@ impl App {
         let arg = arg.trim();
         let unquote = |s: &str| s.trim().trim_matches('"').to_string();
         match name {
-            "connect" | "disconnect" | "continue" | "pause" | "step" | "next" | "stepi"
+            "setup" => self.open_setup(),
+            "connect" | "run" | "disconnect" | "continue" | "pause" | "step" | "next" | "stepi"
             | "finish" | "restart" | "download" | "refresh" | "build" | "quit" => {
                 self.submit(engine, name, json!({}))
             }
@@ -320,7 +340,7 @@ impl App {
             ),
             "memory" => {
                 let mut parts = arg.split_whitespace();
-                let address = parts.next().unwrap_or("0x20000000");
+                let address = parts.next().unwrap_or("$sp");
                 let count = parts
                     .next()
                     .and_then(|v| v.parse::<u64>().ok())
@@ -436,6 +456,15 @@ impl App {
             self.submit(engine, "quit", json!({}));
             return false;
         }
+        if let Some(setup) = &mut self.setup {
+            if key.code == KeyCode::Esc && !setup.is_editing() && !setup.pending {
+                self.document = setup.document.clone();
+                self.setup = None;
+            } else {
+                self.launch = setup.key(key);
+            }
+            return false;
+        }
         if self.help {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('?') => self.help = false,
@@ -526,6 +555,7 @@ impl App {
             return false;
         }
         match key.code {
+            KeyCode::F(2) => self.open_setup(),
             KeyCode::F(5) => self.submit(engine, "continue", json!({})),
             KeyCode::F(6) => self.submit(engine, "pause", json!({})),
             KeyCode::F(9) => self.toggle_break(engine),
@@ -605,6 +635,15 @@ impl App {
             _ => {}
         }
         false
+    }
+    fn open_setup(&mut self) {
+        let mut setup = Setup::new(self.document.clone());
+        if !matches!(self.snapshot.state.as_str(), "DISCONNECTED" | "FAULT") {
+            setup.message =
+                "Current session stays active until F5. Starting ends it and switches projects."
+                    .into();
+        }
+        self.setup = Some(setup);
     }
 }
 
@@ -696,6 +735,10 @@ fn syntax(line: &str) -> Vec<Span<'static>> {
     spans
 }
 pub fn draw(f: &mut UiFrame, a: &mut App) {
+    if let Some(setup) = &a.setup {
+        setup.draw(f);
+        return;
+    }
     let area = f.area();
     if area.width < 45 || area.height < 12 {
         f.render_widget(
@@ -733,8 +776,8 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
                 .add_modifier(Modifier::BOLD),
         ),
         Span::raw(format!(
-            " {} · {}:{}  ",
-            a.project.server.device, a.project.server.host, a.project.server.port
+            " {} · {}  ",
+            a.project.target.mode, a.project.target.endpoint
         )),
         Span::styled(
             a.snapshot.state.clone(),
@@ -821,7 +864,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
                 .split(split[0]);
             a.source_rect = columns[0];
             if a.source.is_empty() {
-                f.render_widget(Paragraph::new("\n  Open a project to start debugging.\n\n  :elf path/to/firmware.elf\n  :connect\n\n  Ctrl+P  Command palette\n  ?       Keyboard help\n\n  GDB / J-Link come from the selected tools directory.").block(section(" Source ")),columns[0]);
+                f.render_widget(Paragraph::new("\n  F2  Choose project and debug environment\n\n  Browse tools, GDB and program files.\n  Save settings and start with F5.\n\n  Ctrl+P  Command palette\n  ?       Keyboard help\n\n  GDB comes from --gdb / PATH or an environment profile.").block(section(" Source ")),columns[0]);
             } else {
                 let count = columns[0].height.saturating_sub(1) as usize;
                 let lines: Vec<Line> = a
@@ -1095,7 +1138,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     let input = if a.editing {
         format!(" › {}", a.input)
     } else {
-        " › Press : for commands, / for GDB, Ctrl+P for actions".into()
+        " › F2 Setup   : Commands   / GDB   Ctrl+P Actions".into()
     };
     f.render_widget(
         Paragraph::new(input).block(Block::default().borders(Borders::TOP).border_style(
@@ -1169,7 +1212,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         f.render_widget(Clear, r);
         f.render_widget(
             Paragraph::new(format!(
-                "Write this ELF to the target and reset?\n{}\n\ny: Download    n / Esc: Cancel",
+                "Execute the configured download action?\n{}\n\ny: Download    n / Esc: Cancel",
                 a.project.program.elf.display()
             ))
             .wrap(Wrap { trim: false })
@@ -1199,13 +1242,19 @@ impl Drop for TerminalGuard {
         let _ = disable_raw_mode();
         let _ = execute!(
             io::stdout(),
+            DisableBracketedPaste,
             DisableMouseCapture,
             LeaveAlternateScreen,
             crossterm::cursor::Show
         );
     }
 }
-pub fn run(project: Project, demo: bool) -> Result<(), String> {
+pub fn run(
+    document: Document,
+    demo: bool,
+    auto_connect: bool,
+    initial_error: Option<String>,
+) -> Result<(), String> {
     if !io::stdin().is_terminal() || !io::stdout().is_terminal() {
         return Err(
             "Interactive mode requires a terminal. Use --headless --stdio for automation.".into(),
@@ -1213,25 +1262,65 @@ pub fn run(project: Project, demo: bool) -> Result<(), String> {
     }
     enable_raw_mode().map_err(|e| e.to_string())?;
     let _guard = TerminalGuard;
-    execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture).map_err(|e| e.to_string())?;
+    execute!(
+        io::stdout(),
+        EnterAlternateScreen,
+        EnableMouseCapture,
+        EnableBracketedPaste
+    )
+    .map_err(|e| e.to_string())?;
     let mut terminal =
         Terminal::new(CrosstermBackend::new(io::stdout())).map_err(|e| e.to_string())?;
+    let (mut project, error) = match document.project() {
+        Ok(project) => (project, initial_error),
+        Err(e) => (Project::default(), Some(e)),
+    };
+    if !document.path.is_file() {
+        project.path = None;
+    }
+    let ready = project.clone().prepare().is_ok();
     let mut app = App::new(project.clone(), demo);
-    let engine = if demo {
+    app.document = document;
+    if !demo && (!auto_connect || !ready || error.is_some()) {
+        app.open_setup();
+        if let Some(e) = error {
+            app.setup.as_mut().unwrap().message = format!("Error: {e}");
+        }
+    }
+    let mut engine = if demo {
         None
     } else {
         Some(session::spawn(project.clone()))
     };
-    if !demo && !project.program.elf.as_os_str().is_empty() {
+    if !demo && app.setup.is_none() {
         app.submit(engine.as_ref(), "connect", json!({}));
     }
+    const SWITCH_QUIT: u64 = u64::MAX - 1;
+    let mut pending_launch: Option<Launch> = None;
+    let mut switch_error = None;
     let mut dirty = true;
     let mut last_draw = Instant::now() - Duration::from_secs(1);
     loop {
+        let mut worker_exited = false;
         if let Some(engine) = &engine {
             for _ in 0..128 {
                 match engine.events.try_recv() {
                     Ok(event) => {
+                        if let Event::Response {
+                            id,
+                            ok: false,
+                            error,
+                            ..
+                        } = &event
+                            && *id == SWITCH_QUIT
+                        {
+                            switch_error = error.clone();
+                        }
+                        if matches!(event, Event::Exit) && pending_launch.is_some() && !app.quitting
+                        {
+                            worker_exited = true;
+                            break;
+                        }
                         if app.update(event) {
                             if app.snapshot.state == "FAULT" {
                                 return Err(
@@ -1248,6 +1337,59 @@ pub fn run(project: Project, demo: bool) -> Result<(), String> {
                         return Err("Debug session worker exited unexpectedly".into());
                     }
                 }
+            }
+        }
+        if worker_exited {
+            engine.take();
+            let mut launch = pending_launch.take().unwrap();
+            let prepared = (|| -> Result<Project, String> {
+                if let Some(e) = switch_error.take() {
+                    return Err(e);
+                }
+                if launch.save {
+                    launch.document.save()?;
+                }
+                let mut project = launch.document.project()?;
+                project.prepare()?;
+                if !launch.save {
+                    project.path = None;
+                }
+                Ok(project)
+            })();
+            match prepared {
+                Ok(project) => {
+                    app.project = project.clone();
+                    app.document = launch.document;
+                    app.setup = None;
+                    app.snapshot = Snapshot::default();
+                    app.source.clear();
+                    app.source_file.clear();
+                    app.source_line = 0;
+                    app.source_top = 0;
+                    app.selection = 0;
+                    app.pane = 0;
+                    app.editing = false;
+                    app.confirm = None;
+                    engine = Some(session::spawn(project));
+                    app.submit(engine.as_ref(), "connect", json!({}));
+                }
+                Err(e) => {
+                    if let Some(setup) = &mut app.setup {
+                        setup.pending = false;
+                        setup.message = format!("Error: {e}");
+                    }
+                    engine = Some(session::spawn(app.project.clone()));
+                }
+            }
+            dirty = true;
+        }
+        if let Some(launch) = app.launch.take() {
+            if let Some(engine) = &engine {
+                engine.send(Request::new(SWITCH_QUIT, "quit", json!({})))?;
+                pending_launch = Some(launch);
+            } else if let Some(setup) = &mut app.setup {
+                setup.pending = false;
+                setup.message = "DEMO: restart without --demo to connect a debugger.".into();
             }
         }
         if dirty && last_draw.elapsed() >= Duration::from_millis(25) {
@@ -1267,12 +1409,18 @@ pub fn run(project: Project, demo: bool) -> Result<(), String> {
                 }
                 Input::Resize(_, _) => dirty = true,
                 Input::Paste(text) => {
-                    if app.editing {
+                    if let Some(setup) = &mut app.setup {
+                        setup.paste(&text);
+                        dirty = true;
+                    } else if app.editing {
                         app.input.push_str(&text);
                         dirty = true;
                     }
                 }
                 Input::Mouse(mouse) => {
+                    if app.setup.is_some() {
+                        continue;
+                    }
                     match mouse.kind {
                         MouseEventKind::ScrollDown => app.move_selection(3),
                         MouseEventKind::ScrollUp => app.move_selection(-3),

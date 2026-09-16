@@ -1,0 +1,31 @@
+# Optional STM32/J-Link environment. All paths are relative to this file.
+[gdb]
+executable = "./bin/gdb/bin/arm-none-eabi-gdb.exe"
+args = [
+  "--data-directory=${profile_dir}/bin/gdb/arm-none-eabi/share/gdb",
+  "-iex", "set debug-file-directory ${profile_dir}/bin/gdb/lib/debug",
+  "-iex", "set auto-load scripts-directory ${profile_dir}/bin/gdb/arm-none-eabi/share/gdb/auto-load",
+  "-iex", "set auto-load safe-path ${profile_dir}/bin/gdb/arm-none-eabi/share/gdb/auto-load"
+]
+unset_env = ["PYTHONHOME", "PYTHONPATH"]
+init = ["set remotetimeout 5", "set tcp connect-timeout 5"]
+
+[service]
+command = "./bin/jlink/JLinkGDBServerCL.exe"
+args = ["-device", "STM32F429IG", "-if", "SWD", "-speed", "4000", "-port", "3333", "-select", "USB", "-localhostonly", "-nogui", "-halt", "-singlerun"]
+ready = ["Waiting for GDB connection", "Connected to target"]
+timeout_ms = 15000
+
+[target]
+mode = "extended-remote"
+endpoint = "127.0.0.1:3333"
+after_connect = ["monitor halt", "maintenance flush register-cache"]
+
+[actions]
+restart = ["monitor reset", "monitor halt", "maintenance flush register-cache"]
+run = ["monitor reset", "monitor halt", "maintenance flush register-cache", "-exec-continue"]
+download = ["-target-download", "monitor reset", "monitor halt", "maintenance flush register-cache"]
+before_disconnect = ["monitor go"]
+
+[session]
+on_exit = "detach"

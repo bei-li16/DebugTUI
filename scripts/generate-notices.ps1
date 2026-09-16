@@ -12,7 +12,7 @@ try {
     $ids = @($metadata.resolve.nodes | ForEach-Object id)
     $packages = @($metadata.packages | Where-Object { $_.id -in $ids -and $_.name -ne 'debugtui' } | Sort-Object name,version)
     $text = [Text.StringBuilder]::new()
-    $null = $text.AppendLine("# Third-party notices`n`nLicense inventory for the locked Windows GNU Cargo dependency graph, including build-time dependencies. Original notices are reproduced below. Rust standard-library notices are in licenses/rust/. GDB and J-Link retain the notices within tools/.`n")
+    $null = $text.AppendLine("# Third-party notices`n`nLicense inventory for the locked Windows GNU Cargo dependency graph, including build-time dependencies. Original notices are reproduced below. Rust standard-library notices are in licenses/rust/. Optional GDB and probe servers are distributed separately with their environment notices.`n")
     foreach ($package in $packages) {
         $null = $text.AppendLine("## $($package.name) $($package.version)`n`nDeclared license: $($package.license)`nSource: $($package.repository)`n")
         $crateRoot = Split-Path $package.manifest_path

@@ -1,0 +1,7 @@
+# Example only: choose a GDB/server that supports your target.
+[gdb]
+executable = "riscv-none-elf-gdb"
+[target]
+mode = "remote"
+endpoint = "127.0.0.1:3333"
+# No reset, flash, or monitor commands are assumed.

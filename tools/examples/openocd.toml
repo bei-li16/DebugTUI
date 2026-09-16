@@ -1,0 +1,13 @@
+# Start OpenOCD separately, or configure a generic [service] command here.
+# Replace this executable with your target-compatible GDB.
+[gdb]
+executable = "arm-none-eabi-gdb"
+[target]
+mode = "remote"
+endpoint = "127.0.0.1:3333"
+after_connect = ["monitor halt"]
+[actions]
+restart = ["monitor reset halt"]
+download = ["-target-download", "monitor reset halt"]
+[session]
+on_exit = "detach"

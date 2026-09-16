@@ -1,97 +1,65 @@
-# DebugTUI 架构
+# DebugTUI 架构（0.2）
 
-## 分发与运行
+## 边界
 
-```mermaid
+~~~mermaid
 flowchart LR
-    N["npm 安装 / 升级"] --> P["Windows x64 npm 包"]
-    P --> S["debugtui.cmd / debugtui.ps1"]
-    P --> B["bin/debugtui.exe"]
-    P --> T["tools：GDB + J-Link + DLL + 许可证"]
-    S --> B
-    B --> T
-```
+    U["人工 TUI / AI JSONL"] <--> C["通用会话核心"]
+    C <-->|"GDB/MI2"| G["用户选择的 GDB"]
+    G <-->|"远程协议"| S["外部调试服务"]
+    S <--> T["目标芯片"]
+    G <--> L["本机程序"]
+    E["tools 环境配置"] -->|"启动参数与动作"| C
+    C -.->|"可选通用进程启动"| S
+~~~
 
-包内附带预编译的原生程序和最小工具集，不使用 postinstall 下载、Python、浏览器服务或 Node 常驻进程。npm 负责版本管理。Rust/MinGW 仅用于开发构建，不是安装端依赖。
+核心没有芯片、探针品牌、寄存器白名单或预设 monitor 命令。GDB 路径、资源目录、服务程序、就绪标记、连接方式和特殊动作由配置决定。tools 是可选环境层，可以来自另一个目录或仓库。
 
-## 上下游与数据流
+环境文件是数据驱动的通用协议：核心只知道如何启动命令、等待配置声明的就绪标记、发送配置声明的 GDB 命令。STM32/J-Link 具体内容集中在 tools/debug-env.toml。不配置服务时只启动 GDB。
 
-```mermaid
-flowchart TB
-    H["人工：键盘 / 鼠标"] --> U["Ratatui + Crossterm\n真实终端面板"]
-    A["AI / 脚本"] --> J["JSONL 标准输入输出"]
-    U -->|Request| C["单会话调试核心\n串行命令 / 状态 / 子进程管理"]
-    J -->|Request| C
-    C -->|Snapshot / Response / Log| U
-    C -->|JSONL 事件| J
-    C <-->|"管道：GDB/MI2 命令与异步事件"| G["同一个持续的 GDB 进程"]
-    G <-->|"TCP：GDB Remote Serial Protocol"| S["J-Link GDB Server"]
-    S <-->|USB| P["J-Link 探针"]
-    P <-->|SWD| M["STM32 MCU"]
-    E["工程 ELF：符号与固件"] --> G
-    F["工程源码"] --> U
-    C -->|托管模式创建 / 退出清理| S
-    X["先执行 tools/start_server.bat"] -.->|外部模式由用户启动| S
-```
+## 启动与状态
 
-人工和 AI 调用同一份核心逻辑、使用相同调试方法。目前两者是不同启动模式，不支持同时加入一个正在运行的会话，也不能同时用两个 GDB 抢占探针。
+无参数启动先进入 TUI 配置页，不启动 GDB 或占用探针。CLI 参数和界面编辑使用同一份项目文档模型；参数完整时可以直接连接，--setup 强制先进入配置页。工程目录中的 tools/debug-env.toml 可以自动发现，TUI 安装目录不作为工具查找路径。
 
-## 启动时序
+配置页的 F5 校验输入后，向旧会话发送 quit，等待清理响应和 Exit，再保存项目、创建新会话并连接。清理失败时停止切换。配置浏览和输入不执行硬件命令。
 
-```mermaid
-sequenceDiagram
-    participant User as 终端用户
-    participant UI as TUI
-    participant Core as 调试核心
-    participant Server as J-Link Server
-    participant GDB as GDB/MI
-    participant MCU as STM32
-    User->>UI: debugtui --project debug.toml
-    UI->>Core: connect
-    Core->>Core: 校验配置 / ELF / tools 资源
-    opt 托管模式
-        Core->>Server: 启动本包 Server
-        Server->>MCU: 连接探针并暂停
-        Server-->>Core: 日志提示已就绪
-    end
-    Core->>GDB: 启动 MI2，指定本包资源目录
-    Core->>GDB: 加载 ELF、源码映射、启用异步模式
-    GDB->>Server: extended-remote HOST:PORT
-    Core->>GDB: 暂停、恢复断点、读取栈/变量/寄存器
-    Core-->>UI: STOPPED 快照
-    User->>UI: F5
-    UI->>Core: continue
-    Core->>GDB: -exec-continue
-    GDB-->>Core: ^running / *running
-    Core-->>UI: RUNNING，显示上次暂停快照
-    MCU-->>Server: 断点触发
-    Server-->>GDB: stop reply
-    GDB-->>Core: *stopped
-    Core->>GDB: 读取当前源码位置和可见数据
-    Core-->>UI: STOPPED，新快照
-```
+1. 加载可选 tools 环境，合并项目字段，再应用 CLI 参数。
+2. 校验通用配置及可选符号文件，不校验某个 tools 二进制目录布局。
+3. 按需启动配置中的服务，读取 stdout/stderr 就绪标记；--connect/--local 跳过服务。
+4. 启动指定 GDB，使用 MI2，通过管道交换命令与异步事件。
+5. 加载可选符号和源码映射，执行 gdb.init。
+6. 选择 remote/extended-remote 或保持 local，执行显式 after_connect。
+7. 查询实际线程和栈状态；无运行目标为 READY，暂停为 STOPPED，运行中为 RUNNING。
+8. 动态获取寄存器和面板数据。每个动作的实际停止由异步事件确认。
 
-普通连接不下载。用户执行 `:download` 并确认后才写入 ELF。`continue` / `step` 请求完成只表示动作已提交，实际暂停由异步停止事件确认。运行中暂停通过 MI `-exec-interrupt`，不依赖模拟 Ctrl+C 信号。
+默认 run 使用 -exec-run；restart/download 只有在环境定义后可用。跨架构差异由匹配目标的 GDB 处理。默认连接和退出不发送 monitor 命令。
 
-## 模块与边界
+## 模块
 
-| 模块 | 责任 |
+| 文件 | 职责 |
 |---|---|
-| `main.rs` | CLI 参数、JSONL 输入输出、脚本失败与退出码 |
-| `ui.rs` | 终端生命周期、面板、输入、源码和有限长度日志 |
-| `session.rs` | 单 GDB 会话、MI 请求编号、异步事件、调试状态和快照 |
-| `mi.rs` | MI 嵌套记录及转义解析，保留重复字段 |
-| `config.rs` | TOML 校验、相对路径、源码映射、偏好保存 |
-| `process.rs` | Windows Job Object，清理本程序的子进程 |
+| cli.rs | 启动参数解析、界面预填和直接启动选项 |
+| launch.rs | 工程文档、启动表单、文件浏览器、相对路径保存 |
+| config.rs | 项目/环境合并、相对路径、通用启动与动作配置 |
+| session.rs | MI 请求队列、异步状态、通用进程管理、动态数据 |
+| mi.rs | MI 记录和转义解析 |
+| ui.rs | 终端绘制、输入、面板和下载确认 |
+| main.rs | CLI 和 JSONL |
+| process.rs | 宿主进程生命周期；Windows Job Object |
+| tools/ | 可选工具、厂商配置、启动脚本和许可证 |
 
-界面按事件更新、最多每 25 ms 绘制一次；闲置不重绘。MI 记录上限 1 MiB；日志队列、界面日志、监视表达式、内存读取与源码加载都有上限。整个调试核心只有一个拥有 GDB 的工作线程，读管道线程用于防止 stdout/stderr 堵塞，不另设网络守护进程。
+环境覆盖按字段合并，数组整体替换。相对启动路径基于定义该路径的文件，避免配置迁移后依赖启动目录。会话退出只保存项目的监视和断点。启动表单保存项目显式设置和环境引用，保留其余配置，不将整份已展开的环境配置写回项目；检测到外部修改启动设置时要求重新加载。
 
-正常退出：运行中的目标先暂停，清除会话断点，恢复目标运行，detach，关闭 GDB 与托管 Server。异常强制结束时 Job Object 负责子进程回收；无法承诺目标状态，重新连接后确认。外部服务由其自身的退出策略决定生命周期。
+## 退出与所有权
 
-## 第一版范围
+TUI 只终止自己启动的 GDB/服务/构建进程。默认 detach；resume/disconnect 可配置。before_disconnect 在停止状态下执行。目标最终运行状态还受远端 detach、服务退出和探针策略影响，不由 UI 猜测。
 
-已实现源码浏览、断点、硬件观察点、源码/指令单步、监视表达式、局部变量、调用栈、寄存器、内存、反汇编、GDB 控制台、下载、外部构建、会话日志和 JSONL 自动化。
+Windows 使用 Job Object 清理意外终止后的自有进程。非 Windows 分支尚未提供同等级进程树回收，当前发行和实测范围为 Windows x64。
 
-结构体/数组可通过 GDB 表达式查看成员，目前没有变量树展开；源码编辑器、SVD 外设位域、FreeRTOS 专项任务面板、多客户端共享会话和跨平台工具包是后续扩展。
+## 分发
 
-实现依据：[Ratatui](https://ratatui.rs/)、[GDB/MI](https://sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI.html)、[npm bin](https://docs.npmjs.com/cli/v11/configuring-npm/package-json/#bin)、[Windows Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)。
+- npm tgz / 便携 ZIP：TUI + 文档 + 本程序依赖许可证。
+- tools ZIP：独立的 GDB、服务程序、配置和原厂许可证。
+- Git：DebugTUI 源码和配置；应用 EXE 始终在 ignore 中。现有可选 tools 依赖继续单独维护。
+
+人工和 AI 使用同一核心、同一协议。当前两者是不同启动模式，没有多客户端会话服务；运行时没有 Node/Python 常驻依赖。

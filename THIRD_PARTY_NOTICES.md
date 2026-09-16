@@ -1,6 +1,6 @@
 # Third-party notices
 
-License inventory for the locked Windows GNU Cargo dependency graph, including build-time dependencies. Original notices are reproduced below. Rust standard-library notices are in licenses/rust/. GDB and J-Link retain the notices within tools/.
+License inventory for the locked Windows GNU Cargo dependency graph, including build-time dependencies. Original notices are reproduced below. Rust standard-library notices are in licenses/rust/. Optional GDB and probe servers are distributed separately with their environment notices.
 
 ## allocator-api2 0.2.21
 

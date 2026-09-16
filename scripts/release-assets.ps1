@@ -1,4 +1,4 @@
-param([switch]$SkipBuild)
+param([switch]$SkipBuild, [switch]$IncludeTools)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot
 & "$PSScriptRoot\package.ps1" -SkipBuild:$SkipBuild
@@ -32,17 +32,22 @@ $verified = Join-Path $artifactRoot ('release-verify-' + [Guid]::NewGuid().ToStr
 [IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $verified)
 $exe = Join-Path $verified 'debugtui.exe'
 if ((Get-FileHash -LiteralPath $exe).Hash -ne (Get-FileHash -LiteralPath "$projectRoot\bin\debugtui.exe").Hash) { throw 'ZIP executable differs from tested executable' }
-$dependencies = Get-Content "$verified\tools\dependencies.lock.json" -Raw | ConvertFrom-Json
-foreach ($entry in $dependencies.files.PSObject.Properties) {
-    if ((Get-FileHash -LiteralPath (Join-Path "$verified\tools" $entry.Name) -Algorithm SHA256).Hash -ne $entry.Value.sha256) { throw "ZIP dependency mismatch: $($entry.Name)" }
-}
+if (Test-Path -LiteralPath "$verified\tools") { throw 'Environment tools leaked into standalone ZIP' }
 if ((& $exe --version) -ne "debugtui $version") { throw 'ZIP version check failed' }
 & $exe --snapshot "$artifactRoot\release-demo.txt"
 if ($LASTEXITCODE -ne 0) { throw 'ZIP renderer check failed' }
 $tgzPath = Join-Path $artifactRoot $package.filename
-$assets = @($zipPath, $tgzPath)
+# Each release keeps this exact name, enabling /releases/latest/download/debugtui-cli.tgz.
+$stableTgzPath = Join-Path $artifactRoot 'debugtui-cli.tgz'
+Copy-Item -LiteralPath $tgzPath -Destination $stableTgzPath -Force
+if ((Get-FileHash -LiteralPath $stableTgzPath).Hash -ne (Get-FileHash -LiteralPath $tgzPath).Hash) { throw 'Stable npm asset differs from versioned package' }
+$assets = @($zipPath, $tgzPath, $stableTgzPath)
+if ($IncludeTools) {
+    & "$projectRoot\tools\package.ps1" -OutputDirectory $artifactRoot
+    $assets += Join-Path $artifactRoot 'debugtui-tools-stm32-jlink-win-x64.zip'
+}
 $hashes = @($assets | ForEach-Object { ((Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()) + '  ' + (Split-Path $_ -Leaf) })
 [IO.File]::WriteAllText((Join-Path $artifactRoot 'SHA256SUMS.txt'), ($hashes -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
-@{version=$version;zip=$zipPath;tgz=$tgzPath;sha256sums=(Join-Path $artifactRoot 'SHA256SUMS.txt');verifiedDirectory=$verified} | ConvertTo-Json | Set-Content "$artifactRoot\release-assets.json" -Encoding utf8
-Write-Output 'PASS portable ZIP: executable, complete dependency hashes, version and TUI renderer.'
+@{version=$version;zip=$zipPath;tgz=$tgzPath;stableTgz=$stableTgzPath;assets=$assets;sha256sums=(Join-Path $artifactRoot 'SHA256SUMS.txt');verifiedDirectory=$verified} | ConvertTo-Json | Set-Content "$artifactRoot\release-assets.json" -Encoding utf8
+Write-Output 'PASS standalone ZIP: executable, no bundled tools, version and TUI renderer.'
 $assets | ForEach-Object { $file = Get-Item -LiteralPath $_; Write-Output "$($file.Name): $($file.Length) bytes" }

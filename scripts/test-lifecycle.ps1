@@ -12,6 +12,11 @@ function Invoke-Headless([string]$Name, [string[]]$Extra, [int]$ExpectedExit) {
     & $binary --tools-dir $toolRoot --elf $Elf --script "$runRoot\connect.jsonl" @Extra > "$runRoot\$Name.events.jsonl" 2> "$runRoot\$Name.errors.txt"
     if ($LASTEXITCODE -ne $ExpectedExit) { throw "$Name returned $LASTEXITCODE instead of $ExpectedExit" }
     $events = @(Get-Content "$runRoot\$Name.events.jsonl" | ForEach-Object { $_ | ConvertFrom-Json })
+    # Invalid environment files fail before a session or child process is created.
+    if ($ExpectedExit -ne 0 -and $events.Count -eq 0) {
+        if (-not (Get-Content "$runRoot\$Name.errors.txt" -Raw)) { throw "$Name failed without diagnostics" }
+        return
+    }
     if (-not ($events | Where-Object { $_.event -eq 'response' -and $_.id -eq [uint64]::MaxValue }).ok) { throw "$Name cleanup failed" }
     $events
 }

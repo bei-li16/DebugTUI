@@ -1,16 +1,19 @@
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeMap,
     env, fs,
     path::{Path, PathBuf},
 };
-
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Project {
     pub version: u32,
     pub tools: Tools,
+    pub gdb: Gdb,
+    pub target: Target,
+    pub service: Option<Service>,
+    pub actions: Actions,
     pub program: Program,
-    pub server: Server,
     pub session: Session,
     pub watch: Vec<String>,
     pub breakpoints: Vec<String>,
@@ -23,36 +26,85 @@ pub struct Project {
 #[serde(default, deny_unknown_fields)]
 pub struct Tools {
     pub root: PathBuf,
+    pub profile: PathBuf,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Gdb {
+    pub executable: PathBuf,
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+    pub env: BTreeMap<String, String>,
+    pub unset_env: Vec<String>,
+    pub init: Vec<String>,
+}
+impl Default for Gdb {
+    fn default() -> Self {
+        Self {
+            executable: "gdb".into(),
+            args: vec![],
+            cwd: None,
+            env: BTreeMap::new(),
+            unset_env: vec![],
+            init: vec![],
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Target {
+    pub mode: String,
+    pub endpoint: String,
+    pub after_connect: Vec<String>,
+}
+impl Default for Target {
+    fn default() -> Self {
+        Self {
+            mode: "remote".into(),
+            endpoint: String::new(),
+            after_connect: vec![],
+        }
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Service {
+    pub enabled: bool,
+    pub command: PathBuf,
+    pub args: Vec<String>,
+    pub cwd: Option<PathBuf>,
+    pub env: BTreeMap<String, String>,
+    pub unset_env: Vec<String>,
+    pub ready: Vec<String>,
+    pub timeout_ms: u64,
+}
+impl Default for Service {
+    fn default() -> Self {
+        Self {
+            command: PathBuf::new(),
+            enabled: true,
+            args: vec![],
+            cwd: None,
+            env: BTreeMap::new(),
+            unset_env: vec![],
+            ready: vec![],
+            timeout_ms: 15000,
+        }
+    }
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Actions {
+    pub restart: Vec<String>,
+    pub run: Vec<String>,
+    pub download: Vec<String>,
+    pub before_disconnect: Vec<String>,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Program {
     pub elf: PathBuf,
     pub source_root: PathBuf,
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct Server {
-    pub mode: String,
-    pub device: String,
-    pub interface: String,
-    pub speed_khz: u32,
-    pub host: String,
-    pub port: u16,
-    pub serial: Option<String>,
-}
-impl Default for Server {
-    fn default() -> Self {
-        Self {
-            mode: "managed".into(),
-            device: "STM32F429IG".into(),
-            interface: "SWD".into(),
-            speed_khz: 4000,
-            host: "127.0.0.1".into(),
-            port: 3333,
-            serial: None,
-        }
-    }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -64,7 +116,7 @@ pub struct Session {
 impl Default for Session {
     fn default() -> Self {
         Self {
-            on_exit: "resume".into(),
+            on_exit: "detach".into(),
             timeout_ms: 8000,
             log_dir: None,
         }
@@ -85,7 +137,6 @@ pub struct Build {
     #[serde(default)]
     pub cwd: PathBuf,
 }
-
 fn absolute(base: &Path, value: &Path) -> PathBuf {
     if value.is_absolute() {
         value.to_owned()
@@ -97,96 +148,217 @@ pub fn portable_path(path: &Path) -> String {
     let s = path.to_string_lossy();
     s.strip_prefix("\\\\?\\").unwrap_or(&s).replace('\\', "/")
 }
+fn read_toml(path: &Path) -> Result<toml::Value, String> {
+    let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    toml::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|e| format!("{}: {e}", path.display()))
+}
+fn merge(base: &mut toml::Value, overlay: toml::Value) {
+    if let (Some(dst), Some(src)) = (base.as_table_mut(), overlay.as_table()) {
+        for (key, value) in src {
+            if let Some(old) = dst.get_mut(key) {
+                merge(old, value.clone());
+            } else {
+                dst.insert(key.clone(), value.clone());
+            }
+        }
+    } else {
+        *base = overlay;
+    }
+}
+fn expand(value: &mut toml::Value, directory: &str) {
+    match value {
+        toml::Value::String(s) => *s = s.replace("${profile_dir}", directory),
+        toml::Value::Array(v) => v.iter_mut().for_each(|v| expand(v, directory)),
+        toml::Value::Table(v) => v.iter_mut().for_each(|(_, v)| expand(v, directory)),
+        _ => {}
+    }
+}
+fn resolve_launch_paths(value: &mut toml::Value, base: &Path) {
+    for (section, executable) in [("gdb", "executable"), ("service", "command")] {
+        if let Some(table) = value.get_mut(section).and_then(toml::Value::as_table_mut) {
+            for key in [executable, "cwd"] {
+                if let Some(toml::Value::String(s)) = table.get_mut(key) {
+                    // Bare names use PATH. Explicit relative paths use their defining file.
+                    if key == "cwd" || s.contains('/') || s.contains('\\') {
+                        *s = portable_path(&absolute(base, Path::new(s)));
+                    }
+                }
+            }
+        }
+    }
+}
 impl Project {
     pub fn load(path: &Path) -> Result<Self, String> {
-        let path = fs::canonicalize(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        let text = fs::read_to_string(&path).map_err(|e| e.to_string())?;
-        let mut p: Self =
-            toml::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
-        if p.version > 1 {
+        Self::load_with_environment(Some(path), None)
+    }
+    pub fn load_with_environment(
+        path: Option<&Path>,
+        profile: Option<&Path>,
+    ) -> Result<Self, String> {
+        let path = path
+            .map(fs::canonicalize)
+            .transpose()
+            .map_err(|e| e.to_string())?;
+        let raw = if let Some(p) = &path {
+            read_toml(p)?
+        } else {
+            toml::Value::Table(toml::Table::new())
+        };
+        Self::from_document(raw, path, profile)
+    }
+    /// Resolve an in-memory project without creating a file or starting processes.
+    pub fn from_document(
+        mut raw: toml::Value,
+        path: Option<PathBuf>,
+        profile: Option<&Path>,
+    ) -> Result<Self, String> {
+        let base = path
+            .as_ref()
+            .and_then(|p| p.parent())
+            .map(Path::to_owned)
+            .unwrap_or(env::current_dir().map_err(|e| e.to_string())?);
+        if raw.get("server").is_some() {
+            return Err("Legacy [server] configuration: move service/chip settings to tools/debug-env.toml and use [target]. See README migration notes.".into());
+        }
+        let tools: Tools = raw
+            .get("tools")
+            .cloned()
+            .map(toml::Value::try_into)
+            .transpose()
+            .map_err(|e| format!("tools: {e}"))?
+            .unwrap_or_default();
+        let selected = if let Some(p) = profile {
+            Some(absolute(&env::current_dir().map_err(|e| e.to_string())?, p))
+        } else if !tools.profile.as_os_str().is_empty() {
+            Some(absolute(&base, &tools.profile))
+        } else if !tools.root.as_os_str().is_empty() {
+            Some(absolute(&base, &tools.root).join("debug-env.toml"))
+        } else {
+            None
+        };
+        let mut environment = toml::Value::Table(toml::Table::new());
+        let mut selected_path = None;
+        if let Some(p) = selected {
+            let p =
+                fs::canonicalize(&p).map_err(|e| format!("Environment {}: {e}", p.display()))?;
+            environment = read_toml(&p)?;
+            for key in environment
+                .as_table()
+                .ok_or("Environment must be a TOML table")?
+                .keys()
+            {
+                if !matches!(
+                    key.as_str(),
+                    "gdb" | "target" | "service" | "actions" | "session"
+                ) {
+                    return Err(format!("Unsupported environment section: {key}"));
+                }
+            }
+            let directory = p.parent().unwrap();
+            expand(&mut environment, &portable_path(directory));
+            resolve_launch_paths(&mut environment, directory);
+            selected_path = Some(p);
+        }
+        resolve_launch_paths(&mut raw, &base);
+        merge(&mut environment, raw);
+        let mut p: Self = environment
+            .try_into()
+            .map_err(|e| format!("Project: {e}"))?;
+        if p.version > 2 {
             return Err(format!("Unsupported project format {}", p.version));
         }
-        let base = path.parent().unwrap();
-        if !p.tools.root.as_os_str().is_empty() {
-            p.tools.root = absolute(base, &p.tools.root);
+        if let Some(profile) = selected_path {
+            p.tools.root = profile.parent().unwrap().to_owned();
+            p.tools.profile = profile;
         }
         if !p.program.elf.as_os_str().is_empty() {
-            p.program.elf = absolute(base, &p.program.elf);
+            p.program.elf = absolute(&base, &p.program.elf);
         }
-        p.program.source_root = absolute(base, &p.program.source_root);
+        if !p.program.source_root.as_os_str().is_empty() {
+            p.program.source_root = absolute(&base, &p.program.source_root);
+        }
         for map in &mut p.source_map {
-            map.to = absolute(base, &map.to);
+            map.to = absolute(&base, &map.to);
         }
         if let Some(b) = &mut p.build {
-            b.cwd = absolute(base, &b.cwd);
+            b.cwd = absolute(&base, &b.cwd);
         }
         if let Some(d) = &mut p.session.log_dir {
-            *d = absolute(base, d);
+            *d = absolute(&base, d);
         }
-        p.path = Some(path);
+        p.path = path;
         p.validate()?;
         Ok(p)
     }
     pub fn validate(&self) -> Result<(), String> {
-        if !matches!(self.server.mode.as_str(), "managed" | "external") {
-            return Err("server.mode must be managed or external".into());
+        if !matches!(
+            self.target.mode.as_str(),
+            "remote" | "extended-remote" | "local"
+        ) {
+            return Err("target.mode must be remote, extended-remote or local".into());
         }
-        if self.session.on_exit != "resume" {
-            return Err("session.on_exit must be resume: this J-Link backend resumes the MCU when the server exits. Keep the session open to retain a halted target.".into());
+        if !matches!(
+            self.session.on_exit.as_str(),
+            "detach" | "resume" | "disconnect"
+        ) {
+            return Err("session.on_exit must be detach, resume or disconnect".into());
         }
-        if self.server.port == 0 || self.server.speed_khz == 0 || self.session.timeout_ms == 0 {
-            return Err("Port, speed and timeout must be positive".into());
+        if self.session.timeout_ms == 0 {
+            return Err("Session timeout must be positive".into());
         }
-        if self.server.host.is_empty()
-            || !self
-                .server
-                .host
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | ':' | '[' | ']'))
+        if self.gdb.executable.as_os_str().is_empty() {
+            return Err("gdb.executable must not be empty".into());
+        }
+        if self.target.endpoint.chars().any(char::is_control) {
+            return Err("Invalid target endpoint".into());
+        }
+        if let Some(s) = &self.service
+            && s.enabled
         {
-            return Err("Invalid TCP host".into());
+            if s.command.as_os_str().is_empty() || s.timeout_ms == 0 {
+                return Err("service.command and positive timeout_ms are required".into());
+            }
+            if s.ready.iter().any(|s| s.is_empty()) {
+                return Err("Service readiness markers must not be empty".into());
+            }
+        }
+        for commands in [
+            &self.gdb.init,
+            &self.target.after_connect,
+            &self.actions.restart,
+            &self.actions.run,
+            &self.actions.download,
+            &self.actions.before_disconnect,
+        ] {
+            if commands
+                .iter()
+                .any(|s| s.trim().is_empty() || s.contains(['\n', '\r']))
+            {
+                return Err("Environment actions must be nonempty single-line GDB commands".into());
+            }
         }
         Ok(())
     }
-    pub fn resolve_tools(&mut self) -> Result<(), String> {
-        if self.tools.root.as_os_str().is_empty() {
-            let exe = env::current_exe().map_err(|e| e.to_string())?;
-            let parent = exe.parent().unwrap();
-            let candidates = [
-                parent.join("tools"),
-                parent.join("../tools"),
-                env::current_dir().map_err(|e| e.to_string())?.join("tools"),
-            ];
-            self.tools.root = candidates
-                .into_iter()
-                .find(|p| p.join("bin/gdb/bin/arm-none-eabi-gdb.exe").is_file())
-                .ok_or("Cannot find bundled tools. Use --tools-dir PATH.")?;
+    pub fn prepare(&mut self) -> Result<(), String> {
+        self.validate()?;
+        if self.target.mode != "local" && self.target.endpoint.is_empty() {
+            return Err(
+                "Set --connect HOST:PORT or target.endpoint; use --local for a local inferior"
+                    .into(),
+            );
         }
-        self.tools.root = fs::canonicalize(&self.tools.root).map_err(|e| format!("tools: {e}"))?;
-        for file in [
-            "bin/gdb/bin/arm-none-eabi-gdb.exe",
-            "bin/gdb/arm-none-eabi/share/gdb",
-            "bin/gdb/lib/debug",
-        ] {
-            if !self.tools.root.join(file).exists() {
-                return Err(format!("Missing tools resource: {file}"));
+        if !self.program.elf.as_os_str().is_empty() {
+            self.program.elf = fs::canonicalize(&self.program.elf)
+                .map_err(|e| format!("Program {}: {e}", self.program.elf.display()))?;
+            if !self.program.elf.is_file() {
+                return Err("Program must be a file".into());
+            }
+            if self.program.source_root.as_os_str().is_empty() {
+                self.program.source_root = self.program.elf.parent().unwrap().to_owned();
             }
         }
-        if self.server.mode == "managed" {
-            for file in ["bin/jlink/JLinkGDBServerCL.exe", "bin/jlink/JLink_x64.dll"] {
-                if !self.tools.root.join(file).is_file() {
-                    return Err(format!("Missing tools dependency: {file}"));
-                }
-            }
-        }
-        if !self.program.elf.is_file() {
-            return Err(format!("ELF not found: {}", self.program.elf.display()));
-        }
-        self.program.elf = fs::canonicalize(&self.program.elf).map_err(|e| e.to_string())?;
-        if self.program.source_root.as_os_str().is_empty() {
-            self.program.source_root = self.program.elf.parent().unwrap().to_owned();
-        }
-        self.validate()
+        Ok(())
     }
     pub fn source_path(&self, file: &str) -> Option<PathBuf> {
         let normalized = file.replace('\\', "/");
@@ -221,10 +393,7 @@ impl Project {
         let Some(path) = &self.path else {
             return Ok(());
         };
-        // Update only session preferences in the original file, preserving relative paths.
-        let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
-        let mut raw: toml::Value =
-            toml::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
+        let mut raw = read_toml(path)?;
         let table = raw.as_table_mut().ok_or("Project must be a TOML table")?;
         table.insert(
             "watch".into(),
@@ -241,17 +410,20 @@ impl Project {
         .map_err(|e| e.to_string())
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn rejects_invalid_modes() {
+    fn generic_modes() {
         let mut p = Project::default();
-        p.server.mode = "other".into();
-        assert!(p.validate().is_err());
-        p.server.mode = "managed".into();
-        p.session.on_exit = "halt".into();
+        for mode in ["remote", "extended-remote", "local"] {
+            p.target.mode = mode.into();
+            for policy in ["detach", "resume", "disconnect"] {
+                p.session.on_exit = policy.into();
+                assert!(p.validate().is_ok());
+            }
+        }
+        p.target.mode = "unknown".into();
         assert!(p.validate().is_err());
     }
     #[test]
@@ -262,24 +434,34 @@ mod tests {
         );
     }
     #[test]
-    fn saves_missing_preferences_without_changing_relative_paths() {
-        let path = env::temp_dir().join(format!("debugtui-config-{}.toml", std::process::id()));
-        fs::write(
-            &path,
-            "version = 1\n[program]\nelf = '../firmware/app.elf'\n",
-        )
-        .unwrap();
-        let project = Project::load(&path).unwrap();
-        project
-            .save_preferences(vec!["xTickCount".into()], vec!["main".into()])
+    fn standalone_needs_no_tools_or_symbols() {
+        let mut p = Project::default();
+        p.target.mode = "local".into();
+        assert!(p.prepare().is_ok());
+        assert!(p.service.is_none());
+        assert!(p.actions.restart.is_empty());
+    }
+    #[test]
+    fn environment_overlay_preserves_paths_and_preferences() {
+        let base = env::temp_dir().join(format!("debugtui-env-{}", std::process::id()));
+        fs::create_dir_all(base.join("tools")).unwrap();
+        fs::write(base.join("tools/debug-env.toml"),"[gdb]\nexecutable='./custom-gdb'\nargs=['--data-directory=${profile_dir}/data']\n[target]\nmode='extended-remote'\nendpoint='localhost:3333'\n[actions]\nrestart=['monitor custom-reset']\n").unwrap();
+        let path = base.join("project.toml");
+        fs::write(&path,"version=2\n[tools]\nroot='tools'\n[target]\nendpoint='localhost:4444'\n[program]\nelf='../app.elf'\n").unwrap();
+        let p = Project::load(&path).unwrap();
+        assert_eq!(p.target.endpoint, "localhost:4444");
+        assert_eq!(p.target.mode, "extended-remote");
+        assert!(p.gdb.executable.ends_with("tools/custom-gdb"));
+        assert!(!p.gdb.args[0].contains("${profile_dir}"));
+        p.save_preferences(vec!["counter".into()], vec!["main".into()])
             .unwrap();
-        let saved: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        assert_eq!(
-            saved["program"]["elf"].as_str(),
-            Some("../firmware/app.elf")
-        );
-        assert_eq!(saved["watch"][0].as_str(), Some("xTickCount"));
-        assert_eq!(saved["breakpoints"][0].as_str(), Some("main"));
+        let saved = read_toml(&path).unwrap();
+        assert!(saved.get("gdb").is_none());
+        assert_eq!(saved["tools"]["root"].as_str(), Some("tools"));
+        assert_eq!(saved["program"]["elf"].as_str(), Some("../app.elf"));
         fs::remove_file(path).unwrap();
+        fs::remove_file(base.join("tools/debug-env.toml")).unwrap();
+        fs::remove_dir(base.join("tools")).unwrap();
+        fs::remove_dir(base).unwrap();
     }
 }
