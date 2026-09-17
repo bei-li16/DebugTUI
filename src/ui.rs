@@ -105,7 +105,7 @@ Right bottom: Watch / Locals
 Tab / Shift+Tab switches view and keyboard focus.
 Click tabs to change only that group; source stays visible.
 Wheel over a view or drag its scrollbar to browse content.
-Click Stack rows to select a frame; Delete removes a breakpoint.
+Click Stack rows to select a frame; Delete removes a breakpoint or watch.
 Narrow terminals show the focused group; Tab reaches all views.
 Source files stay open in tabs; click a name or × to close.
 < / > and the tab-strip wheel browse hidden tabs; [Files N] lists all.
@@ -904,6 +904,12 @@ impl App {
                 if let Some(b) = self.snapshot.breakpoints.get(self.selection) {
                     let number = b.id.clone();
                     self.submit(engine, "delete_break", json!({"number":number}));
+                }
+            }
+            KeyCode::Delete if self.pane == 1 => {
+                if let Some(v) = self.snapshot.watches.get(self.selection / 2) {
+                    let name = v.name.clone();
+                    self.submit(engine, "unwatch", json!({"expression":name}));
                 }
             }
             _ => {}

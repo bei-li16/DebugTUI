@@ -274,13 +274,18 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                     .skip(start)
                     .take(rect.height as usize)
                     .map(|(i, b)| {
+                        let display = if !b.file.is_empty() && b.line > 0 {
+                            format!("{}:{}", b.file.replace('\\', "/"), b.line)
+                        } else {
+                            b.location.clone()
+                        };
                         Line::styled(
                             format!(
                                 "{} {} {} {}",
                                 if i == selection { "›" } else { " " },
                                 b.id,
                                 if b.enabled { "on" } else { "off" },
-                                b.location
+                                display
                             ),
                             theme::selected(i == selection),
                         )

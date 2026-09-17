@@ -64,11 +64,11 @@ impl Device {
         if device.address_unit_bits != 8 {
             return Err("SVD requires byte-addressed memory (addressUnitBits = 8)".into());
         }
-        let little_endian = device.cpu.as_ref().and_then(|cpu| match cpu.endian {
+        let little_endian = Some(device.cpu.as_ref().and_then(|cpu| match cpu.endian {
             Endian::Little => Some(true),
             Endian::Big => Some(false),
             _ => None,
-        });
+        }).unwrap_or(true));
         let mut peripherals = Vec::new();
         for peripheral in &device.peripherals {
             let mut registers = Vec::new();

@@ -1327,32 +1327,27 @@ impl Engine {
                 // Symbol queries never evaluate expressions or read target memory.
                 // Bare watch names use variables only, excluding function names.
                 if expression && input.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
-                    match self.mi(&format!(
+                    if let Ok(record) = self.mi(&format!(
                         "-symbol-info-variables --name {} --max-results 64",
                         mi::quote(&format!("^{input}"))
                     )) {
-                        Ok(record) => {
-                            let mut names = Vec::new();
-                            if let Some(debug) =
-                                record.data.field("symbols").and_then(|v| v.field("debug"))
-                            {
-                                for file in debug.items() {
-                                    if let Some(symbols) = file.field("symbols") {
-                                        names.extend(
-                                            symbols.items().iter().map(|s| s.string("name")),
-                                        );
-                                    }
+                        let mut names = Vec::new();
+                        if let Some(debug) =
+                            record.data.field("symbols").and_then(|v| v.field("debug"))
+                        {
+                            for file in debug.items() {
+                                if let Some(symbols) = file.field("symbols") {
+                                    names.extend(
+                                        symbols.items().iter().map(|s| s.string("name")),
+                                    );
                                 }
                             }
-                            names.retain(|s| !s.is_empty() && !s.chars().any(char::is_control));
-                            names.sort();
-                            names.dedup();
-                            names.truncate(64);
-                            return Ok(json!({"matches":names}));
                         }
-                        Err(error)
-                            if error.to_ascii_lowercase().contains("undefined mi command") => {}
-                        Err(error) => return Err(error),
+                        names.retain(|s| !s.is_empty() && !s.chars().any(char::is_control));
+                        names.sort();
+                        names.dedup();
+                        names.truncate(64);
+                        return Ok(json!({"matches":names}));
                     }
                 }
                 let query = if expression {
