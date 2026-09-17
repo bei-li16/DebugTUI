@@ -1,12 +1,12 @@
 use crate::{
     config::{Project, portable_path},
+    logging::{Stamp, Trace},
     mi::{self, Record, Value},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 use std::{
     collections::VecDeque,
-    fs::{self, File},
     io::{BufRead, BufReader, Read, Write},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
@@ -117,6 +117,8 @@ pub enum Event {
     Log {
         channel: String,
         text: String,
+        timestamp: String,
+        elapsed_ms: u64,
     },
     Response {
         id: u64,
@@ -195,24 +197,28 @@ fn tool_environment(
 }
 
 #[derive(Clone)]
-struct Logs(Arc<Mutex<VecDeque<(String, String)>>>);
+struct Logs(Arc<Mutex<VecDeque<(Stamp, String, String)>>>);
 impl Logs {
     fn push(&self, channel: &str, text: String) {
         if let Ok(mut q) = self.0.lock() {
             if q.len() >= 512 {
                 q.pop_front();
             }
-            q.push_back((channel.into(), text));
+            q.push_back((Stamp::now(), channel.into(), text));
         }
     }
-    fn drain(&self) -> Vec<(String, String)> {
+    fn drain(&self) -> Vec<(Stamp, String, String)> {
         self.0
             .lock()
             .map(|mut q| q.drain(..).collect())
             .unwrap_or_default()
     }
 }
-fn log_reader(stream: impl Read + Send + 'static, channel: &'static str, logs: Logs) {
+fn log_reader(
+    stream: impl Read + Send + 'static,
+    channel: &'static str,
+    logs: Logs,
+) -> thread::JoinHandle<()> {
     thread::spawn(move || {
         let mut r = BufReader::new(stream);
         let mut b = Vec::new();
@@ -223,7 +229,7 @@ fn log_reader(stream: impl Read + Send + 'static, channel: &'static str, logs: L
                 Ok(_) => logs.push(channel, String::from_utf8_lossy(&b).trim_end().into()),
             }
         }
-    });
+    })
 }
 enum Incoming {
     Record(Record),
@@ -263,8 +269,8 @@ struct Engine {
     gdb: Option<Gdb>,
     server: Option<ServerProcess>,
     logs: Logs,
-    trace: Option<File>,
-    trace_bytes: usize,
+    trace: Option<Trace>,
+    session_started: Instant,
     refresh_pending: bool,
     watch_names: Vec<String>,
     saved_breakpoints: Vec<String>,
@@ -274,6 +280,129 @@ struct Engine {
     cancellation: Arc<AtomicBool>,
 }
 impl Engine {
+    fn project_task(&mut self, kind: &'static str) -> Result<Json, String> {
+        let script = if kind == "build" {
+            &self.project.tasks.build
+        } else {
+            &self.project.tasks.download
+        };
+        let (mut command, cwd, description) = if !script.trim().is_empty() {
+            #[cfg(windows)]
+            let command = {
+                use std::os::windows::process::CommandExt;
+                let mut c =
+                    Command::new(std::env::var_os("COMSPEC").unwrap_or_else(|| "cmd.exe".into()));
+                c.args(["/D", "/V:OFF", "/S", "/C"])
+                    .raw_arg(format!("\"{script}\""));
+                c
+            };
+            #[cfg(not(windows))]
+            let command = {
+                let mut c = Command::new("sh");
+                c.args(["-c", script]);
+                c
+            };
+            (
+                command,
+                self.project.program.source_root.clone(),
+                script.clone(),
+            )
+        } else if kind == "build" {
+            let b = self
+                .project
+                .build
+                .as_ref()
+                .ok_or("Build is not configured. Set Build command in F2 Setup.")?;
+            let mut c = Command::new(&b.command);
+            c.args(&b.args);
+            (c, b.cwd.clone(), format!("{} {:?}", b.command, b.args))
+        } else {
+            return Err("Download is not configured. Set Download command in F2 Setup.".into());
+        };
+        let cwd = if cwd.as_os_str().is_empty() {
+            std::env::current_dir().map_err(|e| e.to_string())?
+        } else {
+            cwd
+        };
+        if !cwd.is_dir() {
+            return Err(format!(
+                "Task working directory does not exist: {}",
+                cwd.display()
+            ));
+        }
+        if self.cancellation.load(Ordering::Relaxed) {
+            return Err(format!("{kind} cancelled during exit"));
+        }
+        let reconnect = self.gdb.is_some();
+        if reconnect || self.server.is_some() {
+            self.log(
+                kind,
+                "Releasing the debug session before running the command.",
+            );
+            self.disconnect()?;
+        }
+        command
+            .current_dir(&cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        hidden(&mut command);
+        self.log(kind, format!("cwd: {}", portable_path(&cwd)));
+        self.log(kind, format!("> {description}"));
+        let job = crate::process::Job::new()?;
+        let mut child = command.spawn().map_err(|e| format!("Start {kind}: {e}"))?;
+        job.attach(&mut child)?;
+        self.state(if kind == "build" {
+            "BUILDING"
+        } else {
+            "DOWNLOADING"
+        });
+        let stdout = log_reader(child.stdout.take().unwrap(), kind, self.logs.clone());
+        let stderr = log_reader(child.stderr.take().unwrap(), kind, self.logs.clone());
+        let started = Instant::now();
+        let outcome = loop {
+            self.flush_logs();
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    break if status.success() {
+                        Ok(())
+                    } else {
+                        Err(format!("{kind} exited: {status}"))
+                    };
+                }
+                Err(e) => break Err(format!("Wait for {kind}: {e}")),
+                Ok(None) => {}
+            }
+            if self.cancellation.load(Ordering::Relaxed) {
+                break Err(format!("{kind} cancelled during exit"));
+            }
+            if started.elapsed() >= Duration::from_millis(self.project.tasks.timeout_ms) {
+                break Err(format!("{kind} timed out"));
+            }
+            thread::sleep(Duration::from_millis(25));
+        };
+        if outcome.is_err() {
+            let _ = child.kill();
+        }
+        let _ = child.wait();
+        // Close descendants before joining readers: inherited pipe handles must not hold up Exit.
+        drop(job);
+        let _ = stdout.join();
+        let _ = stderr.join();
+        self.flush_logs();
+        self.state("DISCONNECTED");
+        outcome?;
+        self.log(kind, "Command completed successfully.");
+        if reconnect && !self.cancellation.load(Ordering::Relaxed) {
+            self.connect()
+                .map_err(|e| format!("{kind} succeeded, but reconnect failed: {e}"))?;
+        }
+        Ok(if kind == "build" {
+            json!({"built":true,"task":kind,"completed":true,"state":self.snapshot.state})
+        } else {
+            json!({"downloaded":true,"task":kind,"completed":true,"state":self.snapshot.state})
+        })
+    }
     fn new(project: Project, events: SyncSender<Event>, cancellation: Arc<AtomicBool>) -> Self {
         let watch_names = project.watch.clone();
         let saved_breakpoints = project.breakpoints.clone();
@@ -285,7 +414,7 @@ impl Engine {
             server: None,
             logs: Logs(Arc::new(Mutex::new(VecDeque::new()))),
             trace: None,
-            trace_bytes: 0,
+            session_started: Instant::now(),
             refresh_pending: false,
             watch_names,
             saved_breakpoints,
@@ -308,29 +437,22 @@ impl Engine {
         self.publish();
     }
     fn log(&mut self, channel: &str, text: impl Into<String>) {
-        let text = text.into();
-        if let Some(file) = &mut self.trace {
-            const LIMIT: usize = 8 * 1024 * 1024;
-            let size = channel.len() + text.len() + 4;
-            if self.trace_bytes + size <= LIMIT {
-                let _ = writeln!(file, "[{channel}] {text}");
-                self.trace_bytes += size;
-            } else if self.trace_bytes <= LIMIT {
-                let _ = writeln!(
-                    file,
-                    "[session] Trace limit reached (8 MiB); further disk logging disabled."
-                );
-                self.trace_bytes = LIMIT + 1;
-            }
+        self.log_at(channel, text.into(), Stamp::now());
+    }
+    fn log_at(&mut self, channel: &str, text: String, stamp: Stamp) {
+        if let Some(trace) = &mut self.trace {
+            trace.write(&stamp, channel, &text);
         }
         self.emit(Event::Log {
             channel: channel.into(),
             text,
+            elapsed_ms: stamp.elapsed_ms(self.session_started),
+            timestamp: stamp.wall,
         });
     }
     fn flush_logs(&mut self) {
-        for (channel, text) in self.logs.drain() {
-            self.log(&channel, text);
+        for (stamp, channel, text) in self.logs.drain() {
+            self.log_at(&channel, text, stamp);
         }
     }
     fn run(&mut self, requests: Receiver<Request>) {
@@ -355,7 +477,9 @@ impl Engine {
             match requests.recv_timeout(Duration::from_millis(20)) {
                 Ok(request) => {
                     let result = self.execute(&request.method, &request.params);
-                    if let Err(error) = &result {
+                    if let Err(error) = &result
+                        && request.method != "complete"
+                    {
                         self.log("error", error.clone());
                     }
                     self.emit(Event::Response {
@@ -379,6 +503,13 @@ impl Engine {
             Incoming::Record(r) => {
                 if matches!(r.kind, '*' | '=') {
                     self.log("mi<", serde_json::to_string(&r).unwrap_or_default());
+                }
+                if r.kind == '+' && r.class == "download" {
+                    let sent = r.data.string("total-sent").parse::<u64>().ok();
+                    let total = r.data.string("total-size").parse::<u64>().ok();
+                    if let Some((sent, total)) = sent.zip(total).filter(|(_, total)| *total > 0) {
+                        self.log("progress",json!({"percent": (sent as u128 * 100 / total as u128).min(100) as u64}).to_string());
+                    }
                 }
                 if r.kind == '*' && r.class == "running" {
                     self.state("RUNNING");
@@ -656,19 +787,26 @@ impl Engine {
         if self.job.is_none() {
             self.job = Some(crate::process::Job::new()?);
         }
-        if let Some(dir) = &self.project.session.log_dir {
-            fs::create_dir_all(dir).map_err(|e| e.to_string())?;
-            self.trace = Some(
-                File::create(dir.join(format!(
-                        "session-{}.log",
-                        std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_millis()
-                    )))
-                .map_err(|e| e.to_string())?,
+        // Drain the preceding session before rotating its file on reconnect.
+        self.flush_logs();
+        let stamp = Stamp::now();
+        self.trace = self
+            .project
+            .session
+            .log_dir
+            .as_ref()
+            .map(|dir| Trace::open(dir, &stamp))
+            .transpose()
+            .map_err(|e| e.to_string())?;
+        self.session_started = stamp.at;
+        if let Some(trace) = &self.trace {
+            self.log(
+                "session",
+                format!(
+                    "Log: {} (wall clock; +elapsed uses a monotonic clock)",
+                    trace.path.display()
+                ),
             );
-            self.trace_bytes = 0;
         }
         let result = self.connect_inner();
         if result.is_err() {
@@ -1160,6 +1298,13 @@ impl Engine {
                 .to_owned()
         };
         match method {
+            "ui_preferences" => {
+                let ui: crate::config::Ui =
+                    serde_json::from_value(p.clone()).map_err(|e| e.to_string())?;
+                let saved = self.project.save_ui(&ui)?;
+                self.project.ui = ui;
+                Ok(json!({"saved":saved}))
+            }
             "connect" => self.connect(),
             "reconnect" => {
                 self.disconnect()?;
@@ -1172,6 +1317,70 @@ impl Engine {
                 result
             }
             "status" => Ok(serde_json::to_value(&self.snapshot).unwrap()),
+            "complete" => {
+                self.inactive()?;
+                let input = text("text");
+                if input.is_empty() || input.len() > 512 || input.chars().any(char::is_control) {
+                    return Ok(json!({"matches":[]}));
+                }
+                let expression = p.get("expression").and_then(Json::as_bool).unwrap_or(false);
+                // Symbol queries never evaluate expressions or read target memory.
+                // Bare watch names use variables only, excluding function names.
+                if expression && input.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                    match self.mi(&format!(
+                        "-symbol-info-variables --name {} --max-results 64",
+                        mi::quote(&format!("^{input}"))
+                    )) {
+                        Ok(record) => {
+                            let mut names = Vec::new();
+                            if let Some(debug) =
+                                record.data.field("symbols").and_then(|v| v.field("debug"))
+                            {
+                                for file in debug.items() {
+                                    if let Some(symbols) = file.field("symbols") {
+                                        names.extend(
+                                            symbols.items().iter().map(|s| s.string("name")),
+                                        );
+                                    }
+                                }
+                            }
+                            names.retain(|s| !s.is_empty() && !s.chars().any(char::is_control));
+                            names.sort();
+                            names.dedup();
+                            names.truncate(64);
+                            return Ok(json!({"matches":names}));
+                        }
+                        Err(error)
+                            if error.to_ascii_lowercase().contains("undefined mi command") => {}
+                        Err(error) => return Err(error),
+                    }
+                }
+                let query = if expression {
+                    format!("print {input}")
+                } else {
+                    input
+                };
+                let record = self.mi(&format!("-complete {}", mi::quote(&query)))?;
+                let mut names: Vec<String> = record
+                    .data
+                    .field("matches")
+                    .into_iter()
+                    .flat_map(|v| v.items())
+                    .filter_map(|v| {
+                        let value = if expression {
+                            v.text().strip_prefix("print ")?
+                        } else {
+                            v.text()
+                        };
+                        (!value.is_empty() && !value.chars().any(char::is_control))
+                            .then(|| value.to_owned())
+                    })
+                    .take(64)
+                    .collect();
+                names.sort();
+                names.dedup();
+                Ok(json!({"matches":names}))
+            }
             "continue" => {
                 if self.snapshot.state == "READY" {
                     return self.execute("run", p);
@@ -1255,11 +1464,19 @@ impl Engine {
                 if expr.is_empty() {
                     return Err("Expression is required".into());
                 }
-                if self.watch_names.len() >= 64 {
+                if self.watch_names.len() >= 64 && !self.watch_names.contains(&expr) {
                     return Err("Watch limit is 64 expressions".into());
                 }
                 if !self.watch_names.contains(&expr) {
-                    self.watch_names.push(expr);
+                    self.watch_names.push(expr.clone());
+                    if self.snapshot.state != "STOPPED" {
+                        self.snapshot.watches.push(Variable {
+                            name: expr,
+                            value: "<available after next stop>".into(),
+                            ..Default::default()
+                        });
+                        self.publish();
+                    }
                 }
                 if self.snapshot.state == "STOPPED" {
                     self.refresh()?;
@@ -1319,6 +1536,35 @@ impl Engine {
             "refresh" => {
                 self.refresh()?;
                 Ok(json!({"refreshed":true}))
+            }
+            "peripheral_read" => {
+                self.stopped()?;
+                let address = p
+                    .get("address")
+                    .and_then(Json::as_u64)
+                    .ok_or("Register address required")?;
+                let bits = p
+                    .get("bits")
+                    .and_then(Json::as_u64)
+                    .ok_or("Register width required")?;
+                let little = p
+                    .get("little_endian")
+                    .and_then(Json::as_bool)
+                    .ok_or("SVD byte order is not specified")?;
+                if !matches!(bits, 8 | 16 | 32 | 64) || !address.is_multiple_of(bits / 8) {
+                    return Err("Unsupported or unaligned register width".into());
+                }
+                let r = self.mi(&format!(
+                    "-data-read-memory-bytes 0x{address:x} {}",
+                    bits / 8
+                ))?;
+                let blocks = r.data.field("memory").map(Value::items).unwrap_or_default();
+                if blocks.len() != 1 {
+                    return Err("Incomplete register memory response".into());
+                }
+                let bytes = blocks[0].string("contents");
+                let value = crate::svd::decode_register(&bytes, bits as u32, little)?;
+                Ok(json!({"value": value, "address":address, "bits":bits}))
             }
             "memory" => {
                 self.stopped()?;
@@ -1412,6 +1658,9 @@ impl Engine {
                 Ok(json!({"files":self.snapshot.files}))
             }
             "download" => {
+                if !self.project.tasks.download.trim().is_empty() {
+                    return self.project_task("download");
+                }
                 if self.project.actions.download.is_empty() {
                     return Err("Download is not configured by this environment".into());
                 }
@@ -1457,50 +1706,7 @@ impl Engine {
                 self.project.program.elf = text("path").into();
                 Ok(json!({"elf":self.project.program.elf}))
             }
-            "build" => {
-                if self.gdb.is_some() {
-                    return Err("Disconnect before building and replacing ELF".into());
-                }
-                let b = self
-                    .project
-                    .build
-                    .clone()
-                    .ok_or("No [build] command configured")?;
-                let mut c = Command::new(&b.command);
-                c.args(&b.args)
-                    .current_dir(&b.cwd)
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped());
-                hidden(&mut c);
-                let build_job = crate::process::Job::new()?;
-                let mut child = c.spawn().map_err(|e| e.to_string())?;
-                build_job.attach(&mut child)?;
-                self.state("BUILDING");
-                log_reader(child.stdout.take().unwrap(), "build", self.logs.clone());
-                log_reader(child.stderr.take().unwrap(), "build", self.logs.clone());
-                let deadline = Instant::now() + Duration::from_secs(300);
-                loop {
-                    self.flush_logs();
-                    if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-                        self.state("DISCONNECTED");
-                        if status.success() {
-                            return Ok(json!({"built":true}));
-                        }
-                        return Err(format!("Build exited: {status}"));
-                    }
-                    if Instant::now() > deadline || self.cancellation.load(Ordering::Relaxed) {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        self.state("DISCONNECTED");
-                        return Err(if self.cancellation.load(Ordering::Relaxed) {
-                            "Build cancelled during exit".into()
-                        } else {
-                            "Build timed out".into()
-                        });
-                    }
-                    thread::sleep(Duration::from_millis(50));
-                }
-            }
+            "build" => self.project_task("build"),
             _ => Err(format!("Unknown method: {method}")),
         }
     }

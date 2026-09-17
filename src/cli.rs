@@ -33,7 +33,8 @@ impl Options {
                     options.explicit_launch = true;
                 }
                 "--project" | "--tools-dir" | "--environment" | "--elf" | "--gdb" | "--gdb-arg"
-                | "--connect" | "--target-mode" | "--log-dir" | "--script" | "--snapshot" => {
+                | "--connect" | "--target-mode" | "--log-dir" | "--script" | "--snapshot"
+                | "--svd" => {
                     let value = args
                         .next()
                         .ok_or_else(|| format!("{arg} requires a value"))?;
@@ -109,6 +110,7 @@ impl Options {
         for (key, value) in &self.values {
             match key.as_str() {
                 "--elf" => doc.set_path("program", "elf", &absolute(value)),
+                "--svd" => doc.set_path("program", "svd", &absolute(value)),
                 "--gdb" if value.contains(['/', '\\']) => {
                     doc.set_path("gdb", "executable", &absolute(value))
                 }

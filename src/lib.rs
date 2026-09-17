@@ -1,7 +1,10 @@
 pub mod cli;
 pub mod config;
 pub mod launch;
+pub(crate) mod logging;
 pub mod mi;
 pub mod process;
 pub mod session;
+pub mod svd;
+pub(crate) mod theme;
 pub mod ui;

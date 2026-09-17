@@ -23,6 +23,11 @@ try {
             $parent = $packages | Where-Object { $_.name -eq 'winapi' -and $_.repository -eq $package.repository } | Select-Object -First 1
             if ($parent) { $licenseFiles = @(Get-ChildItem -LiteralPath (Split-Path $parent.manifest_path) -File -Filter 'LICENSE-*') }
         }
+        if (-not $licenseFiles.Count -and $package.name -in @('svd-parser','svd-rs')) {
+            # These workspace crates omit the repository-root license files.
+            # Keep the originals from their packaged VCS revision under licenses/svd.
+            $licenseFiles = @(Get-ChildItem -LiteralPath "$projectRoot\licenses\svd" -File -Filter 'LICENSE-*')
+        }
         if (-not $licenseFiles.Count) { throw "No license text for $($package.name)" }
         foreach ($file in $licenseFiles | Sort-Object FullName -Unique) {
             $null = $text.AppendLine("### $($file.Name)`n")

@@ -1,6 +1,6 @@
 [package]
 name = "debugtui"
-version = "0.3.4"
+version = "0.6.1"
 edition = "2024"
 description = "Native terminal debugger using a configurable GDB/MI environment"
 license = "Apache-2.0"
@@ -18,6 +18,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "0.9"
 unicode-width = "0.2"
+svd-parser = { version = "0.14.10", features = ["expand"] }
 
 [profile.release]
 opt-level = "s"

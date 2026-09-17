@@ -17,7 +17,7 @@ pub(super) struct SourceTabs {
     reveal: bool,
     width: u16,
     strip: Rect,
-    tabs: Vec<(Rect, usize)>,
+    pub(super) tabs: Vec<(Rect, usize)>,
     closes: Vec<(Rect, usize)>,
     previous: Rect,
     next: Rect,
@@ -69,6 +69,7 @@ impl App {
         self.save_source_position();
         self.sources.active = None;
         self.source.clear();
+        self.source_comments.clear();
         self.source_file.clear();
         self.source_line = 0;
         self.source_top = 0;
@@ -128,10 +129,15 @@ impl App {
             return;
         }
         self.save_source_position();
+        if self.sources.active != Some(index) {
+            self.fx.tab_file = self.sources.documents[index].file.clone();
+            self.fx.trigger("tab", 650);
+        }
         let document = &self.sources.documents[index];
         if self.sources.active != Some(index) || self.source_file != document.file {
             // Cache metadata only for inactive tabs; source text is bounded to one file.
             self.source = self.read_source(&document.file);
+            self.source_comments = highlight::comment_starts(&self.source);
         }
         self.source_file = document.file.clone();
         self.source_line = document.line.min(self.source.len().saturating_sub(1));
@@ -198,6 +204,8 @@ impl App {
         self.sources.query.clear();
         self.sources.list_index = self.sources.active.unwrap_or(0);
         self.editing = false;
+        self.watch_editing = false;
+        self.completion.invalidate();
         self.scroll_drag = None;
     }
 
@@ -304,6 +312,8 @@ impl App {
             }
             MouseEventKind::Down(event::MouseButton::Left) => {
                 self.editing = false;
+                self.watch_editing = false;
+                self.completion.invalidate();
                 self.scroll_drag = None;
                 if let Some(&(_, index)) = self
                     .sources
@@ -430,7 +440,7 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
         return;
     }
     let count = a.sources.documents.len();
-    let list = format!("[Files {count}]");
+    let list = format!(" Files {count} ");
     let controls = list.len() as u16 + 8;
     let width = rect.width.saturating_sub(controls);
     if a.sources.width != width {
@@ -457,10 +467,7 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
     a.sources.reveal = false;
     a.sources.end = visible_end(&a.sources.documents, a.sources.first, width);
     a.sources.strip = rect;
-    f.render_widget(
-        Paragraph::new("─".repeat(rect.width as usize)).style(Style::default().fg(Color::DarkGray)),
-        rect,
-    );
+    theme::surface(f, rect, theme::CANVAS);
     let mut x = rect.x;
     for index in a.sources.first..a.sources.end {
         let tab_width = tab_width(&a.sources.documents, index, width);
@@ -472,18 +479,16 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
         let text = format!("{}{name}", if current { "▶" } else { " " });
         let hit = Rect::new(x, rect.y, tab_width, 1);
         let selected = a.sources.active == Some(index);
-        let style = Style::default()
-            .fg(if selected { Color::Cyan } else { Color::Gray })
-            .add_modifier(if selected {
-                Modifier::BOLD | Modifier::UNDERLINED
-            } else {
-                Modifier::empty()
-            });
-        f.render_widget(Clear, hit);
+        let hover = a.pointer.is_some_and(|p| hit.contains(p));
+        let style = theme::chip(selected, hover);
         f.render_widget(Paragraph::new(text).style(style), hit);
         let close = Rect::new(hit.right().saturating_sub(3), rect.y, 1, 1);
         f.render_widget(
-            Paragraph::new("×").style(Style::default().fg(Color::Gray)),
+            Paragraph::new("×").style(style.fg(if a.pointer.is_some_and(|p| close.contains(p)) {
+                theme::RED
+            } else {
+                theme::MUTED
+            })),
             close,
         );
         a.sources.tabs.push((hit, index));
@@ -492,7 +497,7 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
     }
     if count == 0 && width >= 10 {
         f.render_widget(
-            Paragraph::new(" No open files ").style(Style::default().fg(Color::DarkGray)),
+            Paragraph::new(" No open files ").style(Style::default().fg(theme::DIM)),
             Rect::new(rect.x, rect.y, width, 1),
         );
     }
@@ -502,16 +507,18 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
         a.sources.next = Rect::new(start + 4, rect.y, 3, 1);
         a.sources.list_button = Rect::new(start + 8, rect.y, list.len() as u16, 1);
         for (hit, text, enabled) in [
-            (a.sources.previous, "[<]", a.sources.first > 0),
-            (a.sources.next, "[>]", a.sources.end < count),
+            (a.sources.previous, " ‹ ", a.sources.first > 0),
+            (a.sources.next, " › ", a.sources.end < count),
             (a.sources.list_button, list.as_str(), true),
         ] {
             f.render_widget(
-                Paragraph::new(text).style(Style::default().fg(if enabled {
-                    Color::Cyan
-                } else {
-                    Color::DarkGray
-                })),
+                Paragraph::new(text).style(
+                    theme::chip(false, a.pointer.is_some_and(|p| hit.contains(p))).fg(if enabled {
+                        theme::ACCENT
+                    } else {
+                        theme::DIM
+                    }),
+                ),
                 hit,
             );
         }
@@ -523,10 +530,11 @@ pub(super) fn draw_list(f: &mut UiFrame, a: &mut App) {
         return;
     }
     let rect = center(f.area(), 110, 24);
-    f.render_widget(Clear, rect);
-    let block = Block::bordered()
-        .title(" Open files · Enter / click: switch · Delete: close · Esc ")
-        .border_style(Style::default().fg(Color::Cyan));
+    theme::overlay(f, rect);
+    let block = theme::card(
+        "  ≡  Open files · Enter: switch · Delete: close · Esc  ",
+        true,
+    );
     let inner = block.inner(rect);
     f.render_widget(block, rect);
     let rows = Layout::vertical([
@@ -536,7 +544,8 @@ pub(super) fn draw_list(f: &mut UiFrame, a: &mut App) {
     ])
     .split(inner);
     f.render_widget(
-        Paragraph::new(format!("Filter: {}", a.sources.query)),
+        Paragraph::new(format!(" / Filter: {}", a.sources.query))
+            .style(Style::default().fg(theme::ACCENT).bg(theme::RAISED)),
         rows[0],
     );
     let filtered = a.filtered_sources();
@@ -571,11 +580,7 @@ pub(super) fn draw_list(f: &mut UiFrame, a: &mut App) {
             )
         );
         f.render_widget(
-            Paragraph::new(text).style(Style::default().fg(if position == a.sources.list_index {
-                Color::Cyan
-            } else {
-                Color::Gray
-            })),
+            Paragraph::new(text).style(theme::selected(position == a.sources.list_index)),
             hit,
         );
         a.sources.list_hits.push((hit, index));
@@ -586,7 +591,7 @@ pub(super) fn draw_list(f: &mut UiFrame, a: &mut App) {
             filtered.len(),
             a.sources.documents.len()
         ))
-        .style(Style::default().fg(Color::DarkGray)),
+        .style(Style::default().fg(theme::DIM)),
         rows[2],
     );
 }

@@ -1,10 +1,52 @@
 # DebugTUI
 
-基于 GDB/MI 的原生终端调试工作台。当前源码版本 0.3.2，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
+基于 GDB/MI 的原生终端调试工作台。当前源码版本 0.6.1，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
 
 GitHub：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。源码使用 Apache-2.0；依赖声明见 NOTICE。
 
+## 0.6 铜橙 / 暖石墨工作台
+
+暖石墨背景、米白正文、铜橙焦点；绿色用于运行/成功，红色用于断点/错误。保留原有布局、源码标签、Console/Watch 输入和自动补全。
+
+### 动画与反馈
+
+在 Help 中选 **appearance**，或输入 `:appearance` 打开设置：
+
+- **Off**：静态反馈；**Subtle**：默认，短暂高亮；**Full**：加入断点扫描、真实单步落点残影和少量粒子。
+- 也可输入 `:animations off` / `:animations subtle` / `:animations full`；外观面板的 `u` 切换 Unicode / ASCII 动效字符。
+- 连接阶段来自真实环境、GDB、目标连接事件；成功后短暂点亮标题。RUNNING 有低频状态提示，运行期间旧 PC 和数值缓存变暗。
+- 真正停止后才强调 PC；断点短扫描、文件标签提示，单步最多保留 3 个实际执行落点的淡影。数值变化立即显示最终值，变化高亮淡出，变化圆点保持到下次刷新；可对齐的十六进制值强调变化数字，外设位域独立判断变化。
+- 输入聚焦、自动补全、提交、Watch 新增、错误、鼠标悬停/点击和滚动都有短反馈。粒子只落在空白单元格，避开输入文字。
+- Build / Download 在独立 Project 栏显示实际阶段和耗时，完成/失败状态保留；只有 GDB 报告真实下载计数时才显示百分比。
+- 短动画上限 25 FPS，忙碌/运行提示约 2.5 Hz；静止且无过渡时不产生装饰重绘。终端报告失焦时暂停装饰动画，任务耗时仅在聚焦时更新。动效不增加 GDB 读取，不延迟输入或调试事件；无新增运行时依赖、字体、图片或常驻服务。
+
+### 每个数据项独立选择进制
+
+右键具体数值，或选中数据行后按 **f**，选择 **2 / 8 / 10 / 16** 进制，Enter 或鼠标应用。长数值可在格式弹窗预览中换行查看。
+
+- **Watch、Locals、内存字节默认十进制**；**系统寄存器、SVD 外设寄存器和位域默认十六进制**。地址始终十六进制。
+- 每个变量/表达式、寄存器、位域或内存地址独立保存；Locals 按文件和函数区分同名变量。内存右键对应字节，格式不影响相邻字节。
+- 显示转换使用整数运算（最大 128 位），不写目标、不修改 GDB 的全局 radix、不发送额外 GDB 查询。负数保留符号，例如 `-1 → -0x1`；不猜测有符号数据的位宽。
+- 浮点、枚举名称、字符串和结构体等非整数显示保留 GDB 原文，并在格式弹窗提示。需要结构体成员的进制时，可单独 Watch `object.member`。
+- 设置保存到工程 `debug.toml` 的 `[ui]` / `[ui.formats]`；没有保存工程的临时会话只在当前会话生效。环境 tools 配置不写入 UI 偏好。
+
+使用 `debugtui --demo` 预览布局（不连接调试器）；实际连接、断点、任务动画由相应事件触发。
+
 ## 运行方式
+
+### SVD 外设寄存器
+
+启动页的 **SVD file** 支持输入路径或 F2 选文件，也可用 `--svd FILE` 指定。配置保存为 `[program] svd = "./chip.svd"`，相对路径以工程配置目录为基准；留空不启用外设描述。
+
+右侧标签顺序为 **System Regs → Peripherals → Stack → Memory → Breaks**。System Regs 显示 GDB 提供的 CPU/系统寄存器，Peripherals 根据 SVD 显示外设、寄存器及位域。
+
+- 点击或 Enter 展开/收起，左右键展开/收起；支持滚轮和拖动滚动条。
+- 仅在目标暂停、外设页可见时，读取已展开分组中当前可见的寄存器；每个停止代次读取一次，无定时轮询。隐藏、收起或目标运行时不发起自动读取，缓存值标为 `cached`。
+- 选中寄存器或其位域，点击 **Refresh selected**、按 `r` 或执行 `:peripheral-refresh`，只读取对应寄存器。读取失败显示行内错误，可手动重试。
+- 跳过只写寄存器；SVD 标记的寄存器/位域读取副作用会禁止自动读取，允许显式手动刷新。未在 SVD 声明的硬件副作用无法自动判断。
+- 支持 `derivedFrom`、数组、cluster、属性继承和位域；按文件声明的大小端解码对齐的 8/16/32/64 位寄存器。未知字节序和不支持的宽度只展示定义，不猜测值。
+
+SVD 解析器静态编译进 EXE，不增加运行时环境。SVD 文件按工程配置加载，不打入 EXE/npm 包；工程移交时请同时提供所引用的 SVD。
 
 安装或升级到 GitHub Release 最新正式版（Windows x64）：
 
@@ -140,8 +182,9 @@ actions 支持 restart、run、download、before_disconnect；target.after_conne
 - Source、Asm、Files、Log 和右侧检查面板都支持鼠标滚轮、点击滚动条轨道、拖动滑块，各标签保留浏览位置；内容不足一页时显示灰色轨道。点击源码行号切换断点。
 - Log 默认跟随最新输出，向上滚动后保持浏览位置，End 恢复跟随。
 - Console 固定显示 `gdb>` 输入框，点击或按 `/` 输入 GDB 命令（例如 `p/x counter`、`next`），也支持 `:watch counter` 等工作台命令。Enter 执行后继续输入，↑ / ↓ 调用历史，Esc 返回面板；输入时仍可使用调试功能键。
-- 源码上方的 Run、Continue、Pause、Reset、Reconnect、Step、Next、Finish 均可点击；不可用操作显示为灰色。Reset 对应环境的 restart 动作，Run 对应 run 动作，Next 为单步越过。
-- CommandList 按钮 / Ctrl+P 打开命令列表，支持鼠标点击和方向键选择。带参数的命令会填入输入栏，补齐参数后执行。
+- 源码上方的 Run、Continue、Pause、Reset、Reconnect、Step In、Step Over、Step Out、Exit 均可点击；不可用操作显示为灰色。Reset 对应环境的 restart 动作，Run 对应 run 动作。Step In / Step Over / Step Out 分别是进入函数 / 单步越过 / 跳出函数，底层仍对应 GDB 的 `step` / `next` / `finish`。
+- Exit / Ctrl+Q 按 `session.on_exit` 配置结束调试会话、释放自有调试进程并退出 TUI，运行中或未连接时也可用；仅断开连接并留在工作台可使用 `:disconnect`。
+- Help 按钮 / Ctrl+P 打开帮助面板，包含 Commands 和 Shortcuts 两页，点击页签或按 Tab 切换。命令列表支持鼠标点击和方向键选择；带参数的命令会填入输入栏，补齐参数后执行。`?` / `:help` 直接查看快捷键说明。
 - Asm 打开时自动请求当前 $pc 的反汇编，每次停止或切换栈帧后刷新；Memory 默认读取 $sp。加载失败会显示具体错误，:refresh 可重试。
 - Pause 同时等待停止通知并核对 GDB 线程状态，处理断点与暂停同时发生的情况；确认为停止后刷新上下文，无需重连。目标确实未停下时仍会报错，日志可用 --log-dir 开启。
 - 点击 Stack 中的栈帧直接切换上下文。Tab / Shift+Tab 轮换视图和键盘焦点；窄于 100 列的终端只显示当前焦点所属的一组面板。
@@ -181,7 +224,36 @@ actions 支持 restart、run、download、before_disconnect；target.after_conne
 
 支持源码、监视、局部变量、栈、寄存器、内存、反汇编、断点和控制台。目标运行时显示上次暂停快照。FreeRTOS、SVD、内置源码编辑器尚未实现。源码由项目提供；路径映射使用 [[source_map]] 的 from/to。
 
-可选 [build] 包含 command、args、cwd；构建前需断开会话，Ctrl+Q 可以取消构建并清理子进程。日志默认不落盘，--log-dir 开启后每次连接最多 8 MiB。
+### 构建与下载
+
+启动页在 Source root 后提供 **Build command** 和 **Download command**。填入完整命令行，例如 `build.bat`、`cmake --build Debug`、`"tools/flash app.bat" "Debug/app.elf"`。命令保留原始引号；Windows 使用 `cmd.exe /D /V:OFF /S /C`，可调用 BAT / CMD / EXE，PowerShell 脚本需显式写 `powershell -File ...`。
+
+```toml
+[program]
+elf = "Debug/app.elf"
+source_root = "."
+
+[tasks]
+build = 'build.bat'
+download = 'flash.bat'
+timeout_ms = 300000
+```
+
+- 两个脚本都以 **Source root** 为工作目录，相对脚本路径和参数也相对于此目录；Source root 留空时使用项目配置文件所在目录。命令保存在项目 `debug.toml`，不会改写 tools 配置。
+- 主界面顶部 **Project** 操作区独立显示 **Build / Download**，与下方 Run / Continue / 单步控制分开；窄窗口同样保留这两个入口。输出和失败信息显示在 Console。
+- 外部命令执行前释放已连接的 GDB / 自有服务，避免 ELF 或探针占用；命令成功后恢复原有连接并重新加载符号。失败后保持断开，方便修改或重试。运行中先 Pause，再点击按钮；执行中禁用重复任务，Ctrl+Q 可取消并清理本程序启动的子进程。
+- 尚未生成 ELF、但已配置 Build 时，可以进入工作台先构建，然后点击 Reconnect 开始调试。
+- Download 执行前显示命令与工作目录供确认。Download command 留空时继续使用 tools 的 `[actions].download` GDB 动作（需要目标暂停）；显式配置的脚本优先，二者不会同时执行。
+- 兼容旧 `[build] command / args / cwd` 配置；Build command 留空时使用旧配置，否则使用 Source root 下的新脚本。外部命令默认限时 300 秒，可用 `tasks.timeout_ms` 调整。
+
+### Console 历史与会话日志
+
+- Console 右侧支持滚轮、点击轨道和拖动滑块。点击输出区后可用 ↑↓、PgUp/PgDn、Home/End 浏览；Shift+PgUp 可直接从输入框进入历史，保留未发送的草稿。
+- 默认跟随最新输出，向上翻阅后保持当前位置；新消息显示在 **Latest (+N)** 计数中。点击 **Latest** 或在输出区按 **End** 恢复跟随。Enter 返回输入框，`/` 开始输入命令。
+- Console 保留最近 2,000 行；Log 页保留最近 1,000 行，均为有界内存缓存。更早的记录从磁盘日志查看。
+- 在启动页 **Log directory**、项目 `[session] log_dir` 或 `--log-dir` 设置日志目录后，每次连接（包括重连）新建 `session-YYYYMMDD-HHMMSS-mmm.log`，如 `session-20260917-171530-042.log`。同毫秒发生重名时追加序号，使用排他创建，旧文件不会覆盖；目录配置不变。默认不落盘，每次连接最多 8 MiB，达到上限时记录提示。
+- 文件中每个物理行包含记录时间和会话已运行时长，例如 `[2026-09-17 17:15:31.276] [+1.234s] [gdb] Breakpoint 1, main ...`。Windows 使用本机时间（毫秒），其他平台标记 UTC `Z`；运行时长使用单调时钟，不受系统校时影响。Console / Log 页显示简短时间 `HH:mm:ss.mmm`。
+- headless `log` 事件新增 `timestamp`、`elapsed_ms` 字段，`channel` / `text` 保持原有内容，结构化进度数据仍可直接解析。
 
 ## 人工和自动化
 
@@ -201,6 +273,14 @@ debugtui --project ./debug.toml --script ./commands.jsonl
 ~~~
 
 continue/run/step 返回表示请求已提交；wait_stopped 等待暂停或程序退出。程序未运行/已退出时状态为 READY；断点停下时为 STOPPED。脚本命令失败后停止并清理会话。当前不支持人工与 AI 同时加入同一运行会话。
+
+## Console 与 Watch 补全
+
+- 点击底部 `gdb>` 输入 GDB 命令，或输入 `:` 使用 DebugTUI 命令。输入时自动显示候选，支持 GDB 子命令及表达式参数。
+- Watch 面板底部新增 `watch>`：直接输入全局变量名或表达式，回车添加监视；也可以选中 Watch 后按 Enter 聚焦输入框。
+- `↑` / `↓` 选择候选，`Tab` 或鼠标点击填入，`Enter` 提交。没有候选时，Console 的 `↑` / `↓` 浏览历史命令；`Esc` 退出输入。
+- 变量名来自当前 ELF 的全局/静态符号；结构体成员（如 `object.field` / `pointer->field`）由 GDB 补全。符号补全在连接且未运行时可用，运行中不查询符号。
+- 补全查询异步执行，输入停顿 150 ms 后查询；最多显示 64 个候选，可继续输入缩小范围。补全不执行命令，旧输入的延迟回复不会覆盖新输入。
 
 ## 安装与分发
 

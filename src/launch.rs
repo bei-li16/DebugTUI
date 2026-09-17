@@ -1,10 +1,13 @@
 //! Project selection and launch configuration. No debugger processes are started here.
-use crate::config::{Project, portable_path};
+use crate::{
+    config::{Project, portable_path},
+    theme,
+};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    layout::{Constraint, Direction, Layout, Rect},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Paragraph, Wrap},
 };
@@ -13,11 +16,13 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-const LABELS: [&str; 15] = [
+const LABELS: [&str; 18] = [
     "Project",
     "Tools / profile",
     "Program / ELF",
     "Source root",
+    "Build command",
+    "Download command",
     "GDB executable",
     "GDB arguments",
     "Target mode",
@@ -26,15 +31,18 @@ const LABELS: [&str; 15] = [
     "Timeout (ms)",
     "On exit",
     "Log directory",
+    "SVD file",
     "Save to project",
     "Start debugging",
     "Save configuration",
 ];
-const HINTS: [&str; 15] = [
+const HINTS: [&str; 18] = [
     "Select a project directory or a debug.toml file. F2 browses files.",
     "Select project-local tools or an environment TOML; blank uses standalone GDB.",
     "Executable with debug symbols. Optional for a remote target. F2 browses files.",
-    "Source directory; source mappings in debug.toml are preserved.",
+    "Source directory and working directory for Build / Download commands. Blank uses the project directory.",
+    "Shell command in Source root, e.g. build.bat or cmake --build build. Blank uses legacy [build], if configured.",
+    "Shell command in Source root, e.g. flash.bat. Blank uses the tools profile's GDB download action.",
     "GDB executable path or a command on PATH. F2 browses files.",
     "Additional arguments as a JSON array, e.g. [\"--data-directory=C:/gdb/data\"].",
     "Left/Right or Enter: remote, extended-remote, local.",
@@ -43,6 +51,7 @@ const HINTS: [&str; 15] = [
     "Timeout for a GDB command; must be a positive number.",
     "Detach, resume then detach, or disconnect. Final behavior depends on the server.",
     "Optional directory for MI and server logs. Paths are relative to the project.",
+    "Optional CMSIS-SVD for peripheral registers. F2 browses files; relative to the project. Blank disables it.",
     "Save launch settings in the project before connecting; No keeps this session temporary.",
     "F5 starts debugging. Switching projects ends the current session first.",
     "Ctrl+S saves settings without connecting. Tools profiles are never rewritten.",
@@ -199,7 +208,8 @@ impl Document {
                 .original
                 .clone()
                 .ok_or("Project file appeared on disk; reload it before saving")?;
-            for key in ["watch", "breakpoints"] {
+            // Runtime display preferences can change while the setup form is open.
+            for key in ["watch", "breakpoints", "ui"] {
                 current_settings
                     .as_table_mut()
                     .ok_or("Project must be a table")?
@@ -371,6 +381,8 @@ impl Setup {
             profile,
             path(&p.program.elf),
             path(&p.program.source_root),
+            p.tasks.build,
+            p.tasks.download,
             if p.gdb.executable.is_absolute() {
                 path(&p.gdb.executable)
             } else {
@@ -388,6 +400,7 @@ impl Setup {
             p.session.timeout_ms.to_string(),
             p.session.on_exit,
             p.session.log_dir.as_deref().map(path).unwrap_or_default(),
+            path(&p.program.svd),
             if self.save {
                 "Yes"
             } else {
@@ -399,7 +412,12 @@ impl Setup {
         ]
     }
     fn set_value(&mut self, value: &str) -> Result<(), String> {
-        let value = value.trim().trim_matches('"');
+        // Shell commands must retain their executable/argument quotes verbatim.
+        let value = if matches!(self.selected, 4 | 5) {
+            value.trim()
+        } else {
+            value.trim().trim_matches('"')
+        };
         if self.selected == 0 {
             let doc = Document::open(&absolute(self.document.base(), Path::new(value)))?;
             self.document = doc;
@@ -422,7 +440,16 @@ impl Setup {
                     doc.set_path("program", key, &path);
                 }
             }
-            4 => {
+            4 | 5 => doc.set(
+                "tasks",
+                if self.selected == 4 {
+                    "build"
+                } else {
+                    "download"
+                },
+                value.into(),
+            ),
+            6 => {
                 if value.contains(['/', '\\']) {
                     let path = absolute(doc.base(), Path::new(value));
                     doc.set_path("gdb", "executable", &path);
@@ -430,7 +457,7 @@ impl Setup {
                     doc.set("gdb", "executable", value.into());
                 }
             }
-            5 => {
+            7 => {
                 let args: Vec<String> =
                     serde_json::from_str(value).map_err(|e| format!("GDB arguments: {e}"))?;
                 doc.set(
@@ -439,15 +466,15 @@ impl Setup {
                     toml::Value::Array(args.into_iter().map(toml::Value::String).collect()),
                 );
             }
-            6 => {
+            8 => {
                 doc.set("target", "mode", value.into());
                 if value == "local" {
                     doc.set("service", "enabled", false.into());
                 }
             }
-            7 => doc.set("target", "endpoint", value.into()),
-            8 => doc.set("service", "enabled", (value == "Yes").into()),
-            9 => doc.set(
+            9 => doc.set("target", "endpoint", value.into()),
+            10 => doc.set("service", "enabled", (value == "Yes").into()),
+            11 => doc.set(
                 "session",
                 "timeout_ms",
                 toml::Value::Integer(
@@ -456,8 +483,8 @@ impl Setup {
                         .map_err(|_| "Timeout must be a positive integer")?,
                 ),
             ),
-            10 => doc.set("session", "on_exit", value.into()),
-            11 => {
+            12 => doc.set("session", "on_exit", value.into()),
+            13 => {
                 if value.is_empty() {
                     if let Some(t) = doc
                         .raw
@@ -469,6 +496,14 @@ impl Setup {
                 } else {
                     let path = absolute(doc.base(), Path::new(value));
                     doc.set_path("session", "log_dir", &path);
+                }
+            }
+            14 => {
+                if value.is_empty() {
+                    doc.set("program", "svd", "".into());
+                } else {
+                    let path = absolute(doc.base(), Path::new(value));
+                    doc.set_path("program", "svd", &path);
                 }
             }
             _ => {}
@@ -484,14 +519,14 @@ impl Setup {
         Ok(())
     }
     fn cycle(&mut self, backwards: bool) -> Result<(), String> {
-        if self.selected == 12 {
+        if self.selected == 15 {
             self.save = !self.save;
             return Ok(());
         }
         let values: &[&str] = match self.selected {
-            6 => &["remote", "extended-remote", "local"],
-            8 => &["No", "Yes"],
-            10 => &["detach", "resume", "disconnect"],
+            8 => &["remote", "extended-remote", "local"],
+            10 => &["No", "Yes"],
+            12 => &["detach", "resume", "disconnect"],
             _ => return Ok(()),
         };
         let current = self.values()[self.selected].clone();
@@ -550,7 +585,7 @@ impl Setup {
                         }
                     }
                 }
-                KeyCode::Char(' ') if matches!(self.selected, 0 | 1 | 3 | 11) => {
+                KeyCode::Char(' ') if matches!(self.selected, 0 | 1 | 3 | 13) => {
                     let path = browser.directory.clone();
                     self.choose_path(&path)?;
                 }
@@ -576,7 +611,7 @@ impl Setup {
                 self.selected = (self.selected + LABELS.len() - 1) % LABELS.len()
             }
             KeyCode::Down | KeyCode::Tab => self.selected = (self.selected + 1) % LABELS.len(),
-            KeyCode::F(2) if matches!(self.selected, 0..=4 | 11) => {
+            KeyCode::F(2) if matches!(self.selected, 0..=3 | 6 | 13 | 14) => {
                 let value = self.values()[self.selected].clone();
                 let path = absolute(self.document.base(), Path::new(&value));
                 self.browser = Some(Browser::open(if path.exists() {
@@ -586,13 +621,16 @@ impl Setup {
                 })?);
             }
             KeyCode::Left | KeyCode::Right => self.cycle(key.code == KeyCode::Left)?,
-            KeyCode::Enter if matches!(self.selected, 6 | 8 | 10 | 12) => self.cycle(false)?,
-            KeyCode::Enter if self.selected < 13 => {
+            KeyCode::Enter if matches!(self.selected, 8 | 10 | 12 | 15) => self.cycle(false)?,
+            KeyCode::Enter if self.selected < 16 => {
                 self.editor = Some(Editor::new(self.values()[self.selected].clone()))
             }
-            KeyCode::F(5) | KeyCode::Enter if key.code == KeyCode::F(5) || self.selected == 13 => {
+            KeyCode::F(5) | KeyCode::Enter if key.code == KeyCode::F(5) || self.selected == 16 => {
                 let mut project = self.document.project()?;
-                project.prepare()?;
+                project.prepare_workspace()?;
+                if !project.program.svd.as_os_str().is_empty() {
+                    crate::svd::Device::load(&project.program.svd)?;
+                }
                 self.pending = true;
                 self.message =
                     "Closing the previous session and preparing the selected project...".into();
@@ -604,7 +642,7 @@ impl Setup {
             KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.save_document()?
             }
-            KeyCode::Enter if self.selected == 14 => self.save_document()?,
+            KeyCode::Enter if self.selected == 17 => self.save_document()?,
             _ => {}
         }
         Ok(None)
@@ -620,7 +658,7 @@ impl Setup {
         } else {
             relative_path(self.document.base(), path)
         };
-        if self.selected == 4 && !value.contains(['/', '\\']) {
+        if self.selected == 6 && !value.contains(['/', '\\']) {
             value = format!("./{value}");
         }
         self.browser = None;
@@ -629,7 +667,16 @@ impl Setup {
         Ok(())
     }
     pub fn draw(&self, f: &mut Frame) {
-        let area = f.area();
+        let screen = f.area();
+        f.render_widget(Block::default().style(theme::base()), screen);
+        let width = screen.width.min(122);
+        let height = screen.height.min(31);
+        let area = Rect::new(
+            screen.x + (screen.width - width) / 2,
+            screen.y + (screen.height - height) / 2,
+            width,
+            height,
+        );
         if area.width < 45 || area.height < 12 {
             f.render_widget(
                 Paragraph::new(format!(
@@ -653,9 +700,12 @@ impl Setup {
         f.render_widget(
             Paragraph::new(vec![
                 Line::from(Span::styled(
-                    format!(" DebugTUI v{}  /  Launch setup", env!("CARGO_PKG_VERSION")),
+                    format!(
+                        " ◈ DebugTUI v{}  /  Launch setup",
+                        env!("CARGO_PKG_VERSION")
+                    ),
                     Style::default()
-                        .fg(Color::Cyan)
+                        .fg(theme::ACCENT)
                         .add_modifier(Modifier::BOLD),
                 )),
                 Line::raw(" Select a project, configure its environment, start debugging."),
@@ -682,23 +732,20 @@ impl Setup {
                     Line::styled(
                         format!(
                             "{} {} {name}",
-                            if i == browser.selected { ">" } else { " " },
-                            if p.is_dir() { "[DIR] " } else { "[FILE]" }
+                            if i == browser.selected { "›" } else { " " },
+                            if p.is_dir() { "▸ dir " } else { "· file" }
                         ),
-                        Style::default().fg(if i == browser.selected {
-                            Color::Cyan
-                        } else {
-                            Color::Reset
-                        }),
+                        theme::selected(i == browser.selected),
                     )
                 })
                 .collect::<Vec<_>>();
-            f.render_widget(
-                Paragraph::new(lines).block(
-                    Block::bordered().title(format!(" {} ", portable_path(&browser.directory))),
-                ),
-                rows[1],
+            let block = theme::card(
+                format!("  Files / {}  ", portable_path(&browser.directory)),
+                true,
             );
+            let inner = block.inner(rows[1]);
+            f.render_widget(block, rows[1]);
+            theme::lines(f, lines, inner);
             f.render_widget(Paragraph::new(" Enter: open directory / select file   Space: select current directory\n Backspace: parent   Esc: cancel").wrap(Wrap { trim: false }), rows[2]);
         } else {
             let height = rows[1].height.saturating_sub(2) as usize;
@@ -720,9 +767,11 @@ impl Setup {
                     let shown = if value.is_empty() { "(not set)" } else { value };
                     let prefix = format!(
                         "{} {label:<18} ",
-                        if i == self.selected { ">" } else { " " }
+                        if i == self.selected { "›" } else { " " }
                     );
-                    let available = rows[1].width.saturating_sub(prefix.len() as u16 + 2) as usize;
+                    let available = rows[1].width.saturating_sub(
+                        unicode_width::UnicodeWidthStr::width(prefix.as_str()) as u16 + 2,
+                    ) as usize;
                     let shown = if let Some(e) = &self.editor
                         && i == self.selected
                     {
@@ -741,22 +790,24 @@ impl Setup {
                     };
                     Line::styled(
                         format!("{prefix}{shown}"),
-                        Style::default().fg(if i == self.selected {
-                            Color::Cyan
+                        theme::selected(i == self.selected).fg(if i >= 16 {
+                            theme::GREEN
+                        } else if i == self.selected {
+                            theme::ACCENT
                         } else {
-                            Color::Reset
+                            theme::TEXT
                         }),
                     )
                 })
                 .collect::<Vec<_>>();
-            f.render_widget(
-                Paragraph::new(lines).block(Block::bordered().title(" Session configuration ")),
-                rows[1],
-            );
+            let block = theme::card("  ◇  Session configuration  ", true);
+            let inner = block.inner(rows[1]);
+            f.render_widget(block, rows[1]);
+            theme::lines(f, lines, inner);
             f.render_widget(
                 Paragraph::new(format!(" {}", HINTS[self.selected]))
                     .wrap(Wrap { trim: false })
-                    .style(Style::default().fg(Color::DarkGray)),
+                    .style(Style::default().fg(theme::MUTED)),
                 rows[2],
             );
         }
@@ -764,9 +815,9 @@ impl Setup {
             Paragraph::new(format!(" {}", self.message))
                 .wrap(Wrap { trim: false })
                 .style(Style::default().fg(if self.message.starts_with("Error") {
-                    Color::Red
+                    theme::RED
                 } else {
-                    Color::Green
+                    theme::GREEN
                 })),
             rows[3],
         );
@@ -774,7 +825,7 @@ impl Setup {
             " Enter: apply  Esc: cancel  Home/End/Arrows: move  Ctrl+U: clear"
         } else {
             " Tab/Arrows: select  Enter: edit  F2: browse\n F5: start  Ctrl+S: save  Esc: workspace  Ctrl+Q: quit"
-        }).style(Style::default().fg(Color::DarkGray)), rows[4]);
+        }).style(Style::default().fg(theme::MUTED)), rows[4]);
     }
 }
 
@@ -850,11 +901,11 @@ mod tests {
         assert!(setup.browser.is_none());
         assert!(setup.key(key(KeyCode::F(5))).is_none());
         assert!(setup.message.starts_with("Error")); // no endpoint
-        setup.selected = 7;
+        setup.selected = 9;
         setup.key(key(KeyCode::Enter));
         setup.paste("localhost:3333");
         setup.key(key(KeyCode::Enter));
-        setup.selected = 12;
+        setup.selected = 15;
         setup.key(key(KeyCode::Enter));
         let launch = setup.key(key(KeyCode::F(5))).unwrap();
         assert!(!launch.save);
@@ -863,6 +914,50 @@ mod tests {
             "localhost:3333"
         );
         assert!(!setup.document.path.exists()); // selecting / starting does not write early
+    }
+
+    #[test]
+    fn svd_field_browses_saves_relative_and_clears_without_changing_tools() {
+        let root = std::env::temp_dir().join(format!("debugtui-svd-{}", std::process::id()));
+        fs::create_dir_all(root.join("chip")).unwrap();
+        fs::write(
+            root.join("chip/test.svd"),
+            include_str!("../tests/fixtures/peripherals.svd"),
+        )
+        .unwrap();
+        let mut setup = Setup::new(Document::empty(root.join("debug.toml")));
+        setup.document.set("target", "mode", "local".into());
+        setup.selected = 14;
+        setup.key(key(KeyCode::F(2)));
+        assert!(setup.browser.is_some());
+        setup.key(key(KeyCode::Esc));
+        setup.choose_path(&root.join("chip/test.svd")).unwrap();
+        setup.save_document().unwrap();
+        let saved = Document::open(&root).unwrap();
+        assert_eq!(saved.raw["program"]["svd"].as_str(), Some("chip/test.svd"));
+        assert_eq!(
+            saved.project().unwrap().program.svd,
+            fs::canonicalize(root.join("chip/test.svd")).unwrap()
+        );
+        setup.set_value("chip/missing.svd").unwrap();
+        assert!(setup.key(key(KeyCode::F(5))).is_none());
+        assert!(setup.message.contains("SVD"));
+        setup.set_value("").unwrap();
+        setup.save_document().unwrap();
+        assert!(
+            Document::open(&root)
+                .unwrap()
+                .project()
+                .unwrap()
+                .program
+                .svd
+                .as_os_str()
+                .is_empty()
+        );
+        fs::remove_file(root.join("debug.toml")).unwrap();
+        fs::remove_file(root.join("chip/test.svd")).unwrap();
+        fs::remove_dir(root.join("chip")).unwrap();
+        fs::remove_dir(root).unwrap();
     }
 
     #[test]
@@ -888,6 +983,49 @@ mod tests {
         assert_eq!(editor.text, "工程x");
     }
 
+    #[test]
+    fn task_commands_preserve_quotes_source_root_and_profile_fallback() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.0.join("source root")).unwrap();
+        fs::write(
+            fixture.0.join("tools/debug-env.toml"),
+            "[actions]\ndownload=['load']\n",
+        )
+        .unwrap();
+        let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+        setup.selected = 3;
+        setup.set_value("source root").unwrap();
+        setup.selected = 4;
+        let command = r#""scripts/build app.bat" "argument with spaces""#;
+        setup.set_value(command).unwrap();
+        setup.selected = 5;
+        setup.set_value("flash.bat && echo done").unwrap();
+        setup.document.save().unwrap();
+        let project = Document::open(&setup.document.path)
+            .unwrap()
+            .project()
+            .unwrap();
+        assert_eq!(project.tasks.build, command);
+        assert_eq!(project.tasks.download, "flash.bat && echo done");
+        assert_eq!(
+            project.program.source_root,
+            setup.document.base().join("source root")
+        );
+        assert_eq!(project.actions.download, ["load"]);
+        setup.set_value("").unwrap();
+        assert!(setup.document.project().unwrap().has_download());
+        setup.selected = 2;
+        setup.set_value("not-built.elf").unwrap();
+        assert!(setup.key(key(KeyCode::F(5))).is_some());
+        assert!(
+            !setup
+                .document
+                .project()
+                .unwrap()
+                .prepare_workspace()
+                .unwrap()
+        );
+    }
     #[test]
     fn setup_renders_all_fields_and_browser_in_small_and_large_terminals() {
         let fixture = Fixture::new();

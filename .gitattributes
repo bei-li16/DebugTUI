@@ -8,3 +8,5 @@
 tools/bin/** -text -filter -whitespace
 licenses/** -text -whitespace
 THIRD_PARTY_NOTICES.md -whitespace
+# Preserve the vendor SVD byte-for-byte, including its original whitespace.
+resources/svd/**/*.svd -text -whitespace

@@ -1,22 +1,43 @@
 use super::*;
 
-const ACTIONS: [(&str, &str); 9] = [
-    ("Run", "run"),
-    ("Continue", "continue"),
-    ("Pause", "pause"),
-    ("Reset", "restart"),
-    ("Reconnect", "reconnect"),
-    ("Step", "step"),
-    ("Next", "next"),
-    ("Finish", "finish"),
-    ("CommandList", "commandlist"),
+const ACTIONS: [(&str, &str); 10] = [
+    ("▶ Run", "run"),
+    ("▷ Continue", "continue"),
+    ("Ⅱ Pause", "pause"),
+    ("↺ Reset", "restart"),
+    ("↔ Reconnect", "reconnect"),
+    ("↓ Step In", "step"),
+    ("→ Step Over", "next"),
+    ("↑ Step Out", "finish"),
+    ("× Exit", "quit"),
+    ("? Help", "commandlist"),
 ];
+const PROJECT_ACTIONS: [(&str, &str); 2] = [("◆ Build", "build"), ("↓ Download", "download")];
+
+fn project_bar(f: &mut UiFrame, a: &mut App, rect: Rect) {
+    theme::surface(f, rect, theme::CANVAS);
+    f.render_widget(
+        Paragraph::new(" Project ").style(Style::default().fg(theme::DIM)),
+        rect,
+    );
+    let buttons = Rect::new(rect.x + 9, rect.y, 25.min(rect.width.saturating_sub(9)), 1);
+    toolbar(f, a, buttons, &PROJECT_ACTIONS);
+    let (note, color) =
+        a.fx.task_label(&a.snapshot.state)
+            .unwrap_or_else(|| ("F2 configure · output in Console".into(), theme::DIM));
+    if rect.width >= 70 {
+        f.render_widget(
+            Paragraph::new(note).style(Style::default().fg(color)),
+            Rect::new(rect.x + 36, rect.y, rect.width - 36, 1),
+        );
+    }
+}
 
 fn wrapped_height(labels: &[&str], width: u16) -> u16 {
     let mut rows = 1;
     let mut x = 0;
     for label in labels {
-        let len = label.len() as u16 + 3;
+        let len = unicode_width::UnicodeWidthStr::width(*label) as u16 + 3;
         if x > 0 && x + len > width {
             rows += 1;
             x = 0;
@@ -26,7 +47,12 @@ fn wrapped_height(labels: &[&str], width: u16) -> u16 {
     rows
 }
 
+fn hovered(a: &App, rect: Rect) -> bool {
+    a.pointer.is_some_and(|p| rect.contains(p))
+}
+
 fn tabs(f: &mut UiFrame, a: &mut App, rect: Rect, panes: &[usize], selected: usize) {
+    theme::surface(f, rect, theme::PANEL);
     let mut x = rect.x;
     let mut y = rect.y;
     for &pane in panes {
@@ -40,25 +66,20 @@ fn tabs(f: &mut UiFrame, a: &mut App, rect: Rect, panes: &[usize], selected: usi
             break;
         }
         let hit = Rect::new(x, y, width.min(rect.right().saturating_sub(x)), 1);
-        let style = if pane == selected {
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD | Modifier::UNDERLINED)
-        } else {
-            Style::default().fg(Color::Gray)
-        };
+        let style = theme::chip(pane == selected, hovered(a, hit));
         f.render_widget(Paragraph::new(label).style(style), hit);
         a.pane_hits.push((hit, pane));
         x += width + 1;
     }
 }
 
-fn toolbar(f: &mut UiFrame, a: &mut App, rect: Rect) {
+fn toolbar(f: &mut UiFrame, a: &mut App, rect: Rect, actions: &[(&str, &'static str)]) {
+    theme::surface(f, rect, theme::PANEL);
     let mut x = rect.x;
     let mut y = rect.y;
-    for (label, command) in ACTIONS {
-        let text = format!("[{label}]");
-        let width = text.len() as u16;
+    for &(label, command) in actions {
+        let text = format!(" {label} ");
+        let width = unicode_width::UnicodeWidthStr::width(text.as_str()) as u16;
         if x > rect.x && x + width > rect.right() {
             y += 1;
             x = rect.x;
@@ -67,12 +88,24 @@ fn toolbar(f: &mut UiFrame, a: &mut App, rect: Rect) {
             break;
         }
         let hit = Rect::new(x, y, width.min(rect.right().saturating_sub(x)), 1);
-        let color = if a.action_enabled(command) {
-            Color::Cyan
+        let enabled = a.action_enabled(command);
+        let (fg, bg) = if !enabled {
+            (theme::DIM, theme::PANEL)
+        } else if hovered(a, hit) {
+            (theme::TEXT, theme::HOVER)
+        } else if command == "continue" || command == "run" {
+            (theme::GREEN, theme::PC)
+        } else if command == "pause" {
+            (theme::AMBER, theme::CHANGE)
+        } else if command == "quit" {
+            (theme::RED, theme::RAISED)
         } else {
-            Color::DarkGray
+            (theme::TEXT, theme::RAISED)
         };
-        f.render_widget(Paragraph::new(text).style(Style::default().fg(color)), hit);
+        f.render_widget(
+            Paragraph::new(text).style(Style::default().fg(fg).bg(bg)),
+            hit,
+        );
         a.action_hits.push((hit, command));
         x += width + 1;
     }
@@ -100,8 +133,8 @@ fn scrollbar(f: &mut UiFrame, a: &App, pane: usize) {
         .map(|row| {
             let active = max > 0 && (top..top + thumb).contains(&row);
             Line::styled(
-                if active { "█" } else { "│" },
-                Style::default().fg(if active { Color::Cyan } else { Color::DarkGray }),
+                if active { "┃" } else { "│" },
+                Style::default().fg(if active { theme::ACCENT } else { theme::DIM }),
             )
         })
         .collect::<Vec<_>>();
@@ -119,39 +152,58 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
     let selection = a.selected(pane);
     let start = a.view_tops[pane];
     scrollbar(f, a, pane);
+    if pane == peripherals::PANE {
+        a.draw_peripherals(f, rect);
+        return;
+    }
     if let Some(error) = &a.view_errors[pane] {
         f.render_widget(
             Paragraph::new(format!("{error}\n\n:refresh retries this view."))
-                .style(Style::default().fg(Color::Yellow))
+                .style(Style::default().fg(theme::AMBER))
                 .wrap(Wrap { trim: false }),
             rect,
         );
         return;
     }
-    let lines: Vec<Line> = match pane {
-        1 | 9 => {
-            let vars = if pane == 1 {
-                &a.snapshot.watches
-            } else {
-                &a.snapshot.locals
-            };
-            if vars.is_empty() {
-                if pane == 1 {
-                    vec![
-                        Line::raw("No watches yet."),
-                        Line::raw(":watch EXPRESSION adds a variable."),
-                    ]
-                } else {
-                    vec![Line::raw("No locals in this frame.")]
-                }
-            } else {
-                variables(vars)
-                    .into_iter()
-                    .skip(start)
-                    .take(rect.height as usize)
-                    .collect()
+    if a.view_len(pane) == 0 {
+        let (title, hint) = match pane {
+            1 => ("No watches yet", "Enter a variable in watch> below."),
+            9 => (
+                "No locals in this frame",
+                "Select a stopped frame to inspect its variables.",
+            ),
+            6 => ("No breakpoints", "F9 in Source, or :break LOCATION"),
+            7 => (
+                "Source files",
+                "Connect to GDB to load the source file list.",
+            ),
+            2 => ("Call stack", "Pause the target to inspect its frames."),
+            3 => ("Registers", "Connect and pause to inspect register values."),
+            4 | 5 if a.snapshot.state == "RUNNING" => {
+                ("Target running", "Pause the target to load this view.")
             }
-        }
+            4 | 5 if a.snapshot.state == "STOPPED" => (
+                "Reading from GDB…",
+                "The view will update when the request completes.",
+            ),
+            4 | 5 => (
+                "Waiting for target",
+                "Connect and stop the target to load this view.",
+            ),
+            _ => ("Session log", "Debugger events will appear here."),
+        };
+        theme::empty(f, rect, title, hint);
+        return;
+    }
+    if matches!(pane, 1 | 3 | 9) {
+        a.numeric_view(f, pane, rect);
+        return;
+    }
+    if pane == 4 {
+        a.memory_view(f, rect);
+        return;
+    }
+    let lines: Vec<Line> = match pane {
         2 => a
             .snapshot
             .stack
@@ -168,33 +220,7 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                         s.function,
                         s.line
                     ),
-                    Style::default().fg(if i == selection {
-                        Color::Cyan
-                    } else {
-                        Color::Reset
-                    }),
-                )
-            })
-            .collect(),
-        3 => a
-            .snapshot
-            .registers
-            .iter()
-            .skip(start)
-            .take(rect.height as usize)
-            .map(|v| {
-                Line::styled(
-                    format!(
-                        " {:8} {}{}",
-                        v.name,
-                        v.value,
-                        if v.changed { " *" } else { "" }
-                    ),
-                    Style::default().fg(if v.changed {
-                        Color::Yellow
-                    } else {
-                        Color::Reset
-                    }),
+                    theme::selected(i == selection),
                 )
             })
             .collect(),
@@ -232,10 +258,7 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                                     )
                                     .is_some_and(|(left, right)| left == right)
                             });
-                        Line::styled(
-                            format!("{}{s}", if current { "▶ " } else { "  " }),
-                            Style::default().fg(if current { Color::Green } else { Color::Reset }),
-                        )
+                        data_line(s, current, pane == 5)
                     })
                     .collect()
             }
@@ -259,11 +282,7 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                                 if b.enabled { "on" } else { "off" },
                                 b.location
                             ),
-                            Style::default().fg(if i == selection {
-                                Color::Cyan
-                            } else {
-                                Color::Reset
-                            }),
+                            theme::selected(i == selection),
                         )
                     })
                     .collect()
@@ -279,11 +298,7 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
             .map(|(i, s)| {
                 Line::styled(
                     format!("{} {s}", if i == selection { "›" } else { " " }),
-                    Style::default().fg(if i == selection {
-                        Color::Cyan
-                    } else {
-                        Color::Reset
-                    }),
+                    theme::selected(i == selection),
                 )
             })
             .collect(),
@@ -292,10 +307,10 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
             .iter()
             .skip(start)
             .take(rect.height as usize)
-            .map(|s| Line::raw(s.clone()))
+            .map(|s| log_line(s))
             .collect(),
     };
-    f.render_widget(Paragraph::new(lines), rect);
+    theme::lines(f, lines, rect);
 }
 
 fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
@@ -321,7 +336,7 @@ fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
             && !a.snapshot.frame.address.is_empty()
         {
             format!(
-                "No source location for PC {} ({}).\n\nInspect Asm / Regs and the GDB / server log.\nStep / Next need function debug information.\nUse :stepi only when the address contains valid code.\nFor an unexpected address, check target state before continuing.",
+                "No source location for PC {} ({}).\n\nInspect Asm / Regs and the GDB / server log.\nStep In / Step Over need function debug information.\nUse :stepi only when the address contains valid code.\nFor an unexpected address, check target state before continuing.",
                 a.snapshot.frame.address, a.snapshot.frame.function
             )
         } else {
@@ -366,25 +381,42 @@ fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
                     i + 1
                 ),
                 Style::default().fg(if pc {
-                    Color::Green
+                    theme::GREEN
                 } else if bp {
-                    Color::Red
+                    theme::RED
                 } else if selected {
-                    Color::Cyan
+                    theme::ACCENT
                 } else {
-                    Color::DarkGray
+                    theme::DIM
                 }),
             )];
-            spans.extend(syntax(line));
-            Line::from(spans)
+            spans[0].style = spans[0].style.bg(theme::CANVAS);
+            spans.push(Span::styled(
+                "│ ",
+                Style::default().fg(theme::BORDER).bg(theme::PANEL),
+            ));
+            let mut in_comment = a.source_comments.get(i).copied().unwrap_or(false);
+            spans.extend(syntax(line, &mut in_comment));
+            Line::from(spans).style(Style::default().bg(if pc {
+                theme::PC
+            } else if selected {
+                theme::SELECTED
+            } else {
+                theme::PANEL
+            }))
         })
         .collect::<Vec<_>>();
-    f.render_widget(Paragraph::new(lines), a.source_rect);
+    theme::lines(f, lines, a.source_rect);
     scrollbar(f, a, 0);
 }
 
 fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
-    let toolbar_height = wrapped_height(&ACTIONS.map(|(name, _)| name), rect.width);
+    theme::surface(f, rect, theme::PANEL);
+    // Keep source visible in very short terminals; every action remains in Help.
+    let compact = [ACTIONS[1], ACTIONS[2], ACTIONS[8], ACTIONS[9]];
+    let actions: &[(&str, &str)] = if rect.height < 8 { &compact } else { &ACTIONS };
+    let labels: Vec<_> = actions.iter().map(|(name, _)| *name).collect();
+    let toolbar_height = wrapped_height(&labels, rect.width);
     let rows = Layout::vertical([
         Constraint::Length(1),
         Constraint::Length(toolbar_height),
@@ -392,7 +424,7 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     ])
     .split(rect);
     tabs(f, a, rows[0], &MAIN_PANES, a.main_pane);
-    toolbar(f, a, rows[1]);
+    toolbar(f, a, rows[1], actions);
     let title = match a.main_pane {
         0 => String::new(),
         5 => " Assembly · follows $pc · :disasm ADDRESS ".into(),
@@ -404,7 +436,13 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
         }
         .into(),
     };
-    let block = section(title);
+    let block = section(title).border_style(Style::default().fg(
+        if MAIN_PANES.contains(&a.pane) && !a.input_active() {
+            theme::ACCENT
+        } else {
+            theme::BORDER
+        },
+    ));
     let inner = block.inner(rows[2]);
     f.render_widget(block, rows[2]);
     if a.main_pane == 0 {
@@ -424,6 +462,7 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
 }
 
 fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
+    theme::surface(f, rect, theme::PANEL);
     if (compact || rect.height <= 12) && VARIABLE_PANES.contains(&a.pane) {
         variable_panel(f, a, rect);
         return;
@@ -444,13 +483,34 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
     tabs(f, a, rows[0], &SIDE_PANES, a.side_pane);
     let title = match a.side_pane {
         2 => " Stack · click / Enter selects frame ",
-        3 => " Registers ",
+        3 => " System registers ",
         4 => " Memory · :memory ADDRESS [COUNT] ",
         _ => " Breakpoints · Delete removes selected ",
     };
-    let block = section(title);
-    let inner = block.inner(rows[1]);
+    let title = if a.side_pane == peripherals::PANE {
+        a.peripheral_title()
+    } else {
+        title.to_owned()
+    };
+    let block = section(title).border_style(Style::default().fg(
+        if SIDE_PANES.contains(&a.pane) && !a.input_active() {
+            theme::ACCENT
+        } else {
+            theme::BORDER
+        },
+    ));
+    let mut inner = block.inner(rows[1]);
     f.render_widget(block, rows[1]);
+    if a.side_pane == peripherals::PANE && inner.height > 1 {
+        toolbar(
+            f,
+            a,
+            Rect::new(inner.x, inner.y, inner.width, 1),
+            &[("↻ Refresh selected", "peripheral-refresh")],
+        );
+        inner.y += 1;
+        inner.height -= 1;
+    }
     view(f, a, a.side_pane, inner);
     a.side_rect = a.view_rects[a.side_pane];
     if local_height > 0 {
@@ -459,70 +519,324 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
 }
 
 fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
+    theme::surface(f, rect, theme::PANEL);
     let divider = section("");
     let inner = divider.inner(rect);
     f.render_widget(divider, rect);
-    let rows = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).split(inner);
+    let watch = a.variable_pane == 1;
+    let rows = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Min(0),
+        Constraint::Length(if watch { 1 } else { 0 }),
+    ])
+    .split(inner);
     tabs(f, a, rows[0], &VARIABLE_PANES, a.variable_pane);
     view(f, a, a.variable_pane, rows[1]);
+    if watch {
+        a.watch_input_rect = rows[2];
+        input_line(
+            f,
+            rows[2],
+            " watch> ",
+            &a.watch_input,
+            a.watch_editing,
+            "Global variable… Tab complete · Enter add",
+            "Tab complete · Enter add",
+        );
+    }
 }
 
-fn console_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
-    let block = section(" Console · GDB commands / :commands ");
-    let inner = block.inner(rect);
-    f.render_widget(block, rect);
-    let rows = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).split(inner);
-    let lines = a
-        .console
-        .iter()
-        .skip(a.console.len().saturating_sub(rows[0].height as usize))
-        .map(|line| Line::raw(line.clone()))
-        .collect::<Vec<_>>();
-    f.render_widget(Paragraph::new(lines), rows[0]);
-    a.console_input_rect = rows[1];
-    let prefix = "gdb> ";
-    let available = rows[1].width.saturating_sub(prefix.len() as u16 + 1) as usize;
-    // Keep the insertion point visible for long commands, including wide characters.
+fn input_line(
+    f: &mut UiFrame,
+    area: Rect,
+    prefix: &str,
+    text: &str,
+    focused: bool,
+    placeholder: &str,
+    hint: &str,
+) {
+    theme::surface(f, area, if focused { theme::RAISED } else { theme::PANEL });
+    let hint_width = if area.width >= 85 {
+        hint.len() as u16 + 1
+    } else {
+        0
+    };
+    let available = area
+        .width
+        .saturating_sub(prefix.len() as u16 + 1 + hint_width) as usize;
     let mut start = 0;
-    let mut width = unicode_width::UnicodeWidthStr::width(a.input.as_str());
-    for (index, ch) in a.input.char_indices() {
+    let mut width = unicode_width::UnicodeWidthStr::width(text);
+    for (index, ch) in text.char_indices() {
         if width <= available {
             break;
         }
         width = width.saturating_sub(unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0));
         start = index + ch.len_utf8();
     }
-    let placeholder = a.input.is_empty() && !a.editing;
-    let content = if placeholder {
-        "Click or / to type; Enter sends"
-    } else {
-        &a.input[start..]
-    };
+    let empty = text.is_empty();
     f.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled(prefix, Style::default().fg(Color::Cyan)),
             Span::styled(
-                content,
-                Style::default().fg(if placeholder {
-                    Color::DarkGray
-                } else {
-                    Color::Reset
-                }),
+                prefix,
+                Style::default()
+                    .fg(theme::ACCENT)
+                    .add_modifier(Modifier::BOLD),
             ),
-        ]))
-        .style(Style::default().bg(if a.editing {
-            Color::Rgb(24, 33, 40)
-        } else {
-            Color::Reset
-        })),
-        rows[1],
+            Span::styled(
+                if empty { placeholder } else { &text[start..] },
+                Style::default().fg(if empty { theme::DIM } else { theme::TEXT }),
+            ),
+        ])),
+        Rect {
+            width: area.width.saturating_sub(hint_width),
+            ..area
+        },
     );
-    if a.editing && rows[1].width > 0 && rows[1].height > 0 {
+    if hint_width > 0 {
+        f.render_widget(
+            Paragraph::new(hint).style(Style::default().fg(theme::DIM)),
+            Rect::new(area.right() - hint_width, area.y, hint_width, 1),
+        );
+    }
+    if focused && area.width > 0 && area.height > 0 {
         f.set_cursor_position((
-            rows[1].x + (prefix.len() as u16 + width as u16).min(rows[1].width - 1),
-            rows[1].y,
+            area.x + (prefix.len() as u16 + width as u16).min(area.width - 1),
+            area.y,
         ));
     }
+}
+
+fn completion_popup(f: &mut UiFrame, a: &mut App) {
+    if !a.input_active() || a.help || a.palette || a.confirm.is_some() || a.sources.list_open {
+        return;
+    }
+    let anchor = if a.watch_editing {
+        a.watch_input_rect
+    } else {
+        a.console_input_rect
+    };
+    if anchor.height == 0 || anchor.y < 4 || a.completion.items.is_empty() {
+        return;
+    }
+    let count = a.completion.items.len();
+    let visible = count.min(6).min(anchor.y.saturating_sub(3) as usize);
+    let width = (a
+        .completion
+        .items
+        .iter()
+        .map(|s| unicode_width::UnicodeWidthStr::width(s.as_str()))
+        .max()
+        .unwrap_or(0) as u16
+        + 4)
+    .clamp(38, 90)
+    .min(anchor.width);
+    let height = visible as u16 + 3;
+    let rect = Rect::new(anchor.x, anchor.y - height, width, height);
+    a.completion.area = rect;
+    theme::surface(f, rect, theme::PANEL);
+    let block = theme::card(format!(" {} suggestions ", count), true);
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+    let start = a
+        .completion
+        .selected
+        .saturating_sub(visible.saturating_sub(1));
+    for (row, (index, text)) in a
+        .completion
+        .items
+        .iter()
+        .enumerate()
+        .skip(start)
+        .take(visible)
+        .enumerate()
+    {
+        let hit = Rect::new(inner.x, inner.y + row as u16, inner.width, 1);
+        let selected = index == a.completion.selected;
+        f.render_widget(
+            Paragraph::new(format!(" {}", text)).style(
+                Style::default()
+                    .bg(if selected {
+                        theme::SELECTED
+                    } else {
+                        theme::PANEL
+                    })
+                    .fg(if selected { theme::TEXT } else { theme::MUTED }),
+            ),
+            hit,
+        );
+        a.completion.hits.push((hit, index));
+    }
+    f.render_widget(
+        Paragraph::new(" ↑↓ select · Tab / click fill").style(Style::default().fg(theme::DIM)),
+        Rect::new(inner.x, inner.bottom() - 1, inner.width, 1),
+    );
+}
+
+fn console_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
+    let block = section("  ›_ Console  ");
+    theme::surface(f, rect, theme::CANVAS);
+    let inner = block.inner(rect);
+    f.render_widget(block, rect);
+    let input_height = if rect.height >= 6 { 3 } else { 1 };
+    let rows =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(input_height)]).split(inner);
+    a.console_view.layout(rows[0], a.console.len());
+    let latest = if a.console_view.follow {
+        " LIVE · Latest ".into()
+    } else {
+        format!(" Latest (+{}) ", a.console_view.unread)
+    };
+    let button_width = (latest.len() as u16).min(rect.width.saturating_sub(16));
+    a.console_view.latest = Rect::new(
+        rect.right().saturating_sub(button_width),
+        rect.y,
+        button_width,
+        rect.height.min(1),
+    );
+    if rect.width >= 75 {
+        let status = if a.console_view.follow {
+            "GDB / :commands · Shift+PgUp history".into()
+        } else {
+            format!(
+                "History {}–{} / {} · End: latest",
+                a.console_view.top + 1,
+                (a.console_view.top + rows[0].height as usize).min(a.console.len()),
+                a.console.len()
+            )
+        };
+        f.render_widget(
+            Paragraph::new(status).style(Style::default().fg(theme::DIM)),
+            Rect::new(
+                rect.x + 16,
+                rect.y,
+                rect.width.saturating_sub(button_width + 17),
+                1,
+            ),
+        );
+    }
+    f.render_widget(
+        Paragraph::new(latest).style(
+            Style::default()
+                .fg(if a.console_view.follow {
+                    theme::GREEN
+                } else {
+                    theme::ACCENT
+                })
+                .bg(theme::RAISED),
+        ),
+        a.console_view.latest,
+    );
+    let lines = a
+        .console
+        .iter()
+        .skip(a.console_view.top)
+        .take(rows[0].height as usize)
+        .map(|line| log_line(line))
+        .collect::<Vec<_>>();
+    f.render_widget(Paragraph::new(lines), a.console_view.rect);
+    let (top, size, max) = a.console_view.thumb(a.console.len());
+    let track = (0..a.console_view.bar.height as usize)
+        .map(|row| {
+            let active = max > 0 && (top..top + size).contains(&row);
+            let glyph = if a.project.ui.unicode {
+                if active { "┃" } else { "│" }
+            } else if active {
+                "#"
+            } else {
+                "|"
+            };
+            Line::styled(
+                glyph,
+                Style::default().fg(if active { theme::ACCENT } else { theme::DIM }),
+            )
+        })
+        .collect::<Vec<_>>();
+    f.render_widget(Paragraph::new(track), a.console_view.bar);
+    let input_area = if input_height == 3 {
+        let block = theme::card("", a.editing || hovered(a, rows[1]));
+        let input = block.inner(rows[1]);
+        f.render_widget(block, rows[1]);
+        input
+    } else {
+        rows[1]
+    };
+    a.console_input_rect = input_area;
+    input_line(
+        f,
+        input_area,
+        " gdb> ",
+        &a.input,
+        a.editing,
+        "GDB command or :action…",
+        "Tab complete · Enter send",
+    );
+}
+
+fn log_line(text: &str) -> Line<'static> {
+    let (clock, text) = text
+        .split_once("] ")
+        .filter(|(prefix, _)| prefix.len() == 13 && prefix.as_bytes().get(3) == Some(&b':'))
+        .map(|(clock, text)| (format!("{clock}] "), text))
+        .unwrap_or_else(|| (String::new(), text));
+    let (label, body) = text
+        .split_once(']')
+        .filter(|(label, _)| label.starts_with('['))
+        .map(|(label, body)| (format!("{label}]"), body.to_owned()))
+        .unwrap_or_else(|| (String::new(), text.to_owned()));
+    let color = if label.contains("error") || body.starts_with("Error:") {
+        theme::RED
+    } else if text.starts_with('>') {
+        theme::ACCENT
+    } else if label.contains("result") {
+        theme::GREEN
+    } else {
+        theme::DIM
+    };
+    Line::from(vec![
+        Span::raw(" "),
+        Span::styled(clock, Style::default().fg(theme::DIM)),
+        Span::styled(label, Style::default().fg(color)),
+        Span::styled(
+            body,
+            Style::default().fg(if color == theme::RED {
+                theme::RED
+            } else {
+                theme::MUTED
+            }),
+        ),
+    ])
+}
+
+fn data_line(text: &str, current: bool, assembly: bool) -> Line<'static> {
+    let (address, rest) = text.split_once(' ').unwrap_or((text, ""));
+    let mut spans = vec![
+        Span::styled(
+            if current { "▶ " } else { "  " },
+            Style::default().fg(theme::GREEN),
+        ),
+        Span::styled(address.to_owned(), Style::default().fg(theme::DIM)),
+        Span::raw("  "),
+    ];
+    if assembly {
+        let (op, args) = rest
+            .trim_start()
+            .split_once(' ')
+            .unwrap_or((rest.trim(), ""));
+        spans.push(Span::styled(
+            format!("{op:8}"),
+            Style::default().fg(theme::VIOLET),
+        ));
+        spans.push(Span::styled(
+            args.to_owned(),
+            Style::default().fg(theme::TEXT),
+        ));
+    } else {
+        spans.push(Span::styled(
+            rest.to_owned(),
+            Style::default().fg(theme::ACCENT),
+        ));
+    }
+    Line::from(spans).style(Style::default().bg(if current { theme::PC } else { theme::PANEL }))
 }
 
 fn hint(command: &str) -> &str {
@@ -533,12 +847,12 @@ fn hint(command: &str) -> &str {
         "run" => "Start using the environment's run action",
         "continue" => "Resume execution (F5)",
         "pause" => "Stop execution (F6)",
-        "step" => "Step into source (F11)",
-        "next" => "Step over source (F10)",
+        "step" => "Step In: enter a function (F11)",
+        "next" => "Step Over: execute the current line (F10)",
         "stepi" => "Step one instruction",
-        "finish" => "Step out (Shift+F11)",
+        "finish" => "Step Out: return to the caller (Shift+F11)",
         "restart" => "Reset using the environment action",
-        "download" => "Program firmware (confirmation required)",
+        "download" => "Download: Source root script / tools GDB action (F2 config)",
         "disconnect" => "Disconnect and release owned processes",
         "watch" => "Add a watched expression",
         "unwatch" => "Remove a watched expression",
@@ -553,28 +867,158 @@ fn hint(command: &str) -> &str {
         "find" => "Find text in source",
         "elf" => "Load symbols from ELF",
         "refresh" => "Refresh stopped views / retry loading",
-        "build" => "Run configured build command",
+        "build" => "Build: run configured command in Source root (F2 config)",
+        "appearance" => "Animation intensity and compatible effect glyphs",
+        "animations" => "Choose off, subtle or full animation",
+        "format" => "Format selected value: binary / octal / decimal / hex",
         "help" => "Keyboard and command help",
-        "quit" => "End session and exit",
+        "commandlist" => "Help: commands and keyboard shortcuts (Ctrl+P)",
+        "quit" => "End session and close TUI (Ctrl+Q)",
         _ => "",
+    }
+}
+
+fn header(f: &mut UiFrame, a: &App, rect: Rect) {
+    let state = a.snapshot.state.as_str();
+    let color = if state == "FAULT" {
+        theme::RED
+    } else if state == "RUNNING" {
+        theme::GREEN
+    } else {
+        theme::ACCENT
+    };
+    let busy = !a.pending_commands.is_empty() || a.pending_view.is_some();
+    let icon = a.fx.glyph(a.project.ui.unicode, state, busy);
+    theme::surface(f, Rect { height: 1, ..rect }, theme::RAISED);
+    let badge = format!(" {icon} {state} ");
+    let width = unicode_width::UnicodeWidthStr::width(badge.as_str()) as u16;
+    let brand_width = rect.width.saturating_sub(width);
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!(" ◈ DebugTUI v{}", env!("CARGO_PKG_VERSION")),
+                Style::default()
+                    .fg(theme::TEXT)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                if a.demo {
+                    "  /  PREVIEW"
+                } else {
+                    "  /  DEBUG WORKSPACE"
+                },
+                Style::default().fg(theme::DIM),
+            ),
+        ])),
+        Rect::new(rect.x, rect.y, brand_width, 1),
+    );
+    f.render_widget(
+        Paragraph::new(badge).style(
+            Style::default()
+                .fg(color)
+                .bg(if state.contains("STOPPED") {
+                    theme::PC
+                } else {
+                    theme::RAISED
+                })
+                .add_modifier(Modifier::BOLD),
+        ),
+        Rect::new(
+            rect.right().saturating_sub(width),
+            rect.y,
+            width.min(rect.width),
+            1,
+        ),
+    );
+    if rect.height > 1 {
+        let location = if let Some(stage) = a.fx.connection.filter(|stage| *stage < 3) {
+            let names = ["Environment", "GDB", "Target", "Ready"];
+            names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| {
+                    format!(
+                        "{} {n}",
+                        if i < stage {
+                            "+"
+                        } else if i == stage {
+                            ">"
+                        } else {
+                            "·"
+                        }
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("  /  ")
+        } else if a.snapshot.frame.file.is_empty() && !a.snapshot.frame.address.is_empty() {
+            format!(
+                "PC {} · {} · no source location",
+                a.snapshot.frame.address, a.snapshot.frame.function
+            )
+        } else if a.snapshot.frame.file.is_empty() {
+            "Choose a project with F2 to begin".into()
+        } else {
+            format!(
+                "{}:{} · {}",
+                a.snapshot
+                    .frame
+                    .file
+                    .rsplit(['/', '\\'])
+                    .next()
+                    .unwrap_or(""),
+                a.snapshot.frame.line,
+                a.snapshot.frame.function
+            )
+        };
+        let context = format!(" {} · {}", a.project.target.mode, a.project.target.endpoint);
+        let right_width = if rect.width >= 100 {
+            (context.len() as u16 + 2).min(rect.width / 2)
+        } else {
+            0
+        };
+        f.render_widget(
+            Paragraph::new(Line::from(vec![
+                Span::styled(format!(" {location}"), Style::default().fg(theme::MUTED)),
+                Span::styled(
+                    format!("  {}", a.snapshot.stop_reason),
+                    Style::default().fg(theme::DIM),
+                ),
+            ])),
+            Rect::new(rect.x, rect.y + 1, rect.width - right_width, 1),
+        );
+        if right_width > 0 {
+            f.render_widget(
+                Paragraph::new(context)
+                    .style(Style::default().fg(theme::DIM))
+                    .alignment(ratatui::layout::Alignment::Right),
+                Rect::new(rect.right() - right_width, rect.y + 1, right_width, 1),
+            );
+        }
     }
 }
 
 pub fn draw(f: &mut UiFrame, a: &mut App) {
     source_tabs::reset_hits(a);
+    a.formats.hits.clear();
     a.pane_hits.clear();
     a.action_hits.clear();
     a.palette_hits.clear();
+    a.help_tab_hits.clear();
     a.source_rect = Rect::default();
     a.side_rect = Rect::default();
     a.console_input_rect = Rect::default();
+    a.console_view.clear_hits();
     a.view_rects.fill(Rect::default());
+    a.watch_input_rect = Rect::default();
+    a.completion.hits.clear();
+    a.completion.area = Rect::default();
     a.scrollbars.fill(Rect::default());
     if let Some(setup) = &a.setup {
         setup.draw(f);
         return;
     }
     let area = f.area();
+    f.render_widget(Block::default().style(theme::base()), area);
     if area.width < 45 || area.height < 12 {
         f.render_widget(
             Paragraph::new(format!(
@@ -586,79 +1030,27 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         return;
     }
     let rows = Layout::vertical([
-        Constraint::Length(2),
+        Constraint::Length(if area.height >= 24 { 3 } else { 2 }),
         Constraint::Min(5),
         Constraint::Length(1),
         Constraint::Length(1),
     ])
     .split(area);
-    let state_color = if a.snapshot.state.contains("STOPPED") {
-        Color::Green
-    } else if a.snapshot.state == "RUNNING" {
-        Color::Yellow
-    } else if a.snapshot.state == "FAULT" {
-        Color::Red
-    } else {
-        Color::Cyan
-    };
-    f.render_widget(
-        Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled(
-                    format!(" DebugTUI v{} ", env!("CARGO_PKG_VERSION")),
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                ),
-                Span::raw(format!(
-                    " {} · {}  ",
-                    a.project.target.mode, a.project.target.endpoint
-                )),
-                Span::styled(a.snapshot.state.clone(), Style::default().fg(state_color)),
-                Span::raw(if a.quitting {
-                    "  Closing session…"
-                } else {
-                    ""
-                }),
-            ]),
-            Line::styled(
-                if a.snapshot.frame.file.is_empty() && !a.snapshot.frame.address.is_empty() {
-                    format!(
-                        " PC {} · {} · no source location · {}",
-                        a.snapshot.frame.address, a.snapshot.frame.function, a.snapshot.stop_reason
-                    )
-                } else {
-                    format!(
-                        " {}:{}  {}",
-                        a.snapshot
-                            .frame
-                            .file
-                            .rsplit(['/', '\\'])
-                            .next()
-                            .unwrap_or(""),
-                        a.snapshot.frame.line,
-                        a.snapshot.stop_reason
-                    )
-                },
-                Style::default().fg(
-                    if a.snapshot.state == "STOPPED" && a.snapshot.frame.file.is_empty() {
-                        Color::Yellow
-                    } else {
-                        Color::DarkGray
-                    },
-                ),
-            ),
-        ]),
-        rows[0],
+    header(f, a, rows[0]);
+    project_bar(
+        f,
+        a,
+        Rect::new(rows[0].x, rows[0].bottom() - 1, rows[0].width, 1),
     );
-    let console_height = (rows[1].height / 4).clamp(3, 9);
+
+    let console_height = (rows[1].height / 4 + 1).clamp(3, 10);
     let body =
         Layout::vertical([Constraint::Min(3), Constraint::Length(console_height)]).split(rows[1]);
     if area.width >= 100 {
         let columns = Layout::horizontal([
-            Constraint::Percentage(64),
+            Constraint::Percentage(68),
             Constraint::Length(1),
-            Constraint::Percentage(36),
+            Constraint::Percentage(32),
         ])
         .split(body[0]);
         main_panel(f, a, columns[0]);
@@ -669,99 +1061,169 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         side_panel(f, a, body[0], true);
     }
     console_panel(f, a, body[1]);
+    theme::surface(f, rows[2], theme::CANVAS);
     f.render_widget(
-        Paragraph::new(format!(" {}", a.notice)).style(Style::default().fg(
-            if a.notice.starts_with("Error") {
-                Color::Red
-            } else {
-                Color::DarkGray
-            },
-        )),
+        Paragraph::new(
+            a.action_hits
+                .iter()
+                .find(|(rect, _)| hovered(a, *rect))
+                .map(|(_, command)| format!(" {} · {}", command, hint(command)))
+                .unwrap_or_else(|| {
+                    if a.input_active()
+                        && !a.completion.hint.is_empty()
+                        && !a.notice.starts_with("Error")
+                    {
+                        format!(" {}", a.completion.hint)
+                    } else {
+                        format!(" {}", a.notice)
+                    }
+                }),
+        )
+        .style(Style::default().fg(if a.notice.starts_with("Error") {
+            theme::RED
+        } else {
+            theme::DIM
+        })),
         rows[2],
     );
+    let focus = if a.editing {
+        "Console"
+    } else if a.watch_editing {
+        "Watch input"
+    } else if a.console_view.focused {
+        "Console history"
+    } else {
+        PANES[a.pane]
+    };
+    theme::surface(f, rows[3], theme::RAISED);
+    let keys = if area.width >= 110 {
+        " F2 Setup  / Console  Ctrl+P Help  Tab Views  F5 Continue  F6 Pause  F10 Step Over  F11 Step In  Ctrl+Q Exit  f Format"
+    } else if area.width >= 70 {
+        " F2 Setup  / Console  Ctrl+P Help  Tab Views  Ctrl+Q Exit"
+    } else {
+        " F2 Setup  / Console  ? Help  Ctrl+Q Exit"
+    };
     f.render_widget(
-        Paragraph::new(format!(
-            " F2 Setup · / Console · Ctrl+P Commands · Tab views · Focus: {} · F5 Continue F6 Pause F10 Next F11 Step",
-            if a.editing { "Console" } else { PANES[a.pane] }
-        ))
-        .style(Style::default().fg(Color::DarkGray)),
+        Paragraph::new(keys).style(Style::default().fg(theme::MUTED)),
         rows[3],
     );
-    if a.help {
-        let r = center(area, 90, 32);
-        f.render_widget(Clear, r);
+    if area.width >= 140 {
+        let label = format!(" ◇ {focus}  ");
         f.render_widget(
-            Paragraph::new(HELP)
-                .block(
-                    Block::bordered()
-                        .title(" Help · ↑ ↓ scroll · Esc ")
-                        .border_style(Style::default().fg(Color::Cyan)),
-                )
-                .scroll((a.help_scroll, 0))
-                .wrap(Wrap { trim: false }),
-            r,
+            Paragraph::new(label.clone()).style(Style::default().fg(theme::ACCENT)),
+            Rect::new(
+                rows[3].right() - label.len() as u16,
+                rows[3].y,
+                label.len() as u16,
+                1,
+            ),
         );
     }
-    if a.palette {
-        let r = center(area, 88, COMMANDS.len() as u16 + 3);
-        f.render_widget(Clear, r);
-        let block = Block::bordered()
-            .title(" CommandList · click / ↑ ↓ Enter · Esc ")
-            .border_style(Style::default().fg(Color::Cyan));
+
+    effects::paint(f, a);
+    completion_popup(f, a);
+    effects::completion(f, a);
+    if a.help || a.palette {
+        let r = center(area, 90, COMMANDS.len() as u16 + 5);
+        theme::overlay(f, r);
+        let block = theme::card("  ?  Help  ", true);
         let inner = block.inner(r);
         f.render_widget(block, r);
-        let start = a
-            .palette_index
-            .saturating_sub(inner.height.saturating_sub(1) as usize);
-        for (row, (i, command)) in COMMANDS
-            .iter()
-            .enumerate()
-            .skip(start)
-            .take(inner.height as usize)
-            .enumerate()
-        {
-            let hit = Rect::new(inner.x, inner.y + row as u16, inner.width, 1);
-            let line = if inner.width >= 65 {
-                format!(
-                    "{} {:24} {}",
-                    if i == a.palette_index { "›" } else { " " },
-                    command,
-                    hint(command)
-                )
-            } else {
-                format!(
-                    "{} {}",
-                    if i == a.palette_index { "›" } else { " " },
-                    command
-                )
-            };
+        let parts = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Min(1),
+            Constraint::Length(1),
+        ])
+        .split(inner);
+        let mut x = parts[0].x;
+        for (name, shortcuts) in [(" Commands ", false), (" Shortcuts ", true)] {
+            let hit = Rect::new(x, parts[0].y, name.len() as u16, 1);
             f.render_widget(
-                Paragraph::new(line).style(Style::default().fg(if i == a.palette_index {
-                    Color::Cyan
-                } else {
-                    Color::Reset
-                })),
+                Paragraph::new(name).style(theme::chip(a.help == shortcuts, hovered(a, hit))),
                 hit,
             );
-            a.palette_hits.push((hit, i));
+            a.help_tab_hits.push((hit, shortcuts));
+            x += hit.width + 1;
+        }
+        f.render_widget(
+            Paragraph::new(if a.help {
+                " ↑ ↓ scroll · Tab commands · Esc close"
+            } else {
+                " ↑ ↓ Enter · Tab shortcuts · Esc close"
+            })
+            .style(Style::default().fg(theme::MUTED)),
+            parts[2],
+        );
+        let inner = parts[1];
+        if a.help {
+            f.render_widget(
+                Paragraph::new(HELP)
+                    .scroll((a.help_scroll, 0))
+                    .wrap(Wrap { trim: false }),
+                inner,
+            );
+        } else {
+            let start = a
+                .palette_index
+                .saturating_sub(inner.height.saturating_sub(1) as usize);
+            for (row, (i, command)) in COMMANDS
+                .iter()
+                .enumerate()
+                .skip(start)
+                .take(inner.height as usize)
+                .enumerate()
+            {
+                let hit = Rect::new(inner.x, inner.y + row as u16, inner.width, 1);
+                let line = if inner.width >= 65 {
+                    format!(
+                        "{} {:24} {}",
+                        if i == a.palette_index { "›" } else { " " },
+                        command,
+                        hint(command)
+                    )
+                } else {
+                    format!(
+                        "{} {}",
+                        if i == a.palette_index { "›" } else { " " },
+                        command
+                    )
+                };
+                f.render_widget(
+                    Paragraph::new(line).style(theme::selected(i == a.palette_index)),
+                    hit,
+                );
+                a.palette_hits.push((hit, i));
+            }
         }
     }
     source_tabs::draw_list(f, a);
     if a.confirm.is_some() {
-        let r = center(area, 70, 7);
-        f.render_widget(Clear, r);
+        let r = center(area, 90, 10);
+        theme::overlay(f, r);
         f.render_widget(
             Paragraph::new(format!(
-                "Execute the configured download action?\n{}\n\ny: Download    n / Esc: Cancel",
-                a.project.program.elf.display()
+                "Execute Download?\n{}\n\n{}\n\ny: Download    n / Esc: Cancel",
+                if a.project.tasks.download.trim().is_empty() {
+                    format!("GDB: {}", a.project.actions.download.join("; "))
+                } else {
+                    a.project.tasks.download.clone()
+                },
+                if a.project.tasks.download.trim().is_empty() {
+                    format!("ELF: {}", a.project.program.elf.display())
+                } else {
+                    format!(
+                        "Working directory: {}",
+                        crate::config::portable_path(&a.project.program.source_root)
+                    )
+                }
             ))
             .wrap(Wrap { trim: false })
             .block(
-                Block::bordered()
-                    .title(" Download firmware ")
-                    .border_style(Style::default().fg(Color::Yellow)),
+                theme::card("  ↓  Download firmware  ", true)
+                    .border_style(Style::default().fg(theme::AMBER)),
             ),
             r,
         );
     }
+    formats::popup(f, a);
 }

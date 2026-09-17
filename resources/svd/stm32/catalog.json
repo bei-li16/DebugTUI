@@ -1,0 +1,18 @@
+{
+  "format_version": 1,
+  "description": "Local STM32 SVD files; paths are relative to this catalog.",
+  "devices": [
+    {
+      "file": "STM32F429.svd",
+      "device": "STM32F429",
+      "version": "1.9",
+      "cpu": "CM4",
+      "peripherals": 84,
+      "bytes": 2118594,
+      "sha256": "2B7DE1E383EE415F45339B776942FE01F7B48215316629C3CC280E12661C2400",
+      "providers": [
+        "com.st.stm32cube.ide.mcu.productdb.debug_2.2.100.202502251557"
+      ]
+    }
+  ]
+}

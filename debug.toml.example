@@ -5,12 +5,29 @@ executable = "gdb"
 [program]
 elf = "./build/app.elf"
 source_root = "."
+# Optional CMSIS-SVD, resolved relative to this project configuration.
+# svd = "./resources/svd/stm32/STM32F429.svd"
 [target]
 mode = "remote"
 endpoint = "127.0.0.1:3333"
 [session]
 on_exit = "detach"
 
+# Optional shell commands, run in program.source_root (not the TUI install folder).
+# [tasks]
+# build = 'build.bat'
+# download = 'flash.bat'
+# timeout_ms = 300000
+# Blank download uses the environment's GDB actions.download, when defined.
+
 # To use a tools environment instead, remove the [gdb] section above and add:
 # [tools]
 # profile = "./tools/debug-env.toml"
+
+# Optional UI preferences (saved by :appearance and each value's format menu).
+# [ui]
+# animations = "subtle" # off | subtle | full
+# unicode = true       # false: ASCII effect glyphs
+# [ui.formats]
+# "watch:counter" = "binary" # binary | octal | decimal | hex
+# "register:pc" = "hex"

@@ -1,5 +1,41 @@
 # DebugTUI 验证记录
 
+## 0.4.2：Source root 命令与独立 Project 操作区（2026-09-17）
+
+- 启动页在 Source root 后增加 Build command / Download command，保留引号并保存至项目 `[tasks]`。配置解析、相对路径、tools 下载动作回退和未生成 ELF 时进入工作台均有回归覆盖。
+- 主界面顶部独立 Project 栏显示 Build / Download，与 Run / 单步工具栏分开；45×12 至 160×42 均可见。未配置时禁用；执行中抑制重复任务；下载确认显示具体命令及工作目录。
+- 40 项单元测试 + 1 项 Windows 实际子进程集成测试通过，Clippy 零警告，Release 构建通过。子进程测试覆盖中文/空格工作目录、带引号脚本路径和参数、stdout/stderr、非零退出码、超时及 Ctrl+Q 取消。
+- 本机 GDB 完整测试：先从 Source root 实际 GCC 编译，再连接、断点运行；已连接时重新 Build，释放 GDB 后成功替换 EXE 并重连；配置的 Download 测试脚本执行成功后再次重连。两次重连后的运行都命中恢复的 main 断点。记录：`artifacts/ui-0.4.2/project-tasks/events.jsonl`。
+- 实际 Windows 伪终端验证 F2 配置展示、点击 Build 编译与重连、点击 Download 确认并运行脚本、正常 Exit。记录：`artifacts/ui-0.4.2/terminal-interactions.json` 与 `interactive-logs/`。
+- 原有真实 GDB 调试回归（断点、变量、单步、寄存器、反汇编、清理）通过：`artifacts/native-gdb-20260917-010958/`。彩色布局预览：`artifacts/ui-0.4.2/`。
+
+Download 使用本地验证脚本检查执行目录、参数与会话恢复，没有烧写 STM32，也未重测探针长会话问题。
+
+## 0.4.1：单步命名、Exit 与 Help（2026-09-17）
+
+- 工具栏改为 Step In / Step Over / Step Out，继续分发 `step` / `next` / `finish`；F11 / F10 / Shift+F11 保持原有行为。
+- 新增 Exit，复用 Ctrl+Q 的会话清理与退出流程。45×12 极矮窗口也保留 Exit / Help；退出等待期间禁用重复点击和快捷键请求，demo 的 Exit 同样结束程序。
+- CommandList 改为 Help，包含 Commands / Shortcuts 两页，支持点击页签和 Tab 切换；`?` / `:help` 直接打开快捷键页。命令列表执行、带参数命令填入 Console 的行为保持不变。
+- 38 项 Rust 测试、Clippy 零警告和 Release 编译通过。新增测试覆盖不同状态的 Exit 分发、取消标志、重复退出抑制、demo 退出，以及两种窗口尺寸下 Help 页签、键盘导航和命令执行。
+- 真实 Windows 伪终端 + 本机 GDB：断点停在 main.c:4；点击 Step In 进入 helper.c:2；点击 Step Out 返回 main.c:4；两次 Step Over 分别到 main.c:5、main.c:6，第二次越过函数调用。Help 的鼠标页签和 Tab 切换正常；点击 Exit 返回码 0，日志确认 `-target-detach` 和 `-gdb-exit`，测试进程退出。
+- 完整终端交互与 MI 日志：`artifacts/ui-0.4.1/native-interactive/`；Ratatui 缓冲彩色预览：`artifacts/ui-0.4.1/`。
+
+本轮验证使用独立的本机程序，没有重新验证 STM32/J-Link 长会话问题。
+
+## 0.4.0：终端视觉层改造（2026-09-17）
+
+- 深色分层面板、真彩色主题、图标工具栏、状态徽标、选中/悬停反馈、圆角 Console 和弹窗；全行执行位置与变化值背景；启动配置页统一视觉样式。新增轻量 C 类语法着色，跨行注释状态只在当前文件载入时计算。
+- 36 项 Rust 测试、Clippy 零警告与 Release 构建通过。保留原有点击、滚动、文件标签、Console 和数据加载回归；新增验证全行背景、弹窗不透出底层字符、悬停不发送调试命令、45×12 至 180×50 的控件边界与输入焦点，以及字符串/Unicode/跨行注释着色。
+- 极矮终端保留 Continue / Pause / CommandList 三个主要按钮，为源码留出可见空间；其余命令继续由 CommandList 提供。80×24 及常规窗口显示完整工具栏。
+- 真实本机 GDB 回归验证连接、断点、变量求值、Step、x86 寄存器、反汇编和退出清理。记录：`artifacts/native-gdb-20260917-002657/`。
+- Windows 伪终端真实交互：Console 输入 `:break main`、`:run`，在 main.c:4 停止；发送 F11 后进入 helper.c:2，两个源码标签保留；Ctrl+Q 正常退出。完整 ANSI 输入/输出与 GDB 日志：`artifacts/ui-0.4.0/native-interactive/`。
+- 真彩色模式独立验证：仅在测试子进程去除 `NO_COLOR` 并设置 `COLORTERM=truecolor`，启动实际 EXE，初始画面捕获 149 次 RGB 颜色控制指令、14 个不同前景/背景颜色序列；Ctrl+P 命令弹窗正常。程序继续遵循调用者的 `NO_COLOR`，不修改系统或用户终端设置。
+- 最终 EXE 1,479,680 字节，较 0.3.4 的 1,462,784 字节增加 16,896 字节（16.5 KiB，约 1.16%），没有增加 Cargo 或运行时依赖。
+- 本机单次 5 秒空闲采样：真彩色 demo 命令面板私有内存 1.26 MiB、工作集 6.42 MiB，CPU 时间增量 0 ms；真实 GDB 暂停会话 UI 私有内存 1.72 MiB、工作集 7.18 MiB，CPU 增量 0 ms。这是本机短采样，不代表所有工程或操作负载。
+- 从真实 Ratatui 单元格缓冲导出的彩色预览：`artifacts/ui-0.4.0/`，包含 workspace / console / narrow / compact / commands / files / assembly / setup；PNG 用于检查视觉效果，不进入运行时安装包。
+
+本轮修改视觉与本地输入反馈，没有修改 GDB 会话命令实现、tools 或用户固件，也没有重新验证或修复下述 STM32/J-Link 长会话问题。
+
 ## 0.3.4：Source 多文件标签与变量区分割线（2026-09-16）
 
 - Watch / Locals 上方恢复贯穿右侧面板的横向分割线。
@@ -330,6 +366,43 @@ npm 升级使用 `0.0.0-fixture` 测试包验证替换机制，该 fixture 复�
 
 - 当前仅验证 Windows x64 和上述 J-Link/STM32 组合；OpenOCD 不在这个最小工具包内。
 - 没有做探针物理拔插、休眠恢复、不同板卡或多小时稳定性试验；不把进程终止测试当作 USB 拔插测试。
-- 变量树、SVD、FreeRTOS 专项面板、源码编辑器、多人共享会话尚未实现。
+- 通用变量树、FreeRTOS 专项面板、源码编辑器、多人共享会话尚未实现。
 - npm Registry 发布、其他 npm 版本和其他操作系统未验证；本地安装、替换、卸载及程序调试已验证。
 - `session.on_exit=resume` 是当前后端支持的退出策略。强制终止后目标状态需要重新连接确认。
+
+## 0.5 SVD 验证
+
+- 单元测试覆盖 STM32F429 的 84 个外设、GPIOB 继承、数组/cluster 展开、位域、大小端和读取副作用。
+- UI 通道测试检查收起、隐藏、运行时不读取；展开后只读可见行；同一停止代次不重复读取；手动单项刷新、错误恢复、鼠标命中、滚动条及三档窗口布局。
+- 配置页测试覆盖 SVD 文件选择、相对路径保存、清空和无效路径提示。
+- `node scripts/test-svd-gdb.cjs --native`：真实本机 GDB 验证 8/16/32 位读取、值变化、错误恢复、运行中拒绝读取，并确认不会覆盖 Memory 页数据。
+- `node scripts/test-svd-gdb.cjs --hardware`：使用 tools 配置连接 STM32F429，对比 RCC.CR、GPIOB.MODER、DBGMCU.IDCODE 的外设读取与直接 GDB 表达式结果；不下载或复位固件。
+- 其他芯片的 SVD 和硬件行为仍需相应设备验证。自动读取的副作用判断以 SVD 声明为准。
+
+## 0.5.1 输入与补全验证
+
+- UI 测试覆盖输入防抖、候选键盘/鼠标选择、两处输入隔离、添加 Watch 成功/失败、重复回车、F10 保留、过时响应丢弃、运行中不查询、弹窗遮挡和 45×12 至 160×42 的布局。
+- `node scripts/test-completion-gdb.cjs`：使用真实本机 GDB，验证命令/子命令/参数补全、全局与静态变量、排除函数名、结构体字段、64 项上限、Watch 添加和运行/暂停后的补全恢复；确认补全不改变变量值、PC 或停止代次。
+- `node scripts/test-completion-gdb.cjs target/release/debugtui.exe PATH/FreeRTOS_Project.elf`：使用 tools 中 ARM GDB 离线加载 ELF，验证 `uxCurrentNumberOfTasks`、`xTickCount`、`p/x` 参数等候选，无需连接开发板。
+- 彩色 UI 缓冲区可通过 `DEBUGTUI_RENDER_DIR` 环境变量导出。测试记录在 `artifacts/completion-*`，不进入安装包。
+
+## 0.6.0 effects, warm theme and per-item radix
+
+- 61 unit tests plus the real shell-task integration test cover configuration merging, independent variable/register/field/byte formats, exact signed/unsigned 128-bit conversion, unsupported natural values, keyboard and right-click routing, popup clipping and input focus.
+- Effects tests verify actual connection phases, confirmed stop events, real source traces, bounded caches, idle scheduling, focus loss, Off mode and persistent task outcomes. Color-buffer previews cover 45×12, 80×24 and wide layouts, numeric/appearance menus and sampled animation frames.
+- Native GDB integration saves all three motion modes and individual formats: zero additional MI commands, unchanged watched value, PC, generation and STOPPED state. FreeRTOS ARM ELF symbol completion is also exercised offline; the SVD native-memory read suite is rerun. These checks do not certify a physical R52/STM32 target.
+- Real terminal smoke: connect native GDB, breakpoint main, run to breakpoint, switch register format from hex to decimal, use Appearance and exit cleanly. A fast Tab→f race discovered here was fixed by deriving the keyboard selection from current data before the next draw.
+- Runtime sample (native GDB stopped, Full mode, one terminal): TUI working set 7.46 MiB, private bytes 1.73 MiB, CPU 0.03125 seconds over 3.046 seconds. This is a local sample, not a performance guarantee.
+- npm fixture checks install, upgrade, CMD/PowerShell shims, configuration preservation, isolated uninstall and reinstall.
+
+Artifacts: `artifacts/ui-0.6.0/`, `artifacts/completion-native-1789607444647/`, `artifacts/completion-arm-elf-1789607447807/`, `artifacts/svd-native-1789607448656/`.
+
+## 0.6.1 Console 历史与会话时间戳
+
+- `cargo test --locked`：67 项单元测试 + 1 项实际 shell 集成测试通过；`cargo clippy --locked --all-targets -- -D warnings` 通过。
+- Console 新增测试覆盖滚轮、轨道点击、滑块拖动至两端、历史期间追加输出、2,000 行缓存淘汰后的记录锚点、窄窗口缩放、弹窗隔离、Latest / End 恢复跟随、输入草稿保留和实际命令分发。浏览历史不发送调试请求。
+- `scripts/test-logs-gdb.cjs` 使用真实本机 GDB 与独立 C 测试程序，执行断点、Run、Next、错误命令、多行 printf、Reconnect、Disconnect / Connect。14 个请求生成 3 份日志（114 / 24 / 24 行），检查旧文件字节不变、全部物理行带时间戳、161 条 log 事件携带时间字段且原始文本保持不变。记录：`artifacts/logs-native-1789609065500/verification.json`。该测试不连接物理 MCU。
+- 时间测试覆盖 Windows 时钟格式、UTC 闰日、同毫秒文件名碰撞不覆盖、毫秒会话时长和多行/空行逐行前缀。文件通过 `create_new` 排他创建。
+- UI 预览由真实 Ratatui 缓冲导出：`artifacts/ui-0.6.1/console-live.png`、`console-history.png`、`console-history-narrow.png`。保留底部输入框，Console 右边是独立轨道，浏览状态与新消息计数在标题行。
+- 本地安装 0.6.1 后，以真实终端连接本机 GDB：多行 printf 输出 35 条记录，Shift+PgUp / Home 浏览首条记录；保持历史视口执行新命令，Latest 增加 3 条记录且旧内容保留；End 恢复实时跟随，Ctrl+Q 退出码 0。日志位于 `artifacts/ui-0.6.1/terminal/`。原生命令/变量补全回归同样通过：`artifacts/completion-native-1789609102557/verification.json`。
+- npm 独立安装、升级、卸载和重新安装均通过；本机安装的可执行文件 SHA-256 与 release 构建相同。

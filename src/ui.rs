@@ -2,11 +2,13 @@ use crate::{
     config::Project,
     launch::{Document, Launch, Setup},
     session::{self, EngineHandle, Event, Frame, Request, Snapshot, Variable},
+    theme,
 };
 use crossterm::{
     event::{
-        self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        Event as Input, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+        self, DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
+        EnableFocusChange, EnableMouseCapture, Event as Input, KeyCode, KeyEvent, KeyEventKind,
+        KeyModifiers, MouseEvent, MouseEventKind,
     },
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
@@ -17,7 +19,7 @@ use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{Block, Paragraph, Wrap},
 };
 use serde_json::{Value, json};
 use std::{
@@ -28,18 +30,41 @@ use std::{
     time::{Duration, Instant},
 };
 
-const PANES: [&str; 10] = [
-    "Source", "Watch", "Stack", "Regs", "Memory", "Asm", "Breaks", "Files", "Log", "Locals",
+const PANES: [&str; 11] = [
+    "Source",
+    "Watch",
+    "Stack",
+    "System Regs",
+    "Memory",
+    "Asm",
+    "Breaks",
+    "Files",
+    "Log",
+    "Locals",
+    "Peripherals",
 ];
+mod completion;
+mod console;
+mod effects;
+mod formats;
+mod highlight;
+mod peripherals;
 mod render;
 mod source_tabs;
+#[cfg(test)]
+mod visual_tests;
+use highlight::syntax;
 pub use render::draw;
 use source_tabs::SourceTabs;
+use theme::section;
 
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
-const SIDE_PANES: [usize; 4] = [3, 2, 4, 6];
+const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 29] = [
+const COMMANDS: [&str; 33] = [
+    "appearance",
+    "animations MODE",
+    "format",
     "setup",
     "connect",
     "reconnect",
@@ -66,6 +91,7 @@ const COMMANDS: [&str; 29] = [
     "find TEXT",
     "elf PATH",
     "refresh",
+    "peripheral-refresh",
     "build",
     "help",
     "quit",
@@ -74,7 +100,7 @@ const DEMO_SOURCE: &str = "/* DebugTUI demo: no target connected */\n#include <s
 const HELP: &str = r#"DebugTUI — GDB debugging workspace
 
 Left: Source / Asm / Files / Log
-Right top: Regs / Stack / Memory / Breaks
+Right top: System Regs / Peripherals / Stack / Memory / Breaks
 Right bottom: Watch / Locals
 Tab / Shift+Tab switches view and keyboard focus.
 Click tabs to change only that group; source stays visible.
@@ -86,20 +112,35 @@ Source files stay open in tabs; click a name or × to close.
 Ctrl+PgUp / Ctrl+PgDn switches files; Ctrl+W closes; Ctrl+O lists.
 
 Toolbar buttons: Run, Continue, Pause, Reset, Reconnect,
-Step, Next, Finish, CommandList. Unavailable actions are dimmed.
-CommandList / Ctrl+P lists commands; click or Enter selects.
+Step In, Step Over, Step Out, Exit, Help. Unavailable actions are dimmed.
+Help / Ctrl+P lists commands; click or Enter selects.
+Help tabs / Tab switch between Commands and Shortcuts.
 Commands with arguments open the command line for editing.
 Asm loads at $pc on entry and updates after each stop.
+Project bar: Build / Download (configure commands in F2 Setup).
+Shell commands run in Source root; output appears in Console.
+Connected sessions are released, then restored after success.
 Memory loads at $sp; :memory ADDRESS [COUNT] reads another range.
+Peripherals: configure SVD in F2 Setup. Click / Enter expands groups and fields.
+Left / Right collapses / expands; r / Refresh reads the selected register.
+Only visible registers inside expanded groups refresh after stops.
+Write-only registers are skipped; read side effects require manual refresh.
 
 F2 Setup         F5 Continue      F6 Pause
-F9 Breakpoint    F10 Next         F11 Step / Shift+F11 Finish
+F9 Breakpoint    F10 Step Over    F11 Step In / Shift+F11 Step Out
 Arrows / PgUp / PgDn / Home / End scroll or select
 Enter opens a file / selects a stack frame
 : Command line   / GDB console   Ctrl+F Find source
 Click the Console input to type GDB commands or :commands.
-Enter submits; Up / Down recalls history; Esc leaves input.
-Ctrl+C Pause     Ctrl+Q Quit      Esc Cancel / close dialog
+f / right-click a value: binary, octal, decimal or hexadecimal for that item.
+Data defaults to decimal; registers and SVD fields default to hexadecimal.
+:appearance chooses Off / Subtle / Full animation and Unicode / ASCII effects.
+Both inputs offer completion: Up / Down selects, Tab or click fills, Enter submits.
+With no suggestions, Up / Down recalls Console history; Esc leaves input.
+Watch: click watch> or select Watch and Enter; type a global variable to add it.
+Variable and member completion uses the current ELF/GDB when stopped.
+Ctrl+C Pause     Ctrl+Q Exit      Esc Cancel / close dialog
+Step In / Over / Out send GDB step / next / finish respectively.
 
 :setup :connect :reconnect :run :continue :pause :disconnect
 :step :next :stepi :finish :restart :download :refresh
@@ -111,7 +152,7 @@ Ctrl+C Pause     Ctrl+Q Quit      Esc Cancel / close dialog
 Other input goes to GDB, e.g. p/x variable or info registers.
 Running views show the last stopped snapshot.
 Run / reset / download behavior comes from the environment.
-Exit behavior is controlled by session.on_exit.
+Exit ends debugging and closes TUI, following session.on_exit.
 
 Esc / ? closes this help."#;
 pub struct App {
@@ -120,21 +161,29 @@ pub struct App {
     setup: Option<Setup>,
     launch: Option<Launch>,
     snapshot: Snapshot,
+    peripherals: peripherals::Peripherals,
     pane: usize,
     main_pane: usize,
     side_pane: usize,
     variable_pane: usize,
-    selections: [usize; 10],
+    selections: [usize; 11],
     selection: usize,
     source: Vec<String>,
+    source_comments: Vec<bool>,
     source_file: String,
     source_line: usize,
     source_top: usize,
     sources: SourceTabs,
     logs: VecDeque<String>,
     console: VecDeque<String>,
+    console_view: console::ConsoleView,
     input: String,
     editing: bool,
+    watch_input: String,
+    watch_editing: bool,
+    watch_input_rect: Rect,
+    pending_watch: Option<(u64, String)>,
+    completion: completion::Completion,
     history: Vec<String>,
     history_index: usize,
     palette: bool,
@@ -148,19 +197,24 @@ pub struct App {
     source_rect: Rect,
     side_rect: Rect,
     console_input_rect: Rect,
-    view_rects: [Rect; 10],
-    view_tops: [usize; 10],
+    view_rects: [Rect; 11],
+    view_tops: [usize; 11],
     log_follow: bool,
     pane_hits: Vec<(Rect, usize)>,
     action_hits: Vec<(Rect, &'static str)>,
     palette_hits: Vec<(Rect, usize)>,
-    scrollbars: [Rect; 10],
+    help_tab_hits: Vec<(Rect, bool)>,
+    scrollbars: [Rect; 11],
     scroll_drag: Option<(usize, u16)>,
-    view_stamps: [Option<String>; 10],
-    view_errors: [Option<String>; 10],
+    view_stamps: [Option<String>; 11],
+    view_errors: [Option<String>; 11],
     pending_view: Option<(u64, usize)>,
     pending_commands: HashSet<u64>,
+    pending_task: Option<u64>,
     help_scroll: u16,
+    pointer: Option<ratatui::layout::Position>,
+    fx: effects::Effects,
+    formats: formats::Formats,
 }
 impl App {
     pub fn new(project: Project, demo: bool) -> Self {
@@ -172,15 +226,17 @@ impl App {
             })),
             setup: None,
             launch: None,
+            peripherals: peripherals::Peripherals::load(&project.program.svd),
             project,
             snapshot: Snapshot::default(),
             pane: 0,
             main_pane: 0,
             side_pane: 3,
             variable_pane: 1,
-            selections: [0; 10],
+            selections: [0; 11],
             selection: 0,
             source: vec![],
+            source_comments: vec![],
             source_file: String::new(),
             source_line: 0,
             source_top: 0,
@@ -189,6 +245,11 @@ impl App {
             console: VecDeque::new(),
             input: String::new(),
             editing: false,
+            watch_input: String::new(),
+            watch_editing: false,
+            watch_input_rect: Rect::default(),
+            pending_watch: None,
+            completion: completion::Completion::default(),
             history: vec![],
             history_index: 0,
             palette: false,
@@ -202,22 +263,30 @@ impl App {
             source_rect: Rect::default(),
             side_rect: Rect::default(),
             console_input_rect: Rect::default(),
-            view_rects: [Rect::default(); 10],
-            view_tops: [0; 10],
+            console_view: console::ConsoleView::default(),
+            view_rects: [Rect::default(); 11],
+            view_tops: [0; 11],
             log_follow: true,
             pane_hits: vec![],
             action_hits: vec![],
             palette_hits: vec![],
-            scrollbars: [Rect::default(); 10],
+            help_tab_hits: vec![],
+            scrollbars: [Rect::default(); 11],
             scroll_drag: None,
             view_stamps: Default::default(),
             view_errors: Default::default(),
             pending_view: None,
             pending_commands: HashSet::new(),
+            pending_task: None,
             help_scroll: 0,
+            pointer: None,
+            fx: effects::Effects::default(),
+            formats: formats::Formats::default(),
         };
+        a.fx.mode = a.project.ui.animations;
         if demo {
             a.source = DEMO_SOURCE.lines().map(str::to_owned).collect();
+            a.source_comments = highlight::comment_starts(&a.source);
             a.source_file = "demo/sample.c".into();
             a.source_line = 17;
             a.source_top = 9;
@@ -295,11 +364,19 @@ impl App {
         a
     }
     fn log(&mut self, text: String) {
+        self.log_at(text, &crate::logging::Stamp::now().wall);
+    }
+    fn log_at(&mut self, text: String, timestamp: &str) {
         let text: String = text.chars().take(4000).collect();
-        if !text.starts_with("[server]") && !text.starts_with("[diagnostic]") {
-            if self.console.len() >= 500 {
+        let console = !text.starts_with("[server]") && !text.starts_with("[diagnostic]");
+        let clock = timestamp.get(11..23).unwrap_or(timestamp);
+        let text = format!("[{clock}] {text}");
+        if console {
+            let evicted = self.console.len() >= console::HISTORY_LIMIT;
+            if evicted {
                 self.console.pop_front();
             }
+            self.console_view.appended(evicted);
             self.console.push_back(text.clone());
         }
         if self.logs.len() >= 1000 {
@@ -311,11 +388,13 @@ impl App {
     fn update(&mut self, event: Event) -> bool {
         match event {
             Event::Snapshot { snapshot } => {
+                self.fx.snapshot(&self.snapshot, &snapshot);
                 if matches!(
                     snapshot.state.as_str(),
                     "DISCONNECTED" | "STARTING GDB" | "FAULT"
                 ) {
                     self.view_stamps.fill(None);
+                    self.peripherals.invalidate();
                 }
                 let moved = snapshot.generation != self.snapshot.generation
                     || snapshot.frame.file != self.snapshot.frame.file
@@ -334,10 +413,24 @@ impl App {
                 }
                 self.snapshot = *snapshot;
             }
-            Event::Log { channel, text } => {
+            Event::Log {
+                channel,
+                text,
+                timestamp,
+                ..
+            } => {
+                if channel == "progress"
+                    && let Ok(v) = serde_json::from_str::<Value>(&text)
+                    && let Some(task) = &mut self.fx.task
+                {
+                    task.progress = v
+                        .get("percent")
+                        .and_then(Value::as_u64)
+                        .filter(|n| *n <= 100);
+                }
                 if channel != "mi>" && channel != "mi<" {
                     for line in text.lines() {
-                        self.log(format!("[{channel}] {line}"));
+                        self.log_at(format!("[{channel}] {line}"), &timestamp);
                     }
                 }
             }
@@ -347,12 +440,58 @@ impl App {
                 result,
                 error,
             } => {
+                if self.formats.pending_save.remove(&id) {
+                    if !ok {
+                        self.notice = format!(
+                            "Error: display settings were not saved: {}",
+                            error.unwrap_or_default()
+                        );
+                    } else {
+                        if result.get("saved").and_then(Value::as_bool) == Some(false) {
+                            self.notice.push_str(" · session only (no saved project)");
+                        }
+                        if self.setup.is_none()
+                            && let Ok(document) = Document::open(&self.document.path)
+                        {
+                            self.document = document;
+                        }
+                    }
+                    return false;
+                }
+                self.fx.response(id, ok);
+                if self.completion_response(id, &result, error.as_deref()) {
+                    return false;
+                }
+                if self
+                    .pending_watch
+                    .as_ref()
+                    .is_some_and(|(pending, _)| *pending == id)
+                {
+                    let (_, expression) = self.pending_watch.take().unwrap();
+                    if ok && self.watch_input.trim() == expression {
+                        self.watch_input.clear();
+                    }
+                    if ok {
+                        let bottom = self
+                            .view_len(1)
+                            .saturating_sub(self.view_rects[1].height as usize);
+                        self.set_view_top(1, bottom);
+                    }
+                }
                 let background_view = self.pending_view.is_some_and(|(pending, _)| pending == id);
+                self.peripherals.response(id, &result, error.as_deref());
                 self.pending_commands.remove(&id);
+                if self.pending_task == Some(id) {
+                    self.pending_task = None;
+                }
                 if let Some((pending, pane)) = self.pending_view
                     && pending == id
                 {
-                    self.view_errors[pane] = if ok { None } else { error.clone() };
+                    self.view_errors[pane] = if ok || pane == peripherals::PANE {
+                        None
+                    } else {
+                        error.clone()
+                    };
                     self.pending_view = None;
                 }
                 self.notice = if ok {
@@ -369,15 +508,24 @@ impl App {
         false
     }
     fn submit(&mut self, engine: Option<&EngineHandle>, method: &str, params: Value) {
+        if self.pending_task.is_some() && method != "quit" {
+            self.notice = "Build / Download is in progress. Ctrl+Q cancels and exits.".into();
+            return;
+        }
         if self.demo {
+            if method == "quit" {
+                self.quitting = true;
+                return;
+            }
             self.notice = format!("DEMO: {method} (no hardware action)");
             self.log(self.notice.clone());
             return;
         }
-        if (method == "download" && self.project.actions.download.is_empty())
+        if (method == "download" && !self.project.has_download())
+            || (method == "build" && !self.project.has_build())
             || (method == "restart" && self.project.actions.restart.is_empty())
         {
-            self.notice = format!("{method} is not configured by this environment");
+            self.notice = format!("{method} is not configured. Open F2 Setup to configure it.");
             return;
         }
         let request = Request::new(self.next_id, method, params);
@@ -389,6 +537,11 @@ impl App {
         self.send(engine, request);
     }
     fn send(&mut self, engine: Option<&EngineHandle>, request: Request) {
+        self.completion.invalidate();
+        self.fx.request(request.id, &request.method);
+        if matches!(request.method.as_str(), "build" | "download") {
+            self.pending_task = Some(request.id);
+        }
         if request.method == "quit" {
             self.quitting = true;
         }
@@ -398,6 +551,10 @@ impl App {
             self.pending_commands.insert(id);
             if let Err(e) = engine.send(request) {
                 self.pending_commands.remove(&id);
+                if self.pending_task == Some(id) {
+                    self.pending_task = None;
+                }
+                self.fx.response(id, false);
                 self.notice = format!("Session worker unavailable: {e}");
             }
         }
@@ -418,15 +575,33 @@ impl App {
         let arg = arg.trim();
         let unquote = |s: &str| s.trim().trim_matches('"').to_string();
         match name {
+            "appearance" => self.open_appearance(),
+            "format" => self.open_format(None),
+            "animations" => {
+                self.project.ui.animations = match arg {
+                    "off" => crate::config::Motion::Off,
+                    "subtle" => crate::config::Motion::Subtle,
+                    "full" => crate::config::Motion::Full,
+                    _ => {
+                        self.notice = "Use :animations off|subtle|full".into();
+                        return;
+                    }
+                };
+                self.fx.mode = self.project.ui.animations;
+                self.notice = format!("Animations: {arg}");
+                self.save_ui(engine);
+            }
             "setup" => self.open_setup(),
             "connect" | "reconnect" | "run" | "disconnect" | "continue" | "pause" | "step"
             | "next" | "stepi" | "finish" | "restart" | "download" | "refresh" | "build"
             | "quit" => {
                 if name == "refresh" {
                     self.view_stamps.fill(None);
+                    self.peripherals.invalidate();
                 }
                 self.submit(engine, name, json!({}))
             }
+            "peripheral-refresh" => self.refresh_peripheral(engine),
             "watch" | "unwatch" => self.submit(engine, name, json!({"expression":arg})),
             "data-break" => self.submit(engine, "data_break", json!({"expression":arg})),
             "break" => self.submit(engine, "break", json!({"location":unquote(arg)})),
@@ -483,7 +658,7 @@ impl App {
                 self.project.program.elf = PathBuf::from(&path);
                 self.submit(engine, "set_elf", json!({"path":path}));
             }
-            "help" => self.help = true,
+            "help" => self.open_help(true),
             _ => self.notice = format!("Unknown workstation command: {name}. Use ? for help."),
         }
     }
@@ -512,6 +687,8 @@ impl App {
         }
     }
     fn move_selection(&mut self, delta: isize) {
+        self.formats.selected = None;
+        self.fx.trigger(format!("scroll:{}", self.pane), 650);
         if self.pane == 0 {
             self.source_line = self
                 .source_line
@@ -524,7 +701,7 @@ impl App {
             if self.source_line >= self.source_top + height {
                 self.source_top = self.source_line + 1 - height;
             }
-        } else if matches!(self.pane, 2 | 6 | 7) {
+        } else if matches!(self.pane, 1 | 2 | 3 | 4 | 6 | 7 | 9 | 10) {
             let max = self.view_len(self.pane);
             self.selection = self
                 .selection
@@ -545,7 +722,7 @@ impl App {
         }
     }
     fn key(&mut self, key: KeyEvent, engine: Option<&EngineHandle>) -> bool {
-        if key.kind == KeyEventKind::Release {
+        if key.kind == KeyEventKind::Release || self.quitting {
             return false;
         }
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('q') {
@@ -564,9 +741,13 @@ impl App {
             }
             return false;
         }
+        if self.format_key(key, engine) {
+            return false;
+        }
         if self.help {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('?') => self.help = false,
+                KeyCode::Tab | KeyCode::BackTab => self.open_help(false),
                 KeyCode::Down => self.help_scroll = self.help_scroll.saturating_add(1).min(30),
                 KeyCode::Up => self.help_scroll = self.help_scroll.saturating_sub(1),
                 KeyCode::PageDown => self.help_scroll = self.help_scroll.saturating_add(8).min(30),
@@ -591,6 +772,7 @@ impl App {
         if self.palette {
             match key.code {
                 KeyCode::Esc => self.palette = false,
+                KeyCode::Tab | KeyCode::BackTab => self.open_help(true),
                 KeyCode::Down => self.palette_index = (self.palette_index + 1) % COMMANDS.len(),
                 KeyCode::Up => {
                     self.palette_index = (self.palette_index + COMMANDS.len() - 1) % COMMANDS.len()
@@ -602,7 +784,10 @@ impl App {
             }
             return false;
         }
-        if !self.editing && key.modifiers.contains(KeyModifiers::CONTROL) {
+        if self.console_key(key) {
+            return false;
+        }
+        if !self.input_active() && key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
                 KeyCode::PageUp => {
                     self.cycle_source(-1);
@@ -627,56 +812,12 @@ impl App {
         }
         let workspace_shortcut = matches!(key.code, KeyCode::F(_))
             || (key.code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL));
-        if self.editing && !workspace_shortcut {
-            match key.code {
-                KeyCode::Esc => {
-                    self.editing = false;
-                    self.input.clear();
-                }
-                KeyCode::Enter => {
-                    let input = std::mem::take(&mut self.input);
-                    if !input.trim().is_empty() {
-                        self.history.push(input.clone());
-                        self.history_index = self.history.len();
-                        self.command(engine, &input);
-                    }
-                }
-                KeyCode::Backspace => {
-                    self.input.pop();
-                }
-                KeyCode::Up => {
-                    if self.history_index > 0 {
-                        self.history_index -= 1;
-                        self.input = self.history[self.history_index].clone();
-                    }
-                }
-                KeyCode::Down => {
-                    if self.history_index + 1 < self.history.len() {
-                        self.history_index += 1;
-                        self.input = self.history[self.history_index].clone();
-                    } else {
-                        self.history_index = self.history.len();
-                        self.input.clear();
-                    }
-                }
-                KeyCode::Tab => {
-                    let prefix = self.input.trim_start_matches(':');
-                    if let Some(command) = COMMANDS.iter().find(|c| c.starts_with(prefix)) {
-                        self.input = format!(":{}", command.split_whitespace().next().unwrap());
-                    }
-                }
-                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    self.input.clear();
-                    self.editing = false;
-                }
-                KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                    self.input.push(c)
-                }
-                _ => {}
-            }
+        if self.input_active() && !workspace_shortcut {
+            self.input_key(key, engine);
             return false;
         }
         match key.code {
+            KeyCode::Char('f') if key.modifiers.is_empty() => self.open_format(None),
             KeyCode::F(2) => self.open_setup(),
             KeyCode::F(5) => self.submit(engine, "continue", json!({})),
             KeyCode::F(6) => self.submit(engine, "pause", json!({})),
@@ -695,22 +836,22 @@ impl App {
                 self.submit(engine, "pause", json!({}))
             }
             KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.palette = true;
                 self.palette_index = 0;
+                self.open_help(false);
             }
             KeyCode::Char('f') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.editing = true;
+                self.focus_input(false);
                 self.input = ":find ".into();
             }
             KeyCode::Char(':') => {
-                self.editing = true;
+                self.focus_input(false);
                 self.input = ":".into();
             }
             KeyCode::Char('/') => {
-                self.editing = true;
+                self.focus_input(false);
                 self.input.clear();
             }
-            KeyCode::Char('?') => self.help = true,
+            KeyCode::Char('?') => self.open_help(true),
             KeyCode::Char('q') => {
                 if self.demo {
                     return true;
@@ -724,6 +865,9 @@ impl App {
                 self.cycle_pane(-1);
             }
             KeyCode::Down => self.move_selection(1),
+            KeyCode::Char('r') if self.pane == peripherals::PANE => self.refresh_peripheral(engine),
+            KeyCode::Left if self.pane == peripherals::PANE => self.toggle_peripheral(Some(false)),
+            KeyCode::Right if self.pane == peripherals::PANE => self.toggle_peripheral(Some(true)),
             KeyCode::Up => self.move_selection(-1),
             KeyCode::PageDown => self.move_selection(12),
             KeyCode::PageUp => self.move_selection(-12),
@@ -740,7 +884,9 @@ impl App {
             }
             KeyCode::End => self.move_selection(isize::MAX),
             KeyCode::Enter => {
-                if self.pane == 7 {
+                if self.pane == peripherals::PANE {
+                    self.toggle_peripheral(None);
+                } else if self.pane == 7 {
                     if let Some(file) = self.snapshot.files.get(self.selection).cloned() {
                         self.load_source(&file);
                         self.select_pane(0);
@@ -751,7 +897,7 @@ impl App {
                     let level = frame.level;
                     self.submit(engine, "frame", json!({"level":level}));
                 } else if !matches!(self.pane, 2 | 7) {
-                    self.editing = true;
+                    self.focus_input(self.pane == 1);
                 }
             }
             KeyCode::Delete if self.pane == 6 => {
@@ -765,6 +911,7 @@ impl App {
         false
     }
     fn select_pane(&mut self, pane: usize) {
+        self.console_view.focused = false;
         self.selections[self.pane] = self.selection;
         self.pane = pane;
         self.selection = self.selections[pane];
@@ -784,7 +931,7 @@ impl App {
         }
     }
     fn cycle_pane(&mut self, delta: isize) {
-        let panes = [0, 5, 7, 8, 3, 2, 4, 6, 1, 9];
+        let panes = [0, 5, 7, 8, 3, 10, 2, 4, 6, 1, 9];
         let index = panes.iter().position(|&p| p == self.pane).unwrap_or(0);
         self.select_pane(panes[(index as isize + delta).rem_euclid(panes.len() as isize) as usize]);
     }
@@ -801,10 +948,14 @@ impl App {
             || self.setup.is_some()
             || self.quitting
             || self.pending_view.is_some()
+            || self.completion.busy()
             || !self.pending_commands.is_empty()
             || self.snapshot.state != "STOPPED"
         {
             return false;
+        }
+        if self.ensure_peripherals(engine) {
+            return true;
         }
         let mut panes = vec![];
         if self.source_rect.width > 0 {
@@ -847,12 +998,16 @@ impl App {
         }
         false
     }
+    fn open_help(&mut self, shortcuts: bool) {
+        self.help = shortcuts;
+        self.palette = !shortcuts;
+    }
     fn activate_palette(&mut self, engine: Option<&EngineHandle>) {
         let command = COMMANDS[self.palette_index];
         self.palette = false;
         if command.contains(' ') {
             self.input = format!(":{} ", command.split_whitespace().next().unwrap());
-            self.editing = true;
+            self.focus_input(false);
         } else {
             self.command(engine, &format!(":{command}"));
         }
@@ -864,12 +1019,37 @@ impl App {
         if self.demo {
             return true;
         }
+        if self.pending_task.is_some() && !matches!(command, "commandlist" | "quit") {
+            return false;
+        }
         match command {
-            "commandlist" => true,
+            "commandlist" | "quit" => true,
+            "build" => {
+                self.project.has_build()
+                    && matches!(
+                        self.snapshot.state.as_str(),
+                        "STOPPED" | "READY" | "DISCONNECTED" | "FAULT"
+                    )
+            }
+            "download" => {
+                if !self.project.tasks.download.trim().is_empty() {
+                    matches!(
+                        self.snapshot.state.as_str(),
+                        "STOPPED" | "READY" | "DISCONNECTED" | "FAULT"
+                    )
+                } else {
+                    self.project.has_download() && self.snapshot.state == "STOPPED"
+                }
+            }
             "reconnect" => {
                 !self.snapshot.state.starts_with("STARTING") && self.snapshot.state != "CONNECTING"
             }
             "pause" => self.snapshot.state == "RUNNING",
+            "peripheral-refresh" => {
+                self.side_pane == peripherals::PANE
+                    && self.snapshot.state == "STOPPED"
+                    && self.pending_commands.is_empty()
+            }
             "run" | "continue" => matches!(self.snapshot.state.as_str(), "STOPPED" | "READY"),
             "restart" => {
                 self.snapshot.state == "STOPPED" && !self.project.actions.restart.is_empty()
@@ -883,15 +1063,17 @@ impl App {
             1 => self.snapshot.watches.len() * 2,
             2 => self.snapshot.stack.len(),
             3 => self.snapshot.registers.len(),
-            4 => self.snapshot.memory.len(),
+            4 => self.memory_bytes().len().div_ceil(self.memory_columns()),
             5 => self.snapshot.assembly.len(),
             6 => self.snapshot.breakpoints.len(),
             7 => self.snapshot.files.len(),
             8 => self.logs.len(),
+            10 => self.peripherals.len(),
             _ => self.snapshot.locals.len() * 2,
         }
     }
     fn set_view_top(&mut self, pane: usize, top: usize) {
+        self.fx.trigger(format!("scroll:{pane}"), 650);
         let visible = self.view_rects[pane].height.max(1) as usize;
         let len = self.view_len(pane);
         let max = len.saturating_sub(visible);
@@ -903,7 +1085,7 @@ impl App {
                 .clamp(top, (top + visible - 1).min(len.saturating_sub(1)));
         } else {
             self.view_tops[pane] = top;
-            if matches!(pane, 2 | 6 | 7) {
+            if matches!(pane, 1 | 2 | 3 | 4 | 6 | 7 | 9 | 10) {
                 let selected = self
                     .selected(pane)
                     .clamp(top, (top + visible - 1).min(len.saturating_sub(1)));
@@ -944,10 +1126,83 @@ impl App {
         self.set_view_top(pane, top);
     }
     fn mouse(&mut self, mouse: MouseEvent, engine: Option<&EngineHandle>) {
-        if self.setup.is_some() || self.help || self.confirm.is_some() || self.quitting {
+        self.pointer = Some((mouse.column, mouse.row).into());
+        if self.setup.is_some() || self.confirm.is_some() || self.quitting {
             return;
         }
         let point = (mouse.column, mouse.row).into();
+        if self.formats.popup.is_some() || self.formats.appearance {
+            self.format_mouse(mouse, engine);
+            return;
+        }
+        if self.help || self.palette {
+            if mouse.kind == MouseEventKind::Down(event::MouseButton::Left)
+                && let Some((_, shortcuts)) =
+                    self.help_tab_hits.iter().find(|(r, _)| r.contains(point))
+            {
+                self.open_help(*shortcuts);
+                return;
+            }
+            if self.help {
+                match mouse.kind {
+                    MouseEventKind::ScrollDown => {
+                        self.help_scroll = self.help_scroll.saturating_add(3).min(30)
+                    }
+                    MouseEventKind::ScrollUp => {
+                        self.help_scroll = self.help_scroll.saturating_sub(3)
+                    }
+                    _ => {}
+                }
+                return;
+            }
+        }
+        if !self.help && !self.palette && self.completion.area.contains(point) {
+            match mouse.kind {
+                MouseEventKind::Down(event::MouseButton::Left) => {
+                    if let Some((_, index)) = self
+                        .completion
+                        .hits
+                        .iter()
+                        .find(|(rect, _)| rect.contains(point))
+                    {
+                        self.completion.selected = *index;
+                        self.accept_completion();
+                    }
+                }
+                MouseEventKind::ScrollDown => {
+                    self.completion.selected = (self.completion.selected + 1)
+                        .min(self.completion.items.len().saturating_sub(1));
+                }
+                MouseEventKind::ScrollUp => {
+                    self.completion.selected = self.completion.selected.saturating_sub(1)
+                }
+                _ => {}
+            }
+            return;
+        }
+        if !self.help && !self.palette && !self.sources.list_open {
+            if self.format_mouse(mouse, engine) {
+                return;
+            }
+            let hit = self
+                .action_hits
+                .iter()
+                .map(|(r, _)| *r)
+                .chain(self.pane_hits.iter().map(|(r, _)| *r))
+                .find(|r| r.contains(point));
+            if mouse.kind == MouseEventKind::Moved {
+                if hit != self.fx.hover.map(|(r, _)| r) {
+                    self.fx.hover = hit.map(|r| (r, Instant::now()));
+                    self.fx.trigger("hover", 250);
+                }
+            } else if mouse.kind == MouseEventKind::Down(event::MouseButton::Left) {
+                self.fx.pressed = hit;
+                self.fx.trigger("press", 180);
+            }
+        }
+        if !self.help && !self.palette && !self.sources.list_open && self.console_mouse(mouse) {
+            return;
+        }
         if self.source_tabs_mouse(mouse) {
             return;
         }
@@ -999,12 +1254,17 @@ impl App {
                 }
             }
             MouseEventKind::Down(event::MouseButton::Left) => {
+                if self.watch_input_rect.contains(point) {
+                    self.focus_input(true);
+                    return;
+                }
                 if self.console_input_rect.contains(point) {
-                    self.editing = true;
-                    self.history_index = self.history.len();
+                    self.focus_input(false);
                     return;
                 }
                 self.editing = false;
+                self.watch_editing = false;
+                self.completion.invalidate();
                 if let Some((_, pane)) =
                     self.pane_hits.iter().find(|(rect, _)| rect.contains(point))
                 {
@@ -1017,8 +1277,8 @@ impl App {
                     let action = *action;
                     if self.action_enabled(action) {
                         if action == "commandlist" {
-                            self.palette = true;
                             self.palette_index = 0;
+                            self.open_help(false);
                         } else {
                             self.command(engine, &format!(":{action}"));
                         }
@@ -1048,14 +1308,14 @@ impl App {
                         if mouse.column < self.source_rect.x + 7 {
                             self.toggle_break(engine);
                         }
-                    } else if matches!(pane, 2 | 6 | 7) {
+                    } else if matches!(pane, 1 | 2 | 3 | 4 | 6 | 7 | 9 | 10) {
                         let clicked =
                             self.view_tops[pane] + mouse.row.saturating_sub(rect.y) as usize;
                         if clicked >= self.view_len(pane) {
                             return;
                         }
                         self.selection = clicked;
-                        if matches!(pane, 2 | 7) {
+                        if matches!(pane, 2 | 7 | 10) {
                             self.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), engine);
                         }
                     }
@@ -1065,6 +1325,9 @@ impl App {
         }
     }
     fn open_setup(&mut self) {
+        if let Ok(document) = Document::open(&self.document.path) {
+            self.document = document;
+        }
         let mut setup = Setup::new(self.document.clone());
         if !matches!(self.snapshot.state.as_str(), "DISCONNECTED" | "FAULT") {
             setup.message =
@@ -1075,93 +1338,6 @@ impl App {
     }
 }
 
-fn section(title: impl Into<Line<'static>>) -> Block<'static> {
-    Block::default()
-        .borders(Borders::TOP)
-        .border_style(Style::default().fg(Color::DarkGray))
-        .title(title)
-        .title_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
-}
-fn variables(vars: &[Variable]) -> Vec<Line<'static>> {
-    vars.iter()
-        .flat_map(|v| {
-            vec![
-                Line::from(Span::styled(
-                    v.name.clone(),
-                    Style::default().fg(Color::Cyan),
-                )),
-                Line::from(Span::styled(
-                    format!("  {}{}", if v.changed { "* " } else { "" }, v.value),
-                    Style::default().fg(if v.error {
-                        Color::Red
-                    } else if v.changed {
-                        Color::Yellow
-                    } else {
-                        Color::Reset
-                    }),
-                )),
-            ]
-        })
-        .collect()
-}
-fn syntax(line: &str) -> Vec<Span<'static>> {
-    if line.trim_start().starts_with("//") || line.trim_start().starts_with("/*") {
-        return vec![Span::styled(
-            line.to_owned(),
-            Style::default().fg(Color::DarkGray),
-        )];
-    }
-    let mut spans = Vec::new();
-    let mut word = String::new();
-    let flush = |word: &mut String, spans: &mut Vec<Span<'static>>| {
-        if !word.is_empty() {
-            let color = if matches!(
-                word.as_str(),
-                "void"
-                    | "const"
-                    | "static"
-                    | "volatile"
-                    | "uint8_t"
-                    | "uint16_t"
-                    | "uint32_t"
-                    | "int"
-                    | "char"
-                    | "return"
-                    | "if"
-                    | "else"
-                    | "for"
-                    | "while"
-                    | "struct"
-                    | "typedef"
-                    | "sizeof"
-            ) {
-                Color::Cyan
-            } else if word.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-                Color::Yellow
-            } else {
-                Color::Reset
-            };
-            spans.push(Span::styled(
-                std::mem::take(word),
-                Style::default().fg(color),
-            ));
-        }
-    };
-    for c in line.replace('\t', "    ").chars() {
-        if c.is_alphanumeric() || c == '_' {
-            word.push(c);
-        } else {
-            flush(&mut word, &mut spans);
-            spans.push(Span::raw(c.to_string()));
-        }
-    }
-    flush(&mut word, &mut spans);
-    spans
-}
 fn center(area: Rect, w: u16, h: u16) -> Rect {
     let w = w.min(area.width.saturating_sub(2));
     let h = h.min(area.height.saturating_sub(2));
@@ -1179,6 +1355,7 @@ impl Drop for TerminalGuard {
         let _ = disable_raw_mode();
         let _ = execute!(
             io::stdout(),
+            DisableFocusChange,
             DisableBracketedPaste,
             DisableMouseCapture,
             LeaveAlternateScreen,
@@ -1203,6 +1380,7 @@ pub fn run(
         io::stdout(),
         EnterAlternateScreen,
         EnableMouseCapture,
+        EnableFocusChange,
         EnableBracketedPaste
     )
     .map_err(|e| e.to_string())?;
@@ -1215,7 +1393,9 @@ pub fn run(
     if !document.path.is_file() {
         project.path = None;
     }
-    let ready = project.clone().prepare().is_ok();
+    let readiness = project.clone().prepare_workspace();
+    let ready = readiness.is_ok();
+    let connect_ready = readiness.unwrap_or(false);
     let mut app = App::new(project.clone(), demo);
     app.document = document;
     if !demo && (!auto_connect || !ready || error.is_some()) {
@@ -1230,14 +1410,22 @@ pub fn run(
         Some(session::spawn(project.clone()))
     };
     if !demo && app.setup.is_none() {
-        app.submit(engine.as_ref(), "connect", json!({}));
+        if connect_ready {
+            app.submit(engine.as_ref(), "connect", json!({}));
+        } else {
+            app.notice = "ELF not built. Use Build, then Reconnect to start debugging.".into();
+        }
     }
     const SWITCH_QUIT: u64 = u64::MAX - 1;
     let mut pending_launch: Option<Launch> = None;
     let mut switch_error = None;
     let mut dirty = true;
     let mut last_draw = Instant::now() - Duration::from_secs(1);
+    let mut last_task_clock = Instant::now();
     loop {
+        if app.demo && app.quitting {
+            return Ok(());
+        }
         let mut worker_exited = false;
         if let Some(engine) = &engine {
             for _ in 0..128 {
@@ -1287,7 +1475,7 @@ pub fn run(
                     launch.document.save()?;
                 }
                 let mut project = launch.document.project()?;
-                project.prepare()?;
+                project.prepare_workspace()?;
                 if !launch.save {
                     project.path = None;
                 }
@@ -1296,10 +1484,15 @@ pub fn run(
             match prepared {
                 Ok(project) => {
                     app.project = project.clone();
+                    app.fx = effects::Effects::default();
+                    app.fx.mode = project.ui.animations;
+                    app.formats = formats::Formats::default();
+                    app.peripherals = peripherals::Peripherals::load(&project.program.svd);
                     app.document = launch.document;
                     app.setup = None;
                     app.snapshot = Snapshot::default();
                     app.source.clear();
+                    app.source_comments.clear();
                     app.source_file.clear();
                     app.source_line = 0;
                     app.source_top = 0;
@@ -1317,10 +1510,21 @@ pub fn run(
                     app.view_errors.fill(None);
                     app.pending_view = None;
                     app.pending_commands.clear();
+                    app.pending_task = None;
                     app.editing = false;
+                    app.watch_editing = false;
+                    app.watch_input.clear();
+                    app.pending_watch = None;
+                    app.completion = completion::Completion::default();
                     app.confirm = None;
+                    let connect_ready = project.clone().prepare_workspace().unwrap_or(false);
                     engine = Some(session::spawn(project));
-                    app.submit(engine.as_ref(), "connect", json!({}));
+                    if connect_ready {
+                        app.submit(engine.as_ref(), "connect", json!({}));
+                    } else {
+                        app.notice =
+                            "ELF not built. Use Build, then Reconnect to start debugging.".into();
+                    }
                 }
                 Err(e) => {
                     if let Some(setup) = &mut app.setup {
@@ -1341,7 +1545,25 @@ pub fn run(
                 setup.message = "DEMO: restart without --demo to connect a debugger.".into();
             }
         }
+        if app.ensure_completion(engine.as_ref()) {
+            dirty = true;
+        }
         if app.ensure_visible_data(engine.as_ref()) {
+            dirty = true;
+        }
+        let active = app.setup.is_none()
+            && (!app.pending_commands.is_empty()
+                || app.pending_view.is_some()
+                || app.snapshot.state == "RUNNING");
+        if app.fx.tick(app.project.ui.animations, active) {
+            dirty = true;
+        }
+        // Elapsed task time is real information, also updated with decoration disabled.
+        if app.fx.focused
+            && app.pending_task.is_some()
+            && last_task_clock.elapsed() >= Duration::from_secs(1)
+        {
+            last_task_clock = Instant::now();
             dirty = true;
         }
         if dirty && last_draw.elapsed() >= Duration::from_millis(25) {
@@ -1360,6 +1582,14 @@ pub fn run(
                     dirty = true;
                 }
                 Input::Resize(_, _) => dirty = true,
+                Input::FocusLost => {
+                    app.fx.focus(false);
+                    dirty = true;
+                }
+                Input::FocusGained => {
+                    app.fx.focus(true);
+                    dirty = true;
+                }
                 Input::Paste(text) => {
                     if let Some(setup) = &mut app.setup {
                         setup.paste(&text);
@@ -1370,8 +1600,12 @@ pub fn run(
                             .extend(text.chars().filter(|c| !c.is_control()));
                         app.sources.list_index = 0;
                         dirty = true;
+                    } else if app.watch_editing {
+                        app.watch_input
+                            .extend(text.chars().filter(|c| !c.is_control()));
+                        dirty = true;
                     } else if app.editing {
-                        app.input.push_str(&text);
+                        app.input.extend(text.chars().filter(|c| !c.is_control()));
                         dirty = true;
                     }
                 }
@@ -1379,7 +1613,6 @@ pub fn run(
                     app.mouse(mouse, engine.as_ref());
                     dirty = true;
                 }
-                _ => {}
             }
         }
     }
@@ -1819,6 +2052,218 @@ mod tests {
         assert!(!a.palette);
         assert!(a.editing);
         assert_eq!(a.input, ":watch ");
+    }
+    #[test]
+    fn exit_button_cancels_worker_once_in_each_state_and_exits_demo() {
+        for (w, h) in [(45, 12), (120, 36)] {
+            for state in [
+                "DISCONNECTED",
+                "STARTING GDB",
+                "CONNECTING",
+                "READY",
+                "STOPPED",
+                "RUNNING",
+                "FAULT",
+            ] {
+                let (engine, commands) = session::test_channel();
+                let mut a = App::new(Project::default(), false);
+                a.snapshot.state = state.into();
+                render(&mut a, w, h);
+                let hit = a
+                    .action_hits
+                    .iter()
+                    .find(|(_, id)| *id == "quit")
+                    .unwrap()
+                    .0;
+                mouse_at(
+                    &mut a,
+                    MouseEventKind::Down(event::MouseButton::Left),
+                    hit.x,
+                    hit.y,
+                    Some(&engine),
+                );
+                assert_eq!(commands.try_recv().unwrap().method, "quit", "{state}");
+                assert!(
+                    engine
+                        .cancellation
+                        .load(std::sync::atomic::Ordering::Relaxed)
+                );
+                assert!(a.quitting);
+                mouse_at(
+                    &mut a,
+                    MouseEventKind::Down(event::MouseButton::Left),
+                    hit.x,
+                    hit.y,
+                    Some(&engine),
+                );
+                a.key(
+                    KeyEvent::new(KeyCode::Char('q'), KeyModifiers::CONTROL),
+                    Some(&engine),
+                );
+                assert!(commands.try_recv().is_err());
+                assert!(!a.action_enabled("quit"));
+            }
+        }
+        let mut a = App::new(Project::default(), true);
+        render(&mut a, 80, 24);
+        let hit = a
+            .action_hits
+            .iter()
+            .find(|(_, id)| *id == "quit")
+            .unwrap()
+            .0;
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            hit.x,
+            hit.y,
+            None,
+        );
+        assert!(a.quitting);
+    }
+    #[test]
+    fn help_tabs_switch_without_dispatching_debug_commands() {
+        let (engine, commands) = session::test_channel();
+        let mut a = App::new(Project::default(), false);
+        for (w, h) in [(45, 12), (120, 36)] {
+            a.open_help(false);
+            a.palette_index = COMMANDS.iter().position(|c| *c == "step").unwrap();
+            let text = render(&mut a, w, h);
+            assert!(text.contains("Commands") && text.contains("Shortcuts"));
+            let hit = a
+                .help_tab_hits
+                .iter()
+                .find(|(_, shortcuts)| *shortcuts)
+                .unwrap()
+                .0;
+            mouse_at(
+                &mut a,
+                MouseEventKind::Down(event::MouseButton::Left),
+                hit.x,
+                hit.y,
+                Some(&engine),
+            );
+            assert!(a.help && !a.palette);
+            a.key(
+                KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+                Some(&engine),
+            );
+            assert!(a.palette && !a.help);
+            render(&mut a, w, h);
+            let selected = a
+                .palette_hits
+                .iter()
+                .find(|(_, i)| *i == a.palette_index)
+                .unwrap()
+                .0;
+            assert!(selected.bottom() < h);
+            a.key(
+                KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                Some(&engine),
+            );
+            assert_eq!(commands.try_recv().unwrap().method, "step");
+            assert!(commands.try_recv().is_err());
+            a.command(Some(&engine), ":help");
+            assert!(a.help && !a.palette);
+            render(&mut a, w, h);
+            let hit = a
+                .help_tab_hits
+                .iter()
+                .find(|(_, shortcuts)| !shortcuts)
+                .unwrap()
+                .0;
+            mouse_at(
+                &mut a,
+                MouseEventKind::Down(event::MouseButton::Left),
+                hit.x,
+                hit.y,
+                Some(&engine),
+            );
+            assert!(a.palette && !a.help);
+            a.key(
+                KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+                Some(&engine),
+            );
+            assert!(!a.palette && !a.help);
+            assert!(commands.try_recv().is_err());
+        }
+    }
+    #[test]
+    fn project_actions_are_separate_and_gate_tasks_and_download_confirmation() {
+        let (engine, commands) = session::test_channel();
+        let mut a = App::new(Project::default(), false);
+        assert!(!a.action_enabled("build"));
+        assert!(!a.action_enabled("download"));
+        a.project.tasks.build = "build.bat".into();
+        a.project.tasks.download = "flash.bat".into();
+        for (w, h) in [(45, 12), (80, 24), (160, 42)] {
+            render(&mut a, w, h);
+            let run_row = a
+                .action_hits
+                .iter()
+                .find(|(_, id)| *id == "continue")
+                .unwrap()
+                .0
+                .y;
+            for cmd in ["build", "download"] {
+                let hit = a.action_hits.iter().find(|(_, id)| *id == cmd).unwrap().0;
+                assert!(hit.y < run_row && hit.right() <= w);
+                assert!(a.action_enabled(cmd));
+            }
+        }
+        let build = a
+            .action_hits
+            .iter()
+            .find(|(_, id)| *id == "build")
+            .unwrap()
+            .0;
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            build.x,
+            build.y,
+            Some(&engine),
+        );
+        let request = commands.try_recv().unwrap();
+        assert_eq!(request.method, "build");
+        assert!(!a.action_enabled("download"));
+        assert!(a.action_enabled("quit"));
+        a.submit(Some(&engine), "build", json!({}));
+        assert!(commands.try_recv().is_err());
+        a.update(Event::Response {
+            id: request.id,
+            ok: false,
+            result: Value::Null,
+            error: Some("Build failed".into()),
+        });
+        assert!(a.action_enabled("build"));
+        let download = a
+            .action_hits
+            .iter()
+            .find(|(_, id)| *id == "download")
+            .unwrap()
+            .0;
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            download.x,
+            download.y,
+            Some(&engine),
+        );
+        assert!(commands.try_recv().is_err());
+        assert!(a.confirm.is_some());
+        a.key(
+            KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert!(a.confirm.is_none());
+        assert!(commands.try_recv().is_err());
+        a.submit(Some(&engine), "download", json!({}));
+        a.key(
+            KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert_eq!(commands.try_recv().unwrap().method, "download");
     }
     #[test]
     fn assembly_loads_on_entry_and_stop_without_repeated_requests() {

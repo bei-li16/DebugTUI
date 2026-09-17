@@ -19,8 +19,43 @@ pub struct Project {
     pub breakpoints: Vec<String>,
     pub source_map: Vec<SourceMap>,
     pub build: Option<Build>,
+    pub tasks: Tasks,
+    pub ui: Ui,
     #[serde(skip)]
     pub path: Option<PathBuf>,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Motion {
+    Off,
+    #[default]
+    Subtle,
+    Full,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Radix {
+    Binary,
+    Octal,
+    #[default]
+    Decimal,
+    Hex,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Ui {
+    pub animations: Motion,
+    pub unicode: bool,
+    pub formats: BTreeMap<String, Radix>,
+}
+impl Default for Ui {
+    fn default() -> Self {
+        Self {
+            animations: Motion::Subtle,
+            unicode: true,
+            formats: BTreeMap::new(),
+        }
+    }
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -105,6 +140,7 @@ pub struct Actions {
 pub struct Program {
     pub elf: PathBuf,
     pub source_root: PathBuf,
+    pub svd: PathBuf,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -136,6 +172,23 @@ pub struct Build {
     pub args: Vec<String>,
     #[serde(default)]
     pub cwd: PathBuf,
+}
+/// User shell commands, always executed in program.source_root.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Tasks {
+    pub build: String,
+    pub download: String,
+    pub timeout_ms: u64,
+}
+impl Default for Tasks {
+    fn default() -> Self {
+        Self {
+            build: String::new(),
+            download: String::new(),
+            timeout_ms: 300_000,
+        }
+    }
 }
 fn absolute(base: &Path, value: &Path) -> PathBuf {
     if value.is_absolute() {
@@ -275,8 +328,9 @@ impl Project {
         if !p.program.elf.as_os_str().is_empty() {
             p.program.elf = absolute(&base, &p.program.elf);
         }
-        if !p.program.source_root.as_os_str().is_empty() {
-            p.program.source_root = absolute(&base, &p.program.source_root);
+        p.program.source_root = absolute(&base, &p.program.source_root);
+        if !p.program.svd.as_os_str().is_empty() {
+            p.program.svd = absolute(&base, &p.program.svd);
         }
         for map in &mut p.source_map {
             map.to = absolute(&base, &map.to);
@@ -306,6 +360,15 @@ impl Project {
         }
         if self.session.timeout_ms == 0 {
             return Err("Session timeout must be positive".into());
+        }
+        if self.tasks.timeout_ms == 0 {
+            return Err("Tasks timeout must be positive".into());
+        }
+        if [&self.tasks.build, &self.tasks.download]
+            .iter()
+            .any(|s| s.contains(['\0', '\r', '\n']))
+        {
+            return Err("Build / download commands must be single-line shell commands".into());
         }
         if self.gdb.executable.as_os_str().is_empty() {
             return Err("gdb.executable must not be empty".into());
@@ -360,6 +423,24 @@ impl Project {
         }
         Ok(())
     }
+    pub fn has_build(&self) -> bool {
+        !self.tasks.build.trim().is_empty() || self.build.is_some()
+    }
+    /// A configured build can create the ELF before a debugger is connected.
+    pub fn prepare_workspace(&mut self) -> Result<bool, String> {
+        if self.has_build()
+            && !self.program.elf.as_os_str().is_empty()
+            && !self.program.elf.is_file()
+        {
+            self.validate()?;
+            return Ok(false);
+        }
+        self.prepare()?;
+        Ok(true)
+    }
+    pub fn has_download(&self) -> bool {
+        !self.tasks.download.trim().is_empty() || !self.actions.download.is_empty()
+    }
     pub fn source_path(&self, file: &str) -> Option<PathBuf> {
         let normalized = file.replace('\\', "/");
         for map in &self.source_map {
@@ -408,6 +489,25 @@ impl Project {
             toml::to_string_pretty(&raw).map_err(|e| e.to_string())?,
         )
         .map_err(|e| e.to_string())
+    }
+    /// Serialized by the session worker; merge with the latest project, never a tools profile.
+    pub fn save_ui(&self, ui: &Ui) -> Result<bool, String> {
+        let Some(path) = &self.path else {
+            return Ok(false);
+        };
+        let mut raw = read_toml(path)?;
+        raw.as_table_mut()
+            .ok_or("Project must be a TOML table")?
+            .insert(
+                "ui".into(),
+                toml::Value::try_from(ui).map_err(|e| e.to_string())?,
+            );
+        fs::write(
+            path,
+            toml::to_string_pretty(&raw).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(true)
     }
 }
 #[cfg(test)]
@@ -459,6 +559,32 @@ mod tests {
         assert!(saved.get("gdb").is_none());
         assert_eq!(saved["tools"]["root"].as_str(), Some("tools"));
         assert_eq!(saved["program"]["elf"].as_str(), Some("../app.elf"));
+        let profile_before = fs::read(base.join("tools/debug-env.toml")).unwrap();
+        let mut ui = Ui {
+            animations: Motion::Full,
+            unicode: false,
+            ..Default::default()
+        };
+        ui.formats.insert("watch:counter".into(), Radix::Binary);
+        let mut open_setup = crate::launch::Document::open(&path).unwrap();
+        open_setup.set("target", "endpoint", "localhost:5555".into());
+        assert!(p.save_ui(&ui).unwrap());
+        open_setup.save().unwrap();
+        p.save_preferences(vec!["counter".into()], vec!["main".into()])
+            .unwrap();
+        let reloaded = Project::load(&path).unwrap();
+        assert_eq!(reloaded.ui.animations, Motion::Full);
+        assert_eq!(reloaded.target.endpoint, "localhost:5555");
+        assert!(!reloaded.ui.unicode);
+        assert_eq!(
+            reloaded.ui.formats.get("watch:counter"),
+            Some(&Radix::Binary)
+        );
+        assert_eq!(reloaded.watch, vec!["counter"]);
+        assert_eq!(
+            profile_before,
+            fs::read(base.join("tools/debug-env.toml")).unwrap()
+        );
         fs::remove_file(path).unwrap();
         fs::remove_file(base.join("tools/debug-env.toml")).unwrap();
         fs::remove_dir(base.join("tools")).unwrap();
