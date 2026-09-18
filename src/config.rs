@@ -21,6 +21,9 @@ pub struct Project {
     pub build: Option<Build>,
     pub tasks: Tasks,
     pub ui: Ui,
+    pub cores: Vec<Core>,
+    pub live_watch: Option<LiveWatchConfig>,
+    pub sync: Option<SyncConfig>,
     #[serde(skip)]
     pub path: Option<PathBuf>,
 }
@@ -163,6 +166,30 @@ impl Default for Session {
 pub struct SourceMap {
     pub from: String,
     pub to: PathBuf,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Core {
+    pub name: String,
+    pub endpoint: String,
+    pub after_connect: Vec<String>,
+    pub run: Vec<String>,
+    pub init: Vec<String>,
+    pub startup_order: i32,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LiveWatchConfig {
+    pub tcl_endpoint: String,
+    pub bus_target: String,
+    pub interval_ms: u64,
+    pub elf: PathBuf,
+}
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SyncConfig {
+    pub method: String,
+    pub open: Vec<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -401,6 +428,41 @@ impl Project {
                 return Err("Environment actions must be nonempty single-line GDB commands".into());
             }
         }
+        for core in &self.cores {
+            if core.name.is_empty() {
+                return Err("Each core requires a name".into());
+            }
+            if core.endpoint.is_empty() {
+                return Err(format!("Core {} requires an endpoint", core.name));
+            }
+            for commands in [&core.after_connect, &core.run, &core.init] {
+                if commands
+                    .iter()
+                    .any(|s| s.trim().is_empty() || s.contains(['\n', '\r']))
+                {
+                    return Err(format!(
+                        "Core {} commands must be nonempty single-line GDB commands",
+                        core.name
+                    ));
+                }
+            }
+        }
+        if let Some(lw) = &self.live_watch {
+            if lw.tcl_endpoint.is_empty() || lw.bus_target.is_empty() || lw.elf.as_os_str().is_empty() {
+                return Err("live_watch requires tcl_endpoint, bus_target, and elf".into());
+            }
+            if lw.interval_ms == 0 {
+                return Err("live_watch.interval_ms must be positive".into());
+            }
+        }
+        if let Some(sync) = &self.sync {
+            if sync.open
+                .iter()
+                .any(|s| s.trim().is_empty() || s.contains(['\n', '\r']))
+            {
+                return Err("sync.open commands must be nonempty single-line strings".into());
+            }
+        }
         Ok(())
     }
     pub fn prepare(&mut self) -> Result<(), String> {
@@ -589,5 +651,53 @@ mod tests {
         fs::remove_file(base.join("tools/debug-env.toml")).unwrap();
         fs::remove_dir(base.join("tools")).unwrap();
         fs::remove_dir(base).unwrap();
+    }
+    #[test]
+    fn single_core_backward_compatible() {
+        let mut p = Project::default();
+        p.target.mode = "extended-remote".into();
+        p.target.endpoint = "localhost:3333".into();
+        assert!(p.validate().is_ok());
+        assert!(p.cores.is_empty());
+        assert!(p.live_watch.is_none());
+        assert!(p.sync.is_none());
+    }
+    #[test]
+    fn multi_core_config_parses() {
+        let toml_text = r#"
+version = 2
+[gdb]
+executable = "arm-none-eabi-gdb"
+[program]
+elf = "./build/app.elf"
+[[cores]]
+name = "core.0"
+endpoint = "localhost:3333"
+after_connect = ["monitor chipreset"]
+run = ["tbreak _main", "continue"]
+startup_order = 1
+[[cores]]
+name = "core.1"
+endpoint = "localhost:3334"
+startup_order = 0
+[live_watch]
+tcl_endpoint = "localhost:6666"
+bus_target = "AHB_3"
+interval_ms = 200
+elf = "./build/app.elf"
+[sync]
+method = "cti"
+open = ["targets APB_1; mww 0x80420140 0x3"]
+"#;
+        let raw: toml::Value = toml::from_str(toml_text).unwrap();
+        let p: Project = raw.try_into().unwrap();
+        assert_eq!(p.cores.len(), 2);
+        assert_eq!(p.cores[0].name, "core.0");
+        assert_eq!(p.cores[0].endpoint, "localhost:3333");
+        assert_eq!(p.cores[1].startup_order, 0);
+        assert!(p.live_watch.is_some());
+        assert_eq!(p.live_watch.as_ref().unwrap().bus_target, "AHB_3");
+        assert!(p.sync.is_some());
+        assert!(p.validate().is_ok());
     }
 }

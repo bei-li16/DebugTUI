@@ -129,7 +129,7 @@ pub enum Event {
     Exit,
 }
 pub struct EngineHandle {
-    commands: Sender<Request>,
+    pub(crate) commands: Sender<Request>,
     pub events: Receiver<Event>,
     pub cancellation: Arc<AtomicBool>,
 }
@@ -177,14 +177,14 @@ pub fn spawn(project: Project) -> EngineHandle {
     }
 }
 
-fn hidden(command: &mut Command) {
+pub(crate) fn hidden(command: &mut Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
     }
 }
-fn tool_environment(
+pub(crate) fn tool_environment(
     command: &mut Command,
     values: &std::collections::BTreeMap<String, String>,
     unset: &[String],

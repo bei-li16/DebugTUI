@@ -1,9 +1,12 @@
 use crate::{
     config::Project,
+    coordinator,
     launch::{Document, Launch, Setup},
-    session::{self, EngineHandle, Event, Frame, Request, Snapshot, Variable},
+    session::{EngineHandle, Event, Frame, Request, Snapshot, Variable},
     theme,
 };
+#[cfg(test)]
+use crate::session;
 use crossterm::{
     event::{
         self, DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
@@ -220,6 +223,7 @@ pub struct App {
     pointer: Option<ratatui::layout::Position>,
     fx: effects::Effects,
     formats: formats::Formats,
+    core_info: Option<(String, usize, usize)>,
 }
 impl App {
     pub fn new(project: Project, demo: bool) -> Self {
@@ -288,6 +292,7 @@ impl App {
             pointer: None,
             fx: effects::Effects::default(),
             formats: formats::Formats::default(),
+            core_info: None,
         };
         a.fx.mode = a.project.ui.animations;
         if demo {
@@ -465,6 +470,21 @@ impl App {
                     }
                     return false;
                 }
+                // Parse core info from connect or select_core responses.
+                if ok
+                    && let Some(count) = result.get("core_count").and_then(Value::as_u64)
+                    && count > 1
+                {
+                    let active = result.get("active_core").and_then(Value::as_u64).unwrap_or(0) as usize;
+                    let name = result
+                        .get("core_names")
+                        .and_then(Value::as_array)
+                        .and_then(|arr| arr.get(active))
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_owned();
+                    self.core_info = Some((name, active, count as usize));
+                }
                 self.fx.response(id, ok);
                 if self.watch.pending_remove == Some(id) {
                     self.watch.pending_remove = None;
@@ -622,6 +642,10 @@ impl App {
                 self.submit(engine, name, json!({}))
             }
             "peripheral-refresh" => self.refresh_peripheral(engine),
+            "select_core" | "core" => {
+                let idx = arg.parse::<usize>().unwrap_or(0);
+                self.submit(engine, "select_core", json!({"index":idx}));
+            }
             "watch" | "unwatch" => self.submit(engine, name, json!({"expression":arg})),
             "data-break" => self.submit(engine, "data_break", json!({"expression":arg})),
             "break" => self.submit(engine, "break", json!({"location":unquote(arg)})),
@@ -809,6 +833,13 @@ impl App {
         }
         if !self.input_active() && key.modifiers.contains(KeyModifiers::CONTROL) {
             match key.code {
+                KeyCode::Char('t') => {
+                    if let Some((_, idx, count)) = &self.core_info {
+                        let next = (*idx + 1) % count;
+                        self.submit(engine, "select_core", json!({"index":next}));
+                    }
+                    return false;
+                }
                 KeyCode::PageUp => {
                     self.cycle_source(-1);
                     return false;
@@ -1437,7 +1468,7 @@ pub fn run(
     let mut engine = if demo {
         None
     } else {
-        Some(session::spawn(project.clone()))
+        Some(coordinator::spawn(project.clone()))
     };
     if !demo && app.setup.is_none() {
         if connect_ready {
@@ -1549,7 +1580,7 @@ pub fn run(
                     app.completion = completion::Completion::default();
                     app.confirm = None;
                     let connect_ready = project.clone().prepare_workspace().unwrap_or(false);
-                    engine = Some(session::spawn(project));
+                    engine = Some(coordinator::spawn(project));
                     if connect_ready {
                         app.submit(engine.as_ref(), "connect", json!({}));
                     } else {
@@ -1562,7 +1593,7 @@ pub fn run(
                         setup.pending = false;
                         setup.message = format!("Error: {e}");
                     }
-                    engine = Some(session::spawn(app.project.clone()));
+                    engine = Some(coordinator::spawn(app.project.clone()));
                 }
             }
             dirty = true;

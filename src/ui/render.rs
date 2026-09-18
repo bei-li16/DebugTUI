@@ -1032,7 +1032,12 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
                 a.snapshot.frame.function
             )
         };
-        let context = format!(" {} · {}", a.project.target.mode, a.project.target.endpoint);
+        let core_tag = a
+            .core_info
+            .as_ref()
+            .map(|(name, idx, count)| format!(" [{name} · {}/{count}]", idx + 1))
+            .unwrap_or_default();
+        let context = format!(" {} · {}{}", a.project.target.mode, a.project.target.endpoint, core_tag);
         let right_width = if rect.width >= 100 {
             (context.len() as u16 + 2).min(rect.width / 2)
         } else {
@@ -1161,12 +1166,13 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         PANES[a.pane]
     };
     theme::surface(f, rows[3], theme::RAISED);
+    let core_hint = if a.core_info.is_some() { "  Ctrl+T Core" } else { "" };
     let keys = if area.width >= 110 {
-        " F2 Setup  / Console  Ctrl+P Help  Tab Views  F5 Continue  F6 Pause  F10 Step Over  F11 Step In  Ctrl+Q Exit  f Format"
+        format!(" F2 Setup  / Console  Ctrl+P Help  Tab Views{core_hint}  F5 Continue  F6 Pause  F10 Step Over  F11 Step In  Ctrl+Q Exit  f Format")
     } else if area.width >= 70 {
-        " F2 Setup  / Console  Ctrl+P Help  Tab Views  Ctrl+Q Exit"
+        format!(" F2 Setup  / Console  Ctrl+P Help  Tab Views{core_hint}  Ctrl+Q Exit")
     } else {
-        " F2 Setup  / Console  ? Help  Ctrl+Q Exit"
+        format!(" F2 Setup  / Console  ? Help{core_hint}  Ctrl+Q Exit")
     };
     f.render_widget(
         Paragraph::new(keys).style(Style::default().fg(theme::MUTED)),

@@ -1,6 +1,8 @@
 pub mod cli;
 pub mod config;
+pub mod coordinator;
 pub mod launch;
+pub mod live_watch;
 pub(crate) mod logging;
 pub mod mi;
 pub mod process;

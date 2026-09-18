@@ -1,6 +1,7 @@
 use debugtui::{
     config::Project,
-    session::{self, Event, Request},
+    coordinator,
+    session::{Event, Request},
     ui,
 };
 use serde_json::json;
@@ -54,7 +55,7 @@ fn run() -> Result<(), String> {
     )
 }
 fn run_headless(project: Project, script: Option<String>) -> Result<(), String> {
-    let engine = session::spawn(project);
+    let engine = coordinator::spawn(project);
     let (tx, rx) = std::sync::mpsc::channel::<Result<Request, String>>();
     let scripted = script.is_some();
     if let Some(path) = script {
