@@ -167,7 +167,10 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
     }
     if a.view_len(pane) == 0 {
         let (title, hint) = match pane {
-            1 => ("No watches yet", "Enter a variable in watch> below."),
+            1 => (
+                "No watches yet",
+                "Enter a variable below, then click + Add.",
+            ),
             9 => (
                 "No locals in this frame",
                 "Select a stopped frame to inspect its variables.",
@@ -535,18 +538,72 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
         Constraint::Length(if watch { 1 } else { 0 }),
     ])
     .split(inner);
-    tabs(f, a, rows[0], &VARIABLE_PANES, a.variable_pane);
+    let remove_width = if watch && rows[0].width >= 30 { 12 } else { 0 };
+    let tab_area = Rect {
+        width: rows[0].width.saturating_sub(remove_width),
+        ..rows[0]
+    };
+    tabs(f, a, tab_area, &VARIABLE_PANES, a.variable_pane);
+    if remove_width > 0 {
+        let hit = Rect::new(
+            rows[0].right() - remove_width,
+            rows[0].y,
+            remove_width,
+            rows[0].height,
+        );
+        a.watch.remove_rect = hit;
+        let enabled = !a.snapshot.watches.is_empty()
+            && a.watch.pending_remove.is_none()
+            && a.pending_task.is_none();
+        f.render_widget(
+            Paragraph::new(" Del Remove ").style(
+                Style::default()
+                    .fg(if enabled { theme::TEXT } else { theme::DIM })
+                    .bg(if enabled && hovered(a, hit) {
+                        theme::HOVER
+                    } else {
+                        theme::PANEL
+                    }),
+            ),
+            hit,
+        );
+    }
     view(f, a, a.variable_pane, rows[1]);
     if watch {
-        a.watch_input_rect = rows[2];
+        let add_width = 7.min(rows[2].width);
+        a.watch_input_rect = Rect {
+            width: rows[2].width.saturating_sub(add_width),
+            ..rows[2]
+        };
         input_line(
             f,
-            rows[2],
-            " watch> ",
+            a.watch_input_rect,
+            " + ",
             &a.watch_input,
             a.watch_editing,
-            "Global variable… Tab complete · Enter add",
+            "Variable / expression…",
             "Tab complete · Enter add",
+        );
+        let hit = Rect::new(
+            rows[2].right() - add_width,
+            rows[2].y,
+            add_width,
+            rows[2].height,
+        );
+        a.watch.add_rect = hit;
+        let enabled = a.pending_watch.is_none() && a.pending_task.is_none();
+        f.render_widget(
+            Paragraph::new(" + Add ").style(
+                Style::default()
+                    .fg(if enabled { theme::ACCENT } else { theme::DIM })
+                    .bg(if enabled && hovered(a, hit) {
+                        theme::HOVER
+                    } else {
+                        theme::RAISED
+                    })
+                    .add_modifier(Modifier::BOLD),
+            ),
+            hit,
         );
     }
 }
@@ -1015,6 +1072,9 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     a.console_view.clear_hits();
     a.view_rects.fill(Rect::default());
     a.watch_input_rect = Rect::default();
+    a.watch.add_rect = Rect::default();
+    a.watch.remove_rect = Rect::default();
+    a.watch.remove_hits.clear();
     a.completion.hits.clear();
     a.completion.area = Rect::default();
     a.scrollbars.fill(Rect::default());

@@ -308,14 +308,7 @@ impl App {
             KeyCode::Enter => {
                 self.fx.trigger("submit", 220);
                 if self.watch_editing {
-                    let expression = self.watch_input.trim().to_owned();
-                    if !expression.is_empty() && self.pending_watch.is_none() {
-                        let id = self.next_id;
-                        self.submit(engine, "watch", json!({"expression":expression}));
-                        if self.pending_commands.contains(&id) {
-                            self.pending_watch = Some((id, expression));
-                        }
-                    }
+                    self.add_watch_input(engine);
                 } else {
                     let input = std::mem::take(&mut self.input);
                     if !input.trim().is_empty() {

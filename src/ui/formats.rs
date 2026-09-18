@@ -343,7 +343,13 @@ impl App {
             let Some(v) = vars.get(row / stride) else {
                 break;
             };
-            let hit = Rect::new(rect.x, rect.y + (row - start) as u16, rect.width, 1);
+            let close_width = if pane == 1 && rect.width >= 8 { 3 } else { 0 };
+            let hit = Rect::new(
+                rect.x,
+                rect.y + (row - start) as u16,
+                rect.width - close_width,
+                1,
+            );
             let item = Item {
                 rect: hit,
                 pane,
@@ -374,8 +380,14 @@ impl App {
                 spans.extend(self.numeric_spans(&item, v.changed, v.error));
                 spans
             };
-            let selected = self.formats.selected.as_ref() == Some(&item.key)
-                || (self.pane == pane && self.selected(pane) == row);
+            let selected = if pane == 1 {
+                // The name and value are one Watch item. Its highlight must agree
+                // with the item Delete will remove, even after scrolling.
+                self.pane == 1 && self.selected(1) / 2 == row / 2
+            } else {
+                self.formats.selected.as_ref() == Some(&item.key)
+                    || (self.pane == pane && self.selected(pane) == row)
+            };
             let bg = if selected {
                 theme::SELECTED
             } else {
@@ -386,6 +398,42 @@ impl App {
                 vec![Line::from(spans).style(Style::default().bg(bg))],
                 hit,
             );
+            if close_width > 0 {
+                let close = Rect::new(hit.right(), hit.y, close_width, 1);
+                let show = row % 2 == 0 || row == start;
+                let enabled = self.watch.pending_remove.is_none() && self.pending_task.is_none();
+                let hover = self.pointer.is_some_and(|p| close.contains(p));
+                f.render_widget(
+                    Paragraph::new(if show {
+                        if self.project.ui.unicode {
+                            " × "
+                        } else {
+                            " x "
+                        }
+                    } else {
+                        "   "
+                    })
+                    .style(
+                        Style::default()
+                            .fg(if !enabled {
+                                theme::DIM
+                            } else if hover {
+                                theme::RED
+                            } else {
+                                theme::MUTED
+                            })
+                            .bg(if show && enabled && hover {
+                                theme::HOVER
+                            } else {
+                                bg
+                            }),
+                    ),
+                    close,
+                );
+                if show {
+                    self.watch.remove_hits.push((close, v.name.clone()));
+                }
+            }
             self.formats.hits.push(item);
         }
     }

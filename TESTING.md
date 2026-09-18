@@ -1,5 +1,22 @@
 # DebugTUI 验证记录
 
+## 0.6.6：Watch 面板直接增删
+
+- Watch 底部变量输入框增加 **+ Add** 按钮，复用自动补全及 Enter 提交流程；空输入点击聚焦，重复提交不重复排队，失败保留输入，旧响应不清除新草稿。
+- 每个变量名称行右侧增加 **×**，点击直接删除对应表达式，无需预先选中；滚动至只有数值行可见时仍保留该项删除入口。点击目标按表达式识别，避免异步列表刷新后误删相邻项。原有 Delete / Del Remove 保留。
+- 78 项单元测试 + 1 项实际 shell 集成测试通过，Clippy 零警告，Release 构建通过。新增测试覆盖鼠标增删、运行状态、错误重试、输入隔离、Help / Locals 焦点、45×12 至 160×42 布局、滚动和刷新后的点击目标。
+- 原生终端 + 真实本机 GDB 实测：断点停在 main，点击 + Add 聚焦、输入 `coun` 并 Tab 补全为 `counter`，点击添加显示 17；再点击添加 `counter_total` 显示 23；直接点第二项的 × 仅移除第二项，再点第一项的 × 清空。整个 Watch 增删过程未输入调试命令。正常退出码 0，保存配置 `watch = []`。
+- 交互记录：`artifacts/ui-0.6.6/terminal/interactions.json`。使用独立本机测试程序，未连接物理 MCU。
+
+## 0.6.5：Watch 删除与焦点修复
+
+- 修复前用三个回归用例复现：删除末项后选中行越界，无法继续删除；删除前面的项目后选择偏移到其他表达式；Console 历史焦点仍触发 Watch 的 Delete。修复后均通过。
+- Watch 名称行和数值行对应同一个选择；列表变化后按表达式保持选择，被删除时移动至相邻项并修正滚动位置。删除请求完成前抑制重复发送，失败后可重试，按住 Delete 的重复事件不会连续清空列表。
+- Watch 标题增加 Del Remove 鼠标入口；输入框、Console、Help 焦点不误删 Watch，输入草稿保留。测试覆盖滚动后的名称/数值行、鼠标按钮、连续删空、错误响应和运行中移除。
+- 73 项单元测试 + 1 项实际 shell 集成测试通过，Clippy 零警告。真实本机 GDB 回归额外覆盖停止时删除两项、运行中删除一项：删除没有额外 MI 请求，没有暂停目标或改变变量；重连并再次停止后已删除项未恢复，保存的项目 Watch 列表为空。
+- 原生 GDB 验证记录：`artifacts/completion-native-1789653131310/verification.json`。测试仅操作独立本机测试程序，不连接物理 MCU。
+- 本地安装版真实终端验证：断点暂停后选中最后一项，连续两次 Delete 分别移除 `counter_pair.value`、`counter_total`，再鼠标点击 Del Remove 移除 `counter`；空列表再次 Delete 正常提示，退出码 0，保存的配置为 `watch = []`。交互输出：`artifacts/ui-0.6.5/terminal/interactions.json`。
+
 ## 0.4.2：Source root 命令与独立 Project 操作区（2026-09-17）
 
 - 启动页在 Source root 后增加 Build command / Download command，保留引号并保存至项目 `[tasks]`。配置解析、相对路径、tools 下载动作回退和未生成 ELF 时进入工作台均有回归覆盖。

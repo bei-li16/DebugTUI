@@ -53,6 +53,7 @@ mod render;
 mod source_tabs;
 #[cfg(test)]
 mod visual_tests;
+mod watch;
 use highlight::syntax;
 pub use render::draw;
 use source_tabs::SourceTabs;
@@ -106,6 +107,9 @@ Tab / Shift+Tab switches view and keyboard focus.
 Click tabs to change only that group; source stays visible.
 Wheel over a view or drag its scrollbar to browse content.
 Click Stack rows to select a frame; Delete removes a breakpoint or watch.
+Watch: enter a variable below the list, then click + Add or press Enter.
+Click a variable's x to remove it, or select it and press Delete / Del Remove.
+Delete while typing does not remove a Watch item.
 Narrow terminals show the focused group; Tab reaches all views.
 Source files stay open in tabs; click a name or × to close.
 < / > and the tab-strip wheel browse hidden tabs; [Files N] lists all.
@@ -183,6 +187,7 @@ pub struct App {
     watch_editing: bool,
     watch_input_rect: Rect,
     pending_watch: Option<(u64, String)>,
+    watch: watch::WatchView,
     completion: completion::Completion,
     history: Vec<String>,
     history_index: usize,
@@ -249,6 +254,7 @@ impl App {
             watch_editing: false,
             watch_input_rect: Rect::default(),
             pending_watch: None,
+            watch: watch::WatchView::default(),
             completion: completion::Completion::default(),
             history: vec![],
             history_index: 0,
@@ -389,6 +395,7 @@ impl App {
         match event {
             Event::Snapshot { snapshot } => {
                 self.fx.snapshot(&self.snapshot, &snapshot);
+                self.reconcile_watch_selection(&snapshot);
                 if matches!(
                     snapshot.state.as_str(),
                     "DISCONNECTED" | "STARTING GDB" | "FAULT"
@@ -459,6 +466,9 @@ impl App {
                     return false;
                 }
                 self.fx.response(id, ok);
+                if self.watch.pending_remove == Some(id) {
+                    self.watch.pending_remove = None;
+                }
                 if self.completion_response(id, &result, error.as_deref()) {
                     return false;
                 }
@@ -508,6 +518,10 @@ impl App {
         false
     }
     fn submit(&mut self, engine: Option<&EngineHandle>, method: &str, params: Value) {
+        if method == "unwatch" && self.watch.pending_remove.is_some() {
+            self.notice = "Removing Watch expression; wait for completion.".into();
+            return;
+        }
         if self.pending_task.is_some() && method != "quit" {
             self.notice = "Build / Download is in progress. Ctrl+Q cancels and exits.".into();
             return;
@@ -548,9 +562,15 @@ impl App {
         self.notice = format!("{}…", request.method);
         if let Some(engine) = engine {
             let id = request.id;
+            if request.method == "unwatch" {
+                self.watch.pending_remove = Some(id);
+            }
             self.pending_commands.insert(id);
             if let Err(e) = engine.send(request) {
                 self.pending_commands.remove(&id);
+                if self.watch.pending_remove == Some(id) {
+                    self.watch.pending_remove = None;
+                }
                 if self.pending_task == Some(id) {
                     self.pending_task = None;
                 }
@@ -900,17 +920,18 @@ impl App {
                     self.focus_input(self.pane == 1);
                 }
             }
-            KeyCode::Delete if self.pane == 6 => {
+            KeyCode::Delete if self.pane == 6 && !self.console_view.focused => {
                 if let Some(b) = self.snapshot.breakpoints.get(self.selection) {
                     let number = b.id.clone();
                     self.submit(engine, "delete_break", json!({"number":number}));
                 }
             }
-            KeyCode::Delete if self.pane == 1 => {
-                if let Some(v) = self.snapshot.watches.get(self.selection / 2) {
-                    let name = v.name.clone();
-                    self.submit(engine, "unwatch", json!({"expression":name}));
-                }
+            KeyCode::Delete
+                if self.pane == 1
+                    && !self.console_view.focused
+                    && key.kind == KeyEventKind::Press =>
+            {
+                self.remove_selected_watch(engine);
             }
             _ => {}
         }
@@ -1187,6 +1208,9 @@ impl App {
             return;
         }
         if !self.help && !self.palette && !self.sources.list_open {
+            if self.watch_mouse(mouse, engine) {
+                return;
+            }
             if self.format_mouse(mouse, engine) {
                 return;
             }
@@ -1521,6 +1545,7 @@ pub fn run(
                     app.watch_editing = false;
                     app.watch_input.clear();
                     app.pending_watch = None;
+                    app.watch = watch::WatchView::default();
                     app.completion = completion::Completion::default();
                     app.confirm = None;
                     let connect_ready = project.clone().prepare_workspace().unwrap_or(false);
