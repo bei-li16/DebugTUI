@@ -48,7 +48,7 @@ fn shell_tasks_use_source_root_stream_both_pipes_and_report_failure_timeout_and_
     p.program.source_root = root.clone();
     p.tasks.build = r#""scripts with spaces\run task.cmd" "argument with spaces""#.into();
     p.tasks.download = "echo downloaded>downloaded.flag".into();
-    let engine = session::spawn(p.clone());
+    let engine = debugtui::coordinator::spawn(p.clone());
     engine.send(Request::new(1, "build", json!({}))).unwrap();
     let (ok, logs) = response(&engine, 1);
     assert!(ok, "{logs:?}");

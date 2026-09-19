@@ -98,6 +98,8 @@ impl App {
             || self.confirm.is_some()
             || self.sources.list_open
             || self.quitting
+            || self.monitor.modal()
+            || self.breaks.modal()
         {
             return None;
         }

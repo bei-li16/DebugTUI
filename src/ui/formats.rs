@@ -73,6 +73,7 @@ pub(super) struct Formats {
     pub appearance: bool,
     pub appearance_hits: Vec<(Rect, usize)>,
     pub pending_save: HashSet<u64>,
+    pub refresh_rect: Rect,
 }
 impl App {
     pub(super) fn base_for(&self, key: &str, default: Radix) -> Radix {
@@ -108,6 +109,10 @@ impl App {
         }
     }
     pub(super) fn open_format(&mut self, item: Option<Item>) {
+        if item.is_none() && self.pane == 1 && self.watch_item(self.selected(1)).is_none() {
+            self.notice = "Select a Watch value to change its display format.".into();
+            return;
+        }
         let item = item.or_else(|| self.selected_numeric_item()).or_else(|| {
             self.formats.selected.as_ref().and_then(|key| {
                 self.formats
@@ -140,6 +145,9 @@ impl App {
     fn selected_numeric_item(&self) -> Option<Item> {
         let pane = self.pane;
         let row = self.selected(pane);
+        if pane == 1 {
+            return self.watch_item(row);
+        }
         if pane == 10 {
             return self.peripheral_format_item(row);
         }
@@ -218,6 +226,11 @@ impl App {
         }
         match key.code {
             KeyCode::Esc => self.formats.popup = None,
+            KeyCode::Char('r') => {
+                if let Some(item) = self.formats.popup.clone() {
+                    self.open_monitor(item.pane, item.row);
+                }
+            }
             KeyCode::Up | KeyCode::BackTab => self.formats.index = (self.formats.index + 3) % 4,
             KeyCode::Down | KeyCode::Tab => self.formats.index = (self.formats.index + 1) % 4,
             KeyCode::Enter => self.apply_format(engine),
@@ -248,6 +261,14 @@ impl App {
             return true;
         }
         if self.formats.popup.is_some() {
+            if mouse.kind == MouseEventKind::Down(event::MouseButton::Left)
+                && self.formats.refresh_rect.contains(point)
+            {
+                if let Some(item) = self.formats.popup.clone() {
+                    self.open_monitor(item.pane, item.row);
+                }
+                return true;
+            }
             if mouse.kind == MouseEventKind::Down(event::MouseButton::Left)
                 && let Some((_, i)) = self
                     .formats
@@ -298,7 +319,8 @@ impl App {
         let old = self.fx.observe(&item.key, &item.raw);
         let old = old.and_then(|s| number(&s, base));
         let aligned = base == Radix::Hex && old.as_ref().is_some_and(|s| s.len() == value.len());
-        let stale = self.snapshot.state == "RUNNING";
+        let live = self.monitor_fresh(&item.key);
+        let stale = self.snapshot.state == "RUNNING" && !live;
         let fg = if error {
             theme::RED
         } else if stale {
@@ -328,9 +350,16 @@ impl App {
             format!("  {}{}", if changed { "• " } else { "" }, tag(base)),
             Style::default().fg(theme::DIM),
         ));
+        if live {
+            spans.push(Span::styled("  LIVE", Style::default().fg(theme::GREEN)));
+        }
         spans
     }
     pub(super) fn numeric_view(&mut self, f: &mut UiFrame, pane: usize, rect: Rect) {
+        if pane == 1 {
+            self.watch_numeric_view(f, rect);
+            return;
+        }
         let vars = match pane {
             1 => &self.snapshot.watches,
             9 => &self.snapshot.locals,
@@ -343,13 +372,7 @@ impl App {
             let Some(v) = vars.get(row / stride) else {
                 break;
             };
-            let close_width = if pane == 1 && rect.width >= 8 { 3 } else { 0 };
-            let hit = Rect::new(
-                rect.x,
-                rect.y + (row - start) as u16,
-                rect.width - close_width,
-                1,
-            );
+            let hit = Rect::new(rect.x, rect.y + (row - start) as u16, rect.width, 1);
             let item = Item {
                 rect: hit,
                 pane,
@@ -380,14 +403,8 @@ impl App {
                 spans.extend(self.numeric_spans(&item, v.changed, v.error));
                 spans
             };
-            let selected = if pane == 1 {
-                // The name and value are one Watch item. Its highlight must agree
-                // with the item Delete will remove, even after scrolling.
-                self.pane == 1 && self.selected(1) / 2 == row / 2
-            } else {
-                self.formats.selected.as_ref() == Some(&item.key)
-                    || (self.pane == pane && self.selected(pane) == row)
-            };
+            let selected = self.formats.selected.as_ref() == Some(&item.key)
+                || (self.pane == pane && self.selected(pane) == row);
             let bg = if selected {
                 theme::SELECTED
             } else {
@@ -398,42 +415,6 @@ impl App {
                 vec![Line::from(spans).style(Style::default().bg(bg))],
                 hit,
             );
-            if close_width > 0 {
-                let close = Rect::new(hit.right(), hit.y, close_width, 1);
-                let show = row % 2 == 0 || row == start;
-                let enabled = self.watch.pending_remove.is_none() && self.pending_task.is_none();
-                let hover = self.pointer.is_some_and(|p| close.contains(p));
-                f.render_widget(
-                    Paragraph::new(if show {
-                        if self.project.ui.unicode {
-                            " × "
-                        } else {
-                            " x "
-                        }
-                    } else {
-                        "   "
-                    })
-                    .style(
-                        Style::default()
-                            .fg(if !enabled {
-                                theme::DIM
-                            } else if hover {
-                                theme::RED
-                            } else {
-                                theme::MUTED
-                            })
-                            .bg(if show && enabled && hover {
-                                theme::HOVER
-                            } else {
-                                bg
-                            }),
-                    ),
-                    close,
-                );
-                if show {
-                    self.watch.remove_hits.push((close, v.name.clone()));
-                }
-            }
             self.formats.hits.push(item);
         }
     }
@@ -553,6 +534,16 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
                 hit,
             );
             a.formats.menu_hits.push((hit, i));
+        }
+        a.formats.refresh_rect = Rect::default();
+        if matches!(item.pane, 1 | 10) {
+            let hit = Rect::new(inner.x + 1, inner.y + 6, inner.width.saturating_sub(2), 1);
+            f.render_widget(
+                Paragraph::new("r  Memory access / Live refresh…")
+                    .style(Style::default().fg(theme::ACCENT)),
+                hit,
+            );
+            a.formats.refresh_rect = hit;
         }
         let preview=number(&item.raw,BASES[a.formats.index].0).unwrap_or_else(||format!("{}\n\nNot a scalar integer. Natural display is retained; watch an individual member to format it.",item.raw));
         f.render_widget(

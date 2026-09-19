@@ -1,5 +1,40 @@
 # DebugTUI 验证记录
 
+## 0.8.2：顶部启动按钮与返回配置（2026-09-20）
+
+- 118 项 Rust 单元测试 + 1 项 shell 集成测试通过；Clippy `--all-targets --locked -- -D warnings` 无警告，Release 构建完成。新增覆盖顶部按钮在 45×12 / 80×24 / 120×36 下的命中区域、默认 Enter 启动、正在编辑字段的提交、无效配置不启动、Workspace / Esc 返回及草稿保留。
+- Ratatui 单元格预览位于 `artifacts/ui-launch-0.8.2/`，检查 setup / setup-narrow / setup-compact / workspace。启动按钮固定在表单上方，主界面 Project 栏提供独立的 ← Setup。
+- 安装后的 0.8.2 在真实 Windows 终端连接 STM32F429，使用 tools 中的 GDB + OpenOCD。Enter 从默认启动按钮连接；鼠标点击 ← Setup 后，TUI / GDB / OpenOCD PID 保持不变。将 timeout 改为 9000 后通过 Workspace 返回，再打开配置，草稿仍在且磁盘仍为 8000。
+- 在字段编辑状态输入 9500 并按 Ctrl+R，无需先按 Enter：配置成功保存，旧 GDB / OpenOCD 清理后重新连接；TUI PID 始终为 9264。GDB PID 为 37128 → 26436，OpenOCD 为 18340 → 30860。重新连接后 `p xTickCount` 返回 82729393，Watch 及两个禁用的代码/读数据断点记录成功恢复。
+- 再次通过 F2 打开配置、鼠标点击顶部 Start 完成第二次重启，GDB / OpenOCD PID 分别为 35376 / 36192；随后 F2 / Esc 返回工作区正常。Ctrl+Q 退出码 0，三份 session 日志均包含连接、`monitor resume` 和 GDB 退出，结束后无调试进程及 3333/6666 监听。证据：`artifacts/terminal-launch-0.8.2/verification.json`、该目录的进程快照和 `logs/`。测试使用单独配置文件，没有改动用户工程配置或下载固件。
+- 本地 npm 全局安装验证 `debugtui --version` 为 0.8.2；安装后 EXE 与 release SHA256 均为 `1E29FF6A70732403E2AF7D51F94B00A401D6DA69E096B2D32238B4F08A47691E`，EXE 大小 3,437,056 字节。
+
+## 0.8.1：断点开关、数据断点与保存恢复（2026-09-19）
+
+- 114 项 Rust 单元测试 + 1 项 shell 集成测试通过；Clippy `--all-targets -- -D warnings` 无警告，Release 构建完成。新测试覆盖勾选禁用/启用、重复操作抑制、Delete 与输入隔离、数据读写模式、失败保留编辑器、核心切换和列表选择、45×12 / 80×24 / 140×40 布局、旧配置与详细断点的往返保存。
+- `scripts/test-breakpoints-gdb.cjs` 使用真实本机 GDB：条件/忽略次数/实际命中计数、临时断点、写数据断点、强转地址表达式、无效条件回滚、部分创建失败清理、批量启停、立即保存、重连与进程重启恢复、无法恢复的记录保留及明确删除。`--multi` 使用两套真实 GDB，验证启停只影响当前核心，两个核心分别保存和恢复。
+- STM32F429 + J-Link V8 / tools OpenOCD：同一脚本 `--hardware` 先执行 `compare-sections .text` 确认固件匹配；不重新下载固件。代码断点、条件/忽略次数、临时/硬件代码断点，以及 `*(unsigned int *)&xTickCount` 的 **Write / Read / Read-write** 三种数据断点均实际触发暂停；禁用与重新启用保持编号，三类禁用数据记录与条件代码断点在重连和重启后完整恢复。首次通过记录：`artifacts/breakpoints-stm32-1789827910744/verification.json`（75 个请求）。
+- 实测发现远程 GDB 在自动跨过被忽略的断点时偶尔拒绝 `-thread-info`；已修复为在原超时内继续等待，未伪造 STOPPED。`scripts/test-pause.ps1` 新增 query-rejected 场景，六种暂停竞态/超时测试通过；真实运行目标仍按期报超时。
+- 原 Watch 树/补全/强转表达式和 11 组多核回归通过：`artifacts/watch-tree-1789828265871/`、`artifacts/multicore-1789828276937/verification.json`。多核硬件仍未做实板验收，当前硬件是单核 STM32F429。
+- 实际 Ratatui Buffer 渲染预览：`artifacts/ui-breakpoints/{breakpoints,breakpoints-narrow,breakpoint-editor}.png`；逐项检查标签、开关、对话框及窄终端命中区域。
+- 安装后的 0.8.1 再次通过本机断点 60 请求、双 GDB 23 请求和 STM32 75 请求：`artifacts/breakpoints-native-1789828383385/`、`artifacts/breakpoints-multi-1789828387086/`、`artifacts/breakpoints-stm32-1789828381945/`。实际终端用 Space 启用/禁用同一代码断点，通过编辑器选择 Read 并创建 xTickCount 数据断点，再用鼠标点击勾选框禁用；两个禁用记录均立即写回测试工程。日志：`artifacts/terminal-breakpoints-0.8.1/logs/session-20260919-223353-374.log`。Ctrl+Q 返回 0，测试结束后 debugtui / GDB / OpenOCD 进程及 3333/6666 监听端口均为 0。
+- 本地全局 npm 安装完成：`debugtui --version` 为 0.8.1；release 与安装后 EXE SHA256 一致：`3D621BC656EC56DC73DB4CEE8343DD2EF045EE5B88F6C53C854475ACC842D84F`，文件 3,432,960 字节。无需新增运行时依赖。
+
+## 0.8.0：核心按钮、内存通道和可见项实时刷新（2026-09-19）
+
+- 107 项 Rust 单元测试 + 1 项 shell 集成测试通过；`cargo clippy --all-targets -- -D warnings`、`cargo build --release --locked` 通过。测试涵盖核按钮命中/窄窗口、核心底色及 Source/Asm 内容切换、刷新策略持久化/分核隔离、延迟响应丢弃、轮询间隔、隐藏/删除项、运行状态访问门控、SVD 副作用寄存器禁用轮询、手动位域刷新父寄存器，以及内部 TCL 回显识别。
+- 双真实本机 GDB + 模拟 TCL：`artifacts/multicore-1789825041872/verification.json`，11 组回归通过，包括两核独立状态、失败回滚、单核兼容、多个 CTI 初始化顺序、借核通道的核心限制和共享 AHB 在某一核运行时读取。**没有多核实板，CTI 触发/多 AP 硬件路由尚未做实板验收。**
+- Native GDB 内存通道测试：`scripts/test-memory-access-gdb.cjs`，验证有符号/浮点/64 位类型、嵌套成员和地址强转、无地址表达式拒绝、TCL 超时/断线/错误恢复、64 位端序、禁止隐式停核、读完仍可 Pause/Step/Asm。release 记录：`artifacts/memory-native-1789825035841/verification.json`，已安装 exe 记录：`artifacts/memory-native-1789825387920/verification.json`。
+- STM32F429 实板：J-Link V8 探针 + tools 内 xPack OpenOCD，SWD 1000 kHz；建立 `stm32f4x.cpu` 和 AP0 `stm32f4x.ahb`。先发现旧 `Debug/FreeRTOS_Project.elf` 与板上固件不符；改用 `build/FreeRTOS_STM32F429.elf`，GDB `compare-sections .text` 报告 **matched**。未下载或改写固件。
+- 实板暂停时，GDB、CPU target 和 AHB 对 `xTickCount` 的值一致；AHB/GDB 的 RCC.CFGR、GPIOB.MODER、DBGMCU.IDCODE 一致。运行时按 100 ms 请求间隔采样 20 次并读 GPIOB，tick 持续增长、状态保持 RUNNING、generation 不变、没有新增 GDB 命令；默认 GDB 和 stopped-only Core 通道被拒绝。之后 Pause、单指令步进、反汇编、系统寄存器和 Watch 正常。自动启动和退出自有 OpenOCD 已验证，退出后 3333/6666 端口释放。
+- 已安装 TUI 的真实终端测试：`artifacts/terminal-0.8.0/`。从 Watch 的 `f → r` 菜单选择 AHB，启用 100 ms 刷新并保存；确认 `[ui.refresh."single|watch:xTickCount"]` 写回，运行后 LIVE 数值持续变化，Ctrl+Q 清理退出。测试发现并修复 OpenOCD 将 TCL 返回值同时回显到 GDB target 和自有 Server stderr 导致 Console 刷屏：内部返回加唯一标记，统一归入 diagnostic，原始目标输出仍保留。
+- 原 Watch 树/自动补全/日志轮转、ARM/RISC-V/x64 模拟 MI、五种 Pause 竞争场景均回归通过。release 记录：`artifacts/watch-tree-1789825034262/`、`completion-native-1789825040444/`、`logs-native-1789825043464/`、`environment test 工程 20260919-213719/`、`pause-20260919-213726/`。
+- UI 预览从 Ratatui 实际缓冲导出并检查：`artifacts/preview-0.8.0/core0.png`、`core1.png`、`refresh-settings.png`；不是设计稿。npm 包不包含 OpenOCD/GDB/Node/Python，tools 独立校验打包通过。
+- 旧 J-Link Server 实板尝试未通过：当前 USB 设备为 WinUSB/libwdi (`oem8.inf`)，SEGGER V7.94e 在 TUI 内及独立 CLI、SWD 4000/1000 kHz 下均报告 `Could not connect to J-Link`。未更改系统 USB 驱动；本次实板通过项均使用 OpenOCD，不能宣称 J-Link Server 实板回归成功。记录：`artifacts/svd-hardware-1789825411709/`。
+- 本地 FreeRTOS 工程 `debug.toml` 已将 ELF 改为匹配的 build 文件、Tools profile 改为 `debug-env-openocd.toml`，其余工程设置保留；原配置备份为 `artifacts/debug-before-live-0.8.0.toml`。Git 提交和发布不在本次操作范围。
+- 最终安装版本 `debugtui 0.8.0`；release 和 npm 全局安装 exe 的 SHA-256 均为 `7D2B0539E6FF5CCFC8C6B0B650F56951BCE31B3355BB485318E5C018185E20C5`。最终已安装 exe 实板 70 个请求全部通过：`artifacts/memory-stm32-1789825648786/verification.json`。
+- 最终终端复测：`artifacts/terminal-0.8.0/logs/session-20260919-214757-727.log`，恢复已保存的 Watch 100 ms 策略，RUNNING 下 LIVE tick 持续增长；隐藏 Watch 后不继续读取它，在 Peripherals 展开 ADC1、为 CR1 选择 AHB 和 500 ms 策略，显示 `0x0 hex LIVE`。100 次 AHB 采样时 Console 内部回显为 0，寄存器读和 Watch 读均不写硬件；退出码 0。当前采样时 TUI 工作集约 12.22 MiB / private 5.59 MiB（含加载 F429 SVD，不含 GDB/OpenOCD，非性能保证）。
+
 ## 0.6.6：Watch 面板直接增删
 
 - Watch 底部变量输入框增加 **+ Add** 按钮，复用自动补全及 Enter 提交流程；空输入点击聚焦，重复提交不重复排队，失败保留输入，旧响应不清除新草稿。
@@ -423,3 +458,33 @@ Artifacts: `artifacts/ui-0.6.0/`, `artifacts/completion-native-1789607444647/`, 
 - UI 预览由真实 Ratatui 缓冲导出：`artifacts/ui-0.6.1/console-live.png`、`console-history.png`、`console-history-narrow.png`。保留底部输入框，Console 右边是独立轨道，浏览状态与新消息计数在标题行。
 - 本地安装 0.6.1 后，以真实终端连接本机 GDB：多行 printf 输出 35 条记录，Shift+PgUp / Home 浏览首条记录；保持历史视口执行新命令，Latest 增加 3 条记录且旧内容保留；End 恢复实时跟随，Ctrl+Q 退出码 0。日志位于 `artifacts/ui-0.6.1/terminal/`。原生命令/变量补全回归同样通过：`artifacts/completion-native-1789609102557/verification.json`。
 - npm 独立安装、升级、卸载和重新安装均通过；本机安装的可执行文件 SHA-256 与 release 构建相同。
+
+## 0.7.2 多核健壮性与单核回归（2026-09-18）
+
+- 89 项 Rust 单元测试 + 1 项实际 shell 集成测试通过；Clippy `--all-targets -- -D warnings` 通过。新增覆盖 ELF32/64 正确偏移、截断/越界、TCL 完整响应/错误/超时、Live Watch 断线重连与 target-specific 读取、并发分核偏好保存、启动页合并和切核视图缓存失效。
+- `scripts/test-multicore-gdb.cjs target/release/debugtui.exe`：两个真实本机 GDB，稳定核序号、按序连接、立即切换快照、不同 Watch/断点保存与恢复、Run、单步、重连、Build 全流程通过。另测第二核连接失败回滚、后台核 Run 失败上报、单个显式 core 的共享服务、服务启动失败清理，以及多核 Build 中通过 Console quit 退出取消。最终记录：`artifacts/multicore-1789740186149/verification.json`。
+- 无 `[[cores]]` 的旧单核工程仍直接进入原 Session；真实 GDB connect/break/run/step/quit、Watch 增删与命令/符号补全通过。单核 Snapshot 不增加 core 字段。
+- ARM / RISC-V / x64 的严格 MI 模拟服务通过：寄存器来自 GDB，不注入芯片命令；本地 READY、未配置动作报错、无换行 stderr 就绪消息和自有进程清理通过。
+- Pause 五种情况通过：缺失停止事件、已停止错误、延迟事件、补发中断，以及目标确实仍运行时有界超时。脚本使用 PowerShell 7 (`pwsh`) 执行；Windows PowerShell 5 会将预期的 stderr 负例提前变成终止错误。
+- 会话日志回归通过：14 个请求、3 份独立日志、全部物理行带时间戳、旧日志字节不变。记录：`artifacts/logs-native-1789739873974/verification.json`。
+- 这些验证不连接物理 MCU。真实多核芯片的 CTI 联动、独立核暂停能力、AP 访问与缓存一致性仍需对应硬件验收；当前共用 ELF/GDB/SVD，不视为异构多镜像支持。
+
+### 2026-09-19 补充回归与收尾
+
+- 复现并修复：重复 Connect 原本进入失败回滚、拆掉现有多核连接；现在在派发前拒绝，READY/STOPPED 会话保持有效。
+- 多核 `set_elf` 明确拒绝单核局部切换，引导通过 F2 Setup 更换共享 ELF 并整体启动。单核 `:elf` 保留；界面只在后端确认成功后更新路径，失败或发送失败保持原路径。
+- 单核/多核首次 Run 前的断点新增、恢复及 Console 删除均验证持久化。退出前读取实际 GDB 断点列表，避免 READY 状态的变更遗漏；读取失败保留之前已保存列表。
+- TCL 同步初始化在每条命令前检查退出取消；退出时不再执行余下配置命令。共享服务就绪标记跨读取块且包含空格、无换行时仍可识别；退出后验证自有服务 PID 已消失。
+- 90 项单元测试 + 1 项实际 shell 集成测试、Clippy、release 构建通过。最终 release 双 GDB 脚本 9 组场景通过：`artifacts/multicore-1789819904726/verification.json`。
+- 单核真实 GDB Watch/补全：`artifacts/completion-native-1789819906319/`；日志轮转/时间戳：`artifacts/logs-native-1789819909213/verification.json`。ARM/RISC-V/x64 模拟寄存器与五种 Pause 场景回归通过。
+
+### 2026-09-19 Watch 补全、结构体与地址表达式
+
+- 96 项 Rust 单元测试 + 1 项实际 shell 集成测试通过，Clippy `--all-targets -- -D warnings` 和 release 构建通过。树形 UI 新增回归：鼠标展开、Enter/左右键、成员独立进制、折叠后的选中项、数组分页、滚动后关闭顶层项、禁止从成员行误删其他观察项、运行时展开限制和窄窗口点击区域。
+- `node scripts/test-watch-tree-gdb.cjs target/release/debugtui.exe`：真实本机 GDB 验证全局/静态符号、`.` / `->` / 嵌套成员和强转成员补全；结构体展开、数组 32/64/70 项分页、成员变化刷新；结构体/整数的地址强转和解引用；无效地址、未知类型、失效路径；256 节点与 8 层限制；折叠/删除零 MI，以及所有临时变量对象释放。记录：`artifacts/watch-tree-1789821399632/verification.json`。
+- 修复 GDB 对不可读地址仍成功创建变量对象、却返回空 value 的边界情况：取得读取诊断并标记错误，避免显示为有效类型。折叠后重开数组从首批 32 项开始，避免一次读回所有历史分页。
+- `scripts/test-completion-gdb.cjs` 原有单核补全、Watch 增删和零目标写入断言通过：`artifacts/completion-native-1789821345670/verification.json`。使用工程 `Debug/FreeRTOS_Project.elf` 和 tools 内 ARM GDB 的离线全局变量补全通过：`artifacts/completion-arm-elf-1789821348389/verification.json`。
+- 双真实 GDB 的 10 组回归通过，新增同名结构体在两核上的数值（91/41）、展开状态与删除隔离验证：`artifacts/multicore-1789821345691/verification.json`。无 `[[cores]]` 的单核路径保留。
+- ARM / RISC-V / x64 模拟 MI、通用服务启动/回收、五种 Pause 场景通过：`artifacts/environment test 工程 20260919-203549/`、`artifacts/pause-20260919-203556/`。
+- 从实际 Ratatui 缓冲导出并检查 Watch 树预览：`artifacts/watch-tree-ui/watch-tree.png`、`watch-tree-compact.png`。本轮真实目标求值在本机测试程序中完成，ARM ELF 补全不连接硬件；未做物理 MCU 内存访问验证。
+- npm 本地包重新安装成功，`debugtui --version` 为 0.7.2。安装目录中的 exe 与 release 构建 SHA-256 相同：`32EFDEC1FCE8D3FBE4708080C50D62012ECDE88B10829C913ACAC60395F0CD4B`；直接用已安装 exe 重跑 Watch 树测试通过：`artifacts/watch-tree-1789821508317/verification.json`。

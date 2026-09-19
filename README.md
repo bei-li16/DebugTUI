@@ -1,8 +1,87 @@
 # DebugTUI
 
-基于 GDB/MI 的原生终端调试工作台。当前源码版本 0.6.6，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
+基于 GDB/MI 的原生终端调试工作台。当前源码版本 0.8.2，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
 
 GitHub：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。源码使用 Apache-2.0；依赖声明见 NOTICE。
+
+## 断点管理
+
+- **Breaks** 行首 `[x]` / `[ ]` 是启用开关，点击或选中后按 **Space / Enter** 切换；禁用保留记录和配置，**Delete** 才删除。源码用 `●` / `○` 区分启用与禁用；对禁用断点按 F9 会重新启用。
+- **+ Code**（Insert / n）添加 `file:line`、函数或 `*address` 断点，可选择硬件断点和命中后删除的临时断点。
+- **+ Data**（d）添加变量或指针表达式，例如 `xTickCount`、`*(uint32_t *)0x20000000`，可选择 **Write / Read / Read/write**。Write 使用 GDB 的值变化语义；读、读写需要目标支持硬件 watchpoint。数量、宽度、对齐限制由 GDB/调试服务器决定，失败时显示其错误。
+- **Edit**（e / 右键）设置启用状态、条件和忽略次数；忽略 N 次表示跳过接下来的 N 次命中。行下方显示 GDB 的实际命中总数与剩余忽略次数。**Enable all / Disable all** 仅影响当前核心。
+- 断点修改立即保存至工程；禁用状态、数据类型、条件与剩余忽略次数跨重连及进程重启恢复。临时断点不持久化。恢复失败的记录标为 `[!]`，仍保留，可重试启用或明确删除。
+- 编辑器支持鼠标、Tab / ↑ ↓、Ctrl+U 清空、Ctrl+Enter 应用、Esc 取消。修改断点前先暂停目标；窄终端仍可用快捷键打开编辑器。
+
+控制台兼容 `:break main`、`:data-break counter`，新增 `:data-break read counter`、`:data-break access *(uint32_t *)0x20000000`、`:enable 2`、`:disable 2`、`:disable all`。这些操作通过标准 [GDB/MI 断点命令](https://sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI-Breakpoint-Commands.html) 执行。
+
+旧的 `breakpoints = ["main"]` 配置仍然兼容；修改后保存为详细记录，例如：
+
+```toml
+[[breakpoints]]
+location = "xTickCount"
+kind = "write"  # code / hardware / write / read / access
+enabled = false
+condition = "xTickCount > 100"
+ignore_count = 0
+temporary = false
+```
+
+## 多核工作区
+
+不配置 `[[cores]]` 时，沿用原单核会话、命令与 JSON 快照格式。多核配置示例（端口和 GDB 命令由工程的调试环境决定）：
+
+```toml
+[[cores]]
+name = "cpu0"
+endpoint = "localhost:3333"
+startup_order = 1
+
+[[cores]]
+name = "cpu1"
+endpoint = "localhost:3334"
+startup_order = 0
+```
+
+- 每核独立 GDB/MI 会话；序号固定按配置顺序。点击 **Cores** 栏按钮、`Ctrl+T`、`:core 0`、`:core cpu1` 切核，`:cores` 查询所有核的状态。多核按钮带运行状态，左右箭头可浏览更多核心。切换后 Source、Asm、System Regs、Stack、Memory、Watch 和外设缓存归属当前核，Asm 等暂停后按需刷新；源码及检查窗口的底色、边线随核心颜色变化，保留 PC/错误本身的语义色。单核工程不显示多余的 Cores 栏。
+- Connect、Reconnect、Run、Disconnect、Exit 作用于整个工作区；Connect/Run 按 `startup_order` 逐核等待命令结果。它保证调试命令执行顺序，不保证前一个核的固件已完成启动。
+- Continue、Pause、Step、Reset、Watch、断点及原始 GDB Console 作用于当前核。多核 Run 中途失败会报告已执行的各核结果；已经运行的核不会被隐式复位。
+- 任一核连接失败会断开所有核并清理本工作区启动的服务。仅一个 `[[cores]]` 时也会正确管理服务。外部启动的服务不归 TUI 所有。
+- 已有会话时重复 Connect 直接报错并保留连接；需要重建时使用 Reconnect。多核更换共享 ELF 请在 F2 Setup 修改 Program / ELF 后整体启动；`:elf` 保留用于单核。
+- Watch、断点分别保存到各自 `[[cores]]`；未配置时继承顶层列表，`watch = []` / `breakpoints = []` 表示显式空列表。
+- 外部 Build / Download 命令执行前释放所有会话及自有服务，成功后恢复先前已连接的工作区；GDB download action 仍只对当前核执行。
+- 当前各核共用 GDB 程序、ELF、Source root 和 SVD；异构核使用不同 ELF/SVD 尚不支持。
+
+可选的 `[sync]` 使用 `tcl_endpoint = "localhost:6666"` 与 `open = ["..."]`，在共享服务就绪后、GDB 连接前执行。`method = "tcl"` 或兼容旧配置的 `"cti"` 都执行显式配置的 TCL 命令，不自动识别/配置 CTI。任何命令失败都会中止连接。
+
+可选 `[live_watch]` 配置 `tcl_endpoint`、`bus_target`、`elf`（相对工程路径）、`interval_ms`。仅解析 ELF32/64 小端文件中的唯一全局 8/16/32 位对象，以原始数值记录到 Live 日志；结构体、数组大对象、局部表达式和类型解释仍由停止后的 GDB Watch 负责。启动晚于调试连接，随切核/Watch 列表变化更新，断线重试，断开时取消。读取使用 OpenOCD 的 [target-specific read_memory](https://openocd.org/doc-release/html/CPU-Configuration.html)，不改变全局选中 target；运行时能否读到一致数据取决于芯片、AP 和缓存配置。
+
+### 0.8：按项选择内存通道与实时刷新
+
+1. 在 **Watch / Peripherals** 的数值上右键（或选中后按 `f`），点击 **Memory access / Live refresh**（快捷键 `r`）。位域使用所属寄存器的读取策略，显示进制仍独立。
+2. **Access** 选择通道；默认 **GDB · selected core · stopped only**。环境声明的 OpenOCD 通道显示是否允许运行时读取。
+3. **Live refresh** 选择 On，**Interval** 输入毫秒数（50–60000；100 ms = 10 Hz），点击 **Apply & save**。**Read once & save** 可单次读取，不要求开启循环。
+4. 成功采样标记 **LIVE**；错误直接显示在该项，失败后至少间隔 1 秒再试。设置保存在工程 `[ui.refresh]`，按核心和观察项分别记忆。
+
+只轮询当前可见的 Watch 标量/指针、展开树中的可见成员及外设寄存器；隐藏窗口、折叠分支不继续后台读取。结构体根节点的策略可由成员继承，成员也可单独覆盖。读取串行执行，频率为尽力而为：多个值、探针延迟和调试命令会降低实际刷新率。不会隐式暂停、恢复、复位核心，也不自动写 AP/CTI 配置；副作用/只写寄存器不能自动轮询。
+
+Watch 的地址和类型由 GDB 在暂停时解析，支持可取地址的 8/16/32/64 位标量、成员与强制类型转换，正确解释整数符号和 float/double。运行前至少暂停解析一次；运行中按已解析地址采样，下次暂停重新解析。指针在运行中改变时不会自动追踪新的地址，临时值、位域、CPU 寄存器及无地址表达式不能用总线直接轮询。64 位读取是两次 32 位访问，不保证原子性。目标物理地址映射、权限、缓存一致性必须由板级配置保证；AHB 数值不保证等于有缓存/MMU 的核内视图。
+
+`tools` 环境提供通道，例如：
+
+```toml
+[[memory_access]]
+id = "bus"
+label = "AHB memory"
+tcl_endpoint = "127.0.0.1:6666"
+target = "soc.ahb"
+while_running = true
+# cores = ["core0", "core1"]  # 可选：仅对这些核心开放
+```
+
+TUI 只发送指定 target 的 `read_memory`，不执行全局 `targets` 切换。`soc.ahb` 对应哪个 DAP/AP、借哪个核、如何创建多个 CTI，均放在板级 OpenOCD 配置；AP1/AP3 不具备通用固定含义。多核示例见 [tools/examples/multicore-access.md](tools/examples/multicore-access.md)。旧 `[live_watch]` 日志功能仍兼容，新面板功能不需要配置它。
+
+**STM32F429 本地实测环境**：[tools/debug-env-openocd.toml](tools/debug-env-openocd.toml)，使用 J-Link 探针 + OpenOCD，M4 与独立 `mem_ap` target 均通过这颗芯片实际的 AP0。在 F2 的 Tools / profile 选择该文件即可获得 AHB 和 stopped-only Core 通道；原 J-Link Server 环境仍可用于普通暂停调试，但不能提供这个 TCL 运行时通道。单核已做硬件验证，多核/多 CTI/多 AP 当前为真实双 GDB + 模拟 TCL 路由验证，需要相应多核板卡再做验收。
 
 ## 0.6 铜橙 / 暖石墨工作台
 
@@ -26,6 +105,23 @@ GitHub：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。源码使�
 
 点击变量行右侧的 **×** 即可移除该变量，无需先选中。也可选中变量后按 **Delete**，或点击标题右侧的 **Del Remove**。删除后自动选择相邻项，可连续删除到空列表。输入框内 Delete 不删除观察项，草稿会保留；Console 焦点也不会触发 Watch 删除。运行中同样可以增删观察表达式，新加的值在下一次暂停时读取；移除观察项不修改目标变量或硬件观察点。
 
+### Watch 结构体、数组和指针
+
+- 输入结构体变量（例如 `object`），点击名称前的 **▸** 或选中后按 **Enter / →** 展开，**←** 折叠；支持嵌套结构体、数组和指针成员。Enter 在普通标量行仍聚焦 Watch 输入框。
+- 只在暂停时读取展开的成员。折叠、删除不发送目标读取命令；运行期间显示上次暂停的快照。大数组每次显示 32 项，通过 **Load more** 继续加载；单个表达式最多 256 个节点、8 层，循环指针不会自动无限展开。
+- **× / Delete / Del Remove** 只删除顶层观察表达式；成员行不能误删相邻表达式。成员数值同样支持右键或 **f** 单独选择 2 / 8 / 10 / 16 进制。
+- 表达式使用 GDB 的 C/C++ 语法，括号和 `*` 使用英文字符；类型定义从当前 ELF 的调试信息读取。多核模式下，每个核独立求值并保留自己的展开状态。
+
+| 表达式示例 | 含义 |
+| --- | --- |
+| `(struct MyType *)(0x20000000)` | 将地址转为结构体指针，展开后查看成员 |
+| `*(struct MyType *)(0x20000000)` | 解引用，直接观察该地址的结构体 |
+| `(uint32_t *)(0x20000000)` | 观察整数指针，可展开查看所指数据 |
+| `*(uint32_t *)(0x20000000)` | 读取该地址的 32 位整数 |
+| `((struct MyType *)0x20000000)->member` | 只观察指定成员 |
+
+将 `MyType` 替换为项目的实际结构体名称；`uint32` 只有在项目定义了这个 typedef 时才能使用。无效地址或缺失类型在对应 Watch 项显示错误，不影响其他观察项。
+
 ### 每个数据项独立选择进制
 
 右键具体数值，或选中数据行后按 **f**，选择 **2 / 8 / 10 / 16** 进制，Enter 或鼠标应用。长数值可在格式弹窗预览中换行查看。
@@ -33,7 +129,7 @@ GitHub：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。源码使�
 - **Watch、Locals、内存字节默认十进制**；**系统寄存器、SVD 外设寄存器和位域默认十六进制**。地址始终十六进制。
 - 每个变量/表达式、寄存器、位域或内存地址独立保存；Locals 按文件和函数区分同名变量。内存右键对应字节，格式不影响相邻字节。
 - 显示转换使用整数运算（最大 128 位），不写目标、不修改 GDB 的全局 radix、不发送额外 GDB 查询。负数保留符号，例如 `-1 → -0x1`；不猜测有符号数据的位宽。
-- 浮点、枚举名称、字符串和结构体等非整数显示保留 GDB 原文，并在格式弹窗提示。需要结构体成员的进制时，可单独 Watch `object.member`。
+- 浮点、枚举名称、字符串等非整数显示保留 GDB 原文，并在格式弹窗提示。结构体可展开后单独设置成员进制，也可直接 Watch `object.member`。
 - 设置保存到工程 `debug.toml` 的 `[ui]` / `[ui.formats]`；没有保存工程的临时会话只在当前会话生效。环境 tools 配置不写入 UI 偏好。
 
 使用 `debugtui --demo` 预览布局（不连接调试器）；实际连接、断点、任务动画由相应事件触发。
@@ -70,17 +166,18 @@ debugtui
 
 | 配置页操作 | 按键 |
 |---|---|
-| 选择字段 | Tab / Shift+Tab / ↑ ↓ |
+| 选择字段 | 鼠标点击 / Tab / Shift+Tab / ↑ ↓ |
 | 编辑路径或参数 | Enter；Ctrl+U 清空；Enter 应用，Esc 取消 |
 | 浏览文件/目录 | F2；Enter 进入目录或选择文件；Space 选择当前目录；Backspace 返回上层 |
 | 切换枚举/开关 | ← → / Enter |
-| 保存配置 | Ctrl+S |
-| 开始调试 | F5；默认保存到工程的 debug.toml，可关闭 Save to project 仅连接一次 |
-| 从调试页面重新选工程/环境 | F2 或 :setup |
+| 保存配置 | 顶部 Save / Ctrl+S |
+| 开始调试 | 顶部 Start debugging 默认选中，Enter 即可启动；也支持鼠标、Ctrl+R、Ctrl+Enter、F5。默认保存到工程的 debug.toml，可关闭 Save to project 仅连接一次 |
+| 从调试页面返回配置 | 主界面 Project 栏的 ← Setup / F2 / :setup |
+| 回到原调试页面 | 配置页顶部 ← Workspace / Esc；编辑字段或浏览文件时 Esc 先取消当前操作 |
 
 无参数启动始终先显示配置页，即使当前目录已有 debug.toml；不会直接占用探针。选择工程后优先读取其配置；没有显式 tools/GDB 配置时，会发现该工程内的 tools/debug-env.toml。保存路径尽量相对于工程，保留构建、源码映射、监视与断点等原有配置，不展开并复制整份 tools 配置。
 
-配置页打开时当前调试会话仍然有效。按 F5 切换时，先清理原会话，再启动新工程；旧会话清理失败会在界面报错并停止切换。连接失败可以按 F2 修正配置并重试。
+配置页顶部固定显示启动、保存和返回工作区按钮，不随字段滚动。打开配置页时当前调试会话仍然有效；返回工作区会保留未保存的配置草稿。点击 Start debugging 时先校验并应用正在编辑的字段，再清理原会话、启动新配置；旧会话清理失败会在界面报错并停止切换。连接失败可以通过 ← Setup 修正配置并重试。Exit / Ctrl+Q 仍用于退出整个应用。
 
 原有参数仍可使用：配置完整时直接准备调试环境；参数不足时进入已填好参数的配置页。添加 --setup 可强制先查看配置。--project 同时接受工程目录和配置文件。
 
@@ -283,7 +380,7 @@ continue/run/step 返回表示请求已提交；wait_stopped 等待暂停或程�
 ## Console 与 Watch 补全
 
 - 点击底部 `gdb>` 输入 GDB 命令，或输入 `:` 使用 DebugTUI 命令。输入时自动显示候选，支持 GDB 子命令及表达式参数。
-- Watch 面板底部输入框直接接收全局变量名或表达式，点击 **+ Add** 或回车添加监视；也可以选中 Watch 后按 Enter 聚焦输入框。每个变量右侧的 **×** 直接移除该项。
+- Watch 面板底部输入框直接接收全局变量名或表达式，点击 **+ Add** 或回车添加监视；也可以选中标量行后按 Enter 聚焦输入框。结构体行 Enter 展开/折叠，每个顶层表达式右侧的 **×** 直接移除该项。
 - `↑` / `↓` 选择候选，`Tab` 或鼠标点击填入，`Enter` 提交。没有候选时，Console 的 `↑` / `↓` 浏览历史命令；`Esc` 退出输入。
 - 变量名来自当前 ELF 的全局/静态符号；结构体成员（如 `object.field` / `pointer->field`）由 GDB 补全。符号补全在连接且未运行时可用，运行中不查询符号。
 - 补全查询异步执行，输入停顿 150 ms 后查询；最多显示 64 个候选，可继续输入缩小范围。补全不执行命令，旧输入的延迟回复不会覆盖新输入。

@@ -137,6 +137,49 @@ mod tests {
         assert!(rx.try_recv().is_err());
     }
     #[test]
+    fn running_bus_refresh_reads_only_visible_safe_registers_and_manual_field_reads_parent() {
+        let mut a = app();
+        let (engine, rx) = session::test_channel();
+        a.project.memory_access.push(crate::config::MemoryAccess {
+            id: "bus".into(),
+            target: "soc.bus".into(),
+            tcl_endpoint: "localhost:6666".into(),
+            while_running: true,
+            ..Default::default()
+        });
+        for name in ["DATA", "WO", "CLEAR", "FIELD_CLEAR"] {
+            a.project.ui.refresh.insert(
+                format!("single|svd:TestDevice:PORT.{name}"),
+                crate::config::RefreshPolicy {
+                    channel: "bus".into(),
+                    interval_ms: 1000,
+                },
+            );
+        }
+        a.snapshot.state = "RUNNING".into();
+        assert!(!a.ensure_monitors(Some(&engine)));
+        a.toggle_peripheral(Some(true));
+        assert!(a.ensure_monitors(Some(&engine)));
+        let request = rx.try_recv().unwrap();
+        assert_eq!(request.method, "memory_read");
+        assert_eq!(request.params["channel"], "bus");
+        assert_eq!(request.params["address"], 0x40000000u64);
+        response(&mut a, &request, Some(43));
+        assert_eq!(a.peripherals.values[&(0, 0)].value, Some(43));
+        assert!(!a.ensure_monitors(Some(&engine))); // only other registers have read side effects / write-only access
+        a.selection = 1;
+        a.toggle_peripheral(Some(true));
+        a.selection = 2; // DATA.LOW field
+        a.refresh_peripheral(Some(&engine));
+        let request = rx.try_recv().unwrap();
+        assert_eq!(request.params["address"], 0x40000000u64);
+        response(&mut a, &request, Some(44));
+        a.selection = 0;
+        a.toggle_peripheral(Some(false));
+        assert!(!a.ensure_monitors(Some(&engine)));
+        assert!(rx.try_recv().is_err());
+    }
+    #[test]
     fn peripheral_tree_fields_mouse_button_and_scrollbar_have_real_hit_regions() {
         let mut a = app();
         let (engine, rx) = session::test_channel();
@@ -312,6 +355,56 @@ impl Peripherals {
     }
 }
 impl App {
+    pub(super) fn peripheral_monitor_item(&self, row: usize) -> Option<monitor::Item> {
+        let device = self.peripherals.device.as_ref()?;
+        let (p, r) = self.peripherals.selected_register(row)?;
+        let peripheral = &device.peripherals[p];
+        let register = &peripheral.registers[r];
+        if !register.readable_width() {
+            return None;
+        }
+        Some(monitor::Item {
+            key: format!("svd:{}:{}.{}", device.name, peripheral.name, register.name),
+            name: format!("{}.{}", peripheral.name, register.name),
+            watch: None,
+            memory: Some(monitor::Binding {
+                address: register.address,
+                bits: register.bits,
+                little_endian: device.little_endian?,
+                ..Default::default()
+            }),
+            peripheral: Some((p, r)),
+            safe_auto: register.auto_read(),
+        })
+    }
+    pub(super) fn visible_peripheral_monitors(&self) -> Vec<monitor::Item> {
+        if self.side_pane != PANE || self.view_rects[PANE].height == 0 {
+            return vec![];
+        }
+        let mut seen = HashSet::new();
+        (self.view_tops[PANE]..self.view_tops[PANE] + self.view_rects[PANE].height as usize)
+            .filter_map(|i| self.peripheral_monitor_item(i))
+            .filter(|i| seen.insert(i.key.clone()))
+            .collect()
+    }
+    pub(super) fn apply_peripheral_monitor(
+        &mut self,
+        key: RegisterKey,
+        value: Option<u64>,
+        error: Option<&str>,
+    ) {
+        let previous = self.peripherals.values.get(&key).and_then(|v| v.value);
+        self.peripherals.values.insert(
+            key,
+            Reading {
+                stamp: self.view_stamp(),
+                value,
+                error: error.map(str::to_owned),
+                previous,
+                changed: previous.zip(value).is_some_and(|(a, b)| a != b),
+            },
+        );
+    }
     pub(super) fn peripheral_format_item(&self, row: usize) -> Option<formats::Item> {
         let device = self.peripherals.device.as_ref()?;
         let (p, r, field) = match self.peripherals.rows.get(row)? {
@@ -369,6 +462,20 @@ impl App {
         self.selection = selected.min(self.peripherals.len().saturating_sub(1));
     }
     pub(super) fn refresh_peripheral(&mut self, engine: Option<&EngineHandle>) {
+        if let Some(item) = self.peripheral_monitor_item(self.selected(PANE))
+            && self.project.ui.refresh.contains_key(&format!(
+                "{}|{}",
+                self.snapshot
+                    .core
+                    .as_ref()
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("single"),
+                item.key
+            ))
+        {
+            self.manual_monitor(engine, item);
+            return;
+        }
         if self.snapshot.state != "STOPPED" || !self.pending_commands.is_empty() {
             self.notice =
                 "Stop the target and wait for the current command before refreshing.".into();
@@ -381,6 +488,24 @@ impl App {
         self.read_peripheral(engine, key);
     }
     fn read_peripheral(&mut self, engine: Option<&EngineHandle>, key: RegisterKey) -> bool {
+        if let Some(row) = self
+            .peripherals
+            .rows
+            .iter()
+            .position(|row| matches!(row,Row::Register(p,r) if (*p,*r)==key))
+            && let Some(item) = self.peripheral_monitor_item(row)
+            && self.project.ui.refresh.contains_key(&format!(
+                "{}|{}",
+                self.snapshot
+                    .core
+                    .as_ref()
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("single"),
+                item.key
+            ))
+        {
+            return self.manual_monitor(engine, item);
+        }
         if engine.is_none() || self.demo {
             return false;
         }
@@ -564,6 +689,7 @@ impl App {
                     theme::MUTED
                 }),
             )];
+            let live = key.as_ref().is_some_and(|key| self.monitor_fresh(key));
             if let Some(key) = key {
                 let item = formats::Item {
                     rect: hit,
@@ -579,7 +705,7 @@ impl App {
             } else {
                 spans.push(Span::styled(value, Style::default().fg(theme::MUTED)));
             }
-            if stale {
+            if stale && !live {
                 spans.push(Span::styled("  cached", Style::default().fg(theme::DIM)));
             }
             let line = Line::from(spans).style(Style::default().bg(if index == selected {

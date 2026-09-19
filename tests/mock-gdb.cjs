@@ -20,7 +20,10 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
     state = 'stopped'; send(`${token}^connected`); return;
   }
   if (cmd === '-list-target-features') return done('features=["async"]');
-  if (cmd === '-thread-info') return done(state === 'ready' ? 'threads=[]' : `threads=[{id="1",state="${state}"}],current-thread-id="1"`);
+  if (cmd === '-thread-info') {
+    if (state === 'running' && pauseMode === 'query-rejected') return send(`${token}^error,msg="Cannot execute this command while the target is running."`);
+    return done(state === 'ready' ? 'threads=[]' : `threads=[{id="1",state="${state}"}],current-thread-id="1"`);
+  }
   if (cmd === '-stack-info-frame') return state === 'stopped' ? done(frame()) : send(`${token}^error,msg="No frame"`);
   if (cmd.startsWith('-stack-list-frames')) return done(`stack=[${frame()}]`);
   if (cmd.startsWith('-stack-list-variables')) return done('variables=[{name="counter",value="42"}]');
@@ -34,8 +37,8 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   if (cmd === '-exec-interrupt --all' && pauseMode) {
     interrupts++;
     if (pauseMode === 'running' || (pauseMode === 'retry' && interrupts === 1)) return done();
-    if (pauseMode === 'late') {
-      setTimeout(() => { state = 'stopped'; line++; send(`*stopped,reason="signal-received",${frame()}`); }, 150);
+    if (pauseMode === 'late' || pauseMode === 'query-rejected') {
+      setTimeout(() => { state = 'stopped'; line++; send(`*stopped,reason="signal-received",${frame()}`); }, pauseMode === 'query-rejected' ? 600 : 150);
       return done();
     }
     state = 'stopped';

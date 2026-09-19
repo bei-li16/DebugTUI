@@ -14,7 +14,15 @@ debugtui --tools-dir ./tools --elf ./build/app.elf
 
 GDB/Server 路径按此 TOML 所在目录解析。${profile_dir} 用于环境自己的资源路径。原有 BAT 入口继续使用 config/paths.bat；TUI 使用 TOML，不读取 BAT 环境变量。
 
-## 外部服务
+## STM32F429 / OpenOCD 运行时内存通道
+
+`debug-env-openocd.toml` 使用内部 `bin/openocd`、J-Link 探针、SWD 1000 kHz。GDB 3333、TCL 6666 仅监听本机；`config/stm32f429-live.cfg` 同时建立 M4 CPU target 和 AP0 `mem_ap` target。
+
+F2 选择该 profile，Watch/外设右键 → Memory access / Live refresh，即可选择默认 GDB、暂停时 Core target 或运行时 AHB MEM-AP 0。打开实时刷新前，Watch 需要在暂停时完成地址解析。无需 Python，也没有增加 TUI 常驻进程；OpenOCD 是可替换的板级 GDB Server。与原 J-Link Server 使用相同 3333 端口，启动前先结束上一个调试服务。
+
+OpenOCD 程序、依赖 DLL 和脚本合计约 6 MiB；来源及 GPLv2 文本在 `bin/openocd/PROVENANCE.txt`、`COPYING.txt`，校验值纳入 `dependencies.lock.json`。npm 包仍只装 TUI，不包含 tools。多核板卡可参考 [examples/multicore-access.md](examples/multicore-access.md)，不能照搬 F429 的 AP0 配置。
+
+## 手动启动外部服务
 
 ~~~powershell
 ./tools/start_server.bat

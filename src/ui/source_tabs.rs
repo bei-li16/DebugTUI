@@ -721,6 +721,7 @@ mod tests {
             temporary: false,
             file: first,
             line: 45,
+            ..Default::default()
         });
         a.toggle_break(Some(&engine));
         let request = requests.try_recv().unwrap();

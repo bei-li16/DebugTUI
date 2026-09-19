@@ -16,7 +16,7 @@ fn theme_preserves_hit_areas_focus_and_execution_context() {
     a.snapshot.state = "STOPPED".into();
     for (w, h) in [(45, 12), (80, 24), (120, 36), (180, 50)] {
         let t = terminal(&mut a, w, h);
-        assert_eq!(a.action_hits.len(), if h == 12 { 6 } else { 12 });
+        assert_eq!(a.action_hits.len(), if h == 12 { 7 } else { 13 });
         assert!(a.source_rect.height > 0);
         for (hit, _) in &a.action_hits {
             assert!(hit.right() <= w && hit.bottom() <= h);
@@ -123,6 +123,8 @@ fn export_color_previews_when_requested() {
     capture(root, "assembly", &mut a, 160, 42);
     a.open_setup();
     capture(root, "setup", &mut a, 140, 40);
+    capture(root, "setup-narrow", &mut a, 80, 24);
+    capture(root, "setup-compact", &mut a, 45, 12);
     a.setup = None;
     a.project.ui.animations = crate::config::Motion::Full;
     a.fx.mode = crate::config::Motion::Full;

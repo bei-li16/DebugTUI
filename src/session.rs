@@ -18,6 +18,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod breakpoints;
+mod memory;
+mod watch;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Frame {
     pub level: u32,
@@ -46,8 +50,23 @@ pub struct Variable {
     pub value: String,
     pub changed: bool,
     pub error: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tree: Option<WatchTree>,
+}
+/// Native GDB variable-object metadata. Child paths are relative to a Watch root,
+/// never GDB object names (which are deliberately short-lived).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct WatchTree {
+    pub path: Vec<usize>,
+    pub type_name: String,
+    pub child_count: usize,
+    pub expanded: bool,
+    pub children: Vec<Variable>,
+    pub has_more: bool,
+    pub limited: bool,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Breakpoint {
     pub id: String,
     pub location: String,
@@ -56,6 +75,12 @@ pub struct Breakpoint {
     pub temporary: bool,
     pub file: String,
     pub line: u32,
+    pub condition: String,
+    pub ignore_count: u32,
+    pub hit_count: u64,
+    pub address: String,
+    pub pending: bool,
+    pub restore_error: String,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -72,6 +97,17 @@ pub struct Snapshot {
     pub memory: Vec<String>,
     pub generation: u64,
     pub async_supported: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub core: Option<CoreStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cores: Vec<CoreStatus>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoreStatus {
+    pub index: usize,
+    pub name: String,
+    pub endpoint: String,
+    pub state: String,
 }
 impl Default for Snapshot {
     fn default() -> Self {
@@ -89,6 +125,8 @@ impl Default for Snapshot {
             memory: vec![],
             generation: 0,
             async_supported: false,
+            core: None,
+            cores: vec![],
         }
     }
 }
@@ -100,6 +138,15 @@ pub struct Request {
     pub params: Json,
 }
 impl Request {
+    pub fn is_quit(&self) -> bool {
+        self.method == "quit"
+            || (self.method == "console"
+                && self
+                    .params
+                    .get("command")
+                    .and_then(Json::as_str)
+                    .is_some_and(|s| matches!(s.trim(), "q" | "quit")))
+    }
     pub fn new(id: u64, method: &str, params: Json) -> Self {
         Self {
             id,
@@ -135,7 +182,7 @@ pub struct EngineHandle {
 }
 impl EngineHandle {
     pub fn send(&self, request: Request) -> Result<(), String> {
-        if request.method == "quit" {
+        if request.is_quit() {
             self.cancellation.store(true, Ordering::Relaxed);
         }
         self.commands.send(request).map_err(|e| e.to_string())
@@ -273,7 +320,11 @@ struct Engine {
     session_started: Instant,
     refresh_pending: bool,
     watch_names: Vec<String>,
-    saved_breakpoints: Vec<String>,
+    watch_expansions: watch::Expansions,
+    memory_connections: std::collections::HashMap<String, std::net::TcpStream>,
+    rpc_echo: crate::live_watch::RpcEcho,
+    saved_breakpoints: Vec<crate::config::BreakpointSpec>,
+    unresolved_breakpoints: Vec<Breakpoint>,
     reg_names: Vec<String>,
     exiting: bool,
     job: Option<crate::process::Job>,
@@ -417,7 +468,11 @@ impl Engine {
             session_started: Instant::now(),
             refresh_pending: false,
             watch_names,
+            watch_expansions: Default::default(),
+            memory_connections: Default::default(),
+            rpc_echo: Default::default(),
             saved_breakpoints,
+            unresolved_breakpoints: vec![],
             reg_names: vec![],
             exiting: false,
             job: None,
@@ -440,6 +495,11 @@ impl Engine {
         self.log_at(channel, text.into(), Stamp::now());
     }
     fn log_at(&mut self, channel: &str, text: String, stamp: Stamp) {
+        let channel = if text.trim_start().starts_with(crate::live_watch::RPC_MARKER) {
+            "diagnostic"
+        } else {
+            channel
+        };
         if let Some(trace) = &mut self.trace {
             trace.write(&stamp, channel, &text);
         }
@@ -480,7 +540,14 @@ impl Engine {
                     if let Err(error) = &result
                         && request.method != "complete"
                     {
-                        self.log("error", error.clone());
+                        self.log(
+                            if matches!(request.method.as_str(), "watch_resolve" | "memory_read") {
+                                "diagnostic"
+                            } else {
+                                "error"
+                            },
+                            error.clone(),
+                        );
                     }
                     self.emit(Event::Response {
                         id: request.id,
@@ -548,8 +615,11 @@ impl Engine {
                     self.refresh_pending = true;
                     self.publish();
                 } else if matches!(r.kind, '~' | '@' | '&') {
+                    let internal = r.kind == '@' && self.rpc_echo.internal(r.data.text());
                     self.log(
-                        if r.kind == '~' {
+                        if internal {
+                            "diagnostic"
+                        } else if r.kind == '~' {
                             "gdb"
                         } else if r.kind == '@' {
                             "target"
@@ -662,6 +732,8 @@ impl Engine {
             self.refresh_pending = false;
             self.refresh()?;
         } else {
+            // Breakpoints exist before a local inferior is started too.
+            self.refresh_breakpoints()?;
             self.state("READY");
         }
         Ok(())
@@ -925,11 +997,7 @@ impl Engine {
             format!("MI target async support: {}", self.snapshot.async_supported),
         );
         self.snapshot.stop_reason = "connected".into();
-        for location in self.saved_breakpoints.clone() {
-            if let Err(e) = self.mi(&format!("-break-insert {}", mi::quote(&location))) {
-                self.log("error", format!("Restore breakpoint {location}: {e}"));
-            }
-        }
+        self.restore_breakpoints();
         self.refresh_pending = false;
         self.sync_target_state()?;
         Ok(
@@ -940,7 +1008,18 @@ impl Engine {
     // have stopped at a breakpoint by the time it handles the interrupt, in
     // which case another *stopped notification may never arrive.
     fn reconcile_stop(&mut self, timeout: Duration) -> Result<bool, String> {
-        let response = self.request("-thread-info", timeout)?;
+        let response = match self.request("-thread-info", timeout) {
+            Ok(response) => response,
+            // Some remote GDBs advertise async MI but reject thread queries while
+            // automatically continuing past ignored/conditional breakpoints.
+            // This is a running state, not a failed wait or a reason to interrupt.
+            Err(error)
+                if error.contains("Cannot execute this command while the target is running") =>
+            {
+                return Ok(false);
+            }
+            Err(error) => return Err(error),
+        };
         if self.snapshot.state == "STOPPED" {
             return Ok(true); // A concurrent async notification is authoritative.
         }
@@ -1110,26 +1189,7 @@ impl Engine {
                 })
                 .unwrap_or_default();
         }
-        let old = self.snapshot.watches.clone();
-        let mut watches = Vec::new();
-        for name in self.watch_names.clone().into_iter().take(64) {
-            let result = self.mi(&format!("-data-evaluate-expression {}", mi::quote(&name)));
-            let (value, error) = match result {
-                Ok(r) => (r.data.string("value"), false),
-                Err(e) => (e, true),
-            };
-            let changed = old
-                .iter()
-                .find(|v| v.name == name)
-                .is_some_and(|v| v.value != value);
-            watches.push(Variable {
-                name,
-                value,
-                changed,
-                error,
-            });
-        }
-        self.snapshot.watches = watches;
+        self.refresh_watches();
         if let Ok(names) = self.mi("-data-list-register-names") {
             self.reg_names = names
                 .data
@@ -1177,6 +1237,7 @@ impl Engine {
                                     value,
                                     changed,
                                     error: false,
+                                    ..Default::default()
                                 }
                             })
                             .collect()
@@ -1198,24 +1259,18 @@ impl Engine {
                 v.items()
                     .iter()
                     .map(|x| x.field("bkpt").unwrap_or(x))
-                    .map(|b| Breakpoint {
-                        id: b.string("number"),
-                        location: {
-                            let s = b.string("original-location");
-                            if s.is_empty() { b.string("what") } else { s }
-                        },
-                        kind: b.string("type"),
-                        enabled: b.string("enabled") == "y",
-                        temporary: b.string("disp") == "del",
-                        file: b.string("fullname"),
-                        line: b.string("line").parse().unwrap_or(0),
-                    })
+                    .map(Breakpoint::from_mi)
                     .collect()
             })
             .unwrap_or_default();
+        self.snapshot
+            .breakpoints
+            .extend(self.unresolved_breakpoints.clone());
         Ok(())
     }
     fn disconnect(&mut self) -> Result<Json, String> {
+        self.memory_connections.clear();
+        self.rpc_echo = Default::default();
         let mut failure = None;
         if self.gdb.is_some() {
             if self.snapshot.state == "RUNNING"
@@ -1224,15 +1279,15 @@ impl Engine {
             {
                 failure = Some(e);
             }
+            if matches!(self.snapshot.state.as_str(), "READY" | "STOPPED") {
+                // Query GDB: Console edits in READY do not trigger stopped refreshes.
+                if let Err(e) = self.refresh_breakpoints() {
+                    failure = Some(e);
+                } else {
+                    self.remember_breakpoints();
+                }
+            }
             if self.snapshot.state == "STOPPED" {
-                self.saved_breakpoints = self
-                    .snapshot
-                    .breakpoints
-                    .iter()
-                    .filter(|b| !b.kind.contains("watchpoint") && !b.temporary)
-                    .map(|b| b.location.clone())
-                    .filter(|s| !s.is_empty())
-                    .collect();
                 if let Err(e) = self.console("delete breakpoints") {
                     failure = Some(e);
                 }
@@ -1301,6 +1356,13 @@ impl Engine {
             "ui_preferences" => {
                 let ui: crate::config::Ui =
                     serde_json::from_value(p.clone()).map_err(|e| e.to_string())?;
+                if ui
+                    .refresh
+                    .values()
+                    .any(|p| p.interval_ms != 0 && !(50..=60000).contains(&p.interval_ms))
+                {
+                    return Err("Refresh interval must be 0 or 50..60000 ms".into());
+                }
                 let saved = self.project.save_ui(&ui)?;
                 self.project.ui = ui;
                 Ok(json!({"saved":saved}))
@@ -1478,46 +1540,18 @@ impl Engine {
             }
             "unwatch" => {
                 self.watch_names.retain(|s| s != &text("expression"));
+                self.watch_expansions.remove(&text("expression"));
                 self.snapshot
                     .watches
                     .retain(|v| self.watch_names.contains(&v.name));
                 self.publish();
                 Ok(json!({"watches":self.watch_names}))
             }
-            "break" => {
-                self.inactive()?;
-                let location = text("location");
-                let temporary = p.get("temporary").and_then(Json::as_bool).unwrap_or(false);
-                let r = self.mi(&format!(
-                    "-break-insert {} {}",
-                    if temporary { "-t" } else { "" },
-                    mi::quote(&location)
-                ))?;
-                self.refresh_breakpoints()?;
-                self.publish();
-                Ok(json!({"breakpoint":r.data}))
-            }
-            "data_break" => {
-                self.stopped()?;
-                let r = self.mi(&format!("-break-watch {}", mi::quote(&text("expression"))))?;
-                self.refresh_breakpoints()?;
-                self.publish();
-                Ok(json!({"breakpoint":r.data}))
-            }
-            "delete_break" => {
-                self.inactive()?;
-                let id = text("number");
-                if id.is_empty() {
-                    self.console("delete breakpoints")?;
-                } else {
-                    if !id.chars().all(|c| c.is_ascii_digit() || c == '.') {
-                        return Err("Invalid breakpoint number".into());
-                    }
-                    self.mi(&format!("-break-delete {id}"))?;
-                }
-                self.refresh_breakpoints()?;
-                self.publish();
-                Ok(json!({"deleted":true}))
+            "watch_expand" => self.expand_watch(p),
+            "watch_resolve" => self.resolve_watch(p),
+            "memory_read" => self.read_memory_channel(p),
+            "break" | "data_break" | "delete_break" | "enable_break" | "update_break" => {
+                self.breakpoint_command(method, p)
             }
             "frame" => {
                 self.stopped()?;

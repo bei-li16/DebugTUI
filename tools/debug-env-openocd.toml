@@ -1,0 +1,39 @@
+# Optional STM32F429 single-core debugging + running AHB memory access.
+[gdb]
+executable = "./bin/gdb/bin/arm-none-eabi-gdb.exe"
+args = [
+  "--data-directory=${profile_dir}/bin/gdb/arm-none-eabi/share/gdb",
+  "-iex", "set debug-file-directory ${profile_dir}/bin/gdb/lib/debug",
+  "-iex", "set auto-load scripts-directory ${profile_dir}/bin/gdb/arm-none-eabi/share/gdb/auto-load",
+  "-iex", "set auto-load safe-path ${profile_dir}/bin/gdb/arm-none-eabi/share/gdb/auto-load"
+]
+unset_env = ["PYTHONHOME", "PYTHONPATH"]
+init = ["set remotetimeout 5", "set tcp connect-timeout 5"]
+[service]
+command = "./bin/openocd/bin/openocd.exe"
+args = ["-s", "${profile_dir}/bin/openocd/scripts", "-f", "${profile_dir}/config/stm32f429-live.cfg"]
+ready = ["Listening on port 3333 for gdb connections"]
+timeout_ms = 15000
+[target]
+mode = "extended-remote"
+endpoint = "127.0.0.1:3333"
+after_connect = ["monitor halt", "maintenance flush register-cache"]
+[actions]
+restart = ["monitor reset halt", "maintenance flush register-cache"]
+run = ["monitor reset halt", "maintenance flush register-cache", "-exec-continue"]
+download = ["-target-download", "monitor reset halt", "maintenance flush register-cache"]
+before_disconnect = ["monitor resume"]
+[session]
+on_exit = "detach"
+[[memory_access]]
+id = "ahb"
+label = "AHB MEM-AP 0"
+tcl_endpoint = "127.0.0.1:6666"
+target = "stm32f4x.ahb"
+while_running = true
+[[memory_access]]
+id = "core-tcl"
+label = "Core target (stopped)"
+tcl_endpoint = "127.0.0.1:6666"
+target = "stm32f4x.cpu"
+while_running = false

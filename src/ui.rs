@@ -1,3 +1,5 @@
+#[cfg(test)]
+use crate::session;
 use crate::{
     config::Project,
     coordinator,
@@ -5,8 +7,6 @@ use crate::{
     session::{EngineHandle, Event, Frame, Request, Snapshot, Variable},
     theme,
 };
-#[cfg(test)]
-use crate::session;
 use crossterm::{
     event::{
         self, DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
@@ -46,11 +46,14 @@ const PANES: [&str; 11] = [
     "Locals",
     "Peripherals",
 ];
+mod breakpoints;
 mod completion;
 mod console;
+mod cores;
 mod effects;
 mod formats;
 mod highlight;
+mod monitor;
 mod peripherals;
 mod render;
 mod source_tabs;
@@ -65,7 +68,9 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 33] = [
+const COMMANDS: [&str; 41] = [
+    "cores",
+    "core NAME_OR_INDEX",
     "appearance",
     "animations MODE",
     "format",
@@ -85,7 +90,13 @@ const COMMANDS: [&str; 33] = [
     "watch EXPRESSION",
     "unwatch EXPRESSION",
     "break LOCATION",
-    "data-break EXPRESSION",
+    "data-break [read|write|access] EXPRESSION",
+    "break-new",
+    "break-data",
+    "break-edit",
+    "break-toggle",
+    "enable NUMBER|all",
+    "disable NUMBER|all",
     "delete NUMBER",
     "memory ADDRESS [COUNT]",
     "disasm [ADDRESS]",
@@ -110,7 +121,20 @@ Tab / Shift+Tab switches view and keyboard focus.
 Click tabs to change only that group; source stays visible.
 Wheel over a view or drag its scrollbar to browse content.
 Click Stack rows to select a frame; Delete removes a breakpoint or watch.
+Breaks: click [x] or Space / Enter to disable or enable without deleting.
++ Code / Insert adds a code breakpoint; + Data / d adds a read, write or read/write watchpoint.
+Edit / e / right-click sets enabled state, condition and ignore count; Delete removes the record.
+Enable all / Disable all affect this core only. Disabled records and data breakpoints are saved.
+Hardware / temporary code breakpoints are available in the editor. Hit totals come from GDB.
+Write watchpoints stop on value changes; Read and Read/write require hardware support.
 Watch: enter a variable below the list, then click + Add or press Enter.
+Structures / pointers / arrays: click the arrow or press Enter to expand; Left/Right collapses/expands.
+Large arrays: select Load more and Enter. Children support per-value display formats (f).
+Watch / Peripherals: right-click or f, then r opens Memory access / Live refresh.
+Choose a channel and 50..60000 ms interval. Read once is available without polling.
+GDB access requires a stopped core; only explicitly capable bus channels read while running.
+Only visible values are polled; Watch addresses resolve while stopped. LIVE marks fresh samples.
+Multicore: click Cores buttons (or Ctrl+T); view colors follow the selected core.
 Click a variable's x to remove it, or select it and press Delete / Del Remove.
 Delete while typing does not remove a Watch item.
 Narrow terminals show the focused group; Tab reaches all views.
@@ -124,7 +148,9 @@ Help / Ctrl+P lists commands; click or Enter selects.
 Help tabs / Tab switch between Commands and Shortcuts.
 Commands with arguments open the command line for editing.
 Asm loads at $pc on entry and updates after each stop.
-Project bar: Build / Download (configure commands in F2 Setup).
+Project bar: Setup / Build / Download. Setup returns to configuration without quitting.
+Start debugging at the top (Enter / Ctrl+R / F5) closes the previous session and starts the new configuration.
+Workspace / Esc returns without restarting; Ctrl+Q exits the program.
 Shell commands run in Source root; output appears in Console.
 Connected sessions are released, then restored after success.
 Memory loads at $sp; :memory ADDRESS [COUNT] reads another range.
@@ -144,7 +170,7 @@ Data defaults to decimal; registers and SVD fields default to hexadecimal.
 :appearance chooses Off / Subtle / Full animation and Unicode / ASCII effects.
 Both inputs offer completion: Up / Down selects, Tab or click fills, Enter submits.
 With no suggestions, Up / Down recalls Console history; Esc leaves input.
-Watch: click watch> or select Watch and Enter; type a global variable to add it.
+Watch: click watch> or + Add; type a global variable or C expression to add it.
 Variable and member completion uses the current ELF/GDB when stopped.
 Ctrl+C Pause     Ctrl+Q Exit      Esc Cancel / close dialog
 Step In / Over / Out send GDB step / next / finish respectively.
@@ -152,6 +178,8 @@ Step In / Over / Out send GDB step / next / finish respectively.
 :setup :connect :reconnect :run :continue :pause :disconnect
 :step :next :stepi :finish :restart :download :refresh
 :watch counter   :unwatch counter   :data-break flag
+:data-break read counter   :data-break access *(uint32_t *)0x20000000
+:disable 2   :enable 2   :disable all   :break-edit
 :break main   :delete 2   :frame 1
 :memory $sp 256   :disasm $pc   :files   :open source.c
 :find text   :elf app.elf   :build   :help   :quit
@@ -218,12 +246,16 @@ pub struct App {
     view_errors: [Option<String>; 11],
     pending_view: Option<(u64, usize)>,
     pending_commands: HashSet<u64>,
+    pending_elf: Option<u64>,
     pending_task: Option<u64>,
     help_scroll: u16,
     pointer: Option<ratatui::layout::Position>,
     fx: effects::Effects,
     formats: formats::Formats,
     core_info: Option<(String, usize, usize)>,
+    core_hits: Vec<(Rect, usize)>,
+    monitor: monitor::Monitor,
+    breaks: breakpoints::Breaks,
 }
 impl App {
     pub fn new(project: Project, demo: bool) -> Self {
@@ -287,12 +319,16 @@ impl App {
             view_errors: Default::default(),
             pending_view: None,
             pending_commands: HashSet::new(),
+            pending_elf: None,
             pending_task: None,
             help_scroll: 0,
             pointer: None,
             fx: effects::Effects::default(),
             formats: formats::Formats::default(),
             core_info: None,
+            core_hits: vec![],
+            monitor: Default::default(),
+            breaks: Default::default(),
         };
         a.fx.mode = a.project.ui.animations;
         if demo {
@@ -332,6 +368,7 @@ impl App {
                     value: "1".into(),
                     changed: true,
                     error: false,
+                    ..Default::default()
                 },
                 Variable {
                     name: "checksum".into(),
@@ -399,25 +436,39 @@ impl App {
     fn update(&mut self, event: Event) -> bool {
         match event {
             Event::Snapshot { snapshot } => {
+                let core_changed = snapshot.core.as_ref().map(|c| c.index)
+                    != self.snapshot.core.as_ref().map(|c| c.index);
+                self.core_info = snapshot
+                    .core
+                    .as_ref()
+                    .map(|c| (c.name.clone(), c.index, snapshot.cores.len()));
                 self.fx.snapshot(&self.snapshot, &snapshot);
                 self.reconcile_watch_selection(&snapshot);
-                if matches!(
-                    snapshot.state.as_str(),
-                    "DISCONNECTED" | "STARTING GDB" | "FAULT"
-                ) {
+                self.reconcile_break_selection(&snapshot, core_changed);
+                if core_changed
+                    || matches!(
+                        snapshot.state.as_str(),
+                        "DISCONNECTED" | "STARTING GDB" | "FAULT"
+                    )
+                {
                     self.view_stamps.fill(None);
                     self.peripherals.invalidate();
+                    self.monitor.invalidate();
                 }
-                let moved = snapshot.generation != self.snapshot.generation
+                let moved = core_changed
+                    || snapshot.generation != self.snapshot.generation
                     || snapshot.frame.file != self.snapshot.frame.file
                     || snapshot.frame.line != self.snapshot.frame.line
                     || snapshot.frame.level != self.snapshot.frame.level;
-                if moved && snapshot.state == "STOPPED" && !snapshot.frame.file.is_empty() {
+                if moved
+                    && (snapshot.state == "STOPPED" || core_changed)
+                    && !snapshot.frame.file.is_empty()
+                {
                     self.sources.frame_key = self.source_key(&snapshot.frame.file);
                     self.load_source(&snapshot.frame.file);
                     self.source_line = snapshot.frame.line.saturating_sub(1) as usize;
                     self.source_top = self.source_line.saturating_sub(8);
-                } else if moved && snapshot.state == "STOPPED" {
+                } else if moved && (snapshot.state == "STOPPED" || core_changed) {
                     // Preserve open tabs, but never present the old source as the
                     // current stop when the new PC has no source information.
                     self.sources.frame_key.clear();
@@ -452,6 +503,10 @@ impl App {
                 result,
                 error,
             } => {
+                self.break_response(id, ok, error.as_deref());
+                if self.monitor_response(id, &result, error.as_deref()) {
+                    return false;
+                }
                 if self.formats.pending_save.remove(&id) {
                     if !ok {
                         self.notice = format!(
@@ -469,21 +524,6 @@ impl App {
                         }
                     }
                     return false;
-                }
-                // Parse core info from connect or select_core responses.
-                if ok
-                    && let Some(count) = result.get("core_count").and_then(Value::as_u64)
-                    && count > 1
-                {
-                    let active = result.get("active_core").and_then(Value::as_u64).unwrap_or(0) as usize;
-                    let name = result
-                        .get("core_names")
-                        .and_then(Value::as_array)
-                        .and_then(|arr| arr.get(active))
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_owned();
-                    self.core_info = Some((name, active, count as usize));
                 }
                 self.fx.response(id, ok);
                 if self.watch.pending_remove == Some(id) {
@@ -511,6 +551,12 @@ impl App {
                 let background_view = self.pending_view.is_some_and(|(pending, _)| pending == id);
                 self.peripherals.response(id, &result, error.as_deref());
                 self.pending_commands.remove(&id);
+                if self.pending_elf == Some(id) {
+                    self.pending_elf = None;
+                    if ok && let Some(path) = result.get("elf").and_then(Value::as_str) {
+                        self.project.program.elf = PathBuf::from(path);
+                    }
+                }
                 if self.pending_task == Some(id) {
                     self.pending_task = None;
                 }
@@ -538,6 +584,10 @@ impl App {
         false
     }
     fn submit(&mut self, engine: Option<&EngineHandle>, method: &str, params: Value) {
+        if method == "set_elf" && self.pending_elf.is_some() {
+            self.notice = "Changing ELF; wait for completion.".into();
+            return;
+        }
         if method == "unwatch" && self.watch.pending_remove.is_some() {
             self.notice = "Removing Watch expression; wait for completion.".into();
             return;
@@ -582,12 +632,18 @@ impl App {
         self.notice = format!("{}…", request.method);
         if let Some(engine) = engine {
             let id = request.id;
+            if request.method == "set_elf" {
+                self.pending_elf = Some(id);
+            }
             if request.method == "unwatch" {
                 self.watch.pending_remove = Some(id);
             }
             self.pending_commands.insert(id);
             if let Err(e) = engine.send(request) {
                 self.pending_commands.remove(&id);
+                if self.pending_elf == Some(id) {
+                    self.pending_elf = None;
+                }
                 if self.watch.pending_remove == Some(id) {
                     self.watch.pending_remove = None;
                 }
@@ -643,11 +699,26 @@ impl App {
             }
             "peripheral-refresh" => self.refresh_peripheral(engine),
             "select_core" | "core" => {
-                let idx = arg.parse::<usize>().unwrap_or(0);
-                self.submit(engine, "select_core", json!({"index":idx}));
+                let params = match arg.parse::<usize>() {
+                    Ok(index) => json!({"index":index}),
+                    Err(_) => json!({"name":arg}),
+                };
+                self.submit(engine, "select_core", params);
             }
+            "cores" => self.submit(engine, "cores", json!({})),
             "watch" | "unwatch" => self.submit(engine, name, json!({"expression":arg})),
-            "data-break" => self.submit(engine, "data_break", json!({"expression":arg})),
+            "data-break" => {
+                let (first, rest) = arg.split_once(' ').unwrap_or((arg, ""));
+                let (access, expression) = if matches!(first, "read" | "write" | "access" | "read-write") { (first, rest) } else { ("write", arg) };
+                self.submit(engine, "data_break", json!({"expression":expression,"access":access}));
+            }
+            "break-new" => self.open_break_editor(false, false),
+            "break-data" => self.open_break_editor(true, false),
+            "break-edit" => self.open_break_editor(false, true),
+            "break-toggle" => self.toggle_selected_break(engine),
+            "break-remove" => self.remove_selected_break(engine),
+            "break-enable-all" | "break-disable-all" => self.break_send(engine, "enable_break", json!({"all":true,"enabled":name == "break-enable-all"})),
+            "enable" | "disable" => self.submit(engine, "enable_break", json!({"number":if arg == "all" { "" } else { arg }, "all":arg == "all", "enabled":name == "enable"})),
             "break" => self.submit(engine, "break", json!({"location":unquote(arg)})),
             "delete" => self.submit(engine, "delete_break", json!({"number":arg})),
             "frame" => self.submit(
@@ -699,7 +770,6 @@ impl App {
             }
             "elf" => {
                 let path = unquote(arg);
-                self.project.program.elf = PathBuf::from(&path);
                 self.submit(engine, "set_elf", json!({"path":path}));
             }
             "help" => self.open_help(true),
@@ -725,7 +795,15 @@ impl App {
                     && self.source_key(&b.file) == source_key)
         }) {
             let number = b.id.clone();
-            self.submit(engine, "delete_break", json!({"number":number}));
+            if b.enabled {
+                self.submit(engine, "delete_break", json!({"number":number}));
+            } else {
+                self.submit(
+                    engine,
+                    "enable_break",
+                    json!({"number":number,"enabled":true}),
+                );
+            }
         } else {
             self.submit(engine, "break", json!({"location":location}));
         }
@@ -777,12 +855,17 @@ impl App {
             return false;
         }
         if let Some(setup) = &mut self.setup {
-            if key.code == KeyCode::Esc && !setup.is_editing() && !setup.pending {
+            self.launch = setup.key(key);
+            if setup.workspace_requested {
                 self.document = setup.document.clone();
                 self.setup = None;
-            } else {
-                self.launch = setup.key(key);
             }
+            return false;
+        }
+        if self.monitor_key_event(key, engine) {
+            return false;
+        }
+        if self.break_dialog_key(key, engine) {
             return false;
         }
         if self.format_key(key, engine) {
@@ -867,6 +950,9 @@ impl App {
             self.input_key(key, engine);
             return false;
         }
+        if self.pane == 6 && !self.console_view.focused && self.break_panel_key(key, engine) {
+            return false;
+        }
         match key.code {
             KeyCode::Char('f') if key.modifiers.is_empty() => self.open_format(None),
             KeyCode::F(2) => self.open_setup(),
@@ -919,6 +1005,12 @@ impl App {
             KeyCode::Char('r') if self.pane == peripherals::PANE => self.refresh_peripheral(engine),
             KeyCode::Left if self.pane == peripherals::PANE => self.toggle_peripheral(Some(false)),
             KeyCode::Right if self.pane == peripherals::PANE => self.toggle_peripheral(Some(true)),
+            KeyCode::Left if self.pane == 1 => {
+                self.toggle_watch(Some(false), engine);
+            }
+            KeyCode::Right if self.pane == 1 => {
+                self.toggle_watch(Some(true), engine);
+            }
             KeyCode::Up => self.move_selection(-1),
             KeyCode::PageDown => self.move_selection(12),
             KeyCode::PageUp => self.move_selection(-12),
@@ -937,6 +1029,7 @@ impl App {
             KeyCode::Enter => {
                 if self.pane == peripherals::PANE {
                     self.toggle_peripheral(None);
+                } else if self.pane == 1 && self.toggle_watch(None, engine) {
                 } else if self.pane == 7 {
                     if let Some(file) = self.snapshot.files.get(self.selection).cloned() {
                         self.load_source(&file);
@@ -951,11 +1044,12 @@ impl App {
                     self.focus_input(self.pane == 1);
                 }
             }
-            KeyCode::Delete if self.pane == 6 && !self.console_view.focused => {
-                if let Some(b) = self.snapshot.breakpoints.get(self.selection) {
-                    let number = b.id.clone();
-                    self.submit(engine, "delete_break", json!({"number":number}));
-                }
+            KeyCode::Delete
+                if self.pane == 6
+                    && !self.console_view.focused
+                    && key.kind == KeyEventKind::Press =>
+            {
+                self.remove_selected_break(engine);
             }
             KeyCode::Delete
                 if self.pane == 1
@@ -995,8 +1089,11 @@ impl App {
     }
     fn view_stamp(&self) -> String {
         format!(
-            "{}:{}:{}",
-            self.snapshot.generation, self.snapshot.frame.address, self.snapshot.frame.level
+            "{:?}:{}:{}:{}",
+            self.snapshot.core.as_ref().map(|c| c.index),
+            self.snapshot.generation,
+            self.snapshot.frame.address,
+            self.snapshot.frame.level
         )
     }
     // Fetch expensive views only when visible, once per stopped location. Responses
@@ -1006,6 +1103,7 @@ impl App {
             || self.setup.is_some()
             || self.quitting
             || self.pending_view.is_some()
+            || self.monitor.busy()
             || self.completion.busy()
             || !self.pending_commands.is_empty()
             || self.snapshot.state != "STOPPED"
@@ -1080,8 +1178,11 @@ impl App {
         if self.pending_task.is_some() && !matches!(command, "commandlist" | "quit") {
             return false;
         }
+        if command.starts_with("break-") {
+            return self.break_action_enabled(command);
+        }
         match command {
-            "commandlist" | "quit" => true,
+            "commandlist" | "quit" | "setup" => true,
             "build" => {
                 self.project.has_build()
                     && matches!(
@@ -1118,7 +1219,7 @@ impl App {
     fn view_len(&self, pane: usize) -> usize {
         match pane {
             0 => self.source.len(),
-            1 => self.snapshot.watches.len() * 2,
+            1 => watch::rows(&self.snapshot.watches).len() * 2,
             2 => self.snapshot.stack.len(),
             3 => self.snapshot.registers.len(),
             4 => self.memory_bytes().len().div_ceil(self.memory_columns()),
@@ -1185,10 +1286,27 @@ impl App {
     }
     fn mouse(&mut self, mouse: MouseEvent, engine: Option<&EngineHandle>) {
         self.pointer = Some((mouse.column, mouse.row).into());
-        if self.setup.is_some() || self.confirm.is_some() || self.quitting {
+        if self.quitting {
+            return;
+        }
+        if let Some(setup) = &mut self.setup {
+            self.launch = setup.mouse(mouse);
+            if setup.workspace_requested {
+                self.document = setup.document.clone();
+                self.setup = None;
+            }
+            return;
+        }
+        if self.confirm.is_some() {
             return;
         }
         let point = (mouse.column, mouse.row).into();
+        if self.monitor_mouse(mouse, engine) {
+            return;
+        }
+        if self.break_dialog_mouse(mouse, engine) {
+            return;
+        }
         if self.formats.popup.is_some() || self.formats.appearance {
             self.format_mouse(mouse, engine);
             return;
@@ -1239,6 +1357,15 @@ impl App {
             return;
         }
         if !self.help && !self.palette && !self.sources.list_open {
+            if self.break_panel_mouse(mouse, engine) {
+                return;
+            }
+            if mouse.kind == MouseEventKind::Down(event::MouseButton::Left)
+                && let Some((_, index)) = self.core_hits.iter().find(|(r, _)| r.contains(point))
+            {
+                self.submit(engine, "select_core", json!({"index":index}));
+                return;
+            }
             if self.watch_mouse(mouse, engine) {
                 return;
             }
@@ -1386,13 +1513,15 @@ impl App {
         }
     }
     fn open_setup(&mut self) {
-        if let Ok(document) = Document::open(&self.document.path) {
+        if !self.document.is_modified()
+            && let Ok(document) = Document::open(&self.document.path)
+        {
             self.document = document;
         }
         let mut setup = Setup::new(self.document.clone());
         if !matches!(self.snapshot.state.as_str(), "DISCONNECTED" | "FAULT") {
             setup.message =
-                "Current session stays active until F5. Starting ends it and switches projects."
+                "Session remains active while configuring. Start closes it, then connects with these settings."
                     .into();
         }
         self.setup = Some(setup);
@@ -1548,10 +1677,14 @@ pub fn run(
                     app.fx = effects::Effects::default();
                     app.fx.mode = project.ui.animations;
                     app.formats = formats::Formats::default();
+                    app.breaks = breakpoints::Breaks::default();
+                    app.monitor = monitor::Monitor::default();
+                    app.core_hits.clear();
                     app.peripherals = peripherals::Peripherals::load(&project.program.svd);
                     app.document = launch.document;
                     app.setup = None;
                     app.snapshot = Snapshot::default();
+                    app.core_info = None;
                     app.source.clear();
                     app.source_comments.clear();
                     app.source_file.clear();
@@ -1571,6 +1704,7 @@ pub fn run(
                     app.view_errors.fill(None);
                     app.pending_view = None;
                     app.pending_commands.clear();
+                    app.pending_elf = None;
                     app.pending_task = None;
                     app.editing = false;
                     app.watch_editing = false;
@@ -1611,6 +1745,9 @@ pub fn run(
             dirty = true;
         }
         if app.ensure_visible_data(engine.as_ref()) {
+            dirty = true;
+        }
+        if app.ensure_monitors(engine.as_ref()) {
             dirty = true;
         }
         let active = app.setup.is_none()
@@ -1656,6 +1793,9 @@ pub fn run(
                     if let Some(setup) = &mut app.setup {
                         setup.paste(&text);
                         dirty = true;
+                    } else if app.breaks.modal() {
+                        app.break_paste(&text);
+                        dirty = true;
                     } else if app.sources.list_open {
                         app.sources
                             .query
@@ -1699,6 +1839,121 @@ pub fn snapshot(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn visible_setup_button_returns_without_quitting_and_keeps_the_draft() {
+        let (engine, requests) = session::test_channel();
+        let mut a = App::new(Project::default(), false);
+        a.snapshot.state = "RUNNING".into();
+        let text = render(&mut a, 80, 24);
+        assert!(text.contains("← Setup"));
+        let hit = a
+            .action_hits
+            .iter()
+            .find(|(_, action)| *action == "setup")
+            .unwrap()
+            .0;
+        mouse_at(
+            &mut a,
+            MouseEventKind::Down(event::MouseButton::Left),
+            hit.x,
+            hit.y,
+            Some(&engine),
+        );
+        assert!(a.setup.is_some());
+        assert!(!a.quitting);
+        assert!(requests.try_recv().is_err());
+        a.setup
+            .as_mut()
+            .unwrap()
+            .document
+            .set("target", "endpoint", "localhost:4444".into());
+        a.key(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert!(a.setup.is_none());
+        assert_eq!(a.snapshot.state, "RUNNING");
+        a.open_setup();
+        assert_eq!(
+            a.setup
+                .as_ref()
+                .unwrap()
+                .document
+                .project()
+                .unwrap()
+                .target
+                .endpoint,
+            "localhost:4444"
+        );
+        assert!(requests.try_recv().is_err());
+    }
+    #[test]
+    fn elf_path_changes_only_after_success_and_failed_requests_keep_old_path() {
+        let mut a = App::new(Project::default(), false);
+        a.project.program.elf = "old.elf".into();
+        let (engine, requests) = crate::session::test_channel();
+        a.command(Some(&engine), ":elf wrong.elf");
+        let request = requests.try_recv().unwrap();
+        assert_eq!(a.project.program.elf, PathBuf::from("old.elf"));
+        a.command(Some(&engine), ":elf concurrent.elf");
+        assert!(requests.try_recv().is_err());
+        a.update(Event::Response {
+            id: request.id,
+            ok: false,
+            result: Value::Null,
+            error: Some("Use F2 Setup".into()),
+        });
+        assert_eq!(a.project.program.elf, PathBuf::from("old.elf"));
+        a.command(Some(&engine), ":elf new.elf");
+        let request = requests.try_recv().unwrap();
+        a.update(Event::Response {
+            id: request.id,
+            ok: true,
+            result: json!({"elf":"new.elf"}),
+            error: None,
+        });
+        assert_eq!(a.project.program.elf, PathBuf::from("new.elf"));
+        drop(requests);
+        a.command(Some(&engine), ":elf unavailable.elf");
+        assert!(a.pending_elf.is_none());
+        assert_eq!(a.project.program.elf, PathBuf::from("new.elf"));
+    }
+    #[test]
+    fn core_switch_refreshes_header_and_clears_inspector_caches() {
+        let mut a = App::new(Project::default(), true);
+        a.view_stamps.fill(Some("old-core".into()));
+        let mut snapshot = a.snapshot.clone();
+        let core = crate::session::CoreStatus {
+            index: 1,
+            name: "cpu1".into(),
+            endpoint: "localhost:3334".into(),
+            state: "STOPPED".into(),
+        };
+        snapshot.core = Some(core.clone());
+        snapshot.cores = vec![
+            crate::session::CoreStatus {
+                index: 0,
+                name: "cpu0".into(),
+                endpoint: "localhost:3333".into(),
+                state: "RUNNING".into(),
+            },
+            core,
+        ];
+        let before = a.view_stamp();
+        a.update(Event::Snapshot {
+            snapshot: Box::new(snapshot),
+        });
+        assert_ne!(a.view_stamp(), before);
+        assert!(a.view_stamps.iter().all(Option::is_none));
+        assert_eq!(a.core_info, Some(("cpu1".into(), 1, 2)));
+        let text = render(&mut a, 160, 45);
+        assert!(text.contains("localhost:3334"));
+        assert!(text.contains("cpu1"));
+        a.update(Event::Snapshot {
+            snapshot: Box::default(),
+        });
+        assert!(a.core_info.is_none());
+    }
     fn render(a: &mut App, w: u16, h: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
         terminal.draw(|f| draw(f, a)).unwrap();

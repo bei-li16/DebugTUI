@@ -1,154 +1,229 @@
-//! Multi-core session coordinator.
-//!
-//! Wraps one or more [`session::EngineHandle`] instances behind the same
-//! `EngineHandle` interface, so the rest of the application (UI, headless,
-//! JSONL) does not change.  When the project has no `[[cores]]` array the
-//! coordinator degenerates to a transparent single-engine pass-through,
-//! preserving the original single-core behaviour exactly.
-
+//! Ordered workspace operations and independent per-core debugger state.
 use crate::{
-    config::{Core, Project, Service, SyncConfig},
-    session::{self, Event, Request, EngineHandle},
+    config::{Core, Project},
+    logging::{Stamp, Trace},
+    session::{self, CoreStatus, EngineHandle, Event, Request, Snapshot},
 };
-use serde_json::{json, Value as Json};
+use serde_json::{Value as Json, json};
 use std::{
+    collections::VecDeque,
     io::Read,
     process::{Child, Command, Stdio},
     sync::{
+        Arc,
         atomic::{AtomicBool, Ordering},
-        Arc, mpsc::{self, Receiver, SyncSender},
+        mpsc::{self, Receiver, SyncSender},
     },
     thread,
     time::{Duration, Instant},
 };
 
 pub fn spawn(project: Project) -> EngineHandle {
+    // No extra worker, latency or cancellation indirection for existing projects.
+    if project.cores.is_empty() && project.live_watch.is_none() && project.sync.is_none() {
+        return session::spawn(project);
+    }
     let (commands, requests) = mpsc::channel();
-    let (events_tx, events_rx) = mpsc::sync_channel(512);
+    let (events, receiver) = mpsc::sync_channel(512);
     let cancellation = Arc::new(AtomicBool::new(false));
     let cancel = cancellation.clone();
-    thread::spawn(move || {
-        let mut coord = Coordinator::new(project, events_tx, cancel);
-        coord.run(requests);
-    });
+    thread::spawn(move || Coordinator::new(project, events, cancel).run(requests));
     EngineHandle {
         commands,
-        events: events_rx,
+        events: receiver,
         cancellation,
     }
 }
-
 struct EngineEntry {
     name: String,
+    endpoint: String,
     handle: EngineHandle,
+    snapshot: Snapshot,
+    revision: u64,
+    exited: bool,
+    unresponsive: bool,
 }
-
-struct PendingConnect {
-    request_id: u64,
-    responded: Vec<bool>,
-    first_error: Option<String>,
+enum Step {
+    StartService,
+    StopService,
+    Core(usize, String),
 }
-
+struct Batch {
+    request: Request,
+    steps: VecDeque<Step>,
+    waiting: Option<(usize, u64, Instant)>,
+    results: Vec<Json>,
+    errors: Vec<String>,
+    last: Json,
+    recovering: bool,
+    aggregate: bool,
+}
 struct Coordinator {
+    project: Project,
     engines: Vec<EngineEntry>,
-    live_watch: Option<crate::live_watch::LiveWatchHandle>,
+    order: Vec<usize>,
     active: usize,
+    revision: u64,
+    next_id: u64,
     events: SyncSender<Event>,
-    exiting: bool,
-    server: Option<Child>,
-    service: Option<Service>,
-    sync: Option<SyncConfig>,
-    tcl_endpoint: Option<String>,
-    job: Option<crate::process::Job>,
     cancellation: Arc<AtomicBool>,
-    pending_connect: Option<PendingConnect>,
-    session_started: Instant,
+    exiting: bool,
+    queue: VecDeque<Request>,
+    batch: Option<Batch>,
+    server: Option<Child>,
+    job: Option<crate::process::Job>,
+    trace: Option<Trace>,
+    started: Instant,
+    server_logs: Receiver<(Stamp, String, String)>,
+    server_log_tx: SyncSender<(Stamp, String, String)>,
+    live_watch: Option<crate::live_watch::LiveWatchHandle>,
+    live_key: Option<(usize, Vec<String>)>,
 }
-
 impl Coordinator {
     fn new(project: Project, events: SyncSender<Event>, cancellation: Arc<AtomicBool>) -> Self {
         let multi = !project.cores.is_empty();
-        let service = if multi { project.service.clone() } else { None };
-        let sync = if multi { project.sync.clone() } else { None };
-        let tcl_endpoint = project.live_watch.as_ref().map(|lw| lw.tcl_endpoint.clone());
-        let mut engines = Vec::new();
-        if project.cores.is_empty() {
-            let handle = session::spawn(project.clone());
-            engines.push(EngineEntry { name: "default".into(), handle });
+        let cores = if multi {
+            project.cores.clone()
         } else {
-            let mut sorted: Vec<&Core> = project.cores.iter().collect();
-            sorted.sort_by_key(|c| c.startup_order);
-            for core in &sorted {
-                let derived = derive_project(&project, core);
-                let handle = session::spawn(derived);
-                engines.push(EngineEntry { name: core.name.clone(), handle });
-            }
-        }
-        // Default to the core with the highest startup_order (the "main" core
-        // that starts last). For THA6206 this is core.0; core.1 boots first
-        // only to unblock the MULTICORE_SYNCVAR spin.
-        let active = engines.len().saturating_sub(1);
-        let live_watch = project.live_watch.as_ref().and_then(|lw| {
-            match crate::live_watch::spawn(lw, project.watch.clone()) {
-                Ok(h) => {
-                    let _ = events.send(Event::Log {
-                        channel: "live".into(),
-                        text: format!("Live watch started: {} @ {}ms", lw.bus_target, lw.interval_ms),
-                        timestamp: String::new(),
-                        elapsed_ms: 0,
-                    });
-                    Some(h)
-                }
-                Err(e) => {
-                    let _ = events.send(Event::Log {
-                        channel: "live".into(),
-                        text: format!("Live watch disabled: {e}"),
-                        timestamp: String::new(),
-                        elapsed_ms: 0,
-                    });
-                    None
-                }
-            }
-        });
+            vec![Core {
+                name: "default".into(),
+                endpoint: project.target.endpoint.clone(),
+                ..Default::default()
+            }]
+        };
+        let engines = cores
+            .iter()
+            .enumerate()
+            .map(|(i, c)| EngineEntry {
+                name: c.name.clone(),
+                endpoint: c.endpoint.clone(),
+                handle: session::spawn(if multi {
+                    derive_project(&project, c, i)
+                } else {
+                    project.clone()
+                }),
+                snapshot: Snapshot::default(),
+                revision: 0,
+                exited: false,
+                unresponsive: false,
+            })
+            .collect();
+        // Stable indices follow configuration order, not startup order.
+        let mut order = (0..cores.len()).collect::<Vec<_>>();
+        order.sort_by_key(|&i| cores[i].startup_order);
+        let active = *order.last().unwrap();
+        let (server_log_tx, server_logs) = mpsc::sync_channel(512);
         Self {
+            project,
             engines,
-            live_watch,
+            order,
             active,
+            revision: 0,
+            next_id: 1,
             events,
-            exiting: false,
-            server: None,
-            service,
-            sync,
-            tcl_endpoint,
-            job: None,
             cancellation,
-            pending_connect: None,
-            session_started: Instant::now(),
+            exiting: false,
+            queue: VecDeque::new(),
+            batch: None,
+            server: None,
+            job: None,
+            trace: None,
+            started: Instant::now(),
+            server_logs,
+            server_log_tx,
+            live_watch: None,
+            live_key: None,
         }
     }
-
-    fn log(&self, channel: &str, text: String) {
-        let stamp = crate::logging::Stamp::now();
-        let elapsed = stamp.elapsed_ms(self.session_started);
-        let _ = self.events.send(Event::Log {
+    fn multi(&self) -> bool {
+        !self.project.cores.is_empty()
+    }
+    fn emit(&self, event: Event) {
+        if self.events.send(event).is_err() {
+            self.cancellation.store(true, Ordering::Relaxed);
+        }
+    }
+    fn log_at(&mut self, channel: &str, text: String, stamp: Stamp) {
+        let channel = if text.trim_start().starts_with(crate::live_watch::RPC_MARKER) {
+            "diagnostic"
+        } else {
+            channel
+        };
+        if let Some(trace) = &mut self.trace {
+            trace.write(&stamp, channel, &text);
+        }
+        self.emit(Event::Log {
             channel: channel.into(),
             text,
+            elapsed_ms: stamp.elapsed_ms(self.started),
             timestamp: stamp.wall,
-            elapsed_ms: elapsed,
         });
     }
-
-    // -- Service management (multi-core only) --
-
+    fn log(&mut self, channel: &str, text: String) {
+        self.log_at(channel, text, Stamp::now());
+    }
+    fn statuses(&self) -> Vec<CoreStatus> {
+        self.engines
+            .iter()
+            .enumerate()
+            .map(|(index, e)| CoreStatus {
+                index,
+                name: e.name.clone(),
+                endpoint: e.endpoint.clone(),
+                state: e.snapshot.state.clone(),
+            })
+            .collect()
+    }
+    fn snapshot(&self) -> Snapshot {
+        let mut s = self.engines[self.active].snapshot.clone();
+        if self.multi() {
+            s.generation = self.engines[self.active].revision;
+            s.cores = self.statuses();
+            s.core = s.cores.get(self.active).cloned();
+        }
+        s
+    }
+    fn publish(&self) {
+        self.emit(Event::Snapshot {
+            snapshot: Box::new(self.snapshot()),
+        });
+    }
+    fn info(&self) -> Json {
+        json!({"active_core":self.active,"core_count":self.engines.len(),"core_name":self.engines[self.active].name,
+            "core_names":self.engines.iter().map(|e| &e.name).collect::<Vec<_>>(),"cores":self.statuses()})
+    }
+    fn reply(&self, id: u64, result: Json, error: Option<String>) {
+        self.emit(Event::Response {
+            id,
+            ok: error.is_none(),
+            result,
+            error,
+        });
+    }
     fn start_service(&mut self) -> Result<(), String> {
-        let Some(service) = self.service.clone() else { return Ok(()) };
-        if !service.enabled || self.server.is_some() {
+        if !self.multi() {
             return Ok(());
         }
-        self.log("coordinator", format!("Starting service: {}", service.command.display()));
-        if self.job.is_none() {
-            self.job = Some(crate::process::Job::new()?);
+        if let Some(server) = &mut self.server {
+            if server.try_wait().map_err(|e| e.to_string())?.is_none() {
+                return Ok(());
+            }
+            self.stop_service();
         }
+        let stamp = Stamp::now();
+        self.trace = self
+            .project
+            .session
+            .log_dir
+            .as_ref()
+            .map(|p| Trace::open(&p.join("coordinator"), &stamp))
+            .transpose()
+            .map_err(|e| e.to_string())?;
+        self.started = stamp.at;
+        let Some(service) = self.project.service.clone().filter(|s| s.enabled) else {
+            return self.sync_open();
+        };
+        self.job = Some(crate::process::Job::new()?);
         let mut cmd = Command::new(&service.command);
         cmd.args(&service.args)
             .stdin(Stdio::null())
@@ -159,11 +234,11 @@ impl Coordinator {
         }
         session::hidden(&mut cmd);
         session::tool_environment(&mut cmd, &service.env, &service.unset_env);
-        let mut child = cmd.spawn()
+        let mut child = cmd
+            .spawn()
             .map_err(|e| format!("Start service {}: {e}", service.command.display()))?;
         self.job.as_ref().unwrap().attach(&mut child)?;
-
-        let (ready_tx, ready_rx) = mpsc::sync_channel::<()>(1);
+        let (ready_tx, ready_rx) = mpsc::sync_channel(1);
         if service.ready.is_empty() {
             let _ = ready_tx.try_send(());
         }
@@ -171,236 +246,601 @@ impl Coordinator {
             (Box::new(child.stdout.take().unwrap()), "server"),
             (Box::new(child.stderr.take().unwrap()), "server-error"),
         ];
-        for (mut stream, channel) in streams {
+        for (stream, channel) in streams {
             let markers = service.ready.clone();
             let tx = ready_tx.clone();
-            let events = self.events.clone();
+            let logs = self.server_log_tx.clone();
             thread::spawn(move || {
-                let mut buf = [0u8; 4096];
-                let mut pending = String::new();
+                let mut reader = stream;
+                let mut tail = String::new();
                 loop {
-                    let n = match stream.read(&mut buf) {
-                        Ok(0) | Err(_) => break,
-                        Ok(n) => n,
-                    };
-                    pending.push_str(&String::from_utf8_lossy(&buf[..n]));
-                    if markers.iter().any(|m| pending.contains(m.as_str())) {
+                    let mut data = [0; 4096];
+                    let n = reader.read(&mut data).unwrap_or(0);
+                    if n == 0 {
+                        break;
+                    }
+                    let text = String::from_utf8_lossy(&data[..n]).into_owned();
+                    tail.push_str(&text);
+                    if markers.iter().any(|m| tail.contains(m)) {
                         let _ = tx.try_send(());
                     }
-                    while let Some(end) = pending.find('\n') {
-                        let line = pending[..end].trim_end_matches('\r').to_owned();
-                        pending.drain(..=end);
-                        let _ = events.send(Event::Log {
-                            channel: channel.into(),
-                            text: line,
-                            timestamp: String::new(),
-                            elapsed_ms: 0,
-                        });
+                    if tail.len() > 8192 {
+                        tail = tail
+                            .chars()
+                            .rev()
+                            .take(4096)
+                            .collect::<String>()
+                            .chars()
+                            .rev()
+                            .collect();
                     }
+                    let _ = logs.try_send((Stamp::now(), channel.into(), text));
                 }
             });
         }
         self.server = Some(child);
         let deadline = Instant::now() + Duration::from_millis(service.timeout_ms);
         loop {
+            self.flush_server_logs();
             if self.cancellation.load(Ordering::Relaxed) {
                 return Err("Connection cancelled".into());
             }
             if ready_rx.try_recv().is_ok() {
-                self.log("coordinator", "Service ready".into());
-                return Ok(());
+                return self.sync_open();
             }
-            if let Some(status) = self.server.as_mut().unwrap().try_wait().map_err(|e| e.to_string())? {
+            if let Some(status) = self
+                .server
+                .as_mut()
+                .unwrap()
+                .try_wait()
+                .map_err(|e| e.to_string())?
+            {
                 return Err(format!("Service exited ({status})"));
             }
-            if Instant::now() > deadline {
+            if Instant::now() >= deadline {
                 return Err("Service startup timed out".into());
             }
-            thread::sleep(Duration::from_millis(25));
+            thread::sleep(Duration::from_millis(20));
         }
     }
-
+    fn flush_server_logs(&mut self) {
+        for _ in 0..128 {
+            let Ok((stamp, channel, text)) = self.server_logs.try_recv() else {
+                break;
+            };
+            self.log_at(&channel, text, stamp);
+        }
+    }
     fn stop_service(&mut self) {
-        if let Some(mut server) = self.server.take() {
-            let _ = server.kill();
-            let _ = server.wait();
+        self.live_watch = None;
+        self.live_key = None;
+        if let Some(mut child) = self.server.take() {
+            let _ = child.kill();
+            let _ = child.wait();
         }
+        self.job = None;
+        self.flush_server_logs();
     }
-
-    fn run_sync_open(&mut self) -> Result<(), String> {
-        let Some(sync) = &self.sync else { return Ok(()) };
+    fn sync_open(&mut self) -> Result<(), String> {
+        let Some(sync) = &self.project.sync else {
+            return Ok(());
+        };
         if sync.open.is_empty() {
             return Ok(());
         }
-        let Some(endpoint) = &self.tcl_endpoint else {
-            self.log("coordinator", "Sync open skipped: no live_watch.tcl_endpoint".into());
-            return Ok(());
+        let endpoint = if sync.tcl_endpoint.is_empty() {
+            self.project
+                .live_watch
+                .as_ref()
+                .map(|l| l.tcl_endpoint.as_str())
+                .ok_or("sync.open needs a TCL endpoint")?
+        } else {
+            &sync.tcl_endpoint
         };
-        self.log("coordinator", format!("Sync open: {} TCL commands via {}", sync.open.len(), endpoint));
-        crate::live_watch::send_tcl_commands(endpoint, &sync.open)
+        crate::live_watch::send_tcl_commands(endpoint, &sync.open, &self.cancellation)
     }
-
-    // -- Main loop --
-
+    fn start_live(&mut self) {
+        let desired = (self.project.live_watch.is_some()
+            && matches!(
+                self.engines[self.active].snapshot.state.as_str(),
+                "STOPPED" | "RUNNING"
+            ))
+        .then(|| {
+            (
+                self.active,
+                self.engines[self.active]
+                    .snapshot
+                    .watches
+                    .iter()
+                    .map(|w| w.name.clone())
+                    .collect::<Vec<_>>(),
+            )
+        });
+        if desired == self.live_key {
+            return;
+        }
+        self.live_key = desired.clone();
+        self.live_watch = None;
+        let Some((_, names)) = desired else {
+            return;
+        };
+        if let Some(config) = &self.project.live_watch {
+            match crate::live_watch::spawn(config, names) {
+                Ok(h) => self.live_watch = Some(h),
+                Err(e) => self.log("error", format!("Live Watch unavailable: {e}")),
+            }
+        }
+    }
     fn run(&mut self, requests: Receiver<Request>) {
-        let total = self.engines.len();
-        let mut exited = 0usize;
-        while exited < total {
-            // Phase 1: drain events (no self borrows)
-            let mut drained: Vec<(usize, Event)> = Vec::new();
-            for i in 0..total {
-                while let Ok(event) = self.engines[i].handle.events.try_recv() {
-                    drained.push((i, event));
+        loop {
+            if self.cancellation.load(Ordering::Relaxed) {
+                for e in &self.engines {
+                    e.handle.cancellation.store(true, Ordering::Relaxed);
                 }
             }
-            // Drain live-watch events (directly forwarded)
-            if let Some(lw) = &self.live_watch {
-                while let Ok(event) = lw.events.try_recv() {
-                    let _ = self.events.send(event);
+            self.flush_server_logs();
+            for i in 0..self.engines.len() {
+                for _ in 0..128 {
+                    match self.engines[i].handle.events.try_recv() {
+                        Ok(event) => self.event(i, event),
+                        Err(mpsc::TryRecvError::Disconnected) => {
+                            self.worker_exit(i);
+                            break;
+                        }
+                        Err(mpsc::TryRecvError::Empty) => break,
+                    }
                 }
             }
-            // Phase 2: process events
-            for (i, event) in drained {
-                if matches!(event, Event::Exit) {
-                    exited += 1;
-                    continue;
+            if self.batch.is_none() && !self.exiting {
+                self.start_live();
+            }
+            if let Some(live) = &self.live_watch {
+                let events: Vec<_> = live.events.try_iter().take(64).collect();
+                for event in events {
+                    self.emit(event);
                 }
-                // Connect response aggregation for multi-core
-                if self.pending_connect.is_some() {
-                    if let Event::Response { id, ok, error, .. } = &event {
-                        let pc_id = self.pending_connect.as_ref().unwrap().request_id;
-                        if *id == pc_id && i < total {
-                            let mut pc = self.pending_connect.take().unwrap();
-                            pc.responded[i] = true;
-                            if !ok && pc.first_error.is_none() {
-                                pc.first_error = error.clone();
-                            }
-                            if pc.responded.iter().all(|r| *r) {
-                                let ok = pc.first_error.is_none();
-                                let err = pc.first_error.clone();
-                                let _ = self.events.send(Event::Response {
-                                    id: pc.request_id,
-                                    ok,
-                                    result: json!({
-                                        "connected": ok,
-                                        "core_count": total,
-                                        "active_core": self.active,
-                                        "core_names": self.engines.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(),
-                                    }),
-                                    error: err,
-                                });
-                            } else {
-                                self.pending_connect = Some(pc);
-                            }
+            }
+            if let Some((i, token, deadline)) = self.batch.as_ref().and_then(|b| b.waiting)
+                && Instant::now() >= deadline
+            {
+                self.engines[i].unresponsive = true;
+                self.engines[i]
+                    .handle
+                    .cancellation
+                    .store(true, Ordering::Relaxed);
+                self.event(
+                    i,
+                    Event::Response {
+                        id: token,
+                        ok: false,
+                        result: Json::Null,
+                        error: Some("Worker response timed out; reopen this session".into()),
+                    },
+                );
+            }
+            self.advance();
+            if self
+                .engines
+                .iter()
+                .all(|e| e.exited || (self.exiting && e.unresponsive))
+                && self.batch.is_none()
+            {
+                break;
+            }
+            match requests.recv_timeout(Duration::from_millis(20)) {
+                Ok(req) if req.is_quit() => {
+                    if self.exiting {
+                        self.reply(req.id, Json::Null, Some("Session already closing".into()));
+                        continue;
+                    }
+                    // Keep cancellation immediate even for a direct channel caller.
+                    self.cancellation.store(true, Ordering::Relaxed);
+                    for r in self.queue.drain(..).collect::<Vec<_>>() {
+                        self.reply(r.id, Json::Null, Some("Cancelled during exit".into()));
+                    }
+                    self.queue
+                        .push_front(Request::new(req.id, "quit", json!({})));
+                }
+                Ok(req) => {
+                    if self.queue.len() >= 64 || self.exiting {
+                        self.reply(req.id, Json::Null, Some("Session busy or closing".into()));
+                    } else {
+                        self.queue.push_back(req);
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected)
+                    if !self.exiting && !self.queue.iter().any(|r| r.method == "quit") =>
+                {
+                    self.cancellation.store(true, Ordering::Relaxed);
+                    self.queue.clear();
+                    self.queue
+                        .push_back(Request::new(u64::MAX, "quit", json!({})));
+                }
+                Err(_) => {}
+            }
+        }
+        self.stop_service();
+        for req in self.queue.drain(..).collect::<Vec<_>>() {
+            self.reply(req.id, Json::Null, Some("All debug workers exited".into()));
+        }
+        self.emit(Event::Exit);
+    }
+    fn worker_exit(&mut self, i: usize) {
+        if self.engines[i].exited {
+            return;
+        }
+        self.engines[i].exited = true;
+        if !self.exiting {
+            self.engines[i].snapshot = Snapshot {
+                state: "FAULT".into(),
+                ..Default::default()
+            };
+            self.log(
+                "error",
+                format!("[{}] Debug worker exited", self.engines[i].name),
+            );
+            self.publish();
+        }
+        if let Some((core, id, _)) = self.batch.as_ref().and_then(|b| b.waiting)
+            && core == i
+        {
+            self.event(
+                i,
+                Event::Response {
+                    id,
+                    ok: false,
+                    result: Json::Null,
+                    error: Some("Debug worker exited before replying".into()),
+                },
+            );
+        }
+    }
+    fn event(&mut self, i: usize, event: Event) {
+        match event {
+            Event::Exit => self.worker_exit(i),
+            Event::Snapshot { snapshot } => {
+                let changed_state = snapshot.state != self.engines[i].snapshot.state;
+                if snapshot.generation != self.engines[i].snapshot.generation {
+                    self.revision += 1;
+                    self.engines[i].revision = self.revision;
+                }
+                if i != self.active && changed_state {
+                    self.log(
+                        "core",
+                        format!(
+                            "[{}] {} {}",
+                            self.engines[i].name, snapshot.state, snapshot.stop_reason
+                        ),
+                    );
+                }
+                self.engines[i].snapshot = *snapshot;
+                if i == self.active || changed_state {
+                    self.publish();
+                }
+            }
+            Event::Log {
+                channel,
+                text,
+                timestamp,
+                elapsed_ms,
+            } => {
+                let (channel, text) = if self.multi() && channel != "progress" {
+                    (channel, format!("[{}] {text}", self.engines[i].name))
+                } else if self.multi() && i != self.active {
+                    (
+                        "core-progress".into(),
+                        format!("[{}] {text}", self.engines[i].name),
+                    )
+                } else {
+                    (channel, text)
+                };
+                self.emit(Event::Log {
+                    channel,
+                    text,
+                    timestamp,
+                    elapsed_ms,
+                });
+            }
+            Event::Response {
+                id,
+                ok,
+                result,
+                error,
+            } => {
+                if !self.batch.as_ref().is_some_and(|b| {
+                    b.waiting
+                        .is_some_and(|(core, token, _)| core == i && token == id)
+                }) {
+                    return;
+                }
+                let mut b = self.batch.take().unwrap();
+                b.waiting = None;
+                b.results.push(json!({"index":i,"name":self.engines[i].name,"ok":ok,"result":result,"error":error}));
+                b.last = result;
+                if !ok {
+                    self.fail(
+                        &mut b,
+                        format!(
+                            "[{}] {}",
+                            self.engines[i].name,
+                            error.unwrap_or_else(|| "Command failed".into())
+                        ),
+                    );
+                }
+                self.batch = Some(b);
+            }
+        }
+    }
+    fn fail(&mut self, b: &mut Batch, error: String) {
+        b.errors.push(error);
+        if !b.recovering
+            && matches!(
+                b.request.method.as_str(),
+                "connect" | "reconnect" | "build" | "download"
+            )
+            && b.aggregate
+        {
+            b.recovering = true;
+            b.steps = self
+                .order
+                .iter()
+                .rev()
+                .map(|&i| Step::Core(i, "disconnect".into()))
+                .collect();
+            b.steps.push_back(Step::StopService);
+        } else if !b.recovering && !matches!(b.request.method.as_str(), "quit" | "disconnect") {
+            b.steps.clear();
+        }
+    }
+    fn advance(&mut self) {
+        if self.batch.is_none()
+            && let Some(req) = self.queue.pop_front()
+        {
+            self.begin(req);
+        }
+        let Some(mut b) = self.batch.take() else {
+            return;
+        };
+        if b.waiting.is_some() {
+            self.batch = Some(b);
+            return;
+        }
+        while let Some(step) = b.steps.pop_front() {
+            match step {
+                Step::StopService => self.stop_service(),
+                Step::StartService => {
+                    if let Err(e) = self.start_service() {
+                        self.fail(&mut b, e);
+                    }
+                }
+                Step::Core(i, method) => {
+                    if self.engines[i].exited || (self.engines[i].unresponsive && method != "quit")
+                    {
+                        if method == "quit" && self.engines[i].exited {
                             continue;
+                        }
+                        self.fail(
+                            &mut b,
+                            format!("[{}] Debug worker unavailable", self.engines[i].name),
+                        );
+                        continue;
+                    }
+                    let id = self.next_id;
+                    self.next_id += 1;
+                    let params = if method == b.request.method {
+                        b.request.params.clone()
+                    } else {
+                        json!({})
+                    };
+                    let timeout = if matches!(method.as_str(), "build" | "download") {
+                        self.project.tasks.timeout_ms.saturating_add(120_000)
+                    } else {
+                        self.project
+                            .session
+                            .timeout_ms
+                            .saturating_mul(20)
+                            .max(30_000)
+                    };
+                    match self.engines[i]
+                        .handle
+                        .send(Request::new(id, &method, params))
+                    {
+                        Ok(()) => {
+                            b.waiting =
+                                Some((i, id, Instant::now() + Duration::from_millis(timeout)));
+                            self.batch = Some(b);
+                            return;
+                        }
+                        Err(e) => {
+                            self.worker_exit(i);
+                            self.fail(&mut b, e);
                         }
                     }
                 }
-                // Forward events: single-core = all; multi-core = active engine only
-                if total == 1 || i == self.active {
-                    let _ = self.events.send(event);
-                }
-            }
-            // Process UI requests
-            match requests.recv_timeout(Duration::from_millis(20)) {
-                Ok(req) => self.route(req),
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    for e in self.engines.iter() {
-                        let _ = e.handle.send(Request::new(u64::MAX, "quit", json!({})));
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
             }
         }
-        if let Some(lw) = self.live_watch.take() {
-            lw.cancellation.store(true, Ordering::Relaxed);
+        let ok = b.errors.is_empty();
+        if ok
+            && matches!(
+                b.request.method.as_str(),
+                "connect" | "reconnect" | "build" | "download"
+            )
+        {
+            self.start_live();
         }
-        self.stop_service();
-        let _ = self.events.send(Event::Exit);
+        if ok
+            && matches!(b.request.method.as_str(), "watch" | "unwatch")
+            && self.live_watch.is_some()
+        {
+            self.start_live();
+        }
+        let result = if b.aggregate {
+            let mut info = self.info();
+            info["results"] = json!(b.results);
+            match b.request.method.as_str() {
+                "connect" | "reconnect" => info["connected"] = json!(ok),
+                "run" => {
+                    info["running"] =
+                        json!(ok && self.engines.iter().all(|e| e.snapshot.state == "RUNNING"))
+                }
+                "quit" | "disconnect" => info["disconnected"] = json!(ok),
+                _ => {}
+            }
+            info
+        } else if b.request.method == "status" {
+            json!(self.snapshot())
+        } else {
+            b.last
+        };
+        self.reply(b.request.id, result, (!ok).then(|| b.errors.join("; ")));
     }
-
-    fn route(&mut self, request: Request) {
-        match request.method.as_str() {
-            "select_core" => {
-                if self.engines.len() > 1 {
-                    let idx = request.params.get("index").and_then(Json::as_u64).unwrap_or(0) as usize;
-                    if idx < self.engines.len() {
-                        self.active = idx;
-                        self.log("coordinator", format!("Active core: {}", self.engines[idx].name));
-                    }
-                }
-                let _ = self.events.send(Event::Response {
-                    id: request.id,
-                    ok: true,
-                    result: json!({
-                        "active_core": self.active,
-                        "core_count": self.engines.len(),
-                        "core_name": self.engines.get(self.active).map(|e| e.name.as_str()).unwrap_or(""),
-                    }),
-                    error: None,
-                });
-            }
-            "quit" => {
-                self.exiting = true;
-                for engine in self.engines.iter() {
-                    let _ = engine.handle.send(Request::new(request.id, "quit", json!({})));
-                }
-            }
-            "connect" if self.engines.len() > 1 => {
-                // 1. Start the shared service
-                if let Err(e) = self.start_service() {
-                    let _ = self.events.send(Event::Response {
-                        id: request.id,
-                        ok: false,
-                        result: Json::Null,
-                        error: Some(e),
-                    });
+    fn begin(&mut self, req: Request) {
+        if self.multi()
+            && req.method == "connect"
+            && self
+                .engines
+                .iter()
+                .any(|e| !matches!(e.snapshot.state.as_str(), "DISCONNECTED" | "FAULT"))
+        {
+            self.reply(
+                req.id,
+                Json::Null,
+                Some("A workspace session already exists. Use Reconnect to replace it.".into()),
+            );
+            return;
+        }
+        if self.multi() && req.method == "set_elf" {
+            self.reply(req.id,Json::Null,Some("Multi-core workspaces share one ELF. Change Program / ELF in F2 Setup and restart the workspace.".into()));
+            return;
+        }
+        if matches!(req.method.as_str(), "select_core" | "cores") {
+            if req.method == "select_core" {
+                let index = if let Some(name) = req.params.get("name").and_then(Json::as_str) {
+                    self.engines.iter().position(|e| e.name == name)
+                } else {
+                    req.params
+                        .get("index")
+                        .and_then(Json::as_u64)
+                        .and_then(|i| usize::try_from(i).ok())
+                };
+                let Some(index) = index.filter(|&i| i < self.engines.len()) else {
+                    self.reply(
+                        req.id,
+                        Json::Null,
+                        Some("Unknown core name or index".into()),
+                    );
                     return;
-                }
-                // 2. Run sync.open TCL commands
-                if let Err(e) = self.run_sync_open() {
-                    self.log("error", format!("Sync open: {e}"));
-                }
-                // 3. Send connect to all engines, aggregate responses
-                self.pending_connect = Some(PendingConnect {
-                    request_id: request.id,
-                    responded: vec![false; self.engines.len()],
-                    first_error: None,
-                });
-                for engine in self.engines.iter() {
-                    let _ = engine.handle.send(Request {
-                        id: request.id,
-                        method: "connect".into(),
-                        params: json!({}),
-                    });
+                };
+                self.active = index;
+                self.revision += 1;
+                self.engines[index].revision = self.revision;
+                self.publish();
+                if self.live_watch.is_some() {
+                    self.start_live();
                 }
             }
-            "run" if self.engines.len() > 1 => {
-                // Multi-core: broadcast run to every engine.  Each engine's
-                // run action is specific to its core (core.1 = "continue",
-                // core.0 = "tbreak _main; continue").  This avoids the
-                // monitor-resume path which hangs on DSCR sticky errors.
-                for engine in self.engines.iter() {
-                    let _ = engine.handle.send(Request {
-                        id: request.id,
-                        method: "run".into(),
-                        params: json!({}),
-                    });
+            self.reply(req.id, self.info(), None);
+            return;
+        }
+        let multi = self.multi();
+        let task = multi
+            && ((req.method == "build"
+                && (!self.project.tasks.build.is_empty() || self.project.build.is_some()))
+                || (req.method == "download" && !self.project.tasks.download.is_empty()));
+        let aggregate = multi
+            && (task
+                || matches!(
+                    req.method.as_str(),
+                    "connect" | "reconnect" | "run" | "disconnect" | "quit"
+                ));
+        let mut steps = VecDeque::new();
+        if task {
+            self.live_watch = None;
+            self.live_key = None;
+            let connected = self
+                .engines
+                .iter()
+                .any(|e| matches!(e.snapshot.state.as_str(), "READY" | "STOPPED" | "RUNNING"));
+            for &i in self.order.iter().rev() {
+                steps.push_back(Step::Core(i, "disconnect".into()));
+            }
+            steps.push_back(Step::StopService);
+            steps.push_back(Step::Core(self.active, req.method.clone()));
+            if connected {
+                steps.push_back(Step::StartService);
+                for &i in &self.order {
+                    steps.push_back(Step::Core(i, "connect".into()));
                 }
             }
-            _ => {
-                if let Some(engine) = self.engines.get(self.active) {
-                    let _ = engine.handle.send(request);
-                }
+            self.batch = Some(Batch {
+                request: req,
+                steps,
+                waiting: None,
+                results: vec![],
+                errors: vec![],
+                last: Json::Null,
+                recovering: false,
+                aggregate,
+            });
+            return;
+        }
+        if matches!(
+            req.method.as_str(),
+            "connect" | "reconnect" | "disconnect" | "quit"
+        ) {
+            self.live_watch = None;
+            self.live_key = None;
+        }
+        if req.method == "quit" {
+            self.exiting = true;
+            for e in &self.engines {
+                e.handle.cancellation.store(true, Ordering::Relaxed);
             }
         }
+        if multi && req.method == "reconnect" {
+            for &i in self.order.iter().rev() {
+                steps.push_back(Step::Core(i, "disconnect".into()));
+            }
+            steps.push_back(Step::StopService);
+        }
+        if multi && matches!(req.method.as_str(), "connect" | "reconnect") {
+            steps.push_back(Step::StartService);
+        }
+        for i in if aggregate {
+            self.order.clone()
+        } else {
+            vec![self.active]
+        } {
+            steps.push_back(Step::Core(
+                i,
+                if req.method == "reconnect" && multi {
+                    "connect".into()
+                } else {
+                    req.method.clone()
+                },
+            ));
+        }
+        if matches!(req.method.as_str(), "quit" | "disconnect") {
+            steps.push_back(Step::StopService);
+        }
+        self.batch = Some(Batch {
+            request: req,
+            steps,
+            waiting: None,
+            results: vec![],
+            errors: vec![],
+            last: Json::Null,
+            recovering: false,
+            aggregate,
+        });
     }
 }
-
-/// Derive a per-core Project from the base.  The core's endpoint, actions,
-/// and init replace or extend the base.  Service is removed because the
-/// Coordinator manages the shared service for multi-core mode.
-fn derive_project(base: &Project, core: &Core) -> Project {
+impl Drop for Coordinator {
+    fn drop(&mut self) {
+        self.stop_service();
+    }
+}
+fn derive_project(base: &Project, core: &Core, index: usize) -> Project {
     let mut p = base.clone();
     p.target.endpoint = core.endpoint.clone();
     if !core.after_connect.is_empty() {
@@ -409,12 +849,17 @@ fn derive_project(base: &Project, core: &Core) -> Project {
     if !core.run.is_empty() {
         p.actions.run = core.run.clone();
     }
-    if !core.init.is_empty() {
-        let mut init = base.gdb.init.clone();
-        init.extend(core.init.iter().cloned());
-        p.gdb.init = init;
+    p.gdb.init.extend(core.init.iter().cloned());
+    if let Some(watch) = &core.watch {
+        p.watch = watch.clone();
+    }
+    if let Some(breakpoints) = &core.breakpoints {
+        p.breakpoints = breakpoints.clone();
+    }
+    p.preference_core = Some(core.name.clone());
+    if let Some(dir) = &mut p.session.log_dir {
+        *dir = dir.join(format!("core-{index}"));
     }
     p.service = None;
-    p.path = None;
     p
 }

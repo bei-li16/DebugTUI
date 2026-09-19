@@ -81,7 +81,7 @@ fn run_headless(project: Project, script: Option<String>) -> Result<(), String> 
                     Ok(line) => {
                         let request: Result<Request, String> =
                             serde_json::from_str(&line).map_err(|e| e.to_string());
-                        if request.as_ref().is_ok_and(|r| r.method == "quit") {
+                        if request.as_ref().is_ok_and(Request::is_quit) {
                             cancellation.store(true, std::sync::atomic::Ordering::Relaxed);
                         }
                         if tx.send(request).is_err() {
@@ -102,7 +102,7 @@ fn run_headless(project: Project, script: Option<String>) -> Result<(), String> 
             match rx.try_recv() {
                 Ok(Ok(request)) => {
                     pending = Some(request.id);
-                    quitting = request.method == "quit";
+                    quitting = request.is_quit();
                     engine.send(request)?;
                 }
                 Ok(Err(e)) => {

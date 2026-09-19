@@ -3,7 +3,9 @@ use crate::{
     config::{Project, portable_path},
     theme,
 };
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{
+    KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -53,9 +55,12 @@ const HINTS: [&str; 18] = [
     "Optional directory for MI and server logs. Paths are relative to the project.",
     "Optional CMSIS-SVD for peripheral registers. F2 browses files; relative to the project. Blank disables it.",
     "Save launch settings in the project before connecting; No keeps this session temporary.",
-    "F5 starts debugging. Switching projects ends the current session first.",
+    "Click Start debugging, Enter, Ctrl+R or F5. The previous session ends before the new one starts.",
     "Ctrl+S saves settings without connecting. Tools profiles are never rewritten.",
 ];
+const START: usize = 16;
+const SAVE: usize = 17;
+const WORKSPACE: usize = 18;
 
 fn absolute(base: &Path, path: &Path) -> PathBuf {
     if path.is_absolute() {
@@ -118,6 +123,9 @@ pub struct Document {
     pub discovered: bool,
 }
 impl Document {
+    pub fn is_modified(&self) -> bool {
+        self.original.as_ref() != Some(&self.raw)
+    }
     pub fn empty(path: PathBuf) -> Self {
         let mut doc = Self {
             path,
@@ -199,6 +207,9 @@ impl Document {
     }
     pub fn save(&mut self) -> Result<(), String> {
         self.project()?;
+        let _guard = crate::config::PREFERENCE_WRITE
+            .lock()
+            .map_err(|e| e.to_string())?;
         if self.path.exists() {
             let text = fs::read_to_string(&self.path).map_err(|e| e.to_string())?;
             let current: toml::Value =
@@ -223,6 +234,42 @@ impl Document {
                         .as_table_mut()
                         .unwrap()
                         .insert(key.into(), value.clone());
+                }
+            }
+            // A worker saves its own Watch/breakpoint list under [[cores]].
+            // Treat those lists like the root runtime preferences above.
+            for settings in [&mut current_settings, &mut original_settings] {
+                if let Some(cores) = settings
+                    .get_mut("cores")
+                    .and_then(toml::Value::as_array_mut)
+                {
+                    for core in cores {
+                        if let Some(core) = core.as_table_mut() {
+                            core.remove("watch");
+                            core.remove("breakpoints");
+                        }
+                    }
+                }
+            }
+            if let Some(cores) = self
+                .raw
+                .get_mut("cores")
+                .and_then(toml::Value::as_array_mut)
+            {
+                for core in cores {
+                    let current_core = current
+                        .get("cores")
+                        .and_then(toml::Value::as_array)
+                        .and_then(|list| list.iter().find(|c| c.get("name") == core.get("name")));
+                    if let Some(current_core) = current_core {
+                        for key in ["watch", "breakpoints"] {
+                            if let Some(value) = current_core.get(key) {
+                                core.as_table_mut()
+                                    .unwrap()
+                                    .insert(key.into(), value.clone());
+                            }
+                        }
+                    }
                 }
             }
             if current_settings != original_settings {
@@ -343,20 +390,26 @@ pub struct Setup {
     pub message: String,
     pub save: bool,
     pub pending: bool,
+    pub workspace_requested: bool,
     selected: usize,
     editor: Option<Editor>,
     browser: Option<Browser>,
+    action_hits: Vec<(Rect, usize)>,
+    row_hits: Vec<(Rect, usize)>,
 }
 impl Setup {
     pub fn new(document: Document) -> Self {
         Self {
             document,
-            message: "Choose a project and environment, then press F5.".into(),
+            message: "Review the configuration, then click Start debugging or press Enter.".into(),
             save: true,
             pending: false,
-            selected: 0,
+            selected: START,
+            workspace_requested: false,
             editor: None,
             browser: None,
+            action_hits: vec![],
+            row_hits: vec![],
         }
     }
     fn values(&self) -> Vec<String> {
@@ -541,11 +594,8 @@ impl Setup {
             e.insert(text);
         }
     }
-    pub fn is_editing(&self) -> bool {
-        self.editor.is_some() || self.browser.is_some()
-    }
     pub fn key(&mut self, key: KeyEvent) -> Option<Launch> {
-        if self.pending {
+        if self.pending || key.kind == KeyEventKind::Release {
             return None;
         }
         let result = self.handle_key(key);
@@ -558,6 +608,19 @@ impl Setup {
         }
     }
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<Launch>, String> {
+        if self.browser.is_none() {
+            if key.code == KeyCode::F(5)
+                || (key.modifiers.contains(KeyModifiers::CONTROL)
+                    && matches!(key.code, KeyCode::Char('r') | KeyCode::Enter))
+            {
+                return self.start();
+            }
+            if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
+                self.commit_editor()?;
+                self.save_document()?;
+                return Ok(None);
+            }
+        }
         if let Some(browser) = &mut self.browser {
             match key.code {
                 KeyCode::Esc => self.browser = None,
@@ -600,7 +663,7 @@ impl Setup {
                     let value = editor.text.clone();
                     self.set_value(&value)?;
                     self.editor = None;
-                    self.message = "Updated. F5 starts debugging; Ctrl+S saves.".into();
+                    self.message = "Updated. Click Start or press Ctrl+R; Ctrl+S saves.".into();
                 }
                 _ => editor.key(key),
             }
@@ -608,9 +671,9 @@ impl Setup {
         }
         match key.code {
             KeyCode::Up | KeyCode::BackTab => {
-                self.selected = (self.selected + LABELS.len() - 1) % LABELS.len()
+                self.selected = (self.selected + WORKSPACE) % (WORKSPACE + 1)
             }
-            KeyCode::Down | KeyCode::Tab => self.selected = (self.selected + 1) % LABELS.len(),
+            KeyCode::Down | KeyCode::Tab => self.selected = (self.selected + 1) % (WORKSPACE + 1),
             KeyCode::F(2) if matches!(self.selected, 0..=3 | 6 | 13 | 14) => {
                 let value = self.values()[self.selected].clone();
                 let path = absolute(self.document.base(), Path::new(&value));
@@ -622,30 +685,95 @@ impl Setup {
             }
             KeyCode::Left | KeyCode::Right => self.cycle(key.code == KeyCode::Left)?,
             KeyCode::Enter if matches!(self.selected, 8 | 10 | 12 | 15) => self.cycle(false)?,
-            KeyCode::Enter if self.selected < 16 => {
+            KeyCode::Enter if self.selected < START => {
                 self.editor = Some(Editor::new(self.values()[self.selected].clone()))
             }
-            KeyCode::F(5) | KeyCode::Enter if key.code == KeyCode::F(5) || self.selected == 16 => {
-                let mut project = self.document.project()?;
-                project.prepare_workspace()?;
-                if !project.program.svd.as_os_str().is_empty() {
-                    crate::svd::Device::load(&project.program.svd)?;
-                }
-                self.pending = true;
-                self.message =
-                    "Closing the previous session and preparing the selected project...".into();
-                return Ok(Some(Launch {
-                    document: self.document.clone(),
-                    save: self.save,
-                }));
-            }
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.save_document()?
-            }
-            KeyCode::Enter if self.selected == 17 => self.save_document()?,
+            KeyCode::Enter if self.selected == START => return self.start(),
+            KeyCode::Enter if self.selected == SAVE => self.save_document()?,
+            KeyCode::Enter if self.selected == WORKSPACE => self.workspace_requested = true,
+            KeyCode::Esc => self.workspace_requested = true,
             _ => {}
         }
         Ok(None)
+    }
+    fn commit_editor(&mut self) -> Result<(), String> {
+        if let Some(editor) = &self.editor {
+            let value = editor.text.clone();
+            self.set_value(&value)?;
+            self.editor = None;
+        }
+        Ok(())
+    }
+    fn start(&mut self) -> Result<Option<Launch>, String> {
+        self.commit_editor()?;
+        let mut project = self.document.project()?;
+        project.prepare_workspace()?;
+        if !project.program.svd.as_os_str().is_empty() {
+            crate::svd::Device::load(&project.program.svd)?;
+        }
+        self.pending = true;
+        self.message = "Closing the previous session and preparing the selected project...".into();
+        Ok(Some(Launch {
+            document: self.document.clone(),
+            save: self.save,
+        }))
+    }
+    pub fn mouse(&mut self, mouse: MouseEvent) -> Option<Launch> {
+        if self.pending {
+            return None;
+        }
+        let point = (mouse.column, mouse.row).into();
+        if matches!(
+            mouse.kind,
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+        ) {
+            if self.row_hits.iter().any(|(rect, _)| rect.contains(point)) {
+                let code = if mouse.kind == MouseEventKind::ScrollDown {
+                    KeyCode::Down
+                } else {
+                    KeyCode::Up
+                };
+                return self.key(KeyEvent::new(code, KeyModifiers::NONE));
+            }
+            return None;
+        }
+        if mouse.kind != MouseEventKind::Down(MouseButton::Left) {
+            return None;
+        }
+        if let Some((_, action)) = self
+            .action_hits
+            .iter()
+            .find(|(rect, _)| rect.contains(point))
+            .copied()
+        {
+            if self.browser.is_some() {
+                return None;
+            }
+            if let Err(error) = self.commit_editor() {
+                self.message = format!("Error: {error}");
+                return None;
+            }
+            self.selected = action;
+            return self.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        }
+        if let Some((_, index)) = self
+            .row_hits
+            .iter()
+            .find(|(rect, _)| rect.contains(point))
+            .copied()
+        {
+            if let Some(browser) = &mut self.browser {
+                browser.selected = index;
+            } else {
+                if let Err(error) = self.commit_editor() {
+                    self.message = format!("Error: {error}");
+                    return None;
+                }
+                self.selected = index;
+            }
+            return self.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        }
+        None
     }
     fn save_document(&mut self) -> Result<(), String> {
         self.document.save()?;
@@ -663,10 +791,12 @@ impl Setup {
         }
         self.browser = None;
         self.set_value(&value)?;
-        self.message = "Selected. F5 starts debugging; Ctrl+S saves.".into();
+        self.message = "Selected. Click Start or press Ctrl+R; Ctrl+S saves.".into();
         Ok(())
     }
-    pub fn draw(&self, f: &mut Frame) {
+    pub fn draw(&mut self, f: &mut Frame) {
+        self.action_hits.clear();
+        self.row_hits.clear();
         let screen = f.area();
         f.render_widget(Block::default().style(theme::base()), screen);
         let width = screen.width.min(122);
@@ -690,11 +820,12 @@ impl Setup {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),
+                Constraint::Length(if area.height < 20 { 2 } else { 3 }),
+                Constraint::Length(1),
                 Constraint::Min(3),
-                Constraint::Length(3),
+                Constraint::Length(if area.height < 20 { 1 } else { 2 }),
                 Constraint::Length(2),
-                Constraint::Length(2),
+                Constraint::Length(if area.height < 20 { 1 } else { 2 }),
             ])
             .split(area);
         f.render_widget(
@@ -712,8 +843,56 @@ impl Setup {
             ]),
             rows[0],
         );
+        let compact = area.width < 75;
+        let actions = [
+            (
+                if compact {
+                    "▶ Start"
+                } else {
+                    "▶ Start debugging"
+                },
+                START,
+            ),
+            (if compact { "Save" } else { "Save · Ctrl+S" }, SAVE),
+            ("← Workspace", WORKSPACE),
+        ];
+        let mut x = rows[1].x + 1;
+        for (label, action) in actions {
+            let text = format!(" {label} ");
+            let width = unicode_width::UnicodeWidthStr::width(text.as_str()) as u16;
+            let hit = Rect::new(
+                x,
+                rows[1].y,
+                width.min(rows[1].right().saturating_sub(x)),
+                1,
+            );
+            let enabled = !self.pending && self.browser.is_none();
+            let style = if !enabled {
+                Style::default().fg(theme::DIM)
+            } else if self.selected == action {
+                theme::selected(true)
+                    .fg(theme::ACCENT)
+                    .add_modifier(Modifier::BOLD)
+            } else if action == START {
+                Style::default()
+                    .fg(theme::GREEN)
+                    .bg(theme::PC)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(theme::TEXT).bg(theme::RAISED)
+            };
+            f.render_widget(Paragraph::new(text).style(style), hit);
+            self.action_hits.push((hit, action));
+            x += width + 1;
+        }
+        if rows[1].right().saturating_sub(x) >= 20 {
+            f.render_widget(
+                Paragraph::new("Ctrl+R / F5 starts").style(Style::default().fg(theme::MUTED)),
+                Rect::new(x + 1, rows[1].y, rows[1].right() - x - 1, 1),
+            );
+        }
         if let Some(browser) = &self.browser {
-            let height = rows[1].height.saturating_sub(2) as usize;
+            let height = rows[2].height.saturating_sub(2) as usize;
             let start = browser.selected.saturating_sub(height.saturating_sub(1));
             let lines = browser
                 .entries
@@ -743,17 +922,33 @@ impl Setup {
                 format!("  Files / {}  ", portable_path(&browser.directory)),
                 true,
             );
-            let inner = block.inner(rows[1]);
-            f.render_widget(block, rows[1]);
+            let inner = block.inner(rows[2]);
+            f.render_widget(block, rows[2]);
             theme::lines(f, lines, inner);
-            f.render_widget(Paragraph::new(" Enter: open directory / select file   Space: select current directory\n Backspace: parent   Esc: cancel").wrap(Wrap { trim: false }), rows[2]);
+            self.row_hits.extend(
+                (start..browser.entries.len())
+                    .take(inner.height as usize)
+                    .enumerate()
+                    .map(|(row, index)| {
+                        (
+                            Rect::new(inner.x, inner.y + row as u16, inner.width, 1),
+                            index,
+                        )
+                    }),
+            );
+            f.render_widget(Paragraph::new(" Enter: open directory / select file   Space: select current directory\n Backspace: parent   Esc: cancel").wrap(Wrap { trim: false }), rows[3]);
         } else {
-            let height = rows[1].height.saturating_sub(2) as usize;
-            let start = self.selected.saturating_sub(height.saturating_sub(1));
+            let height = rows[2].height.saturating_sub(2) as usize;
+            let start = if self.selected < START {
+                self.selected.saturating_sub(height.saturating_sub(1))
+            } else {
+                0
+            };
             let values = self.values();
             let lines = LABELS
                 .iter()
                 .enumerate()
+                .take(START)
                 .skip(start)
                 .map(|(i, label)| {
                     let value = if i == self.selected {
@@ -769,7 +964,7 @@ impl Setup {
                         "{} {label:<18} ",
                         if i == self.selected { "›" } else { " " }
                     );
-                    let available = rows[1].width.saturating_sub(
+                    let available = rows[2].width.saturating_sub(
                         unicode_width::UnicodeWidthStr::width(prefix.as_str()) as u16 + 2,
                     ) as usize;
                     let shown = if let Some(e) = &self.editor
@@ -790,9 +985,7 @@ impl Setup {
                     };
                     Line::styled(
                         format!("{prefix}{shown}"),
-                        theme::selected(i == self.selected).fg(if i >= 16 {
-                            theme::GREEN
-                        } else if i == self.selected {
+                        theme::selected(i == self.selected).fg(if i == self.selected {
                             theme::ACCENT
                         } else {
                             theme::TEXT
@@ -801,14 +994,23 @@ impl Setup {
                 })
                 .collect::<Vec<_>>();
             let block = theme::card("  ◇  Session configuration  ", true);
-            let inner = block.inner(rows[1]);
-            f.render_widget(block, rows[1]);
+            let inner = block.inner(rows[2]);
+            f.render_widget(block, rows[2]);
             theme::lines(f, lines, inner);
+            self.row_hits
+                .extend((start..START).take(inner.height as usize).enumerate().map(
+                    |(row, index)| {
+                        (
+                            Rect::new(inner.x, inner.y + row as u16, inner.width, 1),
+                            index,
+                        )
+                    },
+                ));
             f.render_widget(
-                Paragraph::new(format!(" {}", HINTS[self.selected]))
+                Paragraph::new(format!(" {}", if self.selected == WORKSPACE { "Return to the workspace without restarting. Edited settings apply on Start." } else { HINTS[self.selected] }))
                     .wrap(Wrap { trim: false })
                     .style(Style::default().fg(theme::MUTED)),
-                rows[2],
+                rows[3],
             );
         }
         f.render_widget(
@@ -819,13 +1021,13 @@ impl Setup {
                 } else {
                     theme::GREEN
                 })),
-            rows[3],
+            rows[4],
         );
         f.render_widget(Paragraph::new(if self.editor.is_some() {
-            " Enter: apply  Esc: cancel  Home/End/Arrows: move  Ctrl+U: clear"
+            " Enter: apply  Esc: cancel  Ctrl+U: clear\n Ctrl+R / F5: apply and start  Ctrl+S: apply and save"
         } else {
-            " Tab/Arrows: select  Enter: edit  F2: browse\n F5: start  Ctrl+S: save  Esc: workspace  Ctrl+Q: quit"
-        }).style(Style::default().fg(theme::MUTED)), rows[4]);
+            " Click / Tab / ↑ ↓: select  Enter: activate  F2: browse\n Ctrl+R / F5: start  Ctrl+S: save  Esc: workspace  Ctrl+Q: quit"
+        }).style(Style::default().fg(theme::MUTED)), rows[5]);
     }
 }
 
@@ -883,7 +1085,7 @@ mod tests {
         doc.save().unwrap();
         let p = Project::load(&doc.path).unwrap();
         assert_eq!(p.watch, ["counter"]);
-        assert_eq!(p.breakpoints, ["main"]);
+        assert_eq!(p.breakpoints, [crate::config::BreakpointSpec::from("main")]);
         assert_eq!(p.target.endpoint, "localhost:4444");
         // Unrelated external edits must not be overwritten by the form.
         fs::write(&doc.path, "version=2\nwatch=['changed']\n").unwrap();
@@ -895,6 +1097,7 @@ mod tests {
         let fixture = Fixture::new();
         let doc = Document::open(&fixture.0).unwrap();
         let mut setup = Setup::new(doc);
+        setup.selected = 0;
         setup.key(key(KeyCode::F(2)));
         assert!(setup.browser.is_some());
         setup.key(key(KeyCode::Char(' '))); // select current directory
@@ -971,6 +1174,7 @@ mod tests {
             toml::Value::Array(vec!["--first-only".into()]),
         );
         let mut setup = Setup::new(first);
+        setup.selected = 0;
         setup.set_value("second").unwrap();
         assert!(setup.document.project().unwrap().gdb.args.is_empty());
         let mut editor = Editor::new("中文x".into());
@@ -1032,7 +1236,7 @@ mod tests {
         for (width, height) in [(45, 12), (80, 24), (120, 36), (180, 50)] {
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
             let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
-            for (selected, label) in LABELS.iter().enumerate() {
+            for (selected, label) in LABELS.iter().enumerate().take(START) {
                 setup.selected = selected;
                 terminal.draw(|f| setup.draw(f)).unwrap();
                 let text = terminal
@@ -1052,5 +1256,93 @@ mod tests {
             setup.key(key(KeyCode::F(2)));
             terminal.draw(|f| setup.draw(f)).unwrap();
         }
+    }
+
+    #[test]
+    fn setup_actions_stay_at_top_and_start_by_click_from_any_field() {
+        let fixture = Fixture::new();
+        for (width, height) in [(45, 12), (80, 24), (120, 36)] {
+            let mut doc = Document::open(&fixture.0).unwrap();
+            doc.set("target", "endpoint", "localhost:3333".into());
+            let mut setup = Setup::new(doc);
+            assert_eq!(setup.selected, START);
+            setup.selected = 15;
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            let button = setup
+                .action_hits
+                .iter()
+                .find(|(_, id)| *id == START)
+                .unwrap()
+                .0;
+            assert!(setup.row_hits.iter().all(|(rect, _)| rect.y > button.y));
+            assert_eq!(setup.action_hits.len(), 3);
+            assert!(
+                setup
+                    .action_hits
+                    .iter()
+                    .all(|(rect, _)| rect.right() <= width && rect.bottom() <= height)
+            );
+            let click = MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: button.x,
+                row: button.y,
+                modifiers: KeyModifiers::NONE,
+            };
+            assert!(setup.mouse(click).is_some());
+            assert!(setup.pending);
+            assert!(setup.mouse(click).is_none());
+        }
+    }
+    #[test]
+    fn start_commits_edited_field_and_invalid_settings_keep_configuration_open() {
+        let fixture = Fixture::new();
+        let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+        assert!(setup.key(key(KeyCode::Enter)).is_none());
+        assert!(!setup.pending);
+        assert!(setup.message.starts_with("Error"));
+        setup.selected = 9;
+        setup.key(key(KeyCode::Enter));
+        setup.paste("localhost:4444");
+        let launch = setup
+            .key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL))
+            .unwrap();
+        assert_eq!(
+            launch.document.project().unwrap().target.endpoint,
+            "localhost:4444"
+        );
+        assert!(setup.editor.is_none());
+        assert!(!launch.document.path.exists());
+    }
+    #[test]
+    fn setup_workspace_button_and_escape_do_not_launch_or_save() {
+        let fixture = Fixture::new();
+        let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+        setup.selected = 9;
+        setup.key(key(KeyCode::Enter));
+        setup.paste("localhost:3333");
+        setup.key(key(KeyCode::Esc));
+        assert!(!setup.workspace_requested);
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|f| setup.draw(f)).unwrap();
+        let hit = setup
+            .action_hits
+            .iter()
+            .find(|(_, id)| *id == WORKSPACE)
+            .unwrap()
+            .0;
+        assert!(
+            setup
+                .mouse(MouseEvent {
+                    kind: MouseEventKind::Down(MouseButton::Left),
+                    column: hit.x,
+                    row: hit.y,
+                    modifiers: KeyModifiers::NONE
+                })
+                .is_none()
+        );
+        assert!(setup.workspace_requested);
+        assert!(!setup.pending);
+        assert!(!setup.document.path.exists());
     }
 }

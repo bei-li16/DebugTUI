@@ -12,7 +12,11 @@ const ACTIONS: [(&str, &str); 10] = [
     ("× Exit", "quit"),
     ("? Help", "commandlist"),
 ];
-const PROJECT_ACTIONS: [(&str, &str); 2] = [("◆ Build", "build"), ("↓ Download", "download")];
+const PROJECT_ACTIONS: [(&str, &str); 3] = [
+    ("← Setup", "setup"),
+    ("◆ Build", "build"),
+    ("↓ Download", "download"),
+];
 
 fn project_bar(f: &mut UiFrame, a: &mut App, rect: Rect) {
     theme::surface(f, rect, theme::CANVAS);
@@ -20,15 +24,18 @@ fn project_bar(f: &mut UiFrame, a: &mut App, rect: Rect) {
         Paragraph::new(" Project ").style(Style::default().fg(theme::DIM)),
         rect,
     );
-    let buttons = Rect::new(rect.x + 9, rect.y, 25.min(rect.width.saturating_sub(9)), 1);
+    let buttons = Rect::new(rect.x + 9, rect.y, 35.min(rect.width.saturating_sub(9)), 1);
     toolbar(f, a, buttons, &PROJECT_ACTIONS);
-    let (note, color) =
-        a.fx.task_label(&a.snapshot.state)
-            .unwrap_or_else(|| ("F2 configure · output in Console".into(), theme::DIM));
-    if rect.width >= 70 {
+    let (note, color) = a.fx.task_label(&a.snapshot.state).unwrap_or_else(|| {
+        (
+            "Setup: edit & restart · output in Console".into(),
+            theme::DIM,
+        )
+    });
+    if rect.width >= 85 {
         f.render_widget(
             Paragraph::new(note).style(Style::default().fg(color)),
-            Rect::new(rect.x + 36, rect.y, rect.width - 36, 1),
+            Rect::new(rect.x + 46, rect.y, rect.width - 46, 1),
         );
     }
 }
@@ -175,7 +182,7 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                 "No locals in this frame",
                 "Select a stopped frame to inspect its variables.",
             ),
-            6 => ("No breakpoints", "F9 in Source, or :break LOCATION"),
+            6 => ("No breakpoints", "+ Code / + Data above, or F9 in Source"),
             7 => (
                 "Source files",
                 "Connect to GDB to load the source file list.",
@@ -266,36 +273,7 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                     .collect()
             }
         }
-        6 => {
-            if a.snapshot.breakpoints.is_empty() {
-                vec![Line::raw("No breakpoints. F9 or :break LOCATION")]
-            } else {
-                a.snapshot
-                    .breakpoints
-                    .iter()
-                    .enumerate()
-                    .skip(start)
-                    .take(rect.height as usize)
-                    .map(|(i, b)| {
-                        let display = if !b.file.is_empty() && b.line > 0 {
-                            format!("{}:{}", b.file.replace('\\', "/"), b.line)
-                        } else {
-                            b.location.clone()
-                        };
-                        Line::styled(
-                            format!(
-                                "{} {} {} {}",
-                                if i == selection { "›" } else { " " },
-                                b.id,
-                                if b.enabled { "on" } else { "off" },
-                                display
-                            ),
-                            theme::selected(i == selection),
-                        )
-                    })
-                    .collect()
-            }
-        }
+        6 => breakpoints::rows(a, start, rect.height as usize),
         7 => a
             .snapshot
             .files
@@ -365,6 +343,13 @@ fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
         .filter(|b| b.enabled && a.source_key(&b.file) == source_key)
         .map(|b| b.line as usize)
         .collect();
+    let disabled_lines: HashSet<usize> = a
+        .snapshot
+        .breakpoints
+        .iter()
+        .filter(|b| !b.enabled && a.source_key(&b.file) == source_key)
+        .map(|b| b.line as usize)
+        .collect();
     let lines = a
         .source
         .iter()
@@ -385,7 +370,13 @@ fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
                     } else {
                         " "
                     },
-                    if bp { "●" } else { " " },
+                    if bp {
+                        "●"
+                    } else if disabled_lines.contains(&(i + 1)) {
+                        "○"
+                    } else {
+                        " "
+                    },
                     i + 1
                 ),
                 Style::default().fg(if pc {
@@ -493,7 +484,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
         2 => " Stack · click / Enter selects frame ",
         3 => " System registers ",
         4 => " Memory · :memory ADDRESS [COUNT] ",
-        _ => " Breakpoints · Delete removes selected ",
+        _ => " Breakpoints · Space toggle · e edit ",
     };
     let title = if a.side_pane == peripherals::PANE {
         a.peripheral_title()
@@ -509,6 +500,27 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
     ));
     let mut inner = block.inner(rows[1]);
     f.render_widget(block, rows[1]);
+    if a.side_pane == 6 && inner.height > 2 {
+        let labels: Vec<_> = breakpoints::ACTIONS
+            .iter()
+            .map(|(label, _)| *label)
+            .collect();
+        let height = wrapped_height(&labels, inner.width).min(inner.height.saturating_sub(2));
+        toolbar(
+            f,
+            a,
+            Rect::new(inner.x, inner.y, inner.width, height),
+            breakpoints::ACTIONS,
+        );
+        inner.y += height;
+        inner.height -= height;
+        let footer = Rect::new(inner.x, inner.bottom() - 1, inner.width, 1);
+        f.render_widget(
+            Paragraph::new(breakpoints::detail(a)).style(Style::default().fg(theme::MUTED)),
+            footer,
+        );
+        inner.height -= 1;
+    }
     if a.side_pane == peripherals::PANE && inner.height > 1 {
         toolbar(
             f,
@@ -552,9 +564,8 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
             rows[0].height,
         );
         a.watch.remove_rect = hit;
-        let enabled = !a.snapshot.watches.is_empty()
-            && a.watch.pending_remove.is_none()
-            && a.pending_task.is_none();
+        let enabled =
+            a.watch_removable() && a.watch.pending_remove.is_none() && a.pending_task.is_none();
         f.render_widget(
             Paragraph::new(" Del Remove ").style(
                 Style::default()
@@ -1037,7 +1048,13 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
             .as_ref()
             .map(|(name, idx, count)| format!(" [{name} · {}/{count}]", idx + 1))
             .unwrap_or_default();
-        let context = format!(" {} · {}{}", a.project.target.mode, a.project.target.endpoint, core_tag);
+        let endpoint = a
+            .snapshot
+            .core
+            .as_ref()
+            .map(|c| c.endpoint.as_str())
+            .unwrap_or(&a.project.target.endpoint);
+        let context = format!(" {} · {}{}", a.project.target.mode, endpoint, core_tag);
         let right_width = if rect.width >= 100 {
             (context.len() as u16 + 2).min(rect.width / 2)
         } else {
@@ -1067,6 +1084,7 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
 pub fn draw(f: &mut UiFrame, a: &mut App) {
     source_tabs::reset_hits(a);
     a.formats.hits.clear();
+    a.formats.refresh_rect = Rect::default();
     a.pane_hits.clear();
     a.action_hits.clear();
     a.palette_hits.clear();
@@ -1080,10 +1098,12 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     a.watch.add_rect = Rect::default();
     a.watch.remove_rect = Rect::default();
     a.watch.remove_hits.clear();
+    a.watch.expand_hits.clear();
+    a.core_hits.clear();
     a.completion.hits.clear();
     a.completion.area = Rect::default();
     a.scrollbars.fill(Rect::default());
-    if let Some(setup) = &a.setup {
+    if let Some(setup) = &mut a.setup {
         setup.draw(f);
         return;
     }
@@ -1100,18 +1120,36 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         return;
     }
     let rows = Layout::vertical([
-        Constraint::Length(if area.height >= 24 { 3 } else { 2 }),
+        Constraint::Length(
+            (if area.height >= 24 { 3 } else { 2 }) + u16::from(a.snapshot.core.is_some()),
+        ),
         Constraint::Min(5),
         Constraint::Length(1),
         Constraint::Length(1),
     ])
     .split(area);
-    header(f, a, rows[0]);
+    let mut header_rect = rows[0];
+    if a.snapshot.core.is_some() {
+        header_rect.height = header_rect.height.saturating_sub(1);
+    }
+    header(f, a, header_rect);
     project_bar(
         f,
         a,
-        Rect::new(rows[0].x, rows[0].bottom() - 1, rows[0].width, 1),
+        Rect::new(
+            header_rect.x,
+            header_rect.bottom() - 1,
+            header_rect.width,
+            1,
+        ),
     );
+    if a.snapshot.core.is_some() {
+        cores::draw(
+            f,
+            a,
+            Rect::new(rows[0].x, rows[0].bottom() - 1, rows[0].width, 1),
+        );
+    }
 
     let console_height = (rows[1].height / 4 + 1).clamp(3, 10);
     let body =
@@ -1130,6 +1168,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     } else {
         side_panel(f, a, body[0], true);
     }
+    cores::tint(f, a, body[0]);
     console_panel(f, a, body[1]);
     theme::surface(f, rows[2], theme::CANVAS);
     f.render_widget(
@@ -1166,9 +1205,15 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         PANES[a.pane]
     };
     theme::surface(f, rows[3], theme::RAISED);
-    let core_hint = if a.core_info.is_some() { "  Ctrl+T Core" } else { "" };
+    let core_hint = if a.core_info.is_some() {
+        "  Ctrl+T Core"
+    } else {
+        ""
+    };
     let keys = if area.width >= 110 {
-        format!(" F2 Setup  / Console  Ctrl+P Help  Tab Views{core_hint}  F5 Continue  F6 Pause  F10 Step Over  F11 Step In  Ctrl+Q Exit  f Format")
+        format!(
+            " F2 Setup  / Console  Ctrl+P Help  Tab Views{core_hint}  F5 Continue  F6 Pause  F10 Step Over  F11 Step In  Ctrl+Q Exit  f Format"
+        )
     } else if area.width >= 70 {
         format!(" F2 Setup  / Console  Ctrl+P Help  Tab Views{core_hint}  Ctrl+Q Exit")
     } else {
@@ -1297,4 +1342,6 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         );
     }
     formats::popup(f, a);
+    monitor::draw(f, a);
+    breakpoints::popup(f, a);
 }

@@ -5,7 +5,7 @@ $runRoot = Join-Path $projectRoot ('artifacts/pause-' + (Get-Date -Format yyyyMM
 New-Item -ItemType Directory -Path $runRoot | Out-Null
 $node = (Get-Command node.exe).Source.Replace('\','/')
 $fixture = (Join-Path $projectRoot 'tests/mock-gdb.cjs').Replace('\','/')
-foreach ($mode in @('missing','already-stopped','late','retry','running')) {
+foreach ($mode in @('missing','already-stopped','late','query-rejected','retry','running')) {
     $transcript = "$runRoot/$mode.mi.txt".Replace('\','/')
     @"
 version = 2

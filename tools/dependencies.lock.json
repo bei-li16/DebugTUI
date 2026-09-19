@@ -1,6 +1,6 @@
 {
   "format": 2,
-  "profile": "windows-x64-native-gdb-jlink",
+  "profile": "windows-x64-native-gdb-jlink-openocd",
   "files": {
     "bin/gdb/ST-about.html": {
       "bytes": 6606,
@@ -45,6 +45,4158 @@
     "bin/jlink/ST-about.html": {
       "bytes": 6573,
       "sha256": "f74c8ef44abba1202fabbad7162d0035c34446973a60d60f18b8b10687df376c"
+    },
+    "bin/openocd/bin/libftdi1.dll": {
+      "bytes": 272504,
+      "sha256": "a78e1a41e18ae01b1a8e78dd16bfb6ed21a2b35809f18dec65a888ccede093ac"
+    },
+    "bin/openocd/bin/libusb-1.0.dll": {
+      "bytes": 234930,
+      "sha256": "e811df196a8e4e2ee18bcd224d7f6421736fafc78fe20419d76165692668926b"
+    },
+    "bin/openocd/bin/openocd.exe": {
+      "bytes": 4490254,
+      "sha256": "10567f01d37c66a0975537960d66e61f7b4e2a17eb2c9637e2c2cbc569f70c79"
+    },
+    "bin/openocd/COPYING.txt": {
+      "bytes": 17984,
+      "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+    },
+    "bin/openocd/PROVENANCE.txt": {
+      "bytes": 573,
+      "sha256": "02c6fd005e32ce5b289608d9e3715856457ec08c990e6f9161044ca54f5f2fdd"
+    },
+    "bin/openocd/scripts/bitsbytes.tcl": {
+      "bytes": 1659,
+      "sha256": "d35d6059fab540c5584b0e3f36c0e97e9d0ea8a07bb85b7e8f5b39fde397ec2e"
+    },
+    "bin/openocd/scripts/board/8devices-lima.cfg": {
+      "bytes": 870,
+      "sha256": "ceed7f090511b39d9712962a93da50590f4f22f79c77fd26aed0cbd6fb9af075"
+    },
+    "bin/openocd/scripts/board/actux3.cfg": {
+      "bytes": 2160,
+      "sha256": "9d1a179df2060d2f8be5c90e87ca3f59d316bbc2056028d5c2b75b65d3a2c032"
+    },
+    "bin/openocd/scripts/board/adapteva_parallella1.cfg": {
+      "bytes": 171,
+      "sha256": "3afcdba05fc3bbb8d8900c357c6585bd48ad0fb8fa9dcb2bfc8e9053cf462b6c"
+    },
+    "bin/openocd/scripts/board/adsp-sc584-ezbrd.cfg": {
+      "bytes": 1271,
+      "sha256": "6fe369c2c954ecaf5d71fc2fc88dcf7d07e86ec2108a7d94ce85ab2d6732edcb"
+    },
+    "bin/openocd/scripts/board/advantech_imx8qm_dmsse20.cfg": {
+      "bytes": 527,
+      "sha256": "8535eeb433a533d676dd6d8065dd16be805c8456ef58d87e08d05d6ab9ff7296"
+    },
+    "bin/openocd/scripts/board/alphascale_asm9260_ek.cfg": {
+      "bytes": 1806,
+      "sha256": "a41e55150158d02cdb1d11da4688c92addc9a98a7e76f656ab2de7c3f125f25b"
+    },
+    "bin/openocd/scripts/board/altera_sockit.cfg": {
+      "bytes": 534,
+      "sha256": "d85df4e53453ad20960db1704d5c8d708896103237c9b4222eb004f5a27a2b0d"
+    },
+    "bin/openocd/scripts/board/am3517evm.cfg": {
+      "bytes": 701,
+      "sha256": "df40f24e1cefa561ad77df8bd833c0d02d342a81adb76cbb8945ad54247bce92"
+    },
+    "bin/openocd/scripts/board/ampere_emag8180.cfg": {
+      "bytes": 339,
+      "sha256": "2bca1b951cbca44797e68ab68545e8d6a5903158c33e35c58eaa86be10dace83"
+    },
+    "bin/openocd/scripts/board/ampere_qs_mq_1s.cfg": {
+      "bytes": 2184,
+      "sha256": "7ece347b7daf4b4987dfc8fd26ddb5f9b2cd6064e95d0a66c0a0f03854bd222c"
+    },
+    "bin/openocd/scripts/board/ampere_qs_mq_2s.cfg": {
+      "bytes": 3924,
+      "sha256": "20eec90a60c32e2dcbdec26854860a380a8a6018beae423f657712728d1fff56"
+    },
+    "bin/openocd/scripts/board/arm_evaluator7t.cfg": {
+      "bytes": 240,
+      "sha256": "d10af5e3f9a7627c8ac2a4aca659bbeeeb6de4d02555591081dec1ca55c71f60"
+    },
+    "bin/openocd/scripts/board/arm_musca_a.cfg": {
+      "bytes": 1331,
+      "sha256": "a92d046839bf46b3ef8266d6a714c331a0d224230f3728b2e1416517eca99842"
+    },
+    "bin/openocd/scripts/board/arty_s7.cfg": {
+      "bytes": 1111,
+      "sha256": "7a5758af04f5fd7d2dcfa659414c705d60ecc5a92615abfa19e914481eca4976"
+    },
+    "bin/openocd/scripts/board/asus-rt-n16.cfg": {
+      "bytes": 468,
+      "sha256": "8a3f7e43b8f7b40f426858f105379ded765ceacec0c31950239f5c83c2e34ee0"
+    },
+    "bin/openocd/scripts/board/asus-rt-n66u.cfg": {
+      "bytes": 680,
+      "sha256": "08ca9286756c87280b53102ff3427dc4178543cb9a65d77eff53f6543eef378f"
+    },
+    "bin/openocd/scripts/board/at91cap7a-stk-sdram.cfg": {
+      "bytes": 3717,
+      "sha256": "b35dd685228c1adcbb0e20bb6b38b0437b995a5b950e644dc035e895eba8dbab"
+    },
+    "bin/openocd/scripts/board/at91eb40a.cfg": {
+      "bytes": 1808,
+      "sha256": "36fa6dbdedabe0dcffe0fb022697b46c407d7fe4b81036d1969b5fcb95765628"
+    },
+    "bin/openocd/scripts/board/at91rm9200-dk.cfg": {
+      "bytes": 2189,
+      "sha256": "5ec5622728aa1d61b4214e9c8580e0f456eba746baa1fb98e37aff1a40d729ce"
+    },
+    "bin/openocd/scripts/board/at91rm9200-ek.cfg": {
+      "bytes": 2869,
+      "sha256": "63967e29f59cf291faeb88e647f1c0b79f2b97107a25f38d923ffe2761084dd8"
+    },
+    "bin/openocd/scripts/board/at91sam9261-ek.cfg": {
+      "bytes": 2479,
+      "sha256": "7d8fbe185dd2f59530c60b5baaab7bb9c6827f24406331fa4eee664b549c2bb3"
+    },
+    "bin/openocd/scripts/board/at91sam9263-ek.cfg": {
+      "bytes": 2505,
+      "sha256": "6f1efc5ac63af9ae05f0b64816bff22a1e044793b40b3bab088f00602a63eedc"
+    },
+    "bin/openocd/scripts/board/at91sam9g20-ek.cfg": {
+      "bytes": 8964,
+      "sha256": "f494ba027a223429be19cc68558763f06f81cb4642149030827d093835d5f9ea"
+    },
+    "bin/openocd/scripts/board/atmel_at91sam7s-ek.cfg": {
+      "bytes": 194,
+      "sha256": "1310ca4defebd172c268676cc8a3916deaf1d7be5b9066341260c687a18e6d47"
+    },
+    "bin/openocd/scripts/board/atmel_at91sam9260-ek.cfg": {
+      "bytes": 3337,
+      "sha256": "d25077ff3668858cf8ff232c716408a71cbf545ffc273458e5a91ce2765887bc"
+    },
+    "bin/openocd/scripts/board/atmel_at91sam9rl-ek.cfg": {
+      "bytes": 3111,
+      "sha256": "cab7c22e7b94415f0d71f875a73370b566e1e1b75315ecfb6fa0e6f89e6ffaf4"
+    },
+    "bin/openocd/scripts/board/atmel_sam3n_ek.cfg": {
+      "bytes": 198,
+      "sha256": "aa03911bb526dbe5c2bfd529a1b5101d1d1706c406276d0f07656f735dbe5e94"
+    },
+    "bin/openocd/scripts/board/atmel_sam3s_ek.cfg": {
+      "bytes": 82,
+      "sha256": "69980bdd4fa34d6f62fdc92e8979b6b481119d318c2b6032c3f9df3d0b147709"
+    },
+    "bin/openocd/scripts/board/atmel_sam3u_ek.cfg": {
+      "bytes": 106,
+      "sha256": "91c6368da56520a0bb79c48b4d163d6996342a77ed2b97073e22b0e57fbf2df0"
+    },
+    "bin/openocd/scripts/board/atmel_sam3x_ek.cfg": {
+      "bytes": 108,
+      "sha256": "dc7fd4a1870c69be609dcbdca560fe9bbb05a65ad9ede3febafa2d94f7ac61d3"
+    },
+    "bin/openocd/scripts/board/atmel_sam4e_ek.cfg": {
+      "bytes": 217,
+      "sha256": "34caf7e1b93ee5bb124bd8f308887b8323f18df5e4b39f3852ae8274ded8a084"
+    },
+    "bin/openocd/scripts/board/atmel_sam4l8_xplained_pro.cfg": {
+      "bytes": 256,
+      "sha256": "d6d0362f4949737c0a2fb6b00034fc5ebbc5c4a266f10a563675b6a8e8ef9f4f"
+    },
+    "bin/openocd/scripts/board/atmel_sam4s_ek.cfg": {
+      "bytes": 82,
+      "sha256": "421ea5b866635ea9141fa763d1a0082f8b242c5f228d4dac67a9526f84a33418"
+    },
+    "bin/openocd/scripts/board/atmel_sam4s_xplained_pro.cfg": {
+      "bytes": 256,
+      "sha256": "d644b7e882b2028555dca27681f091f17dde6cd3359b9adcad92787b243d7a50"
+    },
+    "bin/openocd/scripts/board/atmel_samc20_xplained_pro.cfg": {
+      "bytes": 209,
+      "sha256": "860a48ec4489f45d0383096ca41914b415869c82122f87f94f34bf1c29e1c26f"
+    },
+    "bin/openocd/scripts/board/atmel_samc21_xplained_pro.cfg": {
+      "bytes": 257,
+      "sha256": "0444b0be95b399e864589e56b9df6a61b6bafde868db5da455de4928c281c2a8"
+    },
+    "bin/openocd/scripts/board/atmel_samd10_xplained_mini.cfg": {
+      "bytes": 257,
+      "sha256": "ea88005baecbeb08293ab19aad95e7083f956fc07163855c1bece68f8c407d0d"
+    },
+    "bin/openocd/scripts/board/atmel_samd11_xplained_pro.cfg": {
+      "bytes": 209,
+      "sha256": "f009fd4039ca2df576179ae6a77788560998530e3fd6ceed573802b3918f3571"
+    },
+    "bin/openocd/scripts/board/atmel_samd20_xplained_pro.cfg": {
+      "bytes": 257,
+      "sha256": "b2f9bb3d2572561e1ebcfe475dc9ca7fde6dfaf75927cb15cb1d981983cc8f62"
+    },
+    "bin/openocd/scripts/board/atmel_samd21_xplained_pro.cfg": {
+      "bytes": 209,
+      "sha256": "389181a260c77a525991916cede13dac67314e56eee1500f9e3934e4ba4804e2"
+    },
+    "bin/openocd/scripts/board/atmel_same70_xplained.cfg": {
+      "bytes": 312,
+      "sha256": "05973c4f3b89ab582dab2d482bda85f2642851f8bc4b02ce5c419ea86bf27112"
+    },
+    "bin/openocd/scripts/board/atmel_samg53_xplained_pro.cfg": {
+      "bytes": 255,
+      "sha256": "b543af73c2b4d6118f5aef0485d056fa3a35dd6e92b8b66133e6181958d13997"
+    },
+    "bin/openocd/scripts/board/atmel_samg55_xplained_pro.cfg": {
+      "bytes": 255,
+      "sha256": "cff88e8be3b5517ff4d4f56ac0a636c5cf3d7c279f75fa56f06594bb21804ad1"
+    },
+    "bin/openocd/scripts/board/atmel_saml21_xplained_pro.cfg": {
+      "bytes": 209,
+      "sha256": "29c1d7605ebac6c35fabcdaf8b718bc1e47f823929dece1de7bc14cb3f8a7b54"
+    },
+    "bin/openocd/scripts/board/atmel_samr21_xplained_pro.cfg": {
+      "bytes": 209,
+      "sha256": "44b764ecd9c1e044aa1822ae845ef6657ff20f9daed4986337e89660fe6f5076"
+    },
+    "bin/openocd/scripts/board/atmel_samv71_xplained_ultra.cfg": {
+      "bytes": 424,
+      "sha256": "8e09666e438d9c2f7d26181e5b229b6e2d1057f9fabe99b33f636259ec802234"
+    },
+    "bin/openocd/scripts/board/avnet_ultrazed-eg.cfg": {
+      "bytes": 393,
+      "sha256": "736e090c1cafdc7aaef9f5662a8696da3dbc4b8fc86cb95414a8d2a2f68d410f"
+    },
+    "bin/openocd/scripts/board/balloon3-cpu.cfg": {
+      "bytes": 598,
+      "sha256": "5a52d3602bdb23431d03843d952dc7ca99cb25cd3344d7cce0f3df20e7bf1282"
+    },
+    "bin/openocd/scripts/board/bcm28155_ap.cfg": {
+      "bytes": 165,
+      "sha256": "375e786d4fb5696adf4a8dded63273b04825b9eaa2c3843021ce3aae60476ac0"
+    },
+    "bin/openocd/scripts/board/bemicro_cycloneiii.cfg": {
+      "bytes": 675,
+      "sha256": "df0b900518a9ba1e3b72d2fa2d1bd9bc349f525e3034002bc9ee6c5faf4a3b83"
+    },
+    "bin/openocd/scripts/board/bluefield.cfg": {
+      "bytes": 160,
+      "sha256": "9e98c4b3e5f262ad654d9b5f97c041a110e963bef41e238dc7f096ba5bdd71d4"
+    },
+    "bin/openocd/scripts/board/bt-homehubv1.cfg": {
+      "bytes": 481,
+      "sha256": "eb7599b2c638baa5a1f22a8160d65bfe031266a1655ac816f00048038d0eb345"
+    },
+    "bin/openocd/scripts/board/calao-usb-a9260.cfg": {
+      "bytes": 368,
+      "sha256": "7b5e9a5283767925cf1cd54dfa511618f27c764004bd95a206db3145dc3f2a32"
+    },
+    "bin/openocd/scripts/board/calao-usb-a9g20-c01.cfg": {
+      "bytes": 7353,
+      "sha256": "4a7d1b30876a04cfa213cdcae53cea9e8902db71f33733882cb73482eca01292"
+    },
+    "bin/openocd/scripts/board/certuspro_evaluation.cfg": {
+      "bytes": 619,
+      "sha256": "90ae84ecef071bd94ed1f4d61be4952143eaab440a9d1806084e3743c1ceba34"
+    },
+    "bin/openocd/scripts/board/colibri.cfg": {
+      "bytes": 370,
+      "sha256": "394c42ca41d3fff43230271e89832df82fc6106fd0a6ae0f4a84b3674d81bdc3"
+    },
+    "bin/openocd/scripts/board/crossbow_tech_imote2.cfg": {
+      "bytes": 342,
+      "sha256": "cc255082bd8bd9044ebb16f5a1bc09960dfa6a13e85832f2a9c127f11ec3f8ca"
+    },
+    "bin/openocd/scripts/board/csb337.cfg": {
+      "bytes": 3009,
+      "sha256": "d451af622a9132804bc5260eccb8915566a48e840902ad5f7b47711e4170209a"
+    },
+    "bin/openocd/scripts/board/csb732.cfg": {
+      "bytes": 1482,
+      "sha256": "ee24ecfb2f37930c3695d83f7e923c39b19d39e0cb92a1501e6bac79c9cb67f1"
+    },
+    "bin/openocd/scripts/board/da850evm.cfg": {
+      "bytes": 487,
+      "sha256": "048a02e193385d0ca16dd4b8ac13550d51ee14572b9873247d9b8840a0dc1d1d"
+    },
+    "bin/openocd/scripts/board/digi_connectcore_wi-9c.cfg": {
+      "bytes": 3842,
+      "sha256": "302529cfdd3ab94ababcf451481a7c206a23372dc0a4fbd280032efd299db296"
+    },
+    "bin/openocd/scripts/board/digilent_analog_discovery.cfg": {
+      "bytes": 465,
+      "sha256": "b3d360ac37c2cd69b3582679896ea86361f1d7fb7357dc8ecbe4932506192fe1"
+    },
+    "bin/openocd/scripts/board/digilent_anvyl.cfg": {
+      "bytes": 713,
+      "sha256": "fff23e1edc6053239c207703d0cf3465e970d041c3ae5a1202c072d24cfaff5e"
+    },
+    "bin/openocd/scripts/board/digilent_atlys.cfg": {
+      "bytes": 635,
+      "sha256": "2e213f8f1a2b395cc2c8bc3c5c12219b80256bde913284b3f975a9dfb0d3374f"
+    },
+    "bin/openocd/scripts/board/digilent_cmod_s7.cfg": {
+      "bytes": 715,
+      "sha256": "35e968f849598a4371f26c09dcb7562c1a76378ef6e6e1d980543e70984a0da4"
+    },
+    "bin/openocd/scripts/board/digilent_nexys_video.cfg": {
+      "bytes": 632,
+      "sha256": "0a8939f422b81eefc343cff442c422aae1fabab14ea6b9bd68b049c57190af11"
+    },
+    "bin/openocd/scripts/board/digilent_nexys2.cfg": {
+      "bytes": 938,
+      "sha256": "2eef0d1cc479c326462f184a5550103789996893268f4b2c59b749e953796e4d"
+    },
+    "bin/openocd/scripts/board/digilent_zedboard.cfg": {
+      "bytes": 273,
+      "sha256": "412747f7d82ccc374c640b0329042c57c439d64a4073e7998b2653335fa180ce"
+    },
+    "bin/openocd/scripts/board/digilent_zybo.cfg": {
+      "bytes": 681,
+      "sha256": "118d9a4462aed3a5d70844aaa6602fb3bcbda0408177e1dded3e2251f02515f8"
+    },
+    "bin/openocd/scripts/board/diolan_lpc4350-db1.cfg": {
+      "bytes": 216,
+      "sha256": "818b9b7944cbacc4a8881d5298cc12017e802ba24ebe570b42e36512be3ae763"
+    },
+    "bin/openocd/scripts/board/diolan_lpc4357-db1.cfg": {
+      "bytes": 216,
+      "sha256": "f0fbdf2b2dc955b8989254ecf9dee6f361ebaa9bee32e71000113bcf6019d622"
+    },
+    "bin/openocd/scripts/board/dk-tm4c129.cfg": {
+      "bytes": 177,
+      "sha256": "d43e07ea07dbfb59f3285e6ce22345e6711d6253a4edb8eebf6cc0970f551ea9"
+    },
+    "bin/openocd/scripts/board/dm355evm.cfg": {
+      "bytes": 5363,
+      "sha256": "11021102930705bbbccbbc9443a3cf20c9d1c4bd6f54c45cbe18259375890833"
+    },
+    "bin/openocd/scripts/board/dm365evm.cfg": {
+      "bytes": 3813,
+      "sha256": "85f405363927eaca200df1df5eaa3bd17b411bfc617456aff8275f5f040ebe66"
+    },
+    "bin/openocd/scripts/board/dm6446evm.cfg": {
+      "bytes": 2274,
+      "sha256": "d15d3fac389efbd83f58be315592a1d30e5f7e58e3dd1506598df1be2682a308"
+    },
+    "bin/openocd/scripts/board/dp_busblaster_v3.cfg": {
+      "bytes": 397,
+      "sha256": "5ee354213218488dfdbc1626d42f1bf2578c9e91d462b23cfa0b4a713e7797b4"
+    },
+    "bin/openocd/scripts/board/dp_busblaster_v4.cfg": {
+      "bytes": 688,
+      "sha256": "666bd2df59b3f4742f43a8b749153163553e291d33479c6e129bc0a079d333fb"
+    },
+    "bin/openocd/scripts/board/dptechnics_dpt-board-v1.cfg": {
+      "bytes": 960,
+      "sha256": "8cb62375b998de133fc3af5fbfaa063170a7dcc18020c92c5c7a00eca94770ab"
+    },
+    "bin/openocd/scripts/board/ecp5_evaluation.cfg": {
+      "bytes": 693,
+      "sha256": "1e790248d7b3948e5f9adfe3bb0ae7f4b096c6e2de2bfcc4178d0eb5e875d898"
+    },
+    "bin/openocd/scripts/board/efikamx.cfg": {
+      "bytes": 290,
+      "sha256": "51d6f1f34f0a441f45910a488ffe36f49eb76fcceb326ef6f8675ad955e815c3"
+    },
+    "bin/openocd/scripts/board/efm32.cfg": {
+      "bytes": 290,
+      "sha256": "bede11fd5a2fcafdaaed4e933b46751773a46a6c8998d27f05a45f4256f1fe4d"
+    },
+    "bin/openocd/scripts/board/eir.cfg": {
+      "bytes": 2364,
+      "sha256": "a624855d818a46c05eab90af1879b94087d245773b8398fd5b772ed6fee4af75"
+    },
+    "bin/openocd/scripts/board/ek-lm3s1968.cfg": {
+      "bytes": 626,
+      "sha256": "8743e3311b55e58456a67270043fb8a24a29915f6118c4741df5a8302e505d9d"
+    },
+    "bin/openocd/scripts/board/ek-lm3s3748.cfg": {
+      "bytes": 397,
+      "sha256": "a62f839b011dd5aa83619266bbd28ffd23446fe0ef9fbdc26707786ce5d9564e"
+    },
+    "bin/openocd/scripts/board/ek-lm3s6965.cfg": {
+      "bytes": 425,
+      "sha256": "747ba5196f64ea13a40eb912a75407e6cd0862a60d1ae278bfb338f4b0771013"
+    },
+    "bin/openocd/scripts/board/ek-lm3s811-revb.cfg": {
+      "bytes": 408,
+      "sha256": "c3daec0c3bec65231ee66bfa937473bd8ea40c6a59878815eca7c19085cb8e29"
+    },
+    "bin/openocd/scripts/board/ek-lm3s811.cfg": {
+      "bytes": 468,
+      "sha256": "b0585d6d662fdc52b72ccc1087dbf4284623c119b2a4c793444a48553820bffd"
+    },
+    "bin/openocd/scripts/board/ek-lm3s8962.cfg": {
+      "bytes": 426,
+      "sha256": "c151c3cb68e0f979cec8eb4cddcf3978d8e712dc6042ce735248a9f19228f57a"
+    },
+    "bin/openocd/scripts/board/ek-lm3s9b9x.cfg": {
+      "bytes": 416,
+      "sha256": "9c81610ed68db050a2ac1775f627532c58f6cc737aa0aa7b376ffd4754701f79"
+    },
+    "bin/openocd/scripts/board/ek-lm3s9d92.cfg": {
+      "bytes": 399,
+      "sha256": "87fe4803039333f1ece3b665e103f6fb2c95adaadecb33fa03757c850bd36c1e"
+    },
+    "bin/openocd/scripts/board/ek-lm4f120xl.cfg": {
+      "bytes": 405,
+      "sha256": "2685fed79b3251e13ca08ffa47b51bd71e50f75f066d3275d94b5385140b242f"
+    },
+    "bin/openocd/scripts/board/ek-lm4f232.cfg": {
+      "bytes": 384,
+      "sha256": "9f54a753cb7ea8be9fe10329b6be6795ef3c3c48ac769533d6eec2fe2aa3e867"
+    },
+    "bin/openocd/scripts/board/ek-tm4c123gxl.cfg": {
+      "bytes": 186,
+      "sha256": "70e515169999d9ce76bd23c96f41da1429af4798ab8ed6c9c419cf67538d2268"
+    },
+    "bin/openocd/scripts/board/ek-tm4c1294xl.cfg": {
+      "bytes": 186,
+      "sha256": "fa46ca1f6c1c305bcd1e40f9b42db7620ac7cf0cf1cdfe7b1596d789c7c36df9"
+    },
+    "bin/openocd/scripts/board/embedded-artists_lpc2478-32.cfg": {
+      "bytes": 6290,
+      "sha256": "6a7fc117dd77949700c3521b0dded147c6bab315b17322865a9eb9c208d79b6a"
+    },
+    "bin/openocd/scripts/board/emcraft_imx8m-som-bsb.cfg": {
+      "bytes": 466,
+      "sha256": "50c1ed5a5280ae325070c5276efafbffa76c1df84b956d1d4ace60721321f414"
+    },
+    "bin/openocd/scripts/board/emcraft_twr-vf6-som-bsb.cfg": {
+      "bytes": 208,
+      "sha256": "c733fb57c68b8a8ca3a90d974050dfbaee602e9ba3b9b68662194cb87e19121d"
+    },
+    "bin/openocd/scripts/board/emcraft_vf6-som.cfg": {
+      "bytes": 184,
+      "sha256": "ef78d1e9aac574a7d13dda8213283afbdef58a2552da0b6bcbbf41bf98e6d21d"
+    },
+    "bin/openocd/scripts/board/esp32-bridge.cfg": {
+      "bytes": 466,
+      "sha256": "b0bfd794d41a472cfcd4b0d83b3a30b6cf07dc25cafe6af35f80e439ab36a1c1"
+    },
+    "bin/openocd/scripts/board/esp32-ethernet-kit-3.3v.cfg": {
+      "bytes": 783,
+      "sha256": "699fb2fea60687c412b3542e8cc6170b8d986d358b7d89f8d24931964d27595a"
+    },
+    "bin/openocd/scripts/board/esp32-wrover-kit-1.8v.cfg": {
+      "bytes": 779,
+      "sha256": "687291acc2a34f7bc93a2e761b465293e95e73f948a90f76462343a081ce81c2"
+    },
+    "bin/openocd/scripts/board/esp32-wrover-kit-3.3v.cfg": {
+      "bytes": 779,
+      "sha256": "9731a6f033de8332bb0c6344e8f7fffb3f1d51c0fcedfe85840a4219c61c9eea"
+    },
+    "bin/openocd/scripts/board/esp32s2-bridge.cfg": {
+      "bytes": 481,
+      "sha256": "3fa784ae384892ae64cdaefe6c3889da93d9da14b686d37626bf6304935c4fb8"
+    },
+    "bin/openocd/scripts/board/esp32s2-kaluga-1.cfg": {
+      "bytes": 664,
+      "sha256": "b6945a12b1cea25062a749b8a211a4ec88c92f031725bb2bf180dfbafd0529bd"
+    },
+    "bin/openocd/scripts/board/esp32s3-bridge.cfg": {
+      "bytes": 481,
+      "sha256": "a2af60b8fd90d525e1d450bd99a90e8edc769303a19ff9d25b8b4563021cbf0a"
+    },
+    "bin/openocd/scripts/board/esp32s3-builtin.cfg": {
+      "bytes": 431,
+      "sha256": "9fe0db79f139f14050f81dd283ab36f4c55f76fd3d3656cb6f1ffa112eaa51d2"
+    },
+    "bin/openocd/scripts/board/esp32s3-ftdi.cfg": {
+      "bytes": 759,
+      "sha256": "c25851b83414830c59271edd5ea94ab40b7919a3c4afc70083bdf8b81f5eac91"
+    },
+    "bin/openocd/scripts/board/ethernut3.cfg": {
+      "bytes": 1596,
+      "sha256": "fa06744033d85719b7309f3fa70cf9411ffe7d312c6242c1a471625c52e18989"
+    },
+    "bin/openocd/scripts/board/evb-lan9255.cfg": {
+      "bytes": 225,
+      "sha256": "20b143a352f7f5a32dc669878c6ffebb9d4f10521b42626a90dbb996f31b9d87"
+    },
+    "bin/openocd/scripts/board/frdm-kl25z.cfg": {
+      "bytes": 390,
+      "sha256": "dce8e4a889201cd0b94250487a7611434bce954516f8f6610285eaf937d7c9b2"
+    },
+    "bin/openocd/scripts/board/frdm-kl46z.cfg": {
+      "bytes": 390,
+      "sha256": "788943ceff94dc57d52bab7102c0025b2a5940cc22002b8b49bc4c8f6d27f404"
+    },
+    "bin/openocd/scripts/board/fsl_imx6q_sabresd.cfg": {
+      "bytes": 4146,
+      "sha256": "b95585b53ba4fc3a4f7689bac88181beb8b453901bbe1bba9e8e473221877971"
+    },
+    "bin/openocd/scripts/board/gatemate_eval.cfg": {
+      "bytes": 499,
+      "sha256": "5518e6fbd8a00036f9fc1b4a136b8199acb5738ad66a3d9bf0880a40e878ce63"
+    },
+    "bin/openocd/scripts/board/glyn_tonga2.cfg": {
+      "bytes": 7070,
+      "sha256": "a0b5fb5c81532ff035339281a4472c4592fe00668f5fa562f622df7523b0ea44"
+    },
+    "bin/openocd/scripts/board/gowin_runber.cfg": {
+      "bytes": 535,
+      "sha256": "d17037995dbb352821efad5034a1425569e753b342e0d7aba2bbfe4e4d38c17d"
+    },
+    "bin/openocd/scripts/board/gti/espressobin.cfg": {
+      "bytes": 217,
+      "sha256": "bbace0213f42396d9a1aa005eecb71158e882900f706e17d10a66c72a74c9913"
+    },
+    "bin/openocd/scripts/board/gumstix-aerocore.cfg": {
+      "bytes": 354,
+      "sha256": "77df7a6ab0718eb32110ca0cc27d5433403cebda1701027d4ead85828ec39cbd"
+    },
+    "bin/openocd/scripts/board/hammer.cfg": {
+      "bytes": 1124,
+      "sha256": "14d8e9fb74e21075e668fe6b9b08a61e5271a0d1f79377554942db2081e43849"
+    },
+    "bin/openocd/scripts/board/hilscher_nxdb500sys.cfg": {
+      "bytes": 1099,
+      "sha256": "a3f3b73d46cf80404ad554a81465375d3ceefcfd10fc56bd57f0fc19edad6b78"
+    },
+    "bin/openocd/scripts/board/hilscher_nxeb500hmi.cfg": {
+      "bytes": 1086,
+      "sha256": "6f30b05f6c9d28f14529bb2f8b0a8a77441a4616b2b89407e0c101676a08a0fe"
+    },
+    "bin/openocd/scripts/board/hilscher_nxhx10.cfg": {
+      "bytes": 2302,
+      "sha256": "c5b4a1f5c5070e787538af821160d4699e0d2dbae555c0e02a67de2b7c4f7739"
+    },
+    "bin/openocd/scripts/board/hilscher_nxhx50.cfg": {
+      "bytes": 1090,
+      "sha256": "e1fdfc7cf5e28a7a84b268e45549f366ec98d8199abac9ef7f3e676e59d3988c"
+    },
+    "bin/openocd/scripts/board/hilscher_nxhx500.cfg": {
+      "bytes": 1096,
+      "sha256": "a5d88039bfbef15763c623c26ce598e292fd5f2be291499fba6bb903b25bc976"
+    },
+    "bin/openocd/scripts/board/hilscher_nxsb100.cfg": {
+      "bytes": 773,
+      "sha256": "63e49faf163bd314aed68d30f667cd33da12098643effacd4ee29254d02094a2"
+    },
+    "bin/openocd/scripts/board/hitex_lpc1768stick.cfg": {
+      "bytes": 257,
+      "sha256": "1ac7406be1faf9741c5dcac2077ea1f60bfe6bd2c51c046a98df167b1fcbaa12"
+    },
+    "bin/openocd/scripts/board/hitex_lpc2929.cfg": {
+      "bytes": 4327,
+      "sha256": "f7a42f9019275b980d66398503bba91037a6b3a43ee23986301ebb29d1f9b260"
+    },
+    "bin/openocd/scripts/board/hitex_stm32-performancestick.cfg": {
+      "bytes": 479,
+      "sha256": "5ece058bfa7e4a604b2ffc56c7632c1215d2d3fd89faf7cce04764f4e7974a25"
+    },
+    "bin/openocd/scripts/board/hitex_str9-comstick.cfg": {
+      "bytes": 2226,
+      "sha256": "735e4c75b2fc0bd2704eee9afe451acdec92e3e67ae74cacc8768f1e743d2c00"
+    },
+    "bin/openocd/scripts/board/iar_lpc1768.cfg": {
+      "bytes": 406,
+      "sha256": "6d84463c0c4625feb2859bd979063523c7196c3f0622dad8cfc50649e96e0c1b"
+    },
+    "bin/openocd/scripts/board/iar_str912_sk.cfg": {
+      "bytes": 140,
+      "sha256": "c262291891336cba1655555b4f9a2998e1239c3c3bdf793a1bc6fb34eaa19456"
+    },
+    "bin/openocd/scripts/board/icnova_imx53_sodimm.cfg": {
+      "bytes": 16386,
+      "sha256": "b1475257ff12ba70a53a4b106f38541bac9769493756cd58d4ef6a3b7d0b54d7"
+    },
+    "bin/openocd/scripts/board/icnova_sam9g45_sodimm.cfg": {
+      "bytes": 8815,
+      "sha256": "68221a33b4e411f902041e991325208285042ef598987ff6f31b6dbcbc0c9330"
+    },
+    "bin/openocd/scripts/board/imx27ads.cfg": {
+      "bytes": 1984,
+      "sha256": "ffc288094e1ff857c8b3c013c4338070f463a98af6e9518c77142c2c93a5133c"
+    },
+    "bin/openocd/scripts/board/imx27lnst.cfg": {
+      "bytes": 1400,
+      "sha256": "ed578a269aca27128ad591686bf742db2923addb6169640df94f533858b19dd7"
+    },
+    "bin/openocd/scripts/board/imx28evk.cfg": {
+      "bytes": 5153,
+      "sha256": "b710c5d95a5e66256d54773c5715892e4b417819f7a771714322ef0a77cb95b9"
+    },
+    "bin/openocd/scripts/board/imx31pdk.cfg": {
+      "bytes": 2067,
+      "sha256": "e7c38cc13e2c9b594a3149ab3e82ae5c597307a3b07bf10ea108ef9b714770c5"
+    },
+    "bin/openocd/scripts/board/imx35pdk.cfg": {
+      "bytes": 6697,
+      "sha256": "a9da14431c909898d86b023e82c3dc939c7eaa02a451c958f8ae3ba0b1560868"
+    },
+    "bin/openocd/scripts/board/imx53-m53evk.cfg": {
+      "bytes": 8998,
+      "sha256": "7083bd4ee08627402eecefc51f90c8eea026dae1b7b8ee25decb7b58d0b945c8"
+    },
+    "bin/openocd/scripts/board/imx53loco.cfg": {
+      "bytes": 10093,
+      "sha256": "afcd73dea4ed4852befee31a60c458e04ee8feb6b258b5875b7f2bd73a55b64f"
+    },
+    "bin/openocd/scripts/board/imx8mp-evk.cfg": {
+      "bytes": 323,
+      "sha256": "a6aeba3730d56c5b6727f36bf139a95e6b67d52af1f5336d40ad3dbb7cd73e31"
+    },
+    "bin/openocd/scripts/board/insignal_arndale.cfg": {
+      "bytes": 180,
+      "sha256": "cce969b855d9ee41b71913f264173d65931c981b6a2dc4bdc736282ce5cb62d4"
+    },
+    "bin/openocd/scripts/board/kasli.cfg": {
+      "bytes": 394,
+      "sha256": "3714623442b9bc6f1615f305b07e891b1d0a1f1cf583d1fa939a7b8b61817c0c"
+    },
+    "bin/openocd/scripts/board/kc100.cfg": {
+      "bytes": 1469,
+      "sha256": "d8afc32b65b775414b74545daf15f8a16087412cb0c7e5c2dcf220821bfc306a"
+    },
+    "bin/openocd/scripts/board/kc705.cfg": {
+      "bytes": 615,
+      "sha256": "791c0df0c6e93fb4dd0b105d97abb35aa1112280fd6f3f470173a8f162e2fa1a"
+    },
+    "bin/openocd/scripts/board/kcu105.cfg": {
+      "bytes": 319,
+      "sha256": "a74da34ed1c31e8d50023b01c4b7b6ce2b79f18bb5cd27967b53d1d4f4aa6e82"
+    },
+    "bin/openocd/scripts/board/keil_mcb1700.cfg": {
+      "bytes": 153,
+      "sha256": "0ce53e56916de579e06e47eab7acb7ce91bed3df63ec8dd58b653f49d71c55c7"
+    },
+    "bin/openocd/scripts/board/keil_mcb2140.cfg": {
+      "bytes": 153,
+      "sha256": "65511fa24dc867d9fe5568608fed86ef1f4e85c763e0dcac14fb32a8275fc221"
+    },
+    "bin/openocd/scripts/board/kindle2.cfg": {
+      "bytes": 3769,
+      "sha256": "e62d1f5726a83d9b236401f99d4056c5a3e1c492b51d382eecd67b5bbb94632c"
+    },
+    "bin/openocd/scripts/board/kontron_sl28.cfg": {
+      "bytes": 268,
+      "sha256": "7dbb8bffcda3b5e74cee23daf6f0ae897e5692409c9caf6582cf3b8687a415a8"
+    },
+    "bin/openocd/scripts/board/kwikstik.cfg": {
+      "bytes": 214,
+      "sha256": "38fd0c8d8f3b1b783a804312ae30d8a449995b100ba7c8290aaff8da1ab97011"
+    },
+    "bin/openocd/scripts/board/la_fonera-fon2200.cfg": {
+      "bytes": 113,
+      "sha256": "9cd6a993bc78bbe633ffa0e654d90bfa76c4b2046206d66a32365ad2fc81149f"
+    },
+    "bin/openocd/scripts/board/lambdaconcept_ecpix-5.cfg": {
+      "bytes": 895,
+      "sha256": "5d1e7324095947579744ea3c2b5aa36b32f42471e399934725acb00e9240c284"
+    },
+    "bin/openocd/scripts/board/lemaker_hikey.cfg": {
+      "bytes": 468,
+      "sha256": "53b4e36a877257e80e057ade717b9178e6b40f94b5394604e9bf9bffac084ac0"
+    },
+    "bin/openocd/scripts/board/linksys_nslu2.cfg": {
+      "bytes": 294,
+      "sha256": "d5b46a54cc164d76f64fedab336130deb22a4885df9dc9becc9ba79920159424"
+    },
+    "bin/openocd/scripts/board/linksys-wag200g.cfg": {
+      "bytes": 991,
+      "sha256": "ded6e93ffca03659ff643dee1ec1cb9a755f2ca9aac980d9d726560a2da70686"
+    },
+    "bin/openocd/scripts/board/linksys-wrt54gl.cfg": {
+      "bytes": 445,
+      "sha256": "33ba120dd6b85b5b9645d17651048d3a192d13a5dc0edc6cd47c8b2a3f3cc86a"
+    },
+    "bin/openocd/scripts/board/lisa-l.cfg": {
+      "bytes": 245,
+      "sha256": "c4fbd6229ef2514701c384d77e94867c84625414ea43552b0de69853e904ff8a"
+    },
+    "bin/openocd/scripts/board/logicpd_imx27.cfg": {
+      "bytes": 379,
+      "sha256": "48f335c67cb1af9ca4f686ad31c707b4ba54fe1c788db9bfe864266fa2a21a85"
+    },
+    "bin/openocd/scripts/board/lpc1850_spifi_generic.cfg": {
+      "bytes": 631,
+      "sha256": "3ec9a2046de642f694e489f21a2228f2d75dd8ae41669694f3c3284420af09bc"
+    },
+    "bin/openocd/scripts/board/lpc4350_spifi_generic.cfg": {
+      "bytes": 466,
+      "sha256": "a668926b3f5f3202c26521ec79d02cad5524f03d7a9d3170d58f9d5754280485"
+    },
+    "bin/openocd/scripts/board/lubbock.cfg": {
+      "bytes": 2796,
+      "sha256": "35c13d8b03323cc3b25ed59094efc149c2f7049d6fcd977183145268cda814c2"
+    },
+    "bin/openocd/scripts/board/marsohod.cfg": {
+      "bytes": 322,
+      "sha256": "55cfd2e08ed0efb325b44e805fa13755adccf74966e2598849349149cca0e29a"
+    },
+    "bin/openocd/scripts/board/marsohod2.cfg": {
+      "bytes": 319,
+      "sha256": "17bd817d0e76b14be8f4d929e1bdb6be1195db54c4e4e39a58fa689e0e237387"
+    },
+    "bin/openocd/scripts/board/marsohod3.cfg": {
+      "bytes": 321,
+      "sha256": "f0bd8b097daa8d82762c711900746688cca3b2a6539d1bcc5f062197d4c4046d"
+    },
+    "bin/openocd/scripts/board/mbed-lpc11u24.cfg": {
+      "bytes": 306,
+      "sha256": "74b487b172a729716d429f8852fb149778afd7ef97a6c41231471ad04e5345b7"
+    },
+    "bin/openocd/scripts/board/mbed-lpc1768.cfg": {
+      "bytes": 225,
+      "sha256": "7a9dcaeea2b53d3431db2802a56d59967d77b8bdf98946f2c41c2cab0c707cc2"
+    },
+    "bin/openocd/scripts/board/mcb1700.cfg": {
+      "bytes": 1915,
+      "sha256": "134cda8a0bdde286e48361117bc7ad5cc88d4e524908921bce7c80438cbc3f0a"
+    },
+    "bin/openocd/scripts/board/microchip_explorer16.cfg": {
+      "bytes": 332,
+      "sha256": "172b046cffa654ed3bf7a6ff07bf6c009dd22dd1921279050bc27a95c1edda06"
+    },
+    "bin/openocd/scripts/board/microchip_sama5d27_som1_kit1.cfg": {
+      "bytes": 818,
+      "sha256": "c2730cff7bbfbade225fb43aa8c3e4ad8abac6620b4a919f64fbdb3fc0779d5b"
+    },
+    "bin/openocd/scripts/board/microchip_same51_curiosity_nano.cfg": {
+      "bytes": 279,
+      "sha256": "fc96f0285d3296577a0a31255e39b3b36be4aeb2643a81dc127b63f6639d262d"
+    },
+    "bin/openocd/scripts/board/microchip_same54_xplained_pro.cfg": {
+      "bytes": 317,
+      "sha256": "e9cb27dbc592725e1d4ab7fa9d73f3dfa3b85b837e3b98b55455c3948c751b58"
+    },
+    "bin/openocd/scripts/board/microchip_saml11_xplained_pro.cfg": {
+      "bytes": 297,
+      "sha256": "879f438ece4488f52ce9f2f90977d58a0df604871e130d9056cc7386bcd7127d"
+    },
+    "bin/openocd/scripts/board/microchip/pic64gx-curiosity-kit.cfg": {
+      "bytes": 274,
+      "sha256": "eb4998b9200705f2118a9ba2065117be5fcbd99337bc591627dbccac44198562"
+    },
+    "bin/openocd/scripts/board/mikroe/clicker4-stm32f745vg.cfg": {
+      "bytes": 324,
+      "sha256": "efbe57809d3cb32a58f1c1d95879ddb687ea09f999c3b0235bb0210e04521d27"
+    },
+    "bin/openocd/scripts/board/mini2440.cfg": {
+      "bytes": 11534,
+      "sha256": "b2af7e9898cc7e471a00361f1b50eca17e008e4888f5b0c9bfd0b91cc719cbc0"
+    },
+    "bin/openocd/scripts/board/mini6410.cfg": {
+      "bytes": 4255,
+      "sha256": "bce9133e324170bb41e5789dde7645c441d7fd0b2ce2f28a853f18c18198c41e"
+    },
+    "bin/openocd/scripts/board/minispartan6.cfg": {
+      "bytes": 958,
+      "sha256": "7f80d8dd7132fac18b0f0ee3d5795c0c7099ea0f14b99e082d2cc133969f7b42"
+    },
+    "bin/openocd/scripts/board/nds32_corvettef1.cfg": {
+      "bytes": 555,
+      "sha256": "7552551c34e8d2b895cea37a5bb0facd48caa72046bfbec76a880b640b3afb88"
+    },
+    "bin/openocd/scripts/board/nds32_xc7.cfg": {
+      "bytes": 182,
+      "sha256": "23ff1b885b8b2531d731b5a6666aa6d1aba8e9d46a24cde051ee1a21a37c60ac"
+    },
+    "bin/openocd/scripts/board/netgear-dg834v3.cfg": {
+      "bytes": 683,
+      "sha256": "27f8c4cdd9f1cfb7236f01757debabc1152201f84191f841d37e5f6a4f4448b6"
+    },
+    "bin/openocd/scripts/board/netgear-wg102.cfg": {
+      "bytes": 1086,
+      "sha256": "053cfcdd76bd092553ee91993d514ad576ff2a56e161aee85ba64d36d64acb3d"
+    },
+    "bin/openocd/scripts/board/nordic_nrf52_ftx232.cfg": {
+      "bytes": 484,
+      "sha256": "4230feb514fdb055ebfb29f11e3237fd5e773d8f2a022ca5e768af8aed40cb6d"
+    },
+    "bin/openocd/scripts/board/nordic/nrf51-dk.cfg": {
+      "bytes": 200,
+      "sha256": "a9ec9371d299fa018961389a471d0fd9d3a2708d51d3121f76c1e74bd3fa2c4b"
+    },
+    "bin/openocd/scripts/board/nordic/nrf51822-mkit.cfg": {
+      "bytes": 184,
+      "sha256": "c05ea56502166a7957b51b9d662caf12968575d13745faa5994b0a9113ec4e93"
+    },
+    "bin/openocd/scripts/board/nordic/nrf52-dk.cfg": {
+      "bytes": 201,
+      "sha256": "79514d0dd7a45c2dfdc3d2c0683a3e655266a265d412c6e160965834381c3600"
+    },
+    "bin/openocd/scripts/board/nordic/nrf5340-dk.cfg": {
+      "bytes": 262,
+      "sha256": "1d9c6d0e152a42410a6fc2417d69d466871047e61cbdc2d7cdaacf5bc0cc9ea9"
+    },
+    "bin/openocd/scripts/board/nordic/nrf54l15-dk.cfg": {
+      "bytes": 242,
+      "sha256": "8773ffd8361f7941eb6cdd874fd98b21ac054d497ce8e2b8bbbe3765996fda37"
+    },
+    "bin/openocd/scripts/board/nordic/nrf9160-dk.cfg": {
+      "bytes": 262,
+      "sha256": "91b37720b5e1d7dda572f17cfbdbd635fddd7289d181594ec7201f41974a5c48"
+    },
+    "bin/openocd/scripts/board/novena-internal-fpga.cfg": {
+      "bytes": 865,
+      "sha256": "e33f90f1fed6358b8032d9f4a1593abf1b10580b0b98ace8cab1273d8cb11d05"
+    },
+    "bin/openocd/scripts/board/npcx_evb.cfg": {
+      "bytes": 164,
+      "sha256": "f8991c8197e5b2e44e045a8bd2baf9e14363e4ef70b50638b1d1906c3f630c85"
+    },
+    "bin/openocd/scripts/board/numato_mimas_a7.cfg": {
+      "bytes": 1307,
+      "sha256": "1942a26d48ab5a11cf1897c0efacf9348318dd828836eadefee0589986deee8b"
+    },
+    "bin/openocd/scripts/board/numato_opsis.cfg": {
+      "bytes": 344,
+      "sha256": "30be41cc00dd817d4e0b498a44d92c5e5bef466b8d8ddee8d7a8ae841077d774"
+    },
+    "bin/openocd/scripts/board/nxp_frdm-k64f.cfg": {
+      "bytes": 440,
+      "sha256": "62eb6f91c84ea0eff84e96982dc257d7d33e385e3edab234133e9d35c579c82b"
+    },
+    "bin/openocd/scripts/board/nxp_frdm-ls1012a.cfg": {
+      "bytes": 275,
+      "sha256": "7482879a9247ed80ec256bb57ac78c804022580cc67a79c795e581bd92b860da"
+    },
+    "bin/openocd/scripts/board/nxp_imx7sabre.cfg": {
+      "bytes": 3238,
+      "sha256": "e2eeb293e07107dfffc7e74c5e331e36cd05aa16e7d9368fbf570407a6f8b17f"
+    },
+    "bin/openocd/scripts/board/nxp_imx8mp-evk.cfg": {
+      "bytes": 501,
+      "sha256": "58592691c1581059fb32344fcb3f092346c3badf927ee0a6a1fb5557b99e8203"
+    },
+    "bin/openocd/scripts/board/nxp_lpc-link2.cfg": {
+      "bytes": 331,
+      "sha256": "4f6c9166dea5745aabbdf679c16e4223c070f022ddd853059d3d93c7b48e63bf"
+    },
+    "bin/openocd/scripts/board/nxp_mcimx8m-evk.cfg": {
+      "bytes": 498,
+      "sha256": "c12a628e937461bc3d0349c71bd78d34c8eff88b76906a8593c92c65465aef00"
+    },
+    "bin/openocd/scripts/board/nxp_rdb-ls1046a.cfg": {
+      "bytes": 506,
+      "sha256": "cdd4600174e73733e1f4a4dd748126cf4cbab85df39ce1cdd03bb3c6ef950dd5"
+    },
+    "bin/openocd/scripts/board/nxp_rdb-ls1088a.cfg": {
+      "bytes": 432,
+      "sha256": "2f82b40b98682773b62a50b9aa9027274f70c7969581d7e4e02df5af4710118f"
+    },
+    "bin/openocd/scripts/board/nxp/frdm-kv11z-jlink.cfg": {
+      "bytes": 525,
+      "sha256": "f7fa9bd14e87ab63ccd02c662d0c9c692001730e686a96eb9a054282bf85bf52"
+    },
+    "bin/openocd/scripts/board/nxp/frdm-kv31f-jlink.cfg": {
+      "bytes": 525,
+      "sha256": "1b4f5ef3f33254dde1ef7d09d57162bf9c48791af92539246b5d200391d2c17a"
+    },
+    "bin/openocd/scripts/board/olimex_lpc_h2148.cfg": {
+      "bytes": 158,
+      "sha256": "f081a16e0a98ec4c68dbd011936b79f94ca144c81f8c110c4e2eb3dc6e752011"
+    },
+    "bin/openocd/scripts/board/olimex_LPC2378STK.cfg": {
+      "bytes": 310,
+      "sha256": "77730d7caea8d22d327c5fa2d6352a5639fdc811eb6921c69818c999ca574a04"
+    },
+    "bin/openocd/scripts/board/olimex_sam7_ex256.cfg": {
+      "bytes": 144,
+      "sha256": "8494dee9985bfcffee8f1aec7066aa0728ee534d74e800a48cf3a2b52548d595"
+    },
+    "bin/openocd/scripts/board/olimex_sam7_la2.cfg": {
+      "bytes": 2083,
+      "sha256": "6cc270d79acedd4a7c187a1a2c47fc06309fa1a047c7c6e6f008da95e543e384"
+    },
+    "bin/openocd/scripts/board/olimex_sam9_l9260.cfg": {
+      "bytes": 5677,
+      "sha256": "09de852f21072c81cba28bc8bdb827aa6eb936fa993ab8b28ac25528f7273e26"
+    },
+    "bin/openocd/scripts/board/olimex_stm32_h103.cfg": {
+      "bytes": 234,
+      "sha256": "1bcbde0af97a220fe5ea76f3084240f747c697c13460f876ff8e0616b8c481b0"
+    },
+    "bin/openocd/scripts/board/olimex_stm32_h107.cfg": {
+      "bytes": 230,
+      "sha256": "77659db684e0377f4f03488babb1f6d187b6eee41b76906e0ceb84bcd4714b6c"
+    },
+    "bin/openocd/scripts/board/olimex_stm32_h405.cfg": {
+      "bytes": 248,
+      "sha256": "717a444900242ebe4c8590dbb554ab2992e764a8dff87016754f21aec38996c8"
+    },
+    "bin/openocd/scripts/board/olimex_stm32_p107.cfg": {
+      "bytes": 230,
+      "sha256": "00bc20151d4278951cfd94ca11c10c43ed2e1e37ac7a5a60437f2485dce4683e"
+    },
+    "bin/openocd/scripts/board/omap2420_h4.cfg": {
+      "bytes": 467,
+      "sha256": "1cb70475dd4268ffb27ab902d119c6eccb384aa665a86cf79d9747d47980752b"
+    },
+    "bin/openocd/scripts/board/openrd.cfg": {
+      "bytes": 4582,
+      "sha256": "8190cfbf0d5697f699510008691ee12e425bdde5a695a1b125fa1da04c0c0fe2"
+    },
+    "bin/openocd/scripts/board/or1k_generic.cfg": {
+      "bytes": 1183,
+      "sha256": "192c86421401f7aab983d3fa71cd85542e1f6367e2472d65da3de036db39f9b4"
+    },
+    "bin/openocd/scripts/board/orange_pi_zero_3.cfg": {
+      "bytes": 858,
+      "sha256": "35aca17e9f8d17249edeaf910f1922bbd20156f2e9e26762c91802b4a7d10875"
+    },
+    "bin/openocd/scripts/board/osk5912.cfg": {
+      "bytes": 1199,
+      "sha256": "3037c118950ee3314438fc6fff3672abf95d7df0f5aace566c109e7d5e38a23c"
+    },
+    "bin/openocd/scripts/board/phone_se_j100i.cfg": {
+      "bytes": 317,
+      "sha256": "c6a3155b683e41cf9f3c1e79a3a4adf58f50f7f5b51b08c47b1e77a5feb64de5"
+    },
+    "bin/openocd/scripts/board/phytec_lpc3250.cfg": {
+      "bytes": 2115,
+      "sha256": "a1f15940e81ef7d8c3830c521a764805f69ffd7d3d08164f8d00b8fdef348d9d"
+    },
+    "bin/openocd/scripts/board/pic-p32mx.cfg": {
+      "bytes": 140,
+      "sha256": "9009fae6b0c6796d648d9922f8b6e8711e9d68f69cff6799b0517b97f31d4bf7"
+    },
+    "bin/openocd/scripts/board/pico-debug.cfg": {
+      "bytes": 325,
+      "sha256": "0928f170ea09a37021f28fd6aed1727ac330b804d65dea1669482579c01a2a0d"
+    },
+    "bin/openocd/scripts/board/pico2-debug.cfg": {
+      "bytes": 327,
+      "sha256": "08ec1a9bb5146bfd9f8db7b1a7286fdfb61f356019d8cbaf20e61ba4b0aef936"
+    },
+    "bin/openocd/scripts/board/pipistrello.cfg": {
+      "bytes": 505,
+      "sha256": "fd25370173051ce964dc1e912dcdfd5826b5979841a9d101656e37882c1dbc2a"
+    },
+    "bin/openocd/scripts/board/propox_mmnet1001.cfg": {
+      "bytes": 3457,
+      "sha256": "36af56b3493fecb256c7f4ba8071662c04280cce3a3793327c68a00ce9ab2db6"
+    },
+    "bin/openocd/scripts/board/pxa255_sst.cfg": {
+      "bytes": 2432,
+      "sha256": "40e9a41ca81de83fb197c6c305c98e7a308839d61bc79bfd8821da9afcb6a84b"
+    },
+    "bin/openocd/scripts/board/quark_d2000_refboard.cfg": {
+      "bytes": 400,
+      "sha256": "8cedc1f1567460e0c526a80c5fd9aa857dcf47d82444c2b3e63877ce43fd7c9b"
+    },
+    "bin/openocd/scripts/board/quark_x10xx_board.cfg": {
+      "bytes": 276,
+      "sha256": "0e3407075b62b915614745571aba79ebcffa3f79d051d22d4e403c4cc41e966e"
+    },
+    "bin/openocd/scripts/board/quicklogic_quickfeather.cfg": {
+      "bytes": 231,
+      "sha256": "846765e7be7d992b36f85145d8e12538faab79fb8b0a586ce5272ded46ab76f5"
+    },
+    "bin/openocd/scripts/board/radiona_ulx3s.cfg": {
+      "bytes": 1039,
+      "sha256": "8b6aa9c5fac90c183eca4a4cac948b52a106676ec5dc188bed69773326b1443e"
+    },
+    "bin/openocd/scripts/board/redbee.cfg": {
+      "bytes": 79,
+      "sha256": "0a32c14a19fdaaafdf4f61d6067c1e7d6a7ae871fb67158fc16f1e8a0ae3dedf"
+    },
+    "bin/openocd/scripts/board/reflexces_achilles_i-dev_kit_arria10.cfg": {
+      "bytes": 458,
+      "sha256": "280bae4331492cef335b65cd75732c764fb3b3be3696f63265d596de308a81a4"
+    },
+    "bin/openocd/scripts/board/renesas_dk-s7g2.cfg": {
+      "bytes": 292,
+      "sha256": "f1392fd50bc55448e6dedc2ecc8607e8a1ab2d844aefb76af78ad1c47e3ac7fe"
+    },
+    "bin/openocd/scripts/board/renesas_falcon.cfg": {
+      "bytes": 238,
+      "sha256": "8aeccc01ff27f6d497035ef7f967801d81e683aa2765341fdc6fe19b31950c9c"
+    },
+    "bin/openocd/scripts/board/renesas_gr_peach.cfg": {
+      "bytes": 144,
+      "sha256": "f4fdc8537a896327cc676096de79b3f9e4da6f054136e3304ac65cb643df6b86"
+    },
+    "bin/openocd/scripts/board/renesas_porter.cfg": {
+      "bytes": 136,
+      "sha256": "f00f0fd185069074ac2042e02a848fdd9e2ff53d4e02516fae6439fc47abac1b"
+    },
+    "bin/openocd/scripts/board/renesas_salvator-xs.cfg": {
+      "bytes": 272,
+      "sha256": "8740f27d816f85dbb1c3f7c661695d561f69b68f5a7789c41b62b2512fc097c6"
+    },
+    "bin/openocd/scripts/board/renesas_silk.cfg": {
+      "bytes": 136,
+      "sha256": "60c21dc4b22dce21a50829fe86016bb2005df29e4b735abf0d11e378ce651f6b"
+    },
+    "bin/openocd/scripts/board/renesas_stout.cfg": {
+      "bytes": 136,
+      "sha256": "c130339fd5b3ec16f4c02e951622f13731636cbea1071d2ef5067116ec30bef2"
+    },
+    "bin/openocd/scripts/board/rigado_bmd300_ek.cfg": {
+      "bytes": 241,
+      "sha256": "c615c2db53b0df844268df5ff6d18067f23cac14aea2b18605d30e1532c5ed64"
+    },
+    "bin/openocd/scripts/board/rpi3.cfg": {
+      "bytes": 474,
+      "sha256": "2e7d174ab9ccb67220824d0e4567a311e926eaf458f86b98fba4438caa5857e1"
+    },
+    "bin/openocd/scripts/board/rpi4b.cfg": {
+      "bytes": 482,
+      "sha256": "7ca0637316bf3fad6d925a092d6b05e0c17d7fe08df20535e3edf6652e602cb8"
+    },
+    "bin/openocd/scripts/board/rsc-w910.cfg": {
+      "bytes": 1727,
+      "sha256": "e7caef9cf63672b96fe58f282348b8c7d06df9abca2c99bf6db7a18dca831197"
+    },
+    "bin/openocd/scripts/board/sayma_amc.cfg": {
+      "bytes": 1568,
+      "sha256": "b8d2cc733501b8269c08b95136d570bf1413c9c720c4370111bb88ad4bd11f1f"
+    },
+    "bin/openocd/scripts/board/sheevaplug.cfg": {
+      "bytes": 4824,
+      "sha256": "20e334c300a303572eb73000c21e669c035f1f1333973602a4f8a64a111ac9de"
+    },
+    "bin/openocd/scripts/board/sifive/e31-arty.cfg": {
+      "bytes": 723,
+      "sha256": "bbd549fdba278cbf490e74d4df9a34d9f9ee91cf0c904cc4907bfc8e1f57c88a"
+    },
+    "bin/openocd/scripts/board/sifive/e51-arty.cfg": {
+      "bytes": 723,
+      "sha256": "ffc8d0e0bda225e1d0d86c68d7aba46bfc5496a7d7a9e5de91a381f13359ab19"
+    },
+    "bin/openocd/scripts/board/sifive/hifive1-rev-b.cfg": {
+      "bytes": 537,
+      "sha256": "f175a62bc2a752e24bb934c20f2301a93b9f783aeb412f7cd53b9fad709ff9f6"
+    },
+    "bin/openocd/scripts/board/sifive/hifive1.cfg": {
+      "bytes": 1022,
+      "sha256": "a2a497b8c8f698742598654ab02eaaf364ec02f3ded52455e57fb3e30904e3bf"
+    },
+    "bin/openocd/scripts/board/smdk6410.cfg": {
+      "bytes": 401,
+      "sha256": "89ff4ab086eba2a52e74b4b61314fe7689fe4d8c678273cc12a58cca719b1296"
+    },
+    "bin/openocd/scripts/board/snps_em_sk_v1.cfg": {
+      "bytes": 555,
+      "sha256": "6bc77ba66a3f577f4ab654b3802be3b4a182ff0f97785584f60431c76f1af039"
+    },
+    "bin/openocd/scripts/board/snps_em_sk_v2.1.cfg": {
+      "bytes": 659,
+      "sha256": "3b502baa1b34ad966f7783adefe0ea8654d68640251b50bf9e6afc29d16d14b7"
+    },
+    "bin/openocd/scripts/board/snps_em_sk_v2.2.cfg": {
+      "bytes": 615,
+      "sha256": "30c66ea32954f52d198dcb7938c5067904f4e82fa5511ae4b095e9a52eb34c75"
+    },
+    "bin/openocd/scripts/board/snps_em_sk.cfg": {
+      "bytes": 612,
+      "sha256": "f5cf8408cb66c77919d7b072b7902a70373843b22a793cbad23c78da5e56857f"
+    },
+    "bin/openocd/scripts/board/snps_hsdk_4xd.cfg": {
+      "bytes": 411,
+      "sha256": "c1d5a757e7f5633862ada844e49b2ea560fc6c5a59104c0512c487ba5741070f"
+    },
+    "bin/openocd/scripts/board/snps_hsdk.cfg": {
+      "bytes": 416,
+      "sha256": "ed1b83622c7a11233373c5089572abfb441677afe29567abeacb93451aaa4641"
+    },
+    "bin/openocd/scripts/board/spansion_sk-fm4-176l-s6e2cc.cfg": {
+      "bytes": 359,
+      "sha256": "1fe7c9055fbe862c3e57badde04a8001b3c2a69c650a50f5d0e4f9a2db89c847"
+    },
+    "bin/openocd/scripts/board/spansion_sk-fm4-u120-9b560.cfg": {
+      "bytes": 306,
+      "sha256": "b73d8b5a10bb9eb13cf71980ea88881ca8728c9b50b2ef6c1b8a82ccfc2df53e"
+    },
+    "bin/openocd/scripts/board/spear300evb_mod.cfg": {
+      "bytes": 1071,
+      "sha256": "585d129ea917c95db05a80c7679a11ab4f0f21ca751e048d7e328e152b77170f"
+    },
+    "bin/openocd/scripts/board/spear300evb.cfg": {
+      "bytes": 1262,
+      "sha256": "acdb83cce7c80dec83a8b2baafbdd8adb04f5e74d28cb89006a6a6ad008d1506"
+    },
+    "bin/openocd/scripts/board/spear310evb20_mod.cfg": {
+      "bytes": 1075,
+      "sha256": "60ec0bf27ef4f5e0f9fb5a7f112cb8e155eb885f63583c55a0eab74672f47d93"
+    },
+    "bin/openocd/scripts/board/spear310evb20.cfg": {
+      "bytes": 1563,
+      "sha256": "f58496d84371aab1611bbc46a91ef0c95a19a0f99472705a4d6772f8317e8420"
+    },
+    "bin/openocd/scripts/board/spear320cpu_mod.cfg": {
+      "bytes": 1034,
+      "sha256": "7a5a3f7f5df68c1fee630e09e17f89572243736368a5ec36019125a313f9ee6d"
+    },
+    "bin/openocd/scripts/board/spear320cpu.cfg": {
+      "bytes": 1394,
+      "sha256": "1f2e6a9aad58f2b31aba26ddfbf62f39f11bfa845e67517c21805abdcf1f683f"
+    },
+    "bin/openocd/scripts/board/st_b-l475e-iot01a.cfg": {
+      "bytes": 2042,
+      "sha256": "d10d836568f9499320b8b01a07159370cdf49e97e390f6938c13d68d5404cfd7"
+    },
+    "bin/openocd/scripts/board/st_nucleo_8l152r8.cfg": {
+      "bytes": 294,
+      "sha256": "943ed4ac133472ab6c80273b6e81cd5f4fa62246713bdd5f9ac6a3d123660ef9"
+    },
+    "bin/openocd/scripts/board/st_nucleo_8s208rb.cfg": {
+      "bytes": 366,
+      "sha256": "1aec7fe7fb10d16c5a641100c6b17d361206d1e27c59dd373ced7418a307b58d"
+    },
+    "bin/openocd/scripts/board/st_nucleo_c0.cfg": {
+      "bytes": 161,
+      "sha256": "bf6c2c5cd4c19c89808509901ad7d19b9581e191128b1298115078f81ddf2d64"
+    },
+    "bin/openocd/scripts/board/st_nucleo_f0.cfg": {
+      "bytes": 499,
+      "sha256": "24d032280901512d1ed0a8981c5d518cd8bdb87ee459c2a3901dcb134e487f70"
+    },
+    "bin/openocd/scripts/board/st_nucleo_f103rb.cfg": {
+      "bytes": 305,
+      "sha256": "0c745ebdaa9d59661d08445896265c9df553e43f68f44b11532429020288adc6"
+    },
+    "bin/openocd/scripts/board/st_nucleo_f3.cfg": {
+      "bytes": 305,
+      "sha256": "c07e23ebf2f36b15321aa48813b8bb31a661878a21eb6ca4693113d1653518c0"
+    },
+    "bin/openocd/scripts/board/st_nucleo_f4.cfg": {
+      "bytes": 414,
+      "sha256": "4a60c4abf45fef58dde1fbbd2108b1275750f9ccb85a4d0d426346654f92c3b5"
+    },
+    "bin/openocd/scripts/board/st_nucleo_f7.cfg": {
+      "bytes": 264,
+      "sha256": "ed13e3e26114534715c309221ba57194585d1ebdca1b95a708c8649ecc25040f"
+    },
+    "bin/openocd/scripts/board/st_nucleo_g0.cfg": {
+      "bytes": 540,
+      "sha256": "d776865f63a81580425abc381dd0501e29dc2735679845d550e81f0e5372f92e"
+    },
+    "bin/openocd/scripts/board/st_nucleo_g4.cfg": {
+      "bytes": 540,
+      "sha256": "9f47fbf3baf5ded5a1bb1b089f24ae3812aa0a6ec1ff338a61657ee90a9624af"
+    },
+    "bin/openocd/scripts/board/st_nucleo_h743zi.cfg": {
+      "bytes": 297,
+      "sha256": "54dbbcded6d1648e334d4a01cd05a4813b61e4bad1ca35d7e5ee59b4dc452136"
+    },
+    "bin/openocd/scripts/board/st_nucleo_h745zi.cfg": {
+      "bytes": 377,
+      "sha256": "7d5444539ef66762b76921fd20f4f69467cd78680b8d9febc1215efc2a6712e9"
+    },
+    "bin/openocd/scripts/board/st_nucleo_l073rz.cfg": {
+      "bytes": 399,
+      "sha256": "bb4caf3dfa82a8a2d0f8b6fd7ac5acd310d96871a97ed766fea3dd79263f0351"
+    },
+    "bin/openocd/scripts/board/st_nucleo_l1.cfg": {
+      "bytes": 315,
+      "sha256": "7ef5a37e232f50a50f2478416d87eba08e92609776a222e4b62ad0c3256618dd"
+    },
+    "bin/openocd/scripts/board/st_nucleo_l4.cfg": {
+      "bytes": 307,
+      "sha256": "cc274590a787e991254f5e3aa8072d31537f1783ee2c8784e7a514a144e0125e"
+    },
+    "bin/openocd/scripts/board/st_nucleo_l5.cfg": {
+      "bytes": 298,
+      "sha256": "7a36e4946cdac922b3bb240da77c712f1c3013ef9516a35dbf1ccf3270befa25"
+    },
+    "bin/openocd/scripts/board/st_nucleo_wb55.cfg": {
+      "bytes": 225,
+      "sha256": "1d4da02141b49021e0086774f0efbf668e484299c97acf529cd05d21f7e0e93a"
+    },
+    "bin/openocd/scripts/board/st/nucleo-u083rc.cfg": {
+      "bytes": 238,
+      "sha256": "78dcd051cbcf17d6803aa12d3d367ceb911de26896000dd772ecc576186fbf1e"
+    },
+    "bin/openocd/scripts/board/st/stm32mp135f-dk.cfg": {
+      "bytes": 243,
+      "sha256": "83633f2d41936c34b4960ebe7f29643e31d9557a2fd4826e3a8536b6a374ca2e"
+    },
+    "bin/openocd/scripts/board/st/stm32mp157f-dk2.cfg": {
+      "bytes": 366,
+      "sha256": "bb67337bbb35223f034b7203d084ebd325f376508bf04b2daf4d200d05d006fb"
+    },
+    "bin/openocd/scripts/board/st/stm32mp235f-dk.cfg": {
+      "bytes": 253,
+      "sha256": "bbff2a1302150bfb3f4fb74b657fdac35a8707b7588e1b34c652ae8a819008e3"
+    },
+    "bin/openocd/scripts/board/st/stm32mp257f-dk.cfg": {
+      "bytes": 237,
+      "sha256": "98d87895a5948c9a7dcadbeee3484e98e4b669a84f0a8f57517c7148b5b9c195"
+    },
+    "bin/openocd/scripts/board/steval_pcc010.cfg": {
+      "bytes": 391,
+      "sha256": "cc81a8739f39795f6f01641e7e5bb855233939ae737f23d9ab471a36bbe39225"
+    },
+    "bin/openocd/scripts/board/steval-idb007v1.cfg": {
+      "bytes": 326,
+      "sha256": "1c981b574265047942506014214bea6af37254a1dec9ab2a576b8bebac9cffd2"
+    },
+    "bin/openocd/scripts/board/steval-idb008v1.cfg": {
+      "bytes": 326,
+      "sha256": "17852ead51fd035709f58eb3c2f6bbeca36be77fbfb8d6ec884459ba9df7ffe2"
+    },
+    "bin/openocd/scripts/board/steval-idb011v1.cfg": {
+      "bytes": 165,
+      "sha256": "d1909c67ba5df0d379169c72c12d21031a613b1dbb199f4c9dfb9c258d119d7f"
+    },
+    "bin/openocd/scripts/board/steval-idb012v1.cfg": {
+      "bytes": 205,
+      "sha256": "607cda7640af454e78457e37bd9001b0a7f9daf069d6624647bc57f86f68bdd4"
+    },
+    "bin/openocd/scripts/board/stm320518_eval_stlink.cfg": {
+      "bytes": 451,
+      "sha256": "23c525898299e05e462d5ee275196d876a79b60e62d7ff2ba049bf6b0fecb3dc"
+    },
+    "bin/openocd/scripts/board/stm320518_eval.cfg": {
+      "bytes": 327,
+      "sha256": "0d11f900debb9c2f3589ca777ee369e29ce811c9958e28bfe6a5fc5b265a9379"
+    },
+    "bin/openocd/scripts/board/stm32100b_eval.cfg": {
+      "bytes": 256,
+      "sha256": "cc87dff0d52b1d2004496aff4663cd3fe81eea84c1a0944d3b245979925c3866"
+    },
+    "bin/openocd/scripts/board/stm3210b_eval.cfg": {
+      "bytes": 292,
+      "sha256": "93dfefebea389309d4c8bacfe856be1f60367e661dadd38440efb02e7bb11db7"
+    },
+    "bin/openocd/scripts/board/stm3210c_eval.cfg": {
+      "bytes": 287,
+      "sha256": "3fb8a19820c979f509e0f51df8d9edc86114333bfc48d214920e7724b919283d"
+    },
+    "bin/openocd/scripts/board/stm3210e_eval.cfg": {
+      "bytes": 1278,
+      "sha256": "dad467c4316082eed2786b823b122bd906df15a6a67af186e12ddd70ac8ccc92"
+    },
+    "bin/openocd/scripts/board/stm3220g_eval_stlink.cfg": {
+      "bytes": 454,
+      "sha256": "2cecb315dc0855d48812e114b3ff3240364b7b989002c57c37d9834572200d47"
+    },
+    "bin/openocd/scripts/board/stm3220g_eval.cfg": {
+      "bytes": 328,
+      "sha256": "ddf0a01a8628bae3b01ff0294d1f08e107b6bac791abd1072829f93743676a1d"
+    },
+    "bin/openocd/scripts/board/stm3241g_eval_stlink.cfg": {
+      "bytes": 455,
+      "sha256": "80879a32a1aa837ca50538be88fb5c9f650b4430038a740bf177da6714418f35"
+    },
+    "bin/openocd/scripts/board/stm3241g_eval.cfg": {
+      "bytes": 329,
+      "sha256": "edb3d5897a4f2b202714a84074ea36c6abbd96a5c393d687496e9553db9723a3"
+    },
+    "bin/openocd/scripts/board/stm32429i_eval_stlink.cfg": {
+      "bytes": 471,
+      "sha256": "40dfd74e6b7d7325a4c714324cc734f638d5b29e9fc4279e580dc8ece41b2e20"
+    },
+    "bin/openocd/scripts/board/stm32429i_eval.cfg": {
+      "bytes": 345,
+      "sha256": "aaeb9e9d2938cb104308d81f94c7289f43c71a1078308839057ad5830707b5cc"
+    },
+    "bin/openocd/scripts/board/stm32439i_eval_stlink.cfg": {
+      "bytes": 471,
+      "sha256": "e82324ce50388ef778103a605bfacb83ec4139cb4a919dd94b0e2a967eb326d5"
+    },
+    "bin/openocd/scripts/board/stm32439i_eval.cfg": {
+      "bytes": 345,
+      "sha256": "30b7a72566f586ef3ce10d1773a220e22d6219b7db321b297066d0e162d5a95f"
+    },
+    "bin/openocd/scripts/board/stm327x6g_eval.cfg": {
+      "bytes": 402,
+      "sha256": "fc6581a6b98ba4e5ea5b1161ef5243ede7fa71ee456b43982d808b239c961323"
+    },
+    "bin/openocd/scripts/board/stm32f0discovery.cfg": {
+      "bytes": 315,
+      "sha256": "e67b43e198fbe26a35f16a2b3ede9c5381c4962085d2fa40306ba2e397154df1"
+    },
+    "bin/openocd/scripts/board/stm32f103c8_blue_pill.cfg": {
+      "bytes": 879,
+      "sha256": "596f28227548342539e93f0cdf0379f15072e32011282ca53793cd7d3ec24193"
+    },
+    "bin/openocd/scripts/board/stm32f334discovery.cfg": {
+      "bytes": 327,
+      "sha256": "82edc6676faefd646f5287c2275b0c182305da214a0211461717e2a24d2c138a"
+    },
+    "bin/openocd/scripts/board/stm32f3discovery.cfg": {
+      "bytes": 291,
+      "sha256": "8aad354295d0d79db4fc15e4d5788a632059fe2167a124a733ae21092138d039"
+    },
+    "bin/openocd/scripts/board/stm32f412g-disco.cfg": {
+      "bytes": 2463,
+      "sha256": "6b7e81e882bc4364fcdc2f379b7f840c631ecf4869b96e0a5a0d9a6e87d50025"
+    },
+    "bin/openocd/scripts/board/stm32f413h-disco.cfg": {
+      "bytes": 2742,
+      "sha256": "2adcb117062fd2ad1bc085b9e215e7e03d376791f85ef3896c0c84f2fdc0a7b7"
+    },
+    "bin/openocd/scripts/board/stm32f429disc1.cfg": {
+      "bytes": 303,
+      "sha256": "73fc0135728600b90105b8c5fc5a79bc4b4a4d9c62fd365b617c50afabe25940"
+    },
+    "bin/openocd/scripts/board/stm32f429discovery.cfg": {
+      "bytes": 362,
+      "sha256": "8165472697808bea60750784b67ec7cf1264732a580da8d482f3dedd7ccabb8d"
+    },
+    "bin/openocd/scripts/board/stm32f469discovery.cfg": {
+      "bytes": 376,
+      "sha256": "8df366921ec25763ac4d6218dd76ad635646b8fc89295125611de4d72056a004"
+    },
+    "bin/openocd/scripts/board/stm32f469i-disco.cfg": {
+      "bytes": 2313,
+      "sha256": "4e86b9521bd2d76d707171f09253690fcb2c643416c76dcf42d0786ce4824d0f"
+    },
+    "bin/openocd/scripts/board/stm32f4discovery.cfg": {
+      "bytes": 349,
+      "sha256": "31d83b73baff50775dce03984ac33ba20245a82a8c80d719fd4acb83cdd23598"
+    },
+    "bin/openocd/scripts/board/stm32f723e-disco.cfg": {
+      "bytes": 2592,
+      "sha256": "4100ceca1c4ac83ee56db8324a3ee39272b396786382fc497d5dbd18279f9216"
+    },
+    "bin/openocd/scripts/board/stm32f746g-disco.cfg": {
+      "bytes": 2439,
+      "sha256": "adf89c6f538ea5e9cc2e1791dcbc1a8912d47e148f4612bf29e40153f42ac5ad"
+    },
+    "bin/openocd/scripts/board/stm32f769i-disco.cfg": {
+      "bytes": 2916,
+      "sha256": "2016eabaf9d39a06216d6d89911419a7306282703a709530c6f09370d5c2f020"
+    },
+    "bin/openocd/scripts/board/stm32f7discovery.cfg": {
+      "bytes": 409,
+      "sha256": "0faf8bd67b6dbe1c229d6ab6b1f29b0c85d320d9aa446ed88a08a62351941619"
+    },
+    "bin/openocd/scripts/board/stm32h735g-disco.cfg": {
+      "bytes": 5448,
+      "sha256": "da556434104632d893e6a7c049290f42a1d4569b000d737057e9e744570ac0fa"
+    },
+    "bin/openocd/scripts/board/stm32h745i-disco.cfg": {
+      "bytes": 1419,
+      "sha256": "fdfeac5a70b887066ce32f2b248214a9a45e8ef60f5b3c14148c247060212c86"
+    },
+    "bin/openocd/scripts/board/stm32h747i-disco.cfg": {
+      "bytes": 5747,
+      "sha256": "d37802dae7c93fa5ff8985f0edaaac3377a641bd3265da855c9d331df03d15e2"
+    },
+    "bin/openocd/scripts/board/stm32h750b-disco.cfg": {
+      "bytes": 1403,
+      "sha256": "8ec7ad200827eb263b1411f875ac35d3dc3099fcdda83d80ca0f39834c25d9f8"
+    },
+    "bin/openocd/scripts/board/stm32h7b3i-disco.cfg": {
+      "bytes": 5705,
+      "sha256": "9bf18e031bc3ce3c6f4872bb3199f07caa5c31815c2760c8be129002289100a4"
+    },
+    "bin/openocd/scripts/board/stm32h7x_dual_qspi.cfg": {
+      "bytes": 4318,
+      "sha256": "d96a467e5396647a08ce619480587b6524019f34f2b335e44c41438f4cafaaec"
+    },
+    "bin/openocd/scripts/board/stm32h7x3i_eval.cfg": {
+      "bytes": 477,
+      "sha256": "a78455683c459ea8ce140e378558265b054f50d4de2c6a659f3d0922f7020814"
+    },
+    "bin/openocd/scripts/board/stm32l0discovery.cfg": {
+      "bytes": 304,
+      "sha256": "d955d319e3987e087cf6bfcf799bdf794426c4a7b81da96842bf1cf600a46e2e"
+    },
+    "bin/openocd/scripts/board/stm32l476g-disco.cfg": {
+      "bytes": 2038,
+      "sha256": "ff777fa5e047018b7e8d6d26454c44174b5349a112700edce42c6510b2e433ba"
+    },
+    "bin/openocd/scripts/board/stm32l496g-disco.cfg": {
+      "bytes": 2408,
+      "sha256": "8877c8c2c5f5d7d02ebc6f242dd3c08471c7c0f2217ff2edd7d50888b8f35ca7"
+    },
+    "bin/openocd/scripts/board/stm32l4discovery.cfg": {
+      "bytes": 422,
+      "sha256": "68ee9ca1ed1b24afabb4fd865985a403a14ddc8721ea6d7a1bd326a31771ecd1"
+    },
+    "bin/openocd/scripts/board/stm32l4p5g-disco.cfg": {
+      "bytes": 5826,
+      "sha256": "14ee72dd15fe8cbd0d8e7a1be9ea0f351153e37a901503a4c34c514e1bfe2097"
+    },
+    "bin/openocd/scripts/board/stm32l4r9i-disco.cfg": {
+      "bytes": 4385,
+      "sha256": "d56500027b2e2aae96114db5e442af5f4aaec1197eb06d869c0b0bb6cbb024ab"
+    },
+    "bin/openocd/scripts/board/stm32ldiscovery.cfg": {
+      "bytes": 313,
+      "sha256": "de0d4625f13b679584fd76a76e8206c94aaeb2cec16763f95aca0d499027fff1"
+    },
+    "bin/openocd/scripts/board/stm32vldiscovery.cfg": {
+      "bytes": 313,
+      "sha256": "f459a6fcdd69724bded01f63bd3e3f36dd0060e4c2ffce970beca05d61389e4e"
+    },
+    "bin/openocd/scripts/board/str910-eval.cfg": {
+      "bytes": 1704,
+      "sha256": "9298a89d5ee780f5adae93195c58b98c8bbd4526be67bb09619be125fdf8f0c0"
+    },
+    "bin/openocd/scripts/board/telo.cfg": {
+      "bytes": 1601,
+      "sha256": "87b507547582ee7cfa204cb323f8df7808294b37cde7267ea3599cd497b07918"
+    },
+    "bin/openocd/scripts/board/ti_am243_launchpad.cfg": {
+      "bytes": 539,
+      "sha256": "c4cd1be78ff356e9ca985fdb39e55cea036a05bd6fd68fd8f1a6205e5370e73f"
+    },
+    "bin/openocd/scripts/board/ti_am261_launchpad.cfg": {
+      "bytes": 540,
+      "sha256": "ddb59741c4fa70654a2eb4787cfbf77baa50da195c5a21d7dd10afb84d2c8416"
+    },
+    "bin/openocd/scripts/board/ti_am263_launchpad.cfg": {
+      "bytes": 539,
+      "sha256": "55ec0f523de4057066cd6a9288c23df0fdb07c750b7d0db97c5aee341306dfb7"
+    },
+    "bin/openocd/scripts/board/ti_am263p_launchpad.cfg": {
+      "bytes": 544,
+      "sha256": "f14aefc863d86dce69d36fa98304a7e3407aae6945b84242a80eaa4520ad7979"
+    },
+    "bin/openocd/scripts/board/ti_am273_launchpad.cfg": {
+      "bytes": 539,
+      "sha256": "159b0b08b3b9312f6f04507851440e7edb70a16b6445e0a02179dd7a89806b7d"
+    },
+    "bin/openocd/scripts/board/ti_am335xevm.cfg": {
+      "bytes": 226,
+      "sha256": "3717a7d99c9d5835cfb92877e1fd4e79c1da36715489d70fe6be42d2097937c3"
+    },
+    "bin/openocd/scripts/board/ti_am437x_idk.cfg": {
+      "bytes": 369,
+      "sha256": "f57a56c690ffcf460f91ce6610134dd9058a9d09782589b9a2cc617c7fe7b084"
+    },
+    "bin/openocd/scripts/board/ti_am43xx_evm.cfg": {
+      "bytes": 198,
+      "sha256": "50367215f4b4ecf39b36bbb360ff38b42b72057ad05a4648566fb13fa6dd8648"
+    },
+    "bin/openocd/scripts/board/ti_am625_swd_native.cfg": {
+      "bytes": 732,
+      "sha256": "48e14a329b16796cf774a374f73e521bc3ae5703bea2ad821bfc2daea51af0d5"
+    },
+    "bin/openocd/scripts/board/ti_am625evm.cfg": {
+      "bytes": 544,
+      "sha256": "eb87f1d22171be09672fa7b984eaa6debff3322aa95be97295475e3b207ebe7f"
+    },
+    "bin/openocd/scripts/board/ti_am62a7_swd_native.cfg": {
+      "bytes": 732,
+      "sha256": "698959394a20a9757035d868f623cde7099c2b66677b6a40550b87e0e4a088d7"
+    },
+    "bin/openocd/scripts/board/ti_am62a7evm.cfg": {
+      "bytes": 546,
+      "sha256": "f049fb6fd0ffc885580e6579bfa84c50e5184767422c8a7a6b05be0ca112cf65"
+    },
+    "bin/openocd/scripts/board/ti_am62levm.cfg": {
+      "bytes": 547,
+      "sha256": "a941014550b7e1270524392f3a718524ec2571c83fd7193ceed6d7095cc937b8"
+    },
+    "bin/openocd/scripts/board/ti_am62p_swd_native.cfg": {
+      "bytes": 727,
+      "sha256": "560a5aa8615456325803a558c935d54f4d676c60108cce109229dbacae3fb943"
+    },
+    "bin/openocd/scripts/board/ti_am62pevm.cfg": {
+      "bytes": 531,
+      "sha256": "cd1d384e96c3095e94e698f6330b4d21442fc1f853259872ab8bcfc8fb20392f"
+    },
+    "bin/openocd/scripts/board/ti_am642evm.cfg": {
+      "bytes": 497,
+      "sha256": "057715824015a01650325c8370a6957152b62e79166e57e8e92d4f2351156b45"
+    },
+    "bin/openocd/scripts/board/ti_am654evm.cfg": {
+      "bytes": 513,
+      "sha256": "6d6b618d173dde1c722147ef1d55c0ee6b5b4d7658a95cb9f4d05abf72475b51"
+    },
+    "bin/openocd/scripts/board/ti_beagleboard_xm.cfg": {
+      "bytes": 318,
+      "sha256": "6c70da27bc14ddbbf6f71475d06eb2afa4c4280292a58f32991814a3eb73c6c7"
+    },
+    "bin/openocd/scripts/board/ti_beagleboard.cfg": {
+      "bytes": 263,
+      "sha256": "13d3fe3d9e1a820a9e661a160ea35ce9fe3a4ea7dfd7d35bb05339a2a3054ab7"
+    },
+    "bin/openocd/scripts/board/ti_beaglebone_black.cfg": {
+      "bytes": 194,
+      "sha256": "67a837adfe23132a24340e301ec72aa2e077fffe926f8349069fbd22ae2add99"
+    },
+    "bin/openocd/scripts/board/ti_beaglebone-base.cfg": {
+      "bytes": 155,
+      "sha256": "0c1eb941dd9f54f870a468892eee864d9fb05a6fcc27e72dd0c697dda6a172f3"
+    },
+    "bin/openocd/scripts/board/ti_beaglebone.cfg": {
+      "bytes": 285,
+      "sha256": "e982480746b6b2816427de4e3195ff81f823367b5c5d7b75972c45d005ae8921"
+    },
+    "bin/openocd/scripts/board/ti_blaze.cfg": {
+      "bytes": 123,
+      "sha256": "0a0d67088e40ddcf89173e5990909e0f47dd9c04c3c6d87b777c5ac2feda8c92"
+    },
+    "bin/openocd/scripts/board/ti_cc13x0_launchpad.cfg": {
+      "bytes": 197,
+      "sha256": "4d8195192e4a56f8cbfd4980368e6d954f6ea7a1bd5c1e21e2b7e60d97f93cec"
+    },
+    "bin/openocd/scripts/board/ti_cc13x2_launchpad.cfg": {
+      "bytes": 197,
+      "sha256": "d4c985a358cff835bcbfe46281e1c8acb7053611897da365d68adf0225ce1ec6"
+    },
+    "bin/openocd/scripts/board/ti_cc26x0_launchpad.cfg": {
+      "bytes": 197,
+      "sha256": "d38abddd924c9af84d6884d96b478c4ba6cb63215839ab3be363705212597b28"
+    },
+    "bin/openocd/scripts/board/ti_cc26x2_launchpad.cfg": {
+      "bytes": 197,
+      "sha256": "0f6d0152fc800b4c13287629f093bd6f8f72270fccdaf980c5569ef7ab75ac7c"
+    },
+    "bin/openocd/scripts/board/ti_cc26x2x7_launchpad.cfg": {
+      "bytes": 201,
+      "sha256": "9a264ac8087288f40121970b483b933f03b047675a1286a650c7dbc3da028697"
+    },
+    "bin/openocd/scripts/board/ti_cc3200_launchxl.cfg": {
+      "bytes": 403,
+      "sha256": "a509d4f625e6e87ee1142374e84804b598ff30d45e99c682bfb48f01b9801bf9"
+    },
+    "bin/openocd/scripts/board/ti_cc3220sf_launchpad.cfg": {
+      "bytes": 209,
+      "sha256": "da9128343815632ab3a13147536b5e60af83595f3e3d6fa909bec04812b77179"
+    },
+    "bin/openocd/scripts/board/ti_cc32xx_launchpad.cfg": {
+      "bytes": 253,
+      "sha256": "0fad6907fbc5085e12cc1311d9affce6f8e594062b3d384ca4b373132c5fba43"
+    },
+    "bin/openocd/scripts/board/ti_dk-tm4c129.cfg": {
+      "bytes": 286,
+      "sha256": "6367bd2ba92dddce54490efa6c30094d3ac08a28caf770939f9572d3c256ccc6"
+    },
+    "bin/openocd/scripts/board/ti_ek-tm4c123gxl.cfg": {
+      "bytes": 294,
+      "sha256": "d0692771d73fc37c51a39201e13ea15d9eb2d9d78d01194d0345462e2516a022"
+    },
+    "bin/openocd/scripts/board/ti_ek-tm4c1294xl.cfg": {
+      "bytes": 296,
+      "sha256": "6a748b0a1f684f475a8c5c25a04c61b6c490f41f198f0b033648937f2309cbf6"
+    },
+    "bin/openocd/scripts/board/ti_j7200evm.cfg": {
+      "bytes": 498,
+      "sha256": "f50d6744b1ecb3b3af5ded5c89242b5393bb85a8f6096b572a82d61b27032c65"
+    },
+    "bin/openocd/scripts/board/ti_j721e_swd_native.cfg": {
+      "bytes": 748,
+      "sha256": "acb4e6a8370397fd1da3823dc3bd8afc823c9120a77477ea7b664ca32535a4d7"
+    },
+    "bin/openocd/scripts/board/ti_j721evm.cfg": {
+      "bytes": 498,
+      "sha256": "91787f173dc4b56f79009276dadf95b8a834f5a1be6365da7b425dbd6711bfa6"
+    },
+    "bin/openocd/scripts/board/ti_j721s2evm.cfg": {
+      "bytes": 544,
+      "sha256": "ebac4899b46868f5511c8ad17aba1c6894cfc52f5150d3e9d904e994e628c155"
+    },
+    "bin/openocd/scripts/board/ti_j722s_swd_native.cfg": {
+      "bytes": 785,
+      "sha256": "9d068c903d9ad8dd9c81384e363de76e8b0859d049a1b40879cd576d681a6d81"
+    },
+    "bin/openocd/scripts/board/ti_j722sevm.cfg": {
+      "bytes": 530,
+      "sha256": "296a4ffece53f86064c101d627818d266b410652652856eccc6ea6c71b0076ac"
+    },
+    "bin/openocd/scripts/board/ti_j784s4evm.cfg": {
+      "bytes": 601,
+      "sha256": "07c74174d7bdfd27f9c9e06eee64dfd68b645b198a1d32355f8d5cc7bc24419b"
+    },
+    "bin/openocd/scripts/board/ti_msp432_launchpad.cfg": {
+      "bytes": 197,
+      "sha256": "bea1fe52536343f500557e712f56f041dd09a0f2b860129368ba4ef9777c831f"
+    },
+    "bin/openocd/scripts/board/ti_mspm0_launchpad.cfg": {
+      "bytes": 460,
+      "sha256": "c958110f37c4899c4ebbdc48cf6cf0a11bfcfa7f914002504e7ccca4345cfd7b"
+    },
+    "bin/openocd/scripts/board/ti_pandaboard_es.cfg": {
+      "bytes": 119,
+      "sha256": "8ee89629e92d48d44b7102c271e96aad0c59c5704105cf749370825faf09b82e"
+    },
+    "bin/openocd/scripts/board/ti_pandaboard.cfg": {
+      "bytes": 119,
+      "sha256": "b1f57122d7d0d77a6927e0bb2b3c907bdc7acaeffc1cf685cc6e4c2f68e55c34"
+    },
+    "bin/openocd/scripts/board/ti_tmdx570ls20susb.cfg": {
+      "bytes": 467,
+      "sha256": "e3f2e01a59c62b59ce40b46d0fd461cff87b6972b5edd8088ef283cdfea6bcc8"
+    },
+    "bin/openocd/scripts/board/ti_tmdx570ls31usb.cfg": {
+      "bytes": 166,
+      "sha256": "d26d0242536bb788b04689fd37deacf66db1c0fab1a73a5320ad8adb23f167f4"
+    },
+    "bin/openocd/scripts/board/ti/launchxl2-tms57012.cfg": {
+      "bytes": 238,
+      "sha256": "1320099fb67a46d6989e996894c42a856a69dbaa27e1ed7f13ea4ca17d1aa446"
+    },
+    "bin/openocd/scripts/board/tocoding_poplar.cfg": {
+      "bytes": 491,
+      "sha256": "0b83cf7765e0d91d238f31b24aef9fb55ca93d6f87f91f2b02872361febb46f6"
+    },
+    "bin/openocd/scripts/board/topas910.cfg": {
+      "bytes": 2899,
+      "sha256": "7d5f7a44e715ccb292cc82f9c439ed20e6cf2f74a134ca6b4ccee46cf8a2e2b9"
+    },
+    "bin/openocd/scripts/board/topasa900.cfg": {
+      "bytes": 3089,
+      "sha256": "04fe6bcc76fccce96d07b85d59e089f96204f6deb370c9ead14ff2e5f0a62aeb"
+    },
+    "bin/openocd/scripts/board/tp-link_tl-mr3020.cfg": {
+      "bytes": 346,
+      "sha256": "637a03146b354a378a12f4b2c63a4c455dac17c96bd172a330b7345627f8b6fb"
+    },
+    "bin/openocd/scripts/board/tp-link_wdr4300.cfg": {
+      "bytes": 3464,
+      "sha256": "046ad09d2e4ac647abdb3fa184af92afc7b1496964930b68c357bf83cf46390d"
+    },
+    "bin/openocd/scripts/board/trion_t20_bga256.cfg": {
+      "bytes": 991,
+      "sha256": "d823a55b692eb891a73a57c71329b03a6139c82a1ba2ca8937ea7a1fe713c735"
+    },
+    "bin/openocd/scripts/board/twr-k60f120m.cfg": {
+      "bytes": 483,
+      "sha256": "5d848ab03b537c7e43677aa63c5fe480f7941bc597e140157bd4d133a4227a5e"
+    },
+    "bin/openocd/scripts/board/twr-k60n512.cfg": {
+      "bytes": 353,
+      "sha256": "606c8bf608fd1f101b15ef2f43a02edc322162010c5e7dde263aeea72ed87dd5"
+    },
+    "bin/openocd/scripts/board/twr-vf65gs10_cmsisdap.cfg": {
+      "bytes": 411,
+      "sha256": "29668be71316f55c74fbcfa845e1ec6d40d2fa3ce17dccff8a49e73acc714d16"
+    },
+    "bin/openocd/scripts/board/twr-vf65gs10.cfg": {
+      "bytes": 6258,
+      "sha256": "b2ebc879ac9f77f04bdf9a6a2a66716723ea5d18b0abd3ee29b02f307daa92c8"
+    },
+    "bin/openocd/scripts/board/tx25_stk5.cfg": {
+      "bytes": 4667,
+      "sha256": "c08b8d84a618717bf98493d8bef8de0a9c50d0a0f3a031f343f9f84d5380eae8"
+    },
+    "bin/openocd/scripts/board/tx27_stk5.cfg": {
+      "bytes": 1592,
+      "sha256": "4a66d95f6b8678fa8fcfc2b233537c9317bf5945605751813415ec2f22d47be3"
+    },
+    "bin/openocd/scripts/board/unknown_at91sam9260.cfg": {
+      "bytes": 3816,
+      "sha256": "81bbb883d0177a46db7c9d68eeb6946a33104597b801041aae23582a1c7192b7"
+    },
+    "bin/openocd/scripts/board/uptech_2410.cfg": {
+      "bytes": 1659,
+      "sha256": "d2bd21bf9ee6c224b0d6bd7d26f54924b3b63de27e0d21422477b0af81c1d6e9"
+    },
+    "bin/openocd/scripts/board/vd_a53x2_dap.cfg": {
+      "bytes": 741,
+      "sha256": "af86f64c349f7619022339da66165cac453991e198553d288f956fd1c42719f3"
+    },
+    "bin/openocd/scripts/board/vd_a53x2_jtag.cfg": {
+      "bytes": 838,
+      "sha256": "f732f82cdf82cbf03a2edbc940fafc76b5a46bb7dc16e85f06fb23d2ad7c72ed"
+    },
+    "bin/openocd/scripts/board/vd_a75x4_dap.cfg": {
+      "bytes": 800,
+      "sha256": "87bcc374757239457a36698f52873304cffc66cbd4ea742440e18906c8e7e5fb"
+    },
+    "bin/openocd/scripts/board/vd_a75x4_jtag.cfg": {
+      "bytes": 782,
+      "sha256": "c54a4a937a2c918b48ae4165501565e1ea85948fcffb2aa25a6c9e6ee9f2350b"
+    },
+    "bin/openocd/scripts/board/vd_m4_dap.cfg": {
+      "bytes": 590,
+      "sha256": "d3e26375d36a1c56268dd9215062aa010435cfa68d210a0d3850469ad6ac428d"
+    },
+    "bin/openocd/scripts/board/vd_m4_jtag.cfg": {
+      "bytes": 735,
+      "sha256": "dd9ff0c9eaddc6fc11c5f4127914532e596bb517fd333cd0c4e8915154e03907"
+    },
+    "bin/openocd/scripts/board/vd_m7_jtag.cfg": {
+      "bytes": 746,
+      "sha256": "ec7f28decb1cc0c46bbfcc725528d870ed3c2c124e172e9430baa2eecd79a89b"
+    },
+    "bin/openocd/scripts/board/vd_pulpissimo_jtag.cfg": {
+      "bytes": 1052,
+      "sha256": "10be01cd5688e28fdda02f08cbd0aa2485f461da7a6069c6eb60b24f9b412c14"
+    },
+    "bin/openocd/scripts/board/vd_swerv_jtag.cfg": {
+      "bytes": 852,
+      "sha256": "509c95c743a2ba5a4d7626fb6abfa7ea66880512973f1df5551c5cf13247bf62"
+    },
+    "bin/openocd/scripts/board/vd_xt8_jtag.cfg": {
+      "bytes": 875,
+      "sha256": "392b027841f63f0dcee1bbdb0d98554e3619a5bdbcae651c5043003849b9d8e2"
+    },
+    "bin/openocd/scripts/board/verdex.cfg": {
+      "bytes": 623,
+      "sha256": "832fcf0baf86f8bbd29e099e3e5977d7a54a290d73f759bd6a1189abb603a910"
+    },
+    "bin/openocd/scripts/board/voipac.cfg": {
+      "bytes": 485,
+      "sha256": "d0d783dfabe2a2ac1a87e94ffda3770028dd04643052f33c1e763708ed09b69c"
+    },
+    "bin/openocd/scripts/board/voltcraft_dso-3062c.cfg": {
+      "bytes": 803,
+      "sha256": "c5071a543f93b5f39616838043275aa2ede07632162e808b5adb69eaf9c4f838"
+    },
+    "bin/openocd/scripts/board/x300t.cfg": {
+      "bytes": 943,
+      "sha256": "25c5482a1502d34eb2d8f71f786680df14bb179a67c596cc1ba42598a852576e"
+    },
+    "bin/openocd/scripts/board/xmc-2go.cfg": {
+      "bytes": 281,
+      "sha256": "511f431e0cff88bd4cad907f9a68bece55a308fbb897e61eb8ce810441518059"
+    },
+    "bin/openocd/scripts/board/xmc1100-boot-kit.cfg": {
+      "bytes": 290,
+      "sha256": "e83845a2933a0cfbb238e52617a4f549fe44848497ada120db7152fe31a0ef27"
+    },
+    "bin/openocd/scripts/board/xmc4200-application-kit-actuator.cfg": {
+      "bytes": 248,
+      "sha256": "63b9d3a8894cc666be3603f509c14647670745bc386a46c216069dbb1ba86c8f"
+    },
+    "bin/openocd/scripts/board/xmc4300-relax.cfg": {
+      "bytes": 240,
+      "sha256": "4aa30001cd894973ad52e5666aafbaaa19299d6e066196ba38134bfbb646381b"
+    },
+    "bin/openocd/scripts/board/xmc4500-application-kit-general.cfg": {
+      "bytes": 181,
+      "sha256": "bef9c8cdeb8b7d5be8e5109ceea0808999ff2498ba150e28888744fe01c5f45f"
+    },
+    "bin/openocd/scripts/board/xmc4500-application-kit-sdram.cfg": {
+      "bytes": 190,
+      "sha256": "4966031eccc2535cc8cf0e36c7904e018f5dd492d643043fba5f593942a6c70d"
+    },
+    "bin/openocd/scripts/board/xmc4500-relax.cfg": {
+      "bytes": 300,
+      "sha256": "2ba2ca44085bdf535d84437a90f804fc947b592b87fbab560bc9a594c4b49062"
+    },
+    "bin/openocd/scripts/board/xmc4700-relax.cfg": {
+      "bytes": 366,
+      "sha256": "37442df47a1becd933335be6a6c4aba7f1ac0b5c95e77b789b81fbfa481e0513"
+    },
+    "bin/openocd/scripts/board/xmc4800-relax.cfg": {
+      "bytes": 315,
+      "sha256": "cab96acc1a670859df86c03dadfd922e930a854a9bf3a67aac6736b4d0790e06"
+    },
+    "bin/openocd/scripts/board/xmos_xk-xac-xa8_arm.cfg": {
+      "bytes": 275,
+      "sha256": "3076cc1d8402e24de973fdcd50c1a21e67a1aa6fa3c284471f482dbfe52369a3"
+    },
+    "bin/openocd/scripts/board/xtensa-kc705-ext-dap.cfg": {
+      "bytes": 362,
+      "sha256": "1c3eae07431802702b5061f6152483456b2719315f24798ec488298a0e99222e"
+    },
+    "bin/openocd/scripts/board/xtensa-kc705-ext.cfg": {
+      "bytes": 312,
+      "sha256": "12be988798cd97992c5f5f166cf00f84a57a71b58f06d986f69a5244d3180bbd"
+    },
+    "bin/openocd/scripts/board/xtensa-kc705-onboard.cfg": {
+      "bytes": 360,
+      "sha256": "37ed7aa6a20e4a40d0652b137d888bfc21279bb427d637fdc3dc0a7594cd4a2a"
+    },
+    "bin/openocd/scripts/board/xtensa-palladium-vdebug-dual.cfg": {
+      "bytes": 849,
+      "sha256": "3960bbe506eabb29ef89c6637d412d2081609b3f46bc534573ccfc2aebbf035c"
+    },
+    "bin/openocd/scripts/board/xtensa-palladium-vdebug.cfg": {
+      "bytes": 793,
+      "sha256": "2b50e61be5421bd5686eee426637fbfd65aec90d4f5a377231f5f389334447e8"
+    },
+    "bin/openocd/scripts/board/xtensa-rt685-ext.cfg": {
+      "bytes": 375,
+      "sha256": "cce6394eb7b76e586225944e241737d5323f1f57cb7bfe1b44ff86b8ad7dd87a"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/aic.tcl": {
+      "bytes": 3080,
+      "sha256": "22d4711c0eac8588549cf8e7a32bae4e0b9887a7d60660f62624638f2ce604a2"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91_pio.cfg": {
+      "bytes": 1377,
+      "sha256": "f3a3871abe18c945a3e017e8f0de50c073dbd31398b1b084aa35f52392ad0448"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91_pmc.cfg": {
+      "bytes": 6548,
+      "sha256": "012664e5a1716fa8590c4bea52a224ce0e2234c6db8e9dde3dfd5e20f3b2ecc4"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91_rstc.cfg": {
+      "bytes": 1201,
+      "sha256": "175f38764a5d21aceba7ab8eb81d6165456d5f02336d154e3417636e3bc438c0"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91_wdt.cfg": {
+      "bytes": 962,
+      "sha256": "672b478212d9f2d901ba9882286b6f3ffa5dbffd629de5e58a10a3045c53ca9c"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91sam7x128.tcl": {
+      "bytes": 3758,
+      "sha256": "af764d5e19b9789e807eee21db4dae974059ce597440e93fefcc422439604899"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91sam7x256.tcl": {
+      "bytes": 4152,
+      "sha256": "df39f96e5e926024fc33e558bbae465e00c0505cebcadd5fa5b18e2a58b2b5de"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91sam9_init.cfg": {
+      "bytes": 4074,
+      "sha256": "924e0f5d6e298e8620ce7eb132a5a68dbb9f6daf2ed74e503e9569fa0aba6f32"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91sam9_sdramc.cfg": {
+      "bytes": 3393,
+      "sha256": "400367c90e9d05b32cfafc16a779403bf2b3e6f55bc3843e710446854dda5cd4"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91sam9_smc.cfg": {
+      "bytes": 1010,
+      "sha256": "10f7bcd1f8f8e1b890b4968be799884abe68cb0b633aaec2a37714484c1bc122"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91sam9261_matrix.cfg": {
+      "bytes": 2736,
+      "sha256": "43b81659743395d78ec86d044b5c25b7dbf1e49853de69ddcfc1adf522947699"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91sam9261.cfg": {
+      "bytes": 2969,
+      "sha256": "eb4f8050831e03fe5cd644fda840a9544add4017abd9170677965631736b4a04"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91sam9263_matrix.cfg": {
+      "bytes": 7171,
+      "sha256": "8f8222f5b971176d7379d8300cfcfd32a9219b76233a130b255ac37092386670"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/at91sam9263.cfg": {
+      "bytes": 3868,
+      "sha256": "ba60c9c3f9edc601dab3db38bd30e52bdef2d20bf43eb937da2cc2a0a9eb4b26"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/hardware.cfg": {
+      "bytes": 331,
+      "sha256": "780ecb30836a481581ef928553d987e340041929c9c1528d1a95b55ad3e1cc69"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/pmc.tcl": {
+      "bytes": 384,
+      "sha256": "84c57b05a27683a14f21a8e6be998714e421d601c9b742a3960e9c57c8c906ae"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/rtt.tcl": {
+      "bytes": 1449,
+      "sha256": "376079122f809fe0ac924288fd6e342ea5a1bb949bdb49a814193717aa1aad14"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/sam9_smc.cfg": {
+      "bytes": 1444,
+      "sha256": "30ef0d5e4ce866bd70c392964604a8074a80e27d90919a76706e90b868ea2866"
+    },
+    "bin/openocd/scripts/chip/atmel/at91/usarts.tcl": {
+      "bytes": 3717,
+      "sha256": "475f4923719daae1e5d893413b7439a38104997fbf368c8fe091fb636d4f8af7"
+    },
+    "bin/openocd/scripts/chip/st/spear/quirk_no_srst.tcl": {
+      "bytes": 1820,
+      "sha256": "2505f49134e271c2611e3eb08d3e6d31ff15663cb9d9294d5482b2e03fdeafb9"
+    },
+    "bin/openocd/scripts/chip/st/spear/spear3xx_ddr.tcl": {
+      "bytes": 4979,
+      "sha256": "4420efff429db6b4fab7b8d73756200914ba28c62019356f4819c04c90ea9f0f"
+    },
+    "bin/openocd/scripts/chip/st/spear/spear3xx.tcl": {
+      "bytes": 3745,
+      "sha256": "b977a7c36018569b6a328ae05914c6ce4217a3dddfb2fb02e764f665951b63a8"
+    },
+    "bin/openocd/scripts/chip/st/stm32/stm32_rcc.tcl": {
+      "bytes": 7419,
+      "sha256": "1567c6b50278e44068aa1e8966c0425359a95b60e96cf736c6e7068a32e6a048"
+    },
+    "bin/openocd/scripts/chip/st/stm32/stm32_regs.tcl": {
+      "bytes": 4678,
+      "sha256": "fa3c8d98531a069e00343e67074a898d62e8f73f43340f4d94c7d98d5a64b3cb"
+    },
+    "bin/openocd/scripts/chip/st/stm32/stm32.tcl": {
+      "bytes": 250,
+      "sha256": "303433f6d03b9c6f87662edc8a7fc38aa886ba25ef0545437703f3535da2344f"
+    },
+    "bin/openocd/scripts/chip/ti/lm3s/lm3s_regs.tcl": {
+      "bytes": 5177,
+      "sha256": "ac822b468dd77894d7fb69134b46b5f5e2bc2855ac054bbdef62b68ccdb838a9"
+    },
+    "bin/openocd/scripts/chip/ti/lm3s/lm3s.tcl": {
+      "bytes": 86,
+      "sha256": "4f7276370e4f7ff4122e20c10a7ce6a62c2ef07740c915e245a728b20ed06541"
+    },
+    "bin/openocd/scripts/cpld/altera-5m570z-cpld.cfg": {
+      "bytes": 321,
+      "sha256": "806a9e8043a6d78ebba568a575a78a741c6a566da85f9247e8fb3b194745e327"
+    },
+    "bin/openocd/scripts/cpld/altera-epm240.cfg": {
+      "bytes": 416,
+      "sha256": "c441811d66c938a5119d226ec1962882ac807d2e1785b9f0ea8a843269f38efa"
+    },
+    "bin/openocd/scripts/cpld/altera-max10.cfg": {
+      "bytes": 988,
+      "sha256": "7b7a402e394bf3bf8d1ac35126cb9a74b4d73c8bd0524fec92a49073840b4ec7"
+    },
+    "bin/openocd/scripts/cpld/altera-maxii.cfg": {
+      "bytes": 541,
+      "sha256": "c7bbc35f6e0f16ef8720db63c7a5c9b7861b66e51f913ae5d9bfaac3462a8197"
+    },
+    "bin/openocd/scripts/cpld/altera-maxv.cfg": {
+      "bytes": 537,
+      "sha256": "6d2a0e42e3eaab9771338332f424a81dc9df12cce934f02b4ba8a994d7f1bc1b"
+    },
+    "bin/openocd/scripts/cpld/jtagspi.cfg": {
+      "bytes": 1639,
+      "sha256": "5fd4ac76409b6e2a7fc2df29d02db1b875d2139d64de99a03e72322598010fa0"
+    },
+    "bin/openocd/scripts/cpld/lattice-lc4032ze.cfg": {
+      "bytes": 176,
+      "sha256": "f52162c34ffbc1694aa01bf0c1314fbbc8fc775b0fd49f2373fec34c52a52d1f"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc3s.cfg": {
+      "bytes": 1046,
+      "sha256": "57051aa895af2f8cc758934d1b59f1473857c40b23c7f482133abc7b54bd411f"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc4v.cfg": {
+      "bytes": 903,
+      "sha256": "7b4f4783a9bc9e2fc3c49523bd42d28710c1f9472a8949db035b1a01a1ff2689"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc4vfx_40_60_100_140.cfg": {
+      "bytes": 673,
+      "sha256": "151257818441d28c7d27bb2b26c450ff24c90bdf1b4c6b089332933fa034af8e"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc5v.cfg": {
+      "bytes": 1173,
+      "sha256": "294b0013edbda17db9285454b11ed75836cd28739c5ae2bc8bb9e3eaebbd2a39"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc5vfx_100_130_200.cfg": {
+      "bytes": 644,
+      "sha256": "0bf013521c7c794a2a340a7db731376b2d2bc165aa9bc2f968675f6410da7188"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc6s.cfg": {
+      "bytes": 2811,
+      "sha256": "59fb1cca38479bad6847d8a4f42ebb8678d0168bf6e554ac1fcba32c59957072"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc6v.cfg": {
+      "bytes": 1038,
+      "sha256": "fe39fe8bb5ba332990bb4f90098164b842fc825b75ab9f9b2ae349a5bfc202fd"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc7.cfg": {
+      "bytes": 1707,
+      "sha256": "9ae644bdfbc43f52acb57c19106f3eeadca067e0b8ea080b9f941f439a736f75"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc7v.cfg": {
+      "bytes": 1189,
+      "sha256": "8245e11c447773be82dc71879d2a453d7d475989d9e6c972229750f17ff8cea0"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc7vh580t.cfg": {
+      "bytes": 838,
+      "sha256": "3da07116d7caacfb83789e66784858294ddf13004920e37421a4626aaf7574a9"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xc7vh870t.cfg": {
+      "bytes": 930,
+      "sha256": "ce83e621837fd19adf11f02cdbbaee453a824499d32e7acac4b3eb8216e64b7f"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xcf-p.cfg": {
+      "bytes": 533,
+      "sha256": "30935faa83333e581dad34784973786eab5670101887129a16aa82c352621b17"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xcf-s.cfg": {
+      "bytes": 532,
+      "sha256": "b0fd92139002d839dc16b76233939e916f2823ebe6bc29032c9e4854bb7df521"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xcr3256.cfg": {
+      "bytes": 193,
+      "sha256": "7be9f8ae24c770c92889137cdb80caf390227d01809392a00f87bbcb24cfa2aa"
+    },
+    "bin/openocd/scripts/cpld/xilinx-xcu.cfg": {
+      "bytes": 4107,
+      "sha256": "b6bbfdc1a5ed70b22f05d069ec7dc77e1092be81e73cae58e7f991980b7dd25e"
+    },
+    "bin/openocd/scripts/cpu/arc/common.tcl": {
+      "bytes": 1298,
+      "sha256": "6fed719fa8fcb34764c8afac708aa3d8919e672755b8ad81c780953636fc5b1c"
+    },
+    "bin/openocd/scripts/cpu/arc/em.tcl": {
+      "bytes": 833,
+      "sha256": "d697d800c45d20273929f792b849810a30d7b453495b6748f0879173f7e6062a"
+    },
+    "bin/openocd/scripts/cpu/arc/hs.tcl": {
+      "bytes": 1918,
+      "sha256": "1a034057fdd2cef6ad57c4cb902de48da25fa9c58cac106a3c0864d2eb05122d"
+    },
+    "bin/openocd/scripts/cpu/arc/v2.tcl": {
+      "bytes": 9971,
+      "sha256": "9d6c3a5756b2e8b8b41e1c977f1aaf325044bc7cff36562fcc9665bc421af23c"
+    },
+    "bin/openocd/scripts/cpu/arm/arm7tdmi.tcl": {
+      "bytes": 159,
+      "sha256": "3c9ef787fdc0324e713223378626482b4954f79dab32613fd4957241e9aed81d"
+    },
+    "bin/openocd/scripts/cpu/arm/arm920.tcl": {
+      "bytes": 157,
+      "sha256": "0c24db0d51dee9d776af7be372ea0598322f8684ef100071568e7fad584ff492"
+    },
+    "bin/openocd/scripts/cpu/arm/arm946.tcl": {
+      "bytes": 158,
+      "sha256": "018e77312fe883b2a8789bec09df71aade0ac8836279a8ce888481fb5388de17"
+    },
+    "bin/openocd/scripts/cpu/arm/arm966.tcl": {
+      "bytes": 158,
+      "sha256": "d45603d7e757d60a7a77e0111dfe619334ace1d7bb1a0723dfd890005683986b"
+    },
+    "bin/openocd/scripts/cpu/arm/cortex_m3.tcl": {
+      "bytes": 159,
+      "sha256": "08d97bb23287fa6062ea2d6c23bb56f8f3d537f6d0afc8d301e95677dab5177d"
+    },
+    "bin/openocd/scripts/file_renaming.cfg": {
+      "bytes": 962,
+      "sha256": "8befb0b7faf555b044f5fb9c8da877de139280303a71956e02c1ff8413f620a1"
+    },
+    "bin/openocd/scripts/fpga/altera_common_init.cfg": {
+      "bytes": 372,
+      "sha256": "e957f7174c80d2e01478c4dfba17e83de7cafb4edc43fcc16c0843a4d0bd56f6"
+    },
+    "bin/openocd/scripts/fpga/altera-10m50.cfg": {
+      "bytes": 311,
+      "sha256": "68833d64574b9db6803f956a4a2d754f17cd3fd56945de2cc8f3dfbbb81c5e3d"
+    },
+    "bin/openocd/scripts/fpga/altera-arriaii.cfg": {
+      "bytes": 1194,
+      "sha256": "dea64d25325f9e9a455af31233910c3c61919385e960634a323104eba8828cee"
+    },
+    "bin/openocd/scripts/fpga/altera-cyclone10.cfg": {
+      "bytes": 1181,
+      "sha256": "08978d8259d9ad0fffe10fd16e0dd92df0a6d2e86f58c4647ae30d6d0a78f902"
+    },
+    "bin/openocd/scripts/fpga/altera-cycloneiii.cfg": {
+      "bytes": 1056,
+      "sha256": "cca59757c16f6cb5dc4ab7afae69fb462f6d8a7fd78cf0d3d4d3eeb67ae26241"
+    },
+    "bin/openocd/scripts/fpga/altera-cycloneiv.cfg": {
+      "bytes": 1217,
+      "sha256": "d11c7fb9ef4156e31511237fb6f7dd503100837f32896477395582de5e82eba3"
+    },
+    "bin/openocd/scripts/fpga/altera-cyclonev.cfg": {
+      "bytes": 1177,
+      "sha256": "8c0878005c20af0cb76b1872fd43930fef4c1955bbb9e351332d1cc899997a5b"
+    },
+    "bin/openocd/scripts/fpga/altera-ep3c10.cfg": {
+      "bytes": 335,
+      "sha256": "618e87c7f0e8c3fa666c40eb77d3d6be9bce908878b21e4b4664a3fc057e8f3c"
+    },
+    "bin/openocd/scripts/fpga/efinix_titanium.cfg": {
+      "bytes": 600,
+      "sha256": "3653ca7d808c1b801522878f0f0e84892a4776bab725b65c852fe458cb9006d6"
+    },
+    "bin/openocd/scripts/fpga/efinix_trion.cfg": {
+      "bytes": 426,
+      "sha256": "6c93c79f93813f0a5ea2eddaf9c04dc673554e8c080f3f28c1d8defcfe3a3ad6"
+    },
+    "bin/openocd/scripts/fpga/gatemate.cfg": {
+      "bytes": 431,
+      "sha256": "e5cc69d547722b17a831a4249af2eed529f5800e51cc626ca39eb1e7efb74cce"
+    },
+    "bin/openocd/scripts/fpga/gowin_gw1n.cfg": {
+      "bytes": 740,
+      "sha256": "9bcfdb8e59558c764b5b9173ca3cf3bb12dc2691de7987536fc4bc9837acf31f"
+    },
+    "bin/openocd/scripts/fpga/lattice_certus.cfg": {
+      "bytes": 413,
+      "sha256": "74c13f07b2929f9eb35f0f37d7f3be84ea105d9f8a997b3c4968db94daf69f86"
+    },
+    "bin/openocd/scripts/fpga/lattice_certuspro.cfg": {
+      "bytes": 400,
+      "sha256": "2968570d21851caacc6456adebebff2f089aa0368b3169217e5ce4bb1fbbdee5"
+    },
+    "bin/openocd/scripts/fpga/lattice_ecp2.cfg": {
+      "bytes": 922,
+      "sha256": "eeac92dbe9323a36aeb0a1d05daa02ede06eba64b12a84093416ad3c201f9f27"
+    },
+    "bin/openocd/scripts/fpga/lattice_ecp3.cfg": {
+      "bytes": 592,
+      "sha256": "1e96b06c6b0ce96342f123773b76fbb765589b46de2e1ef14fa22752bc4ce1c9"
+    },
+    "bin/openocd/scripts/fpga/lattice_ecp5.cfg": {
+      "bytes": 949,
+      "sha256": "6fe58b15a1a9ce1c08948f3730e1a5fd841bbc80821f39091e1d657d554a3a24"
+    },
+    "bin/openocd/scripts/fpga/lattice_machxo3.cfg": {
+      "bytes": 2368,
+      "sha256": "3a37d44d5f627bcb970798363a97ae622cbb440d6c74d93109fd24ab0a5723c1"
+    },
+    "bin/openocd/scripts/fpga/xilinx-dna.cfg": {
+      "bytes": 1449,
+      "sha256": "891c601ccfa631ccdf37906974ac302b8136bd4b41b64e08ecb7ea6c3a7c3e34"
+    },
+    "bin/openocd/scripts/fpga/xilinx-xadc.cfg": {
+      "bytes": 3344,
+      "sha256": "6890e567ae4513c948ea5c3beca891c15ea3f38856824758bce94f135347f558"
+    },
+    "bin/openocd/scripts/fpga/xilinx-xc3s.cfg": {
+      "bytes": 1204,
+      "sha256": "4fc095596b511130d615bab684c7592fd0406ab6564434423e39a05ee693b94d"
+    },
+    "bin/openocd/scripts/interface/altera-usb-blaster.cfg": {
+      "bytes": 298,
+      "sha256": "4614e95a3ceb0629cda30fe102f7c080b29bfec3a0536832392e42e81779cb62"
+    },
+    "bin/openocd/scripts/interface/altera-usb-blaster2.cfg": {
+      "bytes": 240,
+      "sha256": "c25ebfb052ee4b230cabbb5d5fd1f3988862c92bc87ae1da8d5916188640e1af"
+    },
+    "bin/openocd/scripts/interface/angie.cfg": {
+      "bytes": 265,
+      "sha256": "33504eb5aff8f3bd21c6aad2127bbdea7a882e7a6ae9c4d5a0fae172cf1ade90"
+    },
+    "bin/openocd/scripts/interface/arm-jtag-ew.cfg": {
+      "bytes": 145,
+      "sha256": "483123461b6efd26e4008a4605d573584a0f8806cad56737c9a50e5afb8885ac"
+    },
+    "bin/openocd/scripts/interface/ast2600-gpiod.cfg": {
+      "bytes": 758,
+      "sha256": "6d94241b2ec27adb211b0c11b76d334a7a04945fd4424e16b29291147210632f"
+    },
+    "bin/openocd/scripts/interface/at91rm9200.cfg": {
+      "bytes": 151,
+      "sha256": "f44e4137dece71d90ad21f7f0a8f5088c81fe3345639c463ed6f1ff5b1579c4b"
+    },
+    "bin/openocd/scripts/interface/beaglebone-jtag-native.cfg": {
+      "bytes": 977,
+      "sha256": "724eee25fb13dcc6833e93769537162c3887554b48baba701c03f0c1fa2e6f70"
+    },
+    "bin/openocd/scripts/interface/beaglebone-swd-native.cfg": {
+      "bytes": 922,
+      "sha256": "6e104831e613862b57e241e7723fd55ee3cf666fe033dd3c1113506e6cb57b30"
+    },
+    "bin/openocd/scripts/interface/buspirate.cfg": {
+      "bytes": 578,
+      "sha256": "64677b4414fcafdc1ce607c3fa2eded5b0caaae13b32407ee9178b4c2e6d6165"
+    },
+    "bin/openocd/scripts/interface/chameleon.cfg": {
+      "bytes": 164,
+      "sha256": "6ff8ba19e1821bc13ee0d6dfb5593f40ab74b8923352c7a5a6cd9fb2477cbd34"
+    },
+    "bin/openocd/scripts/interface/cmsis-dap-tcp.cfg": {
+      "bytes": 449,
+      "sha256": "65b39ce7d368e992c2c01ca03cd8dd1360b059f92d8f8fbc1854f7711278370a"
+    },
+    "bin/openocd/scripts/interface/cmsis-dap.cfg": {
+      "bytes": 267,
+      "sha256": "5ed9c067fe55b6c0ea04a8d9c1dd078a6afd4b8cafafcde39da211bcc175c657"
+    },
+    "bin/openocd/scripts/interface/dln-2-gpiod.cfg": {
+      "bytes": 940,
+      "sha256": "8c00cfba0fef568296e8f74cecb0d1e886140c461801572ef00172555723fbb1"
+    },
+    "bin/openocd/scripts/interface/dummy.cfg": {
+      "bytes": 112,
+      "sha256": "6ccdaf8c3f39cd457b9687791009f32db65064268088537e3c9066d391ef6ec7"
+    },
+    "bin/openocd/scripts/interface/esp_usb_bridge.cfg": {
+      "bytes": 205,
+      "sha256": "d5ecf4ec510de4da09bebfbbd1ffb1ac19a5ef42840489fe890cfb194c66aa44"
+    },
+    "bin/openocd/scripts/interface/esp_usb_jtag.cfg": {
+      "bytes": 182,
+      "sha256": "67accd1edef72c9e692a0d224c5327ed479a0b89140cb0e24fc75a08c1d2757d"
+    },
+    "bin/openocd/scripts/interface/estick.cfg": {
+      "bytes": 125,
+      "sha256": "709832d7e3f80f1a6f061fee8c05a866368503fc4ea4f7995fa17b86adddbe93"
+    },
+    "bin/openocd/scripts/interface/flashlink.cfg": {
+      "bytes": 381,
+      "sha256": "e793aaaba6363a923c1027f5f5944857af580a03c8a6f03d8d659ddf7b989786"
+    },
+    "bin/openocd/scripts/interface/ft232r.cfg": {
+      "bytes": 86,
+      "sha256": "e4daf5c59a512982a62b8b50c7aae71b94884ac7c17d3a0cb8174f3e07d54a29"
+    },
+    "bin/openocd/scripts/interface/ft232r/radiona_ulx3s.cfg": {
+      "bytes": 424,
+      "sha256": "0ff136b4253301361a3d562785dc6a9f4699ca577d6d942a69bfae833dea0c1b"
+    },
+    "bin/openocd/scripts/interface/ftdi/100ask-openjtag.cfg": {
+      "bytes": 442,
+      "sha256": "331463f9c4fd6aa1e1ba17f3df8c3b1b54c4efb68eb8b508cafda1ad9a234a7b"
+    },
+    "bin/openocd/scripts/interface/ftdi/ashling-opella-ld-jtag.cfg": {
+      "bytes": 526,
+      "sha256": "02ec8161ea3e526c92f3c339755c2a5c22af161b9244c097c99d218d355f93e7"
+    },
+    "bin/openocd/scripts/interface/ftdi/ashling-opella-ld-swd.cfg": {
+      "bytes": 495,
+      "sha256": "04688ffdde80df8f0344d4fd47066d7e47cc41fda167cf0ffbd45b0b648ba907"
+    },
+    "bin/openocd/scripts/interface/ftdi/axm0432.cfg": {
+      "bytes": 520,
+      "sha256": "0a25da27bd3a282466cf40c9f31eb80e1fbc6002b96371fe1445a6cfca284156"
+    },
+    "bin/openocd/scripts/interface/ftdi/c232hm.cfg": {
+      "bytes": 2151,
+      "sha256": "51e86e5f168303b48f60aa4eda889ecad3e2e481f0667a6a4b8d40ecfd362fc2"
+    },
+    "bin/openocd/scripts/interface/ftdi/cortino.cfg": {
+      "bytes": 305,
+      "sha256": "f1c8f9e7dcc9f4ec79d1c8b6b40b455a8c02fd541ae5d22c809b5ea57bc4dcc9"
+    },
+    "bin/openocd/scripts/interface/ftdi/digilent_jtag_hs3.cfg": {
+      "bytes": 340,
+      "sha256": "6edc66713ac91ecdac77ef215dc09ffb074de297fc754354ba3ea7bd7291d519"
+    },
+    "bin/openocd/scripts/interface/ftdi/digilent_jtag_smt2_nc.cfg": {
+      "bytes": 644,
+      "sha256": "24cee8d2ddc386c3dfd1d8f9931f9a3a9bf9f3434a78656b8665931e1c3024ab"
+    },
+    "bin/openocd/scripts/interface/ftdi/digilent_jtag_smt2.cfg": {
+      "bytes": 524,
+      "sha256": "59d8447a317b079696072522553b51d52a3f49103bbacc50631da5383c2bd11c"
+    },
+    "bin/openocd/scripts/interface/ftdi/digilent-hs1.cfg": {
+      "bytes": 363,
+      "sha256": "f6cb3aff132fb6eda294fdd4421914f1d5c2cfec9995ceb3f8c422f6e86f3f15"
+    },
+    "bin/openocd/scripts/interface/ftdi/digilent-hs2.cfg": {
+      "bytes": 506,
+      "sha256": "ea829b862ebc635ebe4dc7fede83d330d509ea88f4f497b6560cd375a74070a4"
+    },
+    "bin/openocd/scripts/interface/ftdi/dlp-usb1232h.cfg": {
+      "bytes": 730,
+      "sha256": "2ceec6358dc8fc760abd5fbbcd5120905d24c47dc4e313ea52c8c57576f6e4ab"
+    },
+    "bin/openocd/scripts/interface/ftdi/dp_busblaster_kt-link.cfg": {
+      "bytes": 773,
+      "sha256": "6200a01db4cabe3047cd26ddf7796c796130db7986213552299c1b6878b038d5"
+    },
+    "bin/openocd/scripts/interface/ftdi/dp_busblaster.cfg": {
+      "bytes": 686,
+      "sha256": "92c17f86aff7ddfa48bfacdc8917bd02f3d115e036e4f34553cb9db67c9775ef"
+    },
+    "bin/openocd/scripts/interface/ftdi/esp32_devkitj_v1.cfg": {
+      "bytes": 738,
+      "sha256": "2bc7db1984f1067c71b7a14878c9e74158ded90f1be9f0e3a25426620a5d6ba7"
+    },
+    "bin/openocd/scripts/interface/ftdi/esp32s2_kaluga_v1.cfg": {
+      "bytes": 881,
+      "sha256": "46f4672a301cfdc20f26d65d81c987f2a25d7ecf821aa63a135444ff8c44c627"
+    },
+    "bin/openocd/scripts/interface/ftdi/flossjtag-noeeprom.cfg": {
+      "bytes": 887,
+      "sha256": "0f374f1852b376c57eafb58ad6641a4b9e8fb748fb05c018e1aa348233446bac"
+    },
+    "bin/openocd/scripts/interface/ftdi/flossjtag.cfg": {
+      "bytes": 1009,
+      "sha256": "5d9250bd072658fcff5eaf014bdab061513b269959f8b51e34588111c3a47dd6"
+    },
+    "bin/openocd/scripts/interface/ftdi/flyswatter.cfg": {
+      "bytes": 388,
+      "sha256": "63c24391f1e3d7f1f9e8e4260bf5c77e2e9d1d52aabe16bdc9fe4f82737c1d40"
+    },
+    "bin/openocd/scripts/interface/ftdi/flyswatter2.cfg": {
+      "bytes": 364,
+      "sha256": "281d84624edbb9f6da3248e9d6f45908bd5acb77df8d9135f4efc628ac1b10a5"
+    },
+    "bin/openocd/scripts/interface/ftdi/ft232h-module-swd.cfg": {
+      "bytes": 1657,
+      "sha256": "03b2abb37eac7bf15c6cf47f744c4eaccbe6cb4599b05b44b0ac9172b044cb2e"
+    },
+    "bin/openocd/scripts/interface/ftdi/gw16042.cfg": {
+      "bytes": 541,
+      "sha256": "363853d72f63fc20f037f034807e419d9c6593ebd37dfd65e850c090e47be26d"
+    },
+    "bin/openocd/scripts/interface/ftdi/hie-jtag.cfg": {
+      "bytes": 458,
+      "sha256": "99011b01b93c6f0690f781d94a22821cd0c9d9492af87d57bd1df436655b0ec9"
+    },
+    "bin/openocd/scripts/interface/ftdi/hilscher_nxhx10_etm.cfg": {
+      "bytes": 574,
+      "sha256": "a74fd31b054ed3ba848dd5bf067be165835a73fd70bdc153e95e30520c2830fb"
+    },
+    "bin/openocd/scripts/interface/ftdi/hilscher_nxhx50_etm.cfg": {
+      "bytes": 573,
+      "sha256": "cb0092150e6e6d9586f5d6e61f911786ce21f40914d15450642274adcbc3c8c0"
+    },
+    "bin/openocd/scripts/interface/ftdi/hilscher_nxhx50_re.cfg": {
+      "bytes": 577,
+      "sha256": "e44ec3a7719ac5bb384df3e975f463d1fd47b2edccd7fb60090d3795c528e033"
+    },
+    "bin/openocd/scripts/interface/ftdi/hilscher_nxhx500_etm.cfg": {
+      "bytes": 576,
+      "sha256": "babe68bd95138f42146d835d9e8d7fe96e1b6d668d52d72b1aeb23e0526d3f51"
+    },
+    "bin/openocd/scripts/interface/ftdi/hilscher_nxhx500_re.cfg": {
+      "bytes": 580,
+      "sha256": "2b6d6193980ad4efaa580c500dd582c8ebcf252cfad975f044899d3dae349c09"
+    },
+    "bin/openocd/scripts/interface/ftdi/hitex_lpc1768stick.cfg": {
+      "bytes": 306,
+      "sha256": "09421929a4f0e6812bbcf3b3b9f62b44e2359733fadec1b5fcca5f1b3ea768a6"
+    },
+    "bin/openocd/scripts/interface/ftdi/hitex_str9-comstick.cfg": {
+      "bytes": 313,
+      "sha256": "74c219bd0d92bb086840e53ae16ba361aa97baab6954f8e11543d19bacac0f1b"
+    },
+    "bin/openocd/scripts/interface/ftdi/icebear.cfg": {
+      "bytes": 542,
+      "sha256": "f346af6880caccdc1bc7d99c64ac1ee2c5177f5bd29744b251de5841ab07e48d"
+    },
+    "bin/openocd/scripts/interface/ftdi/imx8mp-evk.cfg": {
+      "bytes": 929,
+      "sha256": "1057a1c47f443e8b8ba200d775d13f1a25f46c0a5903b110eb25c278024dbd6d"
+    },
+    "bin/openocd/scripts/interface/ftdi/incircuit-icprog.cfg": {
+      "bytes": 425,
+      "sha256": "fcef60870b241b149afaa07ffc1099de9b8903013fbec9b50a035733cc7a478b"
+    },
+    "bin/openocd/scripts/interface/ftdi/iotlab-usb.cfg": {
+      "bytes": 333,
+      "sha256": "9b32c4610991b291897fd1f2868aebf614fc6617c9cb07dda24f1c92d8e86cf9"
+    },
+    "bin/openocd/scripts/interface/ftdi/isodebug.cfg": {
+      "bytes": 1132,
+      "sha256": "66562965c6ee8cb1d994d09d4bca972e7fe6add8b2ffd3a2b10e62380faf4c43"
+    },
+    "bin/openocd/scripts/interface/ftdi/jtag-lock-pick_tiny_2.cfg": {
+      "bytes": 463,
+      "sha256": "0207f390214650ca155320bdd2c7cfd26e5c3f5cb080a19f54787499b1b34be1"
+    },
+    "bin/openocd/scripts/interface/ftdi/jtagkey.cfg": {
+      "bytes": 323,
+      "sha256": "7821eaf6bcfdabf22d416aa9895579bc6faf8e6c7c986cc4477f893a225bf843"
+    },
+    "bin/openocd/scripts/interface/ftdi/jtagkey2.cfg": {
+      "bytes": 327,
+      "sha256": "4a486ea9fccbdc28b867c0b7dc2446e92e9d16a0b7322c35ac5890fc2f274f58"
+    },
+    "bin/openocd/scripts/interface/ftdi/jtagkey2p.cfg": {
+      "bytes": 330,
+      "sha256": "584bee151d76728090a3a4dd3fc6b03c0547e853331a1e8161994d04553c5add"
+    },
+    "bin/openocd/scripts/interface/ftdi/kt-link.cfg": {
+      "bytes": 431,
+      "sha256": "3b988dd0d950cf1578de11d9991980252af4cc29e29fa2dcc747e1b78dad96c6"
+    },
+    "bin/openocd/scripts/interface/ftdi/lambdaconcept_ecpix-5.cfg": {
+      "bytes": 425,
+      "sha256": "d471e019b30c579d5957a212ea6578ffd1c918c2fe97284f479dd7e5a27e68e8"
+    },
+    "bin/openocd/scripts/interface/ftdi/lisa-l.cfg": {
+      "bytes": 603,
+      "sha256": "47e8b2c4bbc8d647dbbb75da625031370406d69b2129bff7b25657a189caf02e"
+    },
+    "bin/openocd/scripts/interface/ftdi/luminary-icdi.cfg": {
+      "bytes": 984,
+      "sha256": "f5e14a89c842d6790a3fb78ab66e9d079025f3412d4df3f40c89cba0ca7455cf"
+    },
+    "bin/openocd/scripts/interface/ftdi/luminary-lm3s811.cfg": {
+      "bytes": 755,
+      "sha256": "f22761a3f3d863fb0658b9758cdfbcea2bca4f784e74b865a08e72ebb5df53a7"
+    },
+    "bin/openocd/scripts/interface/ftdi/luminary.cfg": {
+      "bytes": 1329,
+      "sha256": "15426327473e1e596342ae541330c756f792ea6be8a0474bb3bbb22aa0df3e25"
+    },
+    "bin/openocd/scripts/interface/ftdi/m53evk.cfg": {
+      "bytes": 325,
+      "sha256": "ba9d5f1adbd9431d571d32e27aa7f2481bfc2dde3ae9c650079862634ccd0bdb"
+    },
+    "bin/openocd/scripts/interface/ftdi/mbftdi.cfg": {
+      "bytes": 412,
+      "sha256": "cae500b32c41a44d98a8d4e2227c494b405350c79b4dd9beeb73c323fdd4fba4"
+    },
+    "bin/openocd/scripts/interface/ftdi/minimodule-swd.cfg": {
+      "bytes": 1379,
+      "sha256": "8e22731d4e46ec2d8bd574b42e0ed565c9ea470efe783042fc6d9339cb885b77"
+    },
+    "bin/openocd/scripts/interface/ftdi/minimodule.cfg": {
+      "bytes": 536,
+      "sha256": "b381b5ac0d6e865c794466984f686d3811332cc7a7aa180ec32957521032c32e"
+    },
+    "bin/openocd/scripts/interface/ftdi/minispartan6.cfg": {
+      "bytes": 673,
+      "sha256": "fad79f658ec7f3b110bdc18181ef37508d2416a99b7dd2623c715ef876c97dd4"
+    },
+    "bin/openocd/scripts/interface/ftdi/miniwiggler.cfg": {
+      "bytes": 660,
+      "sha256": "029043c34478d316bd6d93fd8452d296f71d0022853e4455dd05870beacfb464"
+    },
+    "bin/openocd/scripts/interface/ftdi/neodb.cfg": {
+      "bytes": 406,
+      "sha256": "8bb9861828e79ea6e074ca8dbbc3d2921cee31166fef7655c0bdbd9d2d264d0a"
+    },
+    "bin/openocd/scripts/interface/ftdi/ngxtech.cfg": {
+      "bytes": 656,
+      "sha256": "bbc41e72683062718eee087292362222b2bc94fa400d515ed9b765d9e5524571"
+    },
+    "bin/openocd/scripts/interface/ftdi/olimex-arm-jtag-swd.cfg": {
+      "bytes": 238,
+      "sha256": "64ea28d67d3dd4f0cc1ecf67bf6fb68fa22d432879ee58351cbedcb1b6051fd5"
+    },
+    "bin/openocd/scripts/interface/ftdi/olimex-arm-usb-ocd-h.cfg": {
+      "bytes": 364,
+      "sha256": "8419b602600501271c42d889766e4ee8202abab174a46146e1bb762fe1b7fb97"
+    },
+    "bin/openocd/scripts/interface/ftdi/olimex-arm-usb-ocd.cfg": {
+      "bytes": 358,
+      "sha256": "433d5a2da4b8fc359d70e9a7f484d2fdfe5bbb10ba8d6fa153f5f7e14ea39bef"
+    },
+    "bin/openocd/scripts/interface/ftdi/olimex-arm-usb-tiny-h.cfg": {
+      "bytes": 378,
+      "sha256": "e524315b9fd4695710c7ee442dffa3ede1de796bf43cb464535ab7cbd0be1532"
+    },
+    "bin/openocd/scripts/interface/ftdi/olimex-jtag-tiny.cfg": {
+      "bytes": 364,
+      "sha256": "8a2a2937fe2ec7ace7c9a1967fb86fa652fb02a1110dcc18c2ae59e4ed97c9c3"
+    },
+    "bin/openocd/scripts/interface/ftdi/oocdlink.cfg": {
+      "bytes": 648,
+      "sha256": "996b922e10932b7ca6ba7de070e04f2e865af259d98a0e10555a001853b07a7b"
+    },
+    "bin/openocd/scripts/interface/ftdi/opendous_ftdi.cfg": {
+      "bytes": 453,
+      "sha256": "3d0b51aac36a84599211091029b269dc77b39d8080f8059c58090372fa70c899"
+    },
+    "bin/openocd/scripts/interface/ftdi/openocd-usb-hs.cfg": {
+      "bytes": 389,
+      "sha256": "75e9fed6988439e885bade80cd97709f4722fa771f8f82a67f8729137b0f31ad"
+    },
+    "bin/openocd/scripts/interface/ftdi/openocd-usb.cfg": {
+      "bytes": 352,
+      "sha256": "3450aa2857cc899b3433de33f13d05a5ab774885dcfc023bf8c3b52714f22ebf"
+    },
+    "bin/openocd/scripts/interface/ftdi/openrd.cfg": {
+      "bytes": 366,
+      "sha256": "74335b22821128cff0a12d3738432f5989026ddd7365e072a202285d3f61bd19"
+    },
+    "bin/openocd/scripts/interface/ftdi/pipistrello.cfg": {
+      "bytes": 541,
+      "sha256": "446f546036be82b3345d0a0067a57f01940d5f92df28f1d56728b6843e1c5a10"
+    },
+    "bin/openocd/scripts/interface/ftdi/pls_spc5.cfg": {
+      "bytes": 799,
+      "sha256": "aa33a20fd9dbbfc5e1b5b9040e27b768e584e7673a56de520174546f719b7cff"
+    },
+    "bin/openocd/scripts/interface/ftdi/redbee-econotag.cfg": {
+      "bytes": 656,
+      "sha256": "14b9d02c9c66705415d7ea11ab0f508bf4d0ea4e99dd3a5f45a2f0a8aadd961b"
+    },
+    "bin/openocd/scripts/interface/ftdi/redbee-usb.cfg": {
+      "bytes": 648,
+      "sha256": "251170f19e623c0c17efb96e924be74ad57824968ff297b2657063d0be34439a"
+    },
+    "bin/openocd/scripts/interface/ftdi/rowley-cc-arm-swd.cfg": {
+      "bytes": 315,
+      "sha256": "f0f6b337a5b53b9902579855fcdec25166ac637f647f57d4d3f4fa5279d82be2"
+    },
+    "bin/openocd/scripts/interface/ftdi/sheevaplug.cfg": {
+      "bytes": 418,
+      "sha256": "c02a1c2e162582210bfa4a6e5b31791b5f74bb58116903a3b209e9b35b9076a0"
+    },
+    "bin/openocd/scripts/interface/ftdi/signalyzer-lite.cfg": {
+      "bytes": 568,
+      "sha256": "d87850eb0d81b47a2353391fa9747ab9d6993d733b818ba0fd16662beda2ab55"
+    },
+    "bin/openocd/scripts/interface/ftdi/signalyzer.cfg": {
+      "bytes": 560,
+      "sha256": "cccd4707908146b42ee8da6846b86e513bad031bd553cfba6f135234db413783"
+    },
+    "bin/openocd/scripts/interface/ftdi/sipeed-rv-debugger.cfg": {
+      "bytes": 282,
+      "sha256": "3b9550f60c8637252c80164b71efcb2284f8427b20b22b5cd150ef33adfd0605"
+    },
+    "bin/openocd/scripts/interface/ftdi/sipeed-usb-jtag-debugger.cfg": {
+      "bytes": 515,
+      "sha256": "e42975ecb9b3a9e158503b9c86c4e1c40f2bae475b9b1efa37d9e361355bc51d"
+    },
+    "bin/openocd/scripts/interface/ftdi/snps_sdp.cfg": {
+      "bytes": 432,
+      "sha256": "1039995529c5b719ad1c95a8bafc6fa086d20e5ffe38e6224b865ad2277b0458"
+    },
+    "bin/openocd/scripts/interface/ftdi/steppenprobe.cfg": {
+      "bytes": 1347,
+      "sha256": "3af5f2ba81c0cf3a74b8420c707bb6af859c40cf6507b12be40e2bb89ee8ab1d"
+    },
+    "bin/openocd/scripts/interface/ftdi/stm32-stick.cfg": {
+      "bytes": 331,
+      "sha256": "4cfd16620e7990c190dcaa2bfe281eaa9ea05bdb2d40814ad6373225eb76fe51"
+    },
+    "bin/openocd/scripts/interface/ftdi/swd-resistor-hack.cfg": {
+      "bytes": 899,
+      "sha256": "7200605d00ca50e29e660024487f3d8c03e86668cbcc30c203ce3f209c75bdff"
+    },
+    "bin/openocd/scripts/interface/ftdi/ti-icdi.cfg": {
+      "bytes": 450,
+      "sha256": "a062a1eda801bf3741e0fc21a44b90d8195aa1af33383e5cb47c48e7b2c781c8"
+    },
+    "bin/openocd/scripts/interface/ftdi/tigard.cfg": {
+      "bytes": 506,
+      "sha256": "d463833c32a5abb7545d7c645ad6110a63366809f0f7960a63f0be9dcc587b73"
+    },
+    "bin/openocd/scripts/interface/ftdi/tumpa-lite.cfg": {
+      "bytes": 365,
+      "sha256": "d55c16d3c8d2461416e5fdd3a7275b2a1ae9f9fb74b07dcfd17a66a262ffa7d0"
+    },
+    "bin/openocd/scripts/interface/ftdi/tumpa.cfg": {
+      "bytes": 376,
+      "sha256": "6257fe9d6f63f30327e46d9bbd6d238164c1bc4a6bc993d16e65652fd9c51035"
+    },
+    "bin/openocd/scripts/interface/ftdi/turtelizer2-revB.cfg": {
+      "bytes": 607,
+      "sha256": "c6c97267c9c4c2f53e184afa6c0b4700f1a0bbceb924ca9bbca257c4315479a9"
+    },
+    "bin/openocd/scripts/interface/ftdi/turtelizer2-revC.cfg": {
+      "bytes": 396,
+      "sha256": "20ebd15dd954deee154088ffbd85f03be6a17f336b425271cd0f9663882d42b9"
+    },
+    "bin/openocd/scripts/interface/ftdi/um232h.cfg": {
+      "bytes": 1080,
+      "sha256": "e445045d7cf7a84d12e61a0e60f4f6cb920a15bfa5e70e5c4513e2bb6f3501a2"
+    },
+    "bin/openocd/scripts/interface/ftdi/vpaclink.cfg": {
+      "bytes": 612,
+      "sha256": "a11c1375e509f5a5b5e80f467898f5834e55452ef49f90943f85fc195f4aa783"
+    },
+    "bin/openocd/scripts/interface/ftdi/xds100v2.cfg": {
+      "bytes": 1809,
+      "sha256": "3a0cb11577ace96d1829d0ec69cada37c032dd0542525630d54f7210b965a95f"
+    },
+    "bin/openocd/scripts/interface/ftdi/xds100v3.cfg": {
+      "bytes": 299,
+      "sha256": "bdef5ea98bd39f123312f95f9993287004bb6b7e274b58264135e8b154f4ea8e"
+    },
+    "bin/openocd/scripts/interface/ftdi/xt_kc705_ml605.cfg": {
+      "bytes": 326,
+      "sha256": "a5e1899aa87b1988cc3031d624cfce11882de4d271ad24b96134b42e9c352605"
+    },
+    "bin/openocd/scripts/interface/imx-native.cfg": {
+      "bytes": 945,
+      "sha256": "2b18c8f5338d7073614b103b764763b91720eaf80383f2c345390e029833c96b"
+    },
+    "bin/openocd/scripts/interface/jlink.cfg": {
+      "bytes": 320,
+      "sha256": "a3f2d75edf6acb0b2c0f36067b429294e3ea52fc9623f390a2160579b2ff42fd"
+    },
+    "bin/openocd/scripts/interface/jtag_dpi.cfg": {
+      "bytes": 497,
+      "sha256": "95a4734c74575d7ec94b5d38331c13217dd55ba3ee7f9de5606456e3dd0096ae"
+    },
+    "bin/openocd/scripts/interface/jtag_hat_rpi2.cfg": {
+      "bytes": 1100,
+      "sha256": "40d11d71f2fbe53e6d88713662dcfc4b29dab5319e0cf0011dc5fb0e30c1cc77"
+    },
+    "bin/openocd/scripts/interface/jtag_vpi.cfg": {
+      "bytes": 404,
+      "sha256": "2fc5577dc1992c1bd2048790e8e154f6fb304b4716e626d8817ea00f14970c4b"
+    },
+    "bin/openocd/scripts/interface/kitprog.cfg": {
+      "bytes": 411,
+      "sha256": "6c6e77eb68473e36f0b7430ddc9c5f0ebf9f56d93e04070ef01affdd7de911b2"
+    },
+    "bin/openocd/scripts/interface/microchip/embedded_flashpro5.cfg": {
+      "bytes": 1439,
+      "sha256": "32443ae49cae132995a2c32814706210ea7443e7dc97c9940c19720c0ec33415"
+    },
+    "bin/openocd/scripts/interface/nulink.cfg": {
+      "bytes": 290,
+      "sha256": "18c920dd89bd849b78f6308167fcd68ea80624e777176a430942beec5318327f"
+    },
+    "bin/openocd/scripts/interface/opendous.cfg": {
+      "bytes": 134,
+      "sha256": "c8ec7cfe9ad53a24196890ab61c25e9dd9f7de8b1981cf7ce741bc1beb74558e"
+    },
+    "bin/openocd/scripts/interface/openjtag.cfg": {
+      "bytes": 147,
+      "sha256": "d889f6de32120566b468f878814e74c15b9064a7651eeaac60780f6844bd6a0c"
+    },
+    "bin/openocd/scripts/interface/osbdm.cfg": {
+      "bytes": 164,
+      "sha256": "d7938e1ffee260213b0b15a6f6c325142d5c9d03f56fd56327a057e57c28d1a1"
+    },
+    "bin/openocd/scripts/interface/parport_dlc5.cfg": {
+      "bytes": 314,
+      "sha256": "7c01f6facb00ae46bb90da1fda1f845cf4849f20696126c1281961e3a1e8d5da"
+    },
+    "bin/openocd/scripts/interface/parport.cfg": {
+      "bytes": 297,
+      "sha256": "5e0c033c1bf2c4ce40e44362d300ac94320d8b211b0df1ed2d6847aa20fe89cf"
+    },
+    "bin/openocd/scripts/interface/parport/altium.cfg": {
+      "bytes": 786,
+      "sha256": "d4e9b202b2fccf49da3c6a259e9390f9d088fde97dd97aa985fd5139c102f1d4"
+    },
+    "bin/openocd/scripts/interface/parport/amt-wiggler-old.cfg": {
+      "bytes": 496,
+      "sha256": "96044c7e43478c6970d5c983f699bd13104ba34fc9e4e371fa7eb43df7fd825b"
+    },
+    "bin/openocd/scripts/interface/parport/arm-jtag.cfg": {
+      "bytes": 509,
+      "sha256": "de7ff742be51d576db56c08a1ba464fedc567e1226740aed5acb71a5d771ac4c"
+    },
+    "bin/openocd/scripts/interface/parport/aspo.cfg": {
+      "bytes": 354,
+      "sha256": "5bd42d3cb0a0b026a24d274c81dc2e6d582480c127263ff3b21ba0332710f077"
+    },
+    "bin/openocd/scripts/interface/parport/chameleon.cfg": {
+      "bytes": 241,
+      "sha256": "a34ca2f39f2dbc73d7aac73e3d95a9f29002f7975347a69ebafbdc666ee733df"
+    },
+    "bin/openocd/scripts/interface/parport/dlc5.cfg": {
+      "bytes": 472,
+      "sha256": "13dee90ea4153410a67d3958eb11a53cfd07afc8eefd889ff9dfb5ba55dfcf13"
+    },
+    "bin/openocd/scripts/interface/parport/flashlink.cfg": {
+      "bytes": 311,
+      "sha256": "38e16faf4c1b00b624d5e50c152d548090227d157c913d7a9b9b770c0d1fab89"
+    },
+    "bin/openocd/scripts/interface/parport/lattice.cfg": {
+      "bytes": 347,
+      "sha256": "f8fb21a21df82ac936228b8b3a5c57c9083ca8e3a4eb6ce6daa657f243978d03"
+    },
+    "bin/openocd/scripts/interface/parport/triton.cfg": {
+      "bytes": 289,
+      "sha256": "fce1a08052689401cf0cd9bb45b2511077c5538eb13ce015f96124da757a5f1f"
+    },
+    "bin/openocd/scripts/interface/parport/wiggler-ntrst-inverted.cfg": {
+      "bytes": 496,
+      "sha256": "f3ceab97ca5f0863932c153e718a27ca4b36f13332f4ef93f2be6815f185085b"
+    },
+    "bin/openocd/scripts/interface/parport/wiggler.cfg": {
+      "bytes": 509,
+      "sha256": "3034732dd7343e2ceca7153fd12b5c89e86d4c060cc38b57d5d0284e682ae3db"
+    },
+    "bin/openocd/scripts/interface/parport/wiggler2.cfg": {
+      "bytes": 545,
+      "sha256": "e248d0126492d17001c1e57480204061d0cfcb8f5ade3cc3af7c0c583aa79f9c"
+    },
+    "bin/openocd/scripts/interface/raspberrypi-gpio-connector.cfg": {
+      "bytes": 1540,
+      "sha256": "e0cfe81342029e98907daa97c9f14f6ace31c155a37d7dfac560550d9dd92b6f"
+    },
+    "bin/openocd/scripts/interface/raspberrypi-native.cfg": {
+      "bytes": 2419,
+      "sha256": "f569bd966d5b99b6a77456a0960684834a23f39170e2a68c4f89e205746e9ce8"
+    },
+    "bin/openocd/scripts/interface/raspberrypi2-native.cfg": {
+      "bytes": 247,
+      "sha256": "0b91519f77e710931a5b64a25d86c9c7f2aad06f52a570d361a327b3ce27e555"
+    },
+    "bin/openocd/scripts/interface/raspberrypi5-gpiod.cfg": {
+      "bytes": 1123,
+      "sha256": "1a7fb4248fd7e369101d924f96ff0cab6941cf89e82f258c60f2274391df7286"
+    },
+    "bin/openocd/scripts/interface/rlink.cfg": {
+      "bytes": 204,
+      "sha256": "91107e49ec2886ff78121bfa4c39d656d1c29b3f65874361158ef00a535d95e0"
+    },
+    "bin/openocd/scripts/interface/rshim.cfg": {
+      "bytes": 139,
+      "sha256": "31d6cf2968b28bc3fc4e4be3a542e690af7cebb46c27857bb65be59233ecdd90"
+    },
+    "bin/openocd/scripts/interface/spidev_example.cfg": {
+      "bytes": 217,
+      "sha256": "65ac6435e27c3cce7d0f62fb13795e5e9cb02d926eddd5575873a10ddc418b65"
+    },
+    "bin/openocd/scripts/interface/stlink-dap.cfg": {
+      "bytes": 175,
+      "sha256": "fae3ee99dfa8efde390538f3f168583e1d5b5dfd55b794bf829fdcb713cfd4a6"
+    },
+    "bin/openocd/scripts/interface/stlink-hla.cfg": {
+      "bytes": 874,
+      "sha256": "75a3492d2394850c9431c3ee74de4b71247cf5fa3f5e20e1a9fb03b830de6ef6"
+    },
+    "bin/openocd/scripts/interface/stlink-v1.cfg": {
+      "bytes": 173,
+      "sha256": "dfccbb05f8f1e27188cab9c41ac03dda0fc88625c7cf1c081d31f36fbb5a0307"
+    },
+    "bin/openocd/scripts/interface/stlink-v2-1.cfg": {
+      "bytes": 175,
+      "sha256": "7a9d5263c7805e03a50dddfcb1780bf40e3aab2d0f49053f0770e87983b22456"
+    },
+    "bin/openocd/scripts/interface/stlink-v2.cfg": {
+      "bytes": 173,
+      "sha256": "e3b236a376993c8f6aa54715480469cd5a69914b0721b88da90f02d0655e4a91"
+    },
+    "bin/openocd/scripts/interface/stlink.cfg": {
+      "bytes": 903,
+      "sha256": "6d80f32294a750d968dde9322072509d2bb7b8a736416dbe2f72eed6fb074bea"
+    },
+    "bin/openocd/scripts/interface/sysfsgpio-raspberrypi.cfg": {
+      "bytes": 870,
+      "sha256": "2114d386a76d84ff86996cbc6151be306fe5a5719dce38e287e002f430a0835f"
+    },
+    "bin/openocd/scripts/interface/ti-icdi.cfg": {
+      "bytes": 573,
+      "sha256": "4fef0910f71b6f98be6f88b1aa8a6535689693dcd7dd284ea2cd9fc5496d0ffb"
+    },
+    "bin/openocd/scripts/interface/ulink.cfg": {
+      "bytes": 212,
+      "sha256": "55d798448bad0457c391bd788fb5cb0af5c6b73df396ee2c0e43029e1f42dd6a"
+    },
+    "bin/openocd/scripts/interface/usb-jtag.cfg": {
+      "bytes": 1650,
+      "sha256": "b50929fe05b0fe85bc71a6cd411d854ba886a6d8204c8308168fa8b89845e84a"
+    },
+    "bin/openocd/scripts/interface/usbprog.cfg": {
+      "bytes": 271,
+      "sha256": "6ed93cccad7d1e25093071102e3d2c0a4f5f5b93d8a13208f6b99dd4c16a5e62"
+    },
+    "bin/openocd/scripts/interface/vdebug.cfg": {
+      "bytes": 702,
+      "sha256": "1b77fa3616cea9f4ae3bd098f86bde3a855372b7018296060515c13a82394e6e"
+    },
+    "bin/openocd/scripts/interface/vsllink.cfg": {
+      "bytes": 131,
+      "sha256": "281623ede075f837f27e24b8d890a74814aaf90eea55793ff71f27c20d6c1c7e"
+    },
+    "bin/openocd/scripts/interface/xds110.cfg": {
+      "bytes": 371,
+      "sha256": "0d28d88a7089aac3b71b6fff4908871092bcb40ff463abd8999a93b8e9d66f98"
+    },
+    "bin/openocd/scripts/mem_helper.tcl": {
+      "bytes": 1021,
+      "sha256": "01794a37e9a8bdc20e2304ee64e9d70549c0872f5f6c40fa032a165bcbba1fd2"
+    },
+    "bin/openocd/scripts/memory.tcl": {
+      "bytes": 4423,
+      "sha256": "3981b8eab0b6ebe8fc0f3582d96c4f1025a96156f909744e2189d41e91274e91"
+    },
+    "bin/openocd/scripts/mmr_helpers.tcl": {
+      "bytes": 2121,
+      "sha256": "530b7d32ea996b0df060bebe7bb21dc8d2b1bbfba8db7fe3be1a47c8b33a0109"
+    },
+    "bin/openocd/scripts/target/1986ве1т.cfg": {
+      "bytes": 1723,
+      "sha256": "f198c92f63e7e02262c1eb7342e5d51d3c4695d5704c0e4da55bc8495b36fec3"
+    },
+    "bin/openocd/scripts/target/adsp-sc58x.cfg": {
+      "bytes": 1526,
+      "sha256": "19e712604d39509acff26cceb29a252784d92406d46be817ab56e451cb7803a1"
+    },
+    "bin/openocd/scripts/target/aduc702x.cfg": {
+      "bytes": 1525,
+      "sha256": "355db145627076e1181a4927b00229cabc2341a2eca64ba79fa698ba2922a579"
+    },
+    "bin/openocd/scripts/target/aducm360.cfg": {
+      "bytes": 1334,
+      "sha256": "7680b57c918754a4cf18f363dc0eb0c599d1410177d5de543eee84d557402a11"
+    },
+    "bin/openocd/scripts/target/allwinner_h618.cfg": {
+      "bytes": 1556,
+      "sha256": "d68c84787b24ee4d0513e12a424eafbd86594d1783c1b486960179920ca4faf6"
+    },
+    "bin/openocd/scripts/target/allwinner_v3s.cfg": {
+      "bytes": 2419,
+      "sha256": "37895b5638aa0e83491212bc562ceb8684064623bb14bc3211350fd5e6c43592"
+    },
+    "bin/openocd/scripts/target/alphascale_asm9260t.cfg": {
+      "bytes": 587,
+      "sha256": "6bada5900f57859d3bd5cd89c9bb31669bb90f0770d0438402f486b79874d258"
+    },
+    "bin/openocd/scripts/target/altera_fpgasoc_arria10.cfg": {
+      "bytes": 1989,
+      "sha256": "55809bd4dedb45cd3b154dd709cdd8943fd446980d87aaf10cabe136d5d46372"
+    },
+    "bin/openocd/scripts/target/altera_fpgasoc.cfg": {
+      "bytes": 1621,
+      "sha256": "8023d58162d951a0db4981da09e7eeb43bfcca098db0d1c86ec1963b9b97a089"
+    },
+    "bin/openocd/scripts/target/am335x.cfg": {
+      "bytes": 3274,
+      "sha256": "418c65273844618d256bab085e4fb9b45d506c2865f12374a6ddb15013862014"
+    },
+    "bin/openocd/scripts/target/am437x.cfg": {
+      "bytes": 49341,
+      "sha256": "92924344ee8fab56a116dd4ab690cac597a9a9cfc09bbf37a1959f2bd42e4713"
+    },
+    "bin/openocd/scripts/target/amdm37x.cfg": {
+      "bytes": 7412,
+      "sha256": "65f0d412d16c8fa3c091409edc0fafb74c511bbcc9628ea54d33894b8887d047"
+    },
+    "bin/openocd/scripts/target/ampere_emag.cfg": {
+      "bytes": 2639,
+      "sha256": "927cc31f6ae7ff917c7301c8bf3f44f9752934a23d71dc0ea5d89e9455dad8f5"
+    },
+    "bin/openocd/scripts/target/ampere_qs_mq.cfg": {
+      "bytes": 10052,
+      "sha256": "54dc83dd91344ff9b8b5c77fabd569d33dc65fbdb3a1d3a8b0154f81438b15fc"
+    },
+    "bin/openocd/scripts/target/ar71xx.cfg": {
+      "bytes": 2064,
+      "sha256": "53c0fb957ee4d357c4f53d28d7f9efac0f0e1700dee2916daa2ef80fbda87cdf"
+    },
+    "bin/openocd/scripts/target/arm_corelink_sse200.cfg": {
+      "bytes": 2028,
+      "sha256": "1b42c1a24a2ef426bea215568ce44563cd2ec2d420a453c5fe0648a7543a8422"
+    },
+    "bin/openocd/scripts/target/armada370.cfg": {
+      "bytes": 725,
+      "sha256": "91d48ab9a5bf4f4c63089e5d0c587f836e8c44aae129d5231ed1c6f99bf88aa1"
+    },
+    "bin/openocd/scripts/target/artery/at32f4x.cfg": {
+      "bytes": 1183,
+      "sha256": "288e3b6269037d21f8f76949debbeecd68b7b0bb4b69e34b2774ce56096db3d8"
+    },
+    "bin/openocd/scripts/target/at32ap7000.cfg": {
+      "bytes": 696,
+      "sha256": "d320d011d42f7e498492b159e7d43ba93c76a94517febf3489d9e9dad6ddfc13"
+    },
+    "bin/openocd/scripts/target/at91r40008.cfg": {
+      "bytes": 775,
+      "sha256": "c2ffa195c19290e7b4c4f01e8f133f7be452fc4c01a2bb25d5f3a83ff41059f7"
+    },
+    "bin/openocd/scripts/target/at91rm9200.cfg": {
+      "bytes": 1546,
+      "sha256": "11b50e774f151b2b8f5e7d4a65ae3e24736c407c3380991d291228d79d149567"
+    },
+    "bin/openocd/scripts/target/at91sam3ax_4x.cfg": {
+      "bytes": 384,
+      "sha256": "0903ed467cdb2bc0a765afe2a7747d6c3df4f353777dca014819afc213807e21"
+    },
+    "bin/openocd/scripts/target/at91sam3ax_8x.cfg": {
+      "bytes": 384,
+      "sha256": "ae6910f70a30b33b0e19e1c3575c23b6ef323596ed456024e4a391eff896288b"
+    },
+    "bin/openocd/scripts/target/at91sam3ax_xx.cfg": {
+      "bytes": 224,
+      "sha256": "06db14887e7f4d20b7d6f10310ae19104b6884be676a6f0044e51de6e793502a"
+    },
+    "bin/openocd/scripts/target/at91sam3nXX.cfg": {
+      "bytes": 781,
+      "sha256": "6d50214f05f070b4eeb50a4d81f8c399d609897120bea08b0b27cf5dec78cca1"
+    },
+    "bin/openocd/scripts/target/at91sam3sXX.cfg": {
+      "bytes": 348,
+      "sha256": "b4e3f7e1696f4123856b64b37d686c002093d99a4801d77e418925ccc7450344"
+    },
+    "bin/openocd/scripts/target/at91sam3u1c.cfg": {
+      "bytes": 241,
+      "sha256": "ef7d6d8822e76368abfe5e06278b5cdc8bc8b1fe27c07dba8d0c6d8b4e468056"
+    },
+    "bin/openocd/scripts/target/at91sam3u1e.cfg": {
+      "bytes": 241,
+      "sha256": "ef7d6d8822e76368abfe5e06278b5cdc8bc8b1fe27c07dba8d0c6d8b4e468056"
+    },
+    "bin/openocd/scripts/target/at91sam3u2c.cfg": {
+      "bytes": 241,
+      "sha256": "ef7d6d8822e76368abfe5e06278b5cdc8bc8b1fe27c07dba8d0c6d8b4e468056"
+    },
+    "bin/openocd/scripts/target/at91sam3u2e.cfg": {
+      "bytes": 241,
+      "sha256": "ef7d6d8822e76368abfe5e06278b5cdc8bc8b1fe27c07dba8d0c6d8b4e468056"
+    },
+    "bin/openocd/scripts/target/at91sam3u4c.cfg": {
+      "bytes": 381,
+      "sha256": "5a5301a8b876b4504f86b1a4dc9094e59a7960d3081d7a18e25c228e76e5ea83"
+    },
+    "bin/openocd/scripts/target/at91sam3u4e.cfg": {
+      "bytes": 382,
+      "sha256": "e9938e7ea43ecb2ae00e082779744e7a417d252597b283ba680284c3049009cc"
+    },
+    "bin/openocd/scripts/target/at91sam3uxx.cfg": {
+      "bytes": 211,
+      "sha256": "6699974fdbcba53ee0683b349abcd2202af75e3b02db397fb64d2623172ff4be"
+    },
+    "bin/openocd/scripts/target/at91sam3XXX.cfg": {
+      "bytes": 1975,
+      "sha256": "ee04ae70c1738e9ca8787424b70b567d97d4b059a9b329707cb14608a53874d7"
+    },
+    "bin/openocd/scripts/target/at91sam4c32x.cfg": {
+      "bytes": 321,
+      "sha256": "a3556f929feb2a72a517a6476cf710e9b43cc3b75a7b295245dd5eba5ba9c40f"
+    },
+    "bin/openocd/scripts/target/at91sam4cXXX.cfg": {
+      "bytes": 223,
+      "sha256": "0c640cbd48b5ad595bd3c34904f880b712efa29691c6dbfc465b9afa2422abed"
+    },
+    "bin/openocd/scripts/target/at91sam4lXX.cfg": {
+      "bytes": 1066,
+      "sha256": "7ee0b7e69d71e07daa84d40b8d33a1a830a90520346a4ee69c15a20b1ff20542"
+    },
+    "bin/openocd/scripts/target/at91sam4sd32x.cfg": {
+      "bytes": 322,
+      "sha256": "36fc91dff61df29f5d3c3e9f20c8e5f5c662bc2de8c7d5f27b51bdcfd8bccc70"
+    },
+    "bin/openocd/scripts/target/at91sam4sXX.cfg": {
+      "bytes": 222,
+      "sha256": "d9a7f32c4cfbda48fb36e3b5867ae5fc929a8ca0e4f5281ca8acea5e2f4c8b58"
+    },
+    "bin/openocd/scripts/target/at91sam4XXX.cfg": {
+      "bytes": 1658,
+      "sha256": "7baebff8e5fa4dd903dea2d457bac216625f7593d5e56b845035f122728fd74d"
+    },
+    "bin/openocd/scripts/target/at91sam7a2.cfg": {
+      "bytes": 531,
+      "sha256": "06dd0b62124267ea9bbab01decfac68c30f376b58428ee12c57b5e89a4b504e8"
+    },
+    "bin/openocd/scripts/target/at91sam7se512.cfg": {
+      "bytes": 1224,
+      "sha256": "ccd68d05b802fb5e543ec633eaae8f51996c5d8639c93a1cdb5f34275e6f9b7b"
+    },
+    "bin/openocd/scripts/target/at91sam7sx.cfg": {
+      "bytes": 1565,
+      "sha256": "a78a2322bc4be858a85e0658b9a87b3c683cbac16215b3d628797098625dcf3f"
+    },
+    "bin/openocd/scripts/target/at91sam7x256.cfg": {
+      "bytes": 1461,
+      "sha256": "4399e22105949798957959f6064f89f656553ed4a80a367f4c41f82b5ea94621"
+    },
+    "bin/openocd/scripts/target/at91sam7x512.cfg": {
+      "bytes": 1542,
+      "sha256": "7a621f3ea14c326a3eaf39e32461c4e41558c2f7fc8b8bbcd25d26a71461b9a2"
+    },
+    "bin/openocd/scripts/target/at91sam9.cfg": {
+      "bytes": 849,
+      "sha256": "4f0f5ac713ec6d67294ac86b77492cf032dfe923cbfffb4447bdcdfb7275f658"
+    },
+    "bin/openocd/scripts/target/at91sam9260_ext_RAM_ext_flash.cfg": {
+      "bytes": 3312,
+      "sha256": "66797f0da1114b33200f9924f893bbe4da28a4c6f5b6d2934353c6fc01977305"
+    },
+    "bin/openocd/scripts/target/at91sam9260.cfg": {
+      "bytes": 709,
+      "sha256": "df556a7043a718f131ff6a9ea4c10b064dc635b6c3522f8b2ef66c5810c67ea7"
+    },
+    "bin/openocd/scripts/target/at91sam9261.cfg": {
+      "bytes": 412,
+      "sha256": "e9e8a8a22235731db7071a8281eda41e89409767dd37570c76ef713553b16366"
+    },
+    "bin/openocd/scripts/target/at91sam9263.cfg": {
+      "bytes": 728,
+      "sha256": "cac02377ef732a149afe075c04b154e9cd3b6d8c8880b191e7681254d98e4006"
+    },
+    "bin/openocd/scripts/target/at91sam9g10.cfg": {
+      "bytes": 542,
+      "sha256": "99871c36b6b2b2d6266e63a723df336970a84809fa9339559e40f4f81a8a3c24"
+    },
+    "bin/openocd/scripts/target/at91sam9g20.cfg": {
+      "bytes": 825,
+      "sha256": "72e335e9fa785738762a6aa2e5a785d8e137409abee55210d8d2f3a3ba54052b"
+    },
+    "bin/openocd/scripts/target/at91sam9g45.cfg": {
+      "bytes": 555,
+      "sha256": "382b26b185c3f875c96abe098c60fefdc2d7b889cb60236cfcb158ea72ab3923"
+    },
+    "bin/openocd/scripts/target/at91sam9rl.cfg": {
+      "bytes": 414,
+      "sha256": "2aeb9e5f68a6e30154718bc7781dc73ee806c1e7c057fcc7a921bad329f1f6a7"
+    },
+    "bin/openocd/scripts/target/at91sama5d2.cfg": {
+      "bytes": 1344,
+      "sha256": "94f4650982f618ffbb0d27b10efae8aebbb628fca11063ce398f6a51cb3521c1"
+    },
+    "bin/openocd/scripts/target/at91samdXX.cfg": {
+      "bytes": 2508,
+      "sha256": "5a3c2dfcca1de97836245b8b72fcbc2acea01e480752682c216f9fb7cda14db5"
+    },
+    "bin/openocd/scripts/target/at91samg5x.cfg": {
+      "bytes": 233,
+      "sha256": "02052fcf5c58fa4a63eedeabea1124338cf26c229764e7bd2b7f5399d78584da"
+    },
+    "bin/openocd/scripts/target/atheros_ar2313.cfg": {
+      "bytes": 401,
+      "sha256": "268a1227c0a41580f4d40dd35a34b300c53ebc62736bd7da01bae2db880c9305"
+    },
+    "bin/openocd/scripts/target/atheros_ar2315.cfg": {
+      "bytes": 401,
+      "sha256": "c3ebcebb8f342239b246280bdde94df165995fb315a346e0814594bd25538d53"
+    },
+    "bin/openocd/scripts/target/atheros_ar9331.cfg": {
+      "bytes": 5618,
+      "sha256": "3a94ed4636851ca4754018331a5708f31a4475e633667b3fe2d900d9c6a0db54"
+    },
+    "bin/openocd/scripts/target/atheros_ar9344.cfg": {
+      "bytes": 846,
+      "sha256": "769c626da8a225883d31e169f09dbe53546e489fcb91aeadfc647f4905db5379"
+    },
+    "bin/openocd/scripts/target/atmega128.cfg": {
+      "bytes": 893,
+      "sha256": "cfc2da4d89c1276bcb33f2559f3ade1d8686073e6420c7062530ad0216f84b7d"
+    },
+    "bin/openocd/scripts/target/atmega128rfa1.cfg": {
+      "bytes": 562,
+      "sha256": "183b02407c6dfb57e2f1534303ea5c1f0fdf74f26501203dff216837d0abdc4b"
+    },
+    "bin/openocd/scripts/target/atmega32u4.cfg": {
+      "bytes": 606,
+      "sha256": "84884fe6b267819703fb0111003af9d09437041da347bf32a5ebbbd6dd4aac66"
+    },
+    "bin/openocd/scripts/target/atsame5x.cfg": {
+      "bytes": 2137,
+      "sha256": "5bddaa01ef6cd5c36f9b2dac1d9cca37b8e6320f1fbe63419fdad38eecaeb5f1"
+    },
+    "bin/openocd/scripts/target/atsaml1x.cfg": {
+      "bytes": 723,
+      "sha256": "5e0bf80a087eff3ed469239f1b0520205f263f53e894f3d2965f23f2066727a2"
+    },
+    "bin/openocd/scripts/target/atsamv.cfg": {
+      "bytes": 2065,
+      "sha256": "7456d0501c1253799ee92972eefa41f4f624c31bd617d3656027374edf6f1649"
+    },
+    "bin/openocd/scripts/target/avr32.cfg": {
+      "bytes": 498,
+      "sha256": "6c15893c7458bde26123413bfbde48316b96ba51fadb572d0eb9780171e022b5"
+    },
+    "bin/openocd/scripts/target/bcm2711.cfg": {
+      "bytes": 1575,
+      "sha256": "e2170811962725738133d97124c8b390b5fc651bb2fb7fdd8e15800be5947d52"
+    },
+    "bin/openocd/scripts/target/bcm281xx.cfg": {
+      "bytes": 685,
+      "sha256": "8f17ad7e539b8a9663dad8b4830e73f8ebe5f9473922155ace6ab7378ec341d8"
+    },
+    "bin/openocd/scripts/target/bcm2835.cfg": {
+      "bytes": 648,
+      "sha256": "a39b977458b0bf603f628e2803f89a90b6cb1ad5df0d0fc80991dd22c1ccf7e0"
+    },
+    "bin/openocd/scripts/target/bcm2836.cfg": {
+      "bytes": 1426,
+      "sha256": "6ad4129bbab019a7f574a5a56693ad08363e514392f758865447dca2e8c87e0d"
+    },
+    "bin/openocd/scripts/target/bcm2837.cfg": {
+      "bytes": 1730,
+      "sha256": "e150e4ddf7e33c4b4138eb6651bf3d7306a5f97947a2b143987c271513ad543c"
+    },
+    "bin/openocd/scripts/target/bcm4706.cfg": {
+      "bytes": 287,
+      "sha256": "cb8dbbfee848a9a0a1ae4a4a3a99dd41b985ac30d5ec6ccd5bf8ef7282aed2c0"
+    },
+    "bin/openocd/scripts/target/bcm4718.cfg": {
+      "bytes": 147,
+      "sha256": "0feae0e0d82c66281f847f9aeb58794be8f931434daad5aa744de380ce258ce0"
+    },
+    "bin/openocd/scripts/target/bcm47xx.cfg": {
+      "bytes": 890,
+      "sha256": "8b6f24ef71d6554631f0d8cbe1973663131606e03701e8084da6d399e1b4b596"
+    },
+    "bin/openocd/scripts/target/bcm5352e.cfg": {
+      "bytes": 288,
+      "sha256": "224cb4642674e240975a030c9956b840455445ab51e6b0f3f9792f1bacf27df4"
+    },
+    "bin/openocd/scripts/target/bcm6348.cfg": {
+      "bytes": 304,
+      "sha256": "6f61473f9021a59ecd796350e568aeb583c2f713fd39aad5312701d9011f644d"
+    },
+    "bin/openocd/scripts/target/bl602_common.cfg": {
+      "bytes": 4713,
+      "sha256": "e14855447a71fc568f657ae1ed7ce4042e9ecc66b040a725d8443f73450f7124"
+    },
+    "bin/openocd/scripts/target/bl602.cfg": {
+      "bytes": 752,
+      "sha256": "1862fcb21318cbbabb3683af49d4db2d012243fbf8644be74f1f214175c36ff6"
+    },
+    "bin/openocd/scripts/target/bl702.cfg": {
+      "bytes": 755,
+      "sha256": "64018afc121e1006521ce89feaa1aed9171b306ff5a0b9ef899706146ffb79b7"
+    },
+    "bin/openocd/scripts/target/bl702l.cfg": {
+      "bytes": 1169,
+      "sha256": "627a78fb7f2318feb0aebe62f0ad37c53e78bbd208e71e2a109544d732dab34b"
+    },
+    "bin/openocd/scripts/target/bluefield.cfg": {
+      "bytes": 2070,
+      "sha256": "05f041a039d7e5da7292aa7ba28633bd9163dd25873e9f824d1b297c5890ad6b"
+    },
+    "bin/openocd/scripts/target/bluenrg-x.cfg": {
+      "bytes": 2170,
+      "sha256": "cee2c636ae5a31f8098ddb5ffc194acfa641679c2cb613d10b23a8ed03762795"
+    },
+    "bin/openocd/scripts/target/c100.cfg": {
+      "bytes": 1074,
+      "sha256": "99061868bb5f7702838ab05dafd67c05e48c83fdcc0059cf599317a47455c37f"
+    },
+    "bin/openocd/scripts/target/c100config.tcl": {
+      "bytes": 14949,
+      "sha256": "7986bc9e008e7a9b61ab2db84bc70e72014cdf2768388d12ad31475c2039bd51"
+    },
+    "bin/openocd/scripts/target/c100helper.tcl": {
+      "bytes": 22455,
+      "sha256": "d0cebd2dfef429fb11f70c0069a576de3cb51d0577c7aa22c7f1034fbaa7dd09"
+    },
+    "bin/openocd/scripts/target/c100regs.tcl": {
+      "bytes": 24951,
+      "sha256": "1b58d6874df5174675ba7c68ce6ea665a69d685de9342cdecfc191b1d218152b"
+    },
+    "bin/openocd/scripts/target/cavium_cn61xx.cfg": {
+      "bytes": 557,
+      "sha256": "221bdb27f1e9013af751b255a87795772819d304fd6cbea628c073110ab8cdf1"
+    },
+    "bin/openocd/scripts/target/cc2538.cfg": {
+      "bytes": 1300,
+      "sha256": "b56b832df7601a2c3874723b2be5553a8f9ecc8beeba5d817d51a579d3814bc9"
+    },
+    "bin/openocd/scripts/target/cs351x.cfg": {
+      "bytes": 838,
+      "sha256": "495678a97d0eda2446e8e9a3c4481aafbbc42f0c5696b6b69ce86983909b1dda"
+    },
+    "bin/openocd/scripts/target/davinci.cfg": {
+      "bytes": 11300,
+      "sha256": "1cfb4bfa07da01ff0a2a8fac40a721507acef2b32899e25292adea022087e248"
+    },
+    "bin/openocd/scripts/target/dragonite.cfg": {
+      "bytes": 722,
+      "sha256": "2c5d4882bf4b7cd524eb34bcf29243b88249ada6d3f24390b091efded71d413c"
+    },
+    "bin/openocd/scripts/target/dsp56321.cfg": {
+      "bytes": 774,
+      "sha256": "4b41dcf591d57dce94db6669344646b028fa132ec88a8f49c59de28be65e2876"
+    },
+    "bin/openocd/scripts/target/dsp568013.cfg": {
+      "bytes": 2077,
+      "sha256": "a037d0d278ec57dcb98764a501a89a25506cdf6851b77d986272e07fa2c4948a"
+    },
+    "bin/openocd/scripts/target/dsp568037.cfg": {
+      "bytes": 1802,
+      "sha256": "5c27b38ee58750755d432eb0915845c90f7d443b191079a27a0e46497b5781be"
+    },
+    "bin/openocd/scripts/target/efm32.cfg": {
+      "bytes": 1374,
+      "sha256": "e9daeb2adbd9e3a5a8be58425638575ecd395913ae083ab4b134be28a3823bd3"
+    },
+    "bin/openocd/scripts/target/em357.cfg": {
+      "bytes": 2105,
+      "sha256": "3acfd7c0ad5727c8437bd0f0ac2343faaa5aee1038fb2d58bcdff0c36d06552a"
+    },
+    "bin/openocd/scripts/target/em358.cfg": {
+      "bytes": 361,
+      "sha256": "3a4cf5e6ca8a819d77154a12e5758f2369161fdba6375ffebec5389b45f8c7fc"
+    },
+    "bin/openocd/scripts/target/eos_s3.cfg": {
+      "bytes": 1058,
+      "sha256": "39e07a74b2bb122247345c88b9a21bf1bc05f3583025b2575dac63045d25db75"
+    },
+    "bin/openocd/scripts/target/epc9301.cfg": {
+      "bytes": 950,
+      "sha256": "1fa99c9f9e944962947d76be4609558b9ae8fa684ae0296fb3281ad4888c75df"
+    },
+    "bin/openocd/scripts/target/esi32xx.cfg": {
+      "bytes": 952,
+      "sha256": "526fc56d53e716784ce9fc8d5f82f9edd491b2355cc88f5b9139361daacf31d0"
+    },
+    "bin/openocd/scripts/target/esp_common.cfg": {
+      "bytes": 5211,
+      "sha256": "d2e4acd51bbce7a6cd341174f2ca4943f2fab4a1d32fccdd935dabc9037b4c13"
+    },
+    "bin/openocd/scripts/target/esp32.cfg": {
+      "bytes": 710,
+      "sha256": "276d5c81ae5b8ab719484c7635761511815b1db76b909c582ea48b6dcbbd42d9"
+    },
+    "bin/openocd/scripts/target/esp32s2.cfg": {
+      "bytes": 901,
+      "sha256": "eac4681b4b4c089c558d05af70e9ae93f8549b76574a831da0cc1914976c9f0d"
+    },
+    "bin/openocd/scripts/target/esp32s3.cfg": {
+      "bytes": 1746,
+      "sha256": "b2959a1b95316d214dbcaba09836e5acbef1c4ecd0f14d42478f0b14a44cc5e1"
+    },
+    "bin/openocd/scripts/target/exynos5250.cfg": {
+      "bytes": 600,
+      "sha256": "634a0919af3211a227c133201924a590285176a5204dbba4208a39a7d662f955"
+    },
+    "bin/openocd/scripts/target/faux.cfg": {
+      "bytes": 715,
+      "sha256": "1a14ff56c8fa344c49e82920809eaa875d10c312a582dd62d233e1e6491d429b"
+    },
+    "bin/openocd/scripts/target/feroceon.cfg": {
+      "bytes": 719,
+      "sha256": "e69cdb3af770f4138886ddbef6d3f839295458503c3f73884e3c95be2fb0fac1"
+    },
+    "bin/openocd/scripts/target/fm3.cfg": {
+      "bytes": 1264,
+      "sha256": "637d9712359437b09e10456c6d2dbda69157ac5981592e6e786168270ece831b"
+    },
+    "bin/openocd/scripts/target/fm4_mb9bf.cfg": {
+      "bytes": 515,
+      "sha256": "a0c1a061c0ec318d01f5ba36a3a3728b6503cb2896c5e32f7dc0ed8958a906c0"
+    },
+    "bin/openocd/scripts/target/fm4_s6e2cc.cfg": {
+      "bytes": 588,
+      "sha256": "03f87aaa3993530b7c0508ef51fc5a358c1a2edd7b69263c4dac85e0ac7cb590"
+    },
+    "bin/openocd/scripts/target/fm4.cfg": {
+      "bytes": 651,
+      "sha256": "9794acb64ba7969897f8de7ada25cb5cf3617c44845b94eebfa25569e6cde7b1"
+    },
+    "bin/openocd/scripts/target/gd32e23x.cfg": {
+      "bytes": 1892,
+      "sha256": "bc3708fe617d3e5ef3ece9edb9233e25b2c127d1da4ecfa026db43d5238c7457"
+    },
+    "bin/openocd/scripts/target/gd32vf103.cfg": {
+      "bytes": 3864,
+      "sha256": "e44a65ef197d9f75b637780139c9807306c01e804d8ddff7282a030f9cb4d6ab"
+    },
+    "bin/openocd/scripts/target/geehy/apm32f0x.cfg": {
+      "bytes": 1132,
+      "sha256": "0609cb88e7a080a70a91dcda1a9bb9aeab903b16bcf6f32f6a41600ef9a78db4"
+    },
+    "bin/openocd/scripts/target/geehy/apm32f1x.cfg": {
+      "bytes": 1269,
+      "sha256": "02d4ba3845f1243f45912d6439ef481314a6887f023af7c6b9c38adbcc97b55e"
+    },
+    "bin/openocd/scripts/target/geehy/apm32f4x.cfg": {
+      "bytes": 1301,
+      "sha256": "52df0eca255fe79daa63be96234046b377cabeea9cf7bed6b0e7db31edce1715"
+    },
+    "bin/openocd/scripts/target/gp326xxxa.cfg": {
+      "bytes": 2774,
+      "sha256": "55fd1efe7f1611ee7805152763a325b7acde5d72e46e378519fc17483781d903"
+    },
+    "bin/openocd/scripts/target/hi3798.cfg": {
+      "bytes": 1389,
+      "sha256": "9340e8b091c9105ca24df600961b612f4698566fa5b2f9acd0a16556fcdfbace"
+    },
+    "bin/openocd/scripts/target/hi6220.cfg": {
+      "bytes": 1901,
+      "sha256": "167118ef513aba7733f79b249478c68a659b4ed5b8ce5ae3723a8d324dc0ab1a"
+    },
+    "bin/openocd/scripts/target/hilscher_netx10.cfg": {
+      "bytes": 821,
+      "sha256": "a4114c24af1c29a784118edad14114fbe9ba6a274450360d13d90ba831b5c387"
+    },
+    "bin/openocd/scripts/target/hilscher_netx50.cfg": {
+      "bytes": 1270,
+      "sha256": "3f15b81928fef878027c824cbf21306deb6fa8b158a1ae618897d4e207ea004b"
+    },
+    "bin/openocd/scripts/target/hilscher_netx500.cfg": {
+      "bytes": 1127,
+      "sha256": "a58aa18a5b39a695b1d0a016676082f9885a682252f9f160ed518de3ed4a2553"
+    },
+    "bin/openocd/scripts/target/icepick.cfg": {
+      "bytes": 4208,
+      "sha256": "dab59a1cd1c51ba436be313d82c403b21e43ffd53ef67214d82e792f66904bc9"
+    },
+    "bin/openocd/scripts/target/imx.cfg": {
+      "bytes": 850,
+      "sha256": "e96f863aa82eb8bd330168e0bd6ef1ab7af0104f0345878a67c4b09c20f50c79"
+    },
+    "bin/openocd/scripts/target/imx21.cfg": {
+      "bytes": 792,
+      "sha256": "455e5b7411dabdf8430ca4b61ea0a4d55e29505d05f82b62985b109afc6f2162"
+    },
+    "bin/openocd/scripts/target/imx25.cfg": {
+      "bytes": 1048,
+      "sha256": "12965f55b94728ec2bf7b662149f306d511bf6a50fec902c15c9e8ae951dd9dc"
+    },
+    "bin/openocd/scripts/target/imx27.cfg": {
+      "bytes": 1442,
+      "sha256": "bb5df922934f7d865b5cd65a2243855b011a06e278117cfea35c83a0406e9f17"
+    },
+    "bin/openocd/scripts/target/imx28.cfg": {
+      "bytes": 789,
+      "sha256": "69bf747e70c5a5adcc182e9ccc1aac6ac9c11d0e62f2ebde10fd0dffa349a15f"
+    },
+    "bin/openocd/scripts/target/imx31.cfg": {
+      "bytes": 1863,
+      "sha256": "515b351c374bd263c5460e1774673a19ed232242bb72856117b0ae087d1b62c5"
+    },
+    "bin/openocd/scripts/target/imx35.cfg": {
+      "bytes": 1422,
+      "sha256": "2a6bfb9b985e894bb2f9837096fbb3ea64d10ca209de6d4f1d57343be2374091"
+    },
+    "bin/openocd/scripts/target/imx51.cfg": {
+      "bytes": 1186,
+      "sha256": "63eb7749f2d453412f2f5bed6c133f0edffde0ad929a172f6ccadb350290245b"
+    },
+    "bin/openocd/scripts/target/imx53.cfg": {
+      "bytes": 1186,
+      "sha256": "343618fee199f47ca0d62d1d36c1e64acd7d5b7d55262dcfcaa092f63f4e5ddd"
+    },
+    "bin/openocd/scripts/target/imx6.cfg": {
+      "bytes": 2307,
+      "sha256": "3aebd5306d54016584d3026a0aa3b7572b005ad9b75a4e2bf2b3a0148b87a845"
+    },
+    "bin/openocd/scripts/target/imx6sx.cfg": {
+      "bytes": 1403,
+      "sha256": "3f2680762d2c3a02c839f635045a70ca1f1540e31e5229e5a56e636fe5859ed2"
+    },
+    "bin/openocd/scripts/target/imx6ul.cfg": {
+      "bytes": 1289,
+      "sha256": "1fcdaf23a5da5eb92cdd3df52daebe0046972b120a41dea68eacf49645490c05"
+    },
+    "bin/openocd/scripts/target/imx7.cfg": {
+      "bytes": 1116,
+      "sha256": "70ebc322730dc42f22f5742cf0e6adfb1969f999a9545a50f3f0d7bd1ef23365"
+    },
+    "bin/openocd/scripts/target/imx7ulp.cfg": {
+      "bytes": 890,
+      "sha256": "a2c09ebeac8b3b38c65ccb53f29d43f95e72c3fe70c1544bb9817df407ae9b9e"
+    },
+    "bin/openocd/scripts/target/imx8m.cfg": {
+      "bytes": 1769,
+      "sha256": "2453c981281702b56137191e2b15165bcac5d93a51aa4885a9adf20bbc5053b8"
+    },
+    "bin/openocd/scripts/target/imx8mp.cfg": {
+      "bytes": 1356,
+      "sha256": "0660b451d6acd9dc6d9e6d8b44849c0be78ea397d7ef66e4712f262ebf7a299b"
+    },
+    "bin/openocd/scripts/target/imx8qm.cfg": {
+      "bytes": 3260,
+      "sha256": "287909bc37be5c457e33a56da970cd2a9d961b13d90d44cc3e24887ebfabf1c7"
+    },
+    "bin/openocd/scripts/target/infineon/tle987x.cfg": {
+      "bytes": 748,
+      "sha256": "240b91e36214c0b48da05fb99dbceaafe507a3cc6e54fcd8bd77f99ffbc9f32a"
+    },
+    "bin/openocd/scripts/target/is5114.cfg": {
+      "bytes": 1317,
+      "sha256": "7712da7db52194ec5a088d259c1a34a310d8646a185c73dc0dd56953069f7a2b"
+    },
+    "bin/openocd/scripts/target/ixp42x.cfg": {
+      "bytes": 3351,
+      "sha256": "400e41fe4cf9ca69147e9ecc866f067fac150c23872f52bc9a6f8e9cc3b8daa5"
+    },
+    "bin/openocd/scripts/target/k1921vk01t.cfg": {
+      "bytes": 1306,
+      "sha256": "2ecdfe0d77712fddd150c364922a77509743197ed8d21541c844cf3f7811ec7f"
+    },
+    "bin/openocd/scripts/target/k40.cfg": {
+      "bytes": 127,
+      "sha256": "a16911c2031d6c806c4560a84fe8a00cff5977b30482fe7b6f49706df3dba0aa"
+    },
+    "bin/openocd/scripts/target/k60.cfg": {
+      "bytes": 127,
+      "sha256": "727197e4a872db8e743d00c397544f1b31e6f6cf958e537740897223181096ad"
+    },
+    "bin/openocd/scripts/target/ke0x.cfg": {
+      "bytes": 1507,
+      "sha256": "0759dc02b058dfa6f6aeed2ba3cf1cd0e9cd3a95512cd378c7d4ed08e61b4f95"
+    },
+    "bin/openocd/scripts/target/ke1xf.cfg": {
+      "bytes": 135,
+      "sha256": "4685622fe147f804f6c7983e6e9fb203d7e79da9b23f8b488fce261188360702"
+    },
+    "bin/openocd/scripts/target/ke1xz.cfg": {
+      "bytes": 136,
+      "sha256": "c8716f8da15082216043124dc7e471782a136442f660ca33d4da832ec6fac032"
+    },
+    "bin/openocd/scripts/target/kl25.cfg": {
+      "bytes": 130,
+      "sha256": "81481fa43561528abc00385634db8dd680b357c00bafc91db08b004cc7ae0f4a"
+    },
+    "bin/openocd/scripts/target/kl46.cfg": {
+      "bytes": 130,
+      "sha256": "6f606348fd086862b64e105cf859ba6e01dd139639e18ee9e75e6146b5e48c6e"
+    },
+    "bin/openocd/scripts/target/klx.cfg": {
+      "bytes": 2492,
+      "sha256": "4ed83cfc1e85994b636f6fefe8c8865fdeae54ee5ffef32ff9997e0b5de6e306"
+    },
+    "bin/openocd/scripts/target/ks869x.cfg": {
+      "bytes": 768,
+      "sha256": "c0b5d0698baf4d2d34f4ad092439852eb2bd530dba1987f39b073cf2afab95a3"
+    },
+    "bin/openocd/scripts/target/kx.cfg": {
+      "bytes": 2641,
+      "sha256": "ebd0f952ea0bdd0af582139939d737e7c12d1ec9d8849c2a7fa761b00c252c31"
+    },
+    "bin/openocd/scripts/target/lpc11xx.cfg": {
+      "bytes": 233,
+      "sha256": "8991998c68e263accafe1fd1825a2f2eb54110f7a04da674f1513038acc9b5ae"
+    },
+    "bin/openocd/scripts/target/lpc12xx.cfg": {
+      "bytes": 234,
+      "sha256": "9a26605c4d64c96a622abb1e2a32101e66e10397fa5a68c6ba67ea85bd3932c7"
+    },
+    "bin/openocd/scripts/target/lpc13xx.cfg": {
+      "bytes": 234,
+      "sha256": "2a167495116ef0310ca7e0f570e4e49c74ab619775b093af122eb685eb377e93"
+    },
+    "bin/openocd/scripts/target/lpc17xx.cfg": {
+      "bytes": 234,
+      "sha256": "05a5acd6673d23c772705298f21a01e1958e5fd9af7a723fd0cd90308c68666e"
+    },
+    "bin/openocd/scripts/target/lpc1850.cfg": {
+      "bytes": 799,
+      "sha256": "e1d4922a59e9fddc013ebc7f62914c74447a35fd682b6f7e420b34fcf61eb4eb"
+    },
+    "bin/openocd/scripts/target/lpc1xxx.cfg": {
+      "bytes": 6921,
+      "sha256": "c1974e607f037960d43e150a6de3b98ee784b5419a6092509ef6837cfbab6578"
+    },
+    "bin/openocd/scripts/target/lpc2103.cfg": {
+      "bytes": 969,
+      "sha256": "b30a34242948d155d8ecc847a5f9fb211697bcba78935ed745ed1f3595efa3fc"
+    },
+    "bin/openocd/scripts/target/lpc2124.cfg": {
+      "bytes": 974,
+      "sha256": "54b3969e9de4f654e8bb17b61a196214d453e2b0170f48bf98e3803336ce4d77"
+    },
+    "bin/openocd/scripts/target/lpc2129.cfg": {
+      "bytes": 974,
+      "sha256": "947f629e859fb490525dfa131a71e777db52b3a9aac5c0bd12f98d409d836e61"
+    },
+    "bin/openocd/scripts/target/lpc2148.cfg": {
+      "bytes": 1031,
+      "sha256": "fa8cf8c6ff0488bea1398cba75fe7208d64ed29f85a6a9bfc219a50b7a4fc66f"
+    },
+    "bin/openocd/scripts/target/lpc2294.cfg": {
+      "bytes": 998,
+      "sha256": "548d50d4c3a380172acd408e6845001e822969b1db796d7a5da3c2b46cacdf12"
+    },
+    "bin/openocd/scripts/target/lpc2378.cfg": {
+      "bytes": 1046,
+      "sha256": "7862a4babc94e6d4c42a0060ec06435346b4e035cd0db85b9c9509419f34d5f5"
+    },
+    "bin/openocd/scripts/target/lpc2460.cfg": {
+      "bytes": 998,
+      "sha256": "2d648c149189b21569e28b316d77371a7da68d37ceb7cb920a698b901acf9570"
+    },
+    "bin/openocd/scripts/target/lpc2478.cfg": {
+      "bytes": 1061,
+      "sha256": "3f179a115e8e45e34ff37ecd897085b5cfc933bc67518ece1572d0c13976da11"
+    },
+    "bin/openocd/scripts/target/lpc2900.cfg": {
+      "bytes": 2006,
+      "sha256": "ecba5985dd2b95381306e89b83b4007d75d5908e51e932007d3c1a74d21b6523"
+    },
+    "bin/openocd/scripts/target/lpc2xxx.cfg": {
+      "bytes": 2042,
+      "sha256": "cd4a707f9825756e7a6162a99fea240f04dd45cef59caf3eb2d7410fef2aa408"
+    },
+    "bin/openocd/scripts/target/lpc3131.cfg": {
+      "bytes": 2036,
+      "sha256": "63a7c061b4897a6ef02bccb5dd6b50983a84110252f7d4e59a4008819f326e5a"
+    },
+    "bin/openocd/scripts/target/lpc3250.cfg": {
+      "bytes": 1109,
+      "sha256": "2b8ff6b741a725bcaf1884da8b763deea4a50fe31e986e5536c0909748fba7e7"
+    },
+    "bin/openocd/scripts/target/lpc40xx.cfg": {
+      "bytes": 236,
+      "sha256": "8e4295bf4c425fa4487587b508683881d4b4fd82b4549551347dc499e9e526dc"
+    },
+    "bin/openocd/scripts/target/lpc4350.cfg": {
+      "bytes": 1689,
+      "sha256": "04a4b524afb8ec424f63a2fe2152074584cbc5c53b7421cfc0480805f846d81d"
+    },
+    "bin/openocd/scripts/target/lpc4357.cfg": {
+      "bytes": 385,
+      "sha256": "4272bef24b9a09fad274d7ee56ea38df9a54fdcdde40e820677f40450d414a76"
+    },
+    "bin/openocd/scripts/target/lpc4370.cfg": {
+      "bytes": 2159,
+      "sha256": "6f836bafc5ee78108ec646194204c6ff17630df4fc169bda9b71c94d09195414"
+    },
+    "bin/openocd/scripts/target/lpc84x.cfg": {
+      "bytes": 293,
+      "sha256": "5b92d029840c14da2cd4d76647b8a2ecc23054dffc92c1dc63535e1492dd3ed9"
+    },
+    "bin/openocd/scripts/target/lpc8nxx.cfg": {
+      "bytes": 3500,
+      "sha256": "3aeb66cf9a3c3e527de140ff13d6ff0826a518f4022a5ad4fb104bfb6288cf9e"
+    },
+    "bin/openocd/scripts/target/lpc8xx.cfg": {
+      "bytes": 267,
+      "sha256": "8deb5a341658c18e9afb9bb47e395066f34dfca2ed2d8c1b2cce7f55b8ddc77c"
+    },
+    "bin/openocd/scripts/target/ls1012a.cfg": {
+      "bytes": 784,
+      "sha256": "2e5962aa249dd7eee7af018183db1376ebda2666e26134ffbe51f5ff4f0b7230"
+    },
+    "bin/openocd/scripts/target/ls1028a.cfg": {
+      "bytes": 301,
+      "sha256": "3758e3ecc98b82aa7dbf83ec79596a596ae0088fa2d5a7808152f0aed90fcdb0"
+    },
+    "bin/openocd/scripts/target/ls1046a.cfg": {
+      "bytes": 1384,
+      "sha256": "c44a9988908977bedc62284bafe193177a7ca6758aaf96d876b6e5516ceca27d"
+    },
+    "bin/openocd/scripts/target/ls1088a.cfg": {
+      "bytes": 352,
+      "sha256": "1be929f6e0aecf38793f0725b01525df4d1f2f11b089af4a2c913cf343b0e245"
+    },
+    "bin/openocd/scripts/target/lsch3_common.cfg": {
+      "bytes": 1980,
+      "sha256": "b50a6deddec9ba08f47d7bae3655bac54f29962d5b975210842f025f06f26daa"
+    },
+    "bin/openocd/scripts/target/marvell/88f3710.cfg": {
+      "bytes": 122,
+      "sha256": "67d97b471ad697cd80189ee2ef3f085065031587d62a9cf209180721d4ce7b2a"
+    },
+    "bin/openocd/scripts/target/marvell/88f3720.cfg": {
+      "bytes": 122,
+      "sha256": "ca48aac56fa0e49b1386dfa0d0fab8f9b537d2975c17845bac83d33c74e62cc9"
+    },
+    "bin/openocd/scripts/target/marvell/88f37x0.cfg": {
+      "bytes": 2019,
+      "sha256": "24f9f0d991de4f39272ef675a1a7d6859fb8b41bbb798e6813bc772c2c7bbd41"
+    },
+    "bin/openocd/scripts/target/marvell/cn9130.cfg": {
+      "bytes": 6027,
+      "sha256": "3823783e7eee6229d75a3bb76bbbbbc6d5abd24555a7918e5347ad64c1c68baa"
+    },
+    "bin/openocd/scripts/target/max32620.cfg": {
+      "bytes": 425,
+      "sha256": "b06b24b0fdc9c95d2f8e646be30d696839808efd8a3723c260c615fd4b115e68"
+    },
+    "bin/openocd/scripts/target/max32625.cfg": {
+      "bytes": 424,
+      "sha256": "13ee2cc8f35f11359cf4538acf2cca33a95559266417a91e471311af16f5b598"
+    },
+    "bin/openocd/scripts/target/max3263x.cfg": {
+      "bytes": 802,
+      "sha256": "d27ee387d0dab1555adeed11e77f6141b1d8c624130280d9dac010548d47ab51"
+    },
+    "bin/openocd/scripts/target/max32670.cfg": {
+      "bytes": 925,
+      "sha256": "122fd7859499575b4aa13dc1cf2ff4453bea39eba55ffdfe3bf4ae23182b3807"
+    },
+    "bin/openocd/scripts/target/max32672.cfg": {
+      "bytes": 652,
+      "sha256": "fb38044ac160f32f5c6f3c4f7c02366e63d7f07dbf3e6943096a5ed50b01b92e"
+    },
+    "bin/openocd/scripts/target/max32675.cfg": {
+      "bytes": 924,
+      "sha256": "da9b9b23cb3176f1970cbfca36621dd5476b091f67ca5e04392094aac6c1e9e4"
+    },
+    "bin/openocd/scripts/target/max32680.cfg": {
+      "bytes": 481,
+      "sha256": "46006a63374bc4c8cf89bb021542db42fdb7a680494abf9a8d96563623b90202"
+    },
+    "bin/openocd/scripts/target/max32690.cfg": {
+      "bytes": 1234,
+      "sha256": "d861e4450a631aacfca6b1e2cf26b40852c43503bcba43770742ff8f4d5f721e"
+    },
+    "bin/openocd/scripts/target/max32xxx_common.cfg": {
+      "bytes": 3313,
+      "sha256": "68d713b57bbc3566909b7217148361287b1740121a9dd95c31d460d980a38725"
+    },
+    "bin/openocd/scripts/target/mc13224v.cfg": {
+      "bytes": 1620,
+      "sha256": "6554cf472bf4e32ec2bdce0047b213cb75a5d9c5cab8a2b1fc455c5bd1367402"
+    },
+    "bin/openocd/scripts/target/mdr32f9q2i.cfg": {
+      "bytes": 1701,
+      "sha256": "277b15aba908594acba93f326101dc904aecd01aa1ae2b7dcc1d5d9857271790"
+    },
+    "bin/openocd/scripts/target/microchip/mpfs.cfg": {
+      "bytes": 2067,
+      "sha256": "5ad1dad330b3f2b1f07c0f3643f48566ba5b29ac77bb8a4153a86b4a3c284d87"
+    },
+    "bin/openocd/scripts/target/microchip/pic64gx.cfg": {
+      "bytes": 1885,
+      "sha256": "6fe862a450e27aa0c25a5b4075949aa8623282554cf5ad2ee47d92c6c1d5500a"
+    },
+    "bin/openocd/scripts/target/nds32v5.cfg": {
+      "bytes": 263,
+      "sha256": "121728a734b29cefdd10d20ae19fe0287a955c52299530c61adee739e70edd16"
+    },
+    "bin/openocd/scripts/target/netl_xlp304.cfg": {
+      "bytes": 151,
+      "sha256": "aaa1a8c98e8c25a815c70e97d862565dd411d0edf4be0d9e70f6414ce90d4e3c"
+    },
+    "bin/openocd/scripts/target/netl_xlp308.cfg": {
+      "bytes": 151,
+      "sha256": "87807c62a2dbc9314e3e3a68a4926376c061108b069cb7744e7ff431b4133890"
+    },
+    "bin/openocd/scripts/target/netl_xlp316.cfg": {
+      "bytes": 152,
+      "sha256": "6d9e1848a7e9206064e05d7c1b214cd698c12544537e00ca6c9b38bc1ed0d2a3"
+    },
+    "bin/openocd/scripts/target/netl_xlp3xx.cfg": {
+      "bytes": 911,
+      "sha256": "d4c7fa52caa0a5dabee61170c9317a3e2064db7ed2c6529d7dd5e2c976f49cdb"
+    },
+    "bin/openocd/scripts/target/ngultra.cfg": {
+      "bytes": 2028,
+      "sha256": "743a45a1a1afa286084baa86fad7be441909d51d77524d647cf877709f85bbe0"
+    },
+    "bin/openocd/scripts/target/nhs31xx.cfg": {
+      "bytes": 139,
+      "sha256": "c7ea14582ade8493ab1d7db66b49e5e139ba8220cff45fd32151b716eef54d0d"
+    },
+    "bin/openocd/scripts/target/nordic/common.cfg": {
+      "bytes": 2096,
+      "sha256": "8a76dec69bb2dc18241d23f9c4f47cd5bcefd46d7ed91482dad7c4832bb3668a"
+    },
+    "bin/openocd/scripts/target/nordic/nrf51.cfg": {
+      "bytes": 1598,
+      "sha256": "82529d8f5ab40c077c37587e5a0453e395fe1eb094cccc65b0f34ce2b27cea90"
+    },
+    "bin/openocd/scripts/target/nordic/nrf52.cfg": {
+      "bytes": 4612,
+      "sha256": "a9e298848c5c0ce885f471c9037d796e329abc9f1280d15f60ebe6331996a292"
+    },
+    "bin/openocd/scripts/target/nordic/nrf53.cfg": {
+      "bytes": 4635,
+      "sha256": "f0f167b8c32bc4344d633a08b4120db9ce751b6d399e2809c74b687311383edf"
+    },
+    "bin/openocd/scripts/target/nordic/nrf54l.cfg": {
+      "bytes": 1717,
+      "sha256": "d69e6e427fd59fe6449a2d5aa4ebc6fa0b81faf1088077038d2abc79e0ae34fa"
+    },
+    "bin/openocd/scripts/target/nordic/nrf91.cfg": {
+      "bytes": 1729,
+      "sha256": "f83f9dc72b5a27a7a05673826cc2a758be380c22a0667695dfe550fed6bed00a"
+    },
+    "bin/openocd/scripts/target/npcx.cfg": {
+      "bytes": 1526,
+      "sha256": "7465245db9c0f5884f729cd6fdf4b61b74f1aec452220d55bf1a406fd2fdd5c3"
+    },
+    "bin/openocd/scripts/target/nuc910.cfg": {
+      "bytes": 604,
+      "sha256": "05f188b828fd9f06725fe2917f2e03aae2a5a83ed88a87bb5483e63ff7b21dc0"
+    },
+    "bin/openocd/scripts/target/numicro_m4.cfg": {
+      "bytes": 1787,
+      "sha256": "79e5e2322d78caa41036d1d16bcb19af502c4fc2d6a616861009ce054af444c3"
+    },
+    "bin/openocd/scripts/target/numicro.cfg": {
+      "bytes": 1828,
+      "sha256": "22c6127c706428376fa3d5a373b199632fd50358ab50b3a34ebbb07b3ddc9ebe"
+    },
+    "bin/openocd/scripts/target/omap2420.cfg": {
+      "bytes": 2014,
+      "sha256": "4e6be891edde791b95075953f284f2ec571535f4c1ed1d5165a11561f8185270"
+    },
+    "bin/openocd/scripts/target/omap3530.cfg": {
+      "bytes": 2570,
+      "sha256": "a706438508fea6d2909bad1d30a74e2bfc6b966fd7e5763d12e558d80d4f65b8"
+    },
+    "bin/openocd/scripts/target/omap4430.cfg": {
+      "bytes": 3438,
+      "sha256": "b8450f855216813418eee7a0671ca09d7075a36a2aa53b6bb71d74336626131f"
+    },
+    "bin/openocd/scripts/target/omap4460.cfg": {
+      "bytes": 3438,
+      "sha256": "5b2e972e1487cd8555ab8a7fb7232b53843fd8ce98e284f572a23f4b8b8e4394"
+    },
+    "bin/openocd/scripts/target/omap5912.cfg": {
+      "bytes": 1176,
+      "sha256": "1bc2f209e7272a729224eaf3293c059ff0e94400f046a2abac61f7f50773b9a5"
+    },
+    "bin/openocd/scripts/target/omapl138.cfg": {
+      "bytes": 2163,
+      "sha256": "5659a0240c5c1e2740498768c0cd1f602c08d12c416efb15df21620c1ecbbbd8"
+    },
+    "bin/openocd/scripts/target/or1k.cfg": {
+      "bytes": 1863,
+      "sha256": "dfec713b89dfaba153cf782c95cf64ca36eff3864fae39b0bf21f37d9666673f"
+    },
+    "bin/openocd/scripts/target/pic32mx.cfg": {
+      "bytes": 2739,
+      "sha256": "0aadf09bfb2cdeb8910ef9bfeaf5e7abcb2919f8ca0effb91fe09cc0d5b4d187"
+    },
+    "bin/openocd/scripts/target/psoc4.cfg": {
+      "bytes": 6327,
+      "sha256": "09cdf30a3ab18aeeb1285eb5f5155f996e2bd8c41cedbfc4ac13b5695a373759"
+    },
+    "bin/openocd/scripts/target/psoc5lp.cfg": {
+      "bytes": 1671,
+      "sha256": "20cd1d7fe03bd3751da5c8a317ac0192acd80075bba80a8f5369bbbfb0ecab7f"
+    },
+    "bin/openocd/scripts/target/psoc6.cfg": {
+      "bytes": 4163,
+      "sha256": "3f2a5b3ba7b937c7c908da00f695242014c01a5c0b151113807553bd12a79d5e"
+    },
+    "bin/openocd/scripts/target/pxa255.cfg": {
+      "bytes": 1485,
+      "sha256": "293f37eca0f5b0c40e2c9fa73ce4874d55851a1a04e64f9081dcd5f7b61f7008"
+    },
+    "bin/openocd/scripts/target/pxa270.cfg": {
+      "bytes": 1435,
+      "sha256": "ccc7bade566c4e21fe1c2c5197a6e9c9e76f2328a47d269d6d2a07958fba3974"
+    },
+    "bin/openocd/scripts/target/pxa3xx.cfg": {
+      "bytes": 2469,
+      "sha256": "94ad8c2162fb40c36acb6288b2ccaf36f75a57b41bf30eae24c6603088666933"
+    },
+    "bin/openocd/scripts/target/qn908x.cfg": {
+      "bytes": 1139,
+      "sha256": "f48f3023f0a92a22320a34ddc6edd3a8fc5a366f48174f6415df7a1a920f130a"
+    },
+    "bin/openocd/scripts/target/qualcomm_qca4531.cfg": {
+      "bytes": 4228,
+      "sha256": "ae2b81979c70c10d187fd57c7a1a822772d484da36ae9b4bb6019f0a51d1033b"
+    },
+    "bin/openocd/scripts/target/qualcomm/qcs6490.cfg": {
+      "bytes": 1354,
+      "sha256": "490f0f128c8f8707c989ca9c15d5076c26514058247041c6f92f5b01f117e20f"
+    },
+    "bin/openocd/scripts/target/quark_d20xx.cfg": {
+      "bytes": 1373,
+      "sha256": "9958a25715556bfc13e602774189b6a6705d510de42c55dfabf1aeabe9ff4c7e"
+    },
+    "bin/openocd/scripts/target/quark_x10xx.cfg": {
+      "bytes": 1249,
+      "sha256": "12b636ebdaa98578a0a80959058907282eadf48947579ac9f5f034fdb6b22a81"
+    },
+    "bin/openocd/scripts/target/readme.txt": {
+      "bytes": 1583,
+      "sha256": "947479c25a929099e4555dcce7a56f85e98e26a7c33602b342f5348977598601"
+    },
+    "bin/openocd/scripts/target/renesas_r7s72100.cfg": {
+      "bytes": 733,
+      "sha256": "e5e9611ad0c0f50af765d5fcbd450fc6780ff75af738943dd1e09d653f3580d3"
+    },
+    "bin/openocd/scripts/target/renesas_rcar_gen2.cfg": {
+      "bytes": 3156,
+      "sha256": "f7835d1d3c75f44ce0014a09ef18519c7bb53db427ccf9675b6631196eba7206"
+    },
+    "bin/openocd/scripts/target/renesas_rcar_gen3.cfg": {
+      "bytes": 6355,
+      "sha256": "caf1f8b26ffa7b7859d5aa0d4c6c1645256a0c1255098cb63c2a17326e8e8f9d"
+    },
+    "bin/openocd/scripts/target/renesas_rcar_reset_common.cfg": {
+      "bytes": 425,
+      "sha256": "552efe405e2fc88b9420d8dafae562dfa1dc42ca9ec8fd6d7291238972a5d46a"
+    },
+    "bin/openocd/scripts/target/renesas_rz_five.cfg": {
+      "bytes": 519,
+      "sha256": "188c96a87dc403fdc63e8feb372e477006cbf05cf746cb48b5ec07f4d5d91f53"
+    },
+    "bin/openocd/scripts/target/renesas_rz.cfg": {
+      "bytes": 6322,
+      "sha256": "345c7a0416e278c325679fc0c35eee6fa54e6bb43db6d4130cd302bd02fb0821"
+    },
+    "bin/openocd/scripts/target/renesas_s7g2.cfg": {
+      "bytes": 1099,
+      "sha256": "38fa13a15daf4fe1808088615aa45e73af392b218e2f472705450d5dc5c8d577"
+    },
+    "bin/openocd/scripts/target/rk3308.cfg": {
+      "bytes": 2010,
+      "sha256": "98613602f6e63f0b52dc7defca21bc9173f0660924481e872c72aa782abbbf63"
+    },
+    "bin/openocd/scripts/target/rk3399.cfg": {
+      "bytes": 2200,
+      "sha256": "9b7820c0046ba9413f443399ce53f9549295872d78e05fcbe855aebf00096c7f"
+    },
+    "bin/openocd/scripts/target/rk3588.cfg": {
+      "bytes": 2437,
+      "sha256": "182fe214212af8045d14b7f46fbf84d2abd77ed0f60b3ce854a45a2e6ee6889d"
+    },
+    "bin/openocd/scripts/target/rp2040.cfg": {
+      "bytes": 3785,
+      "sha256": "d7c855d5e8463e71451d5ec26c713ea3e942f7ecf68dc7b1af8e8e4fb8b0ede7"
+    },
+    "bin/openocd/scripts/target/rp2350.cfg": {
+      "bytes": 6797,
+      "sha256": "d3b2f9801575c33ddaf36a11929bb8b761418787cf9abe88189169730e2de9e3"
+    },
+    "bin/openocd/scripts/target/rsl10.cfg": {
+      "bytes": 1804,
+      "sha256": "634ee483638e943843979faf63457622cbcb55b3743be619b8694cb2a4031626"
+    },
+    "bin/openocd/scripts/target/rtl872xd.cfg": {
+      "bytes": 911,
+      "sha256": "38fd7e6b3c7764647f4b5e01de6b887216afdda5056a45f899da924d246ee4bd"
+    },
+    "bin/openocd/scripts/target/s32k.cfg": {
+      "bytes": 2526,
+      "sha256": "d0d2a75ddf2829b3b71e2ec98f4168bd2b19f6a31c11cf338a585eb8e4527e84"
+    },
+    "bin/openocd/scripts/target/samsung_s3c2410.cfg": {
+      "bytes": 977,
+      "sha256": "5cfab9c42ec0047e9e7a4af60c2dde456087d2d5adb32dafe6b7a0f2eaa0172e"
+    },
+    "bin/openocd/scripts/target/samsung_s3c2440.cfg": {
+      "bytes": 984,
+      "sha256": "347baeb023c2366cb09ab5b08b5de124f16ac1e4cf111e021da1e405bb9c8d4e"
+    },
+    "bin/openocd/scripts/target/samsung_s3c2450.cfg": {
+      "bytes": 1178,
+      "sha256": "22318c0f8f07443c23d77c6368be5cf0f79de86312c209f0523059f25388fda6"
+    },
+    "bin/openocd/scripts/target/samsung_s3c4510.cfg": {
+      "bytes": 573,
+      "sha256": "3397bff602d440427d2e1f939e0bcf4afb08f071f1fdc7b37c4bf807a919f32b"
+    },
+    "bin/openocd/scripts/target/samsung_s3c6410.cfg": {
+      "bytes": 1378,
+      "sha256": "af69c4809eb06669409644c9ee5df0fdbacffc02a352960c73f51ced5d5c8784"
+    },
+    "bin/openocd/scripts/target/sharp_lh79532.cfg": {
+      "bytes": 597,
+      "sha256": "78037bac544b20c6833dda63448cc1963d876ed529a8c5ff9f5921ae1e2034ae"
+    },
+    "bin/openocd/scripts/target/sim3x.cfg": {
+      "bytes": 1283,
+      "sha256": "57f73eb168310aa5b29bfcc74453325e28f6cc9c178f0349611a4bd36083616b"
+    },
+    "bin/openocd/scripts/target/smp8634.cfg": {
+      "bytes": 710,
+      "sha256": "1ffe92d4ad690bf88965c58d5f1c96dfdd39ecd7a6808f947d018b874e136433"
+    },
+    "bin/openocd/scripts/target/snps_em_sk_fpga.cfg": {
+      "bytes": 870,
+      "sha256": "c6103cd21c9fe88efb626868bd0ce396085c7c1d623d7b212f33d9fe22181389"
+    },
+    "bin/openocd/scripts/target/snps_hsdk_4xd.cfg": {
+      "bytes": 1174,
+      "sha256": "7c94085e89050a70b41e22ab4c83fe77389dcf2e2708a51168f8592f3994ba1b"
+    },
+    "bin/openocd/scripts/target/snps_hsdk.cfg": {
+      "bytes": 2565,
+      "sha256": "01b7001829e9704125f2e9265eaaf47339388e96420ac6e479618f886d31c98e"
+    },
+    "bin/openocd/scripts/target/spacemit-k1.cfg": {
+      "bytes": 2147,
+      "sha256": "ed76e617b1e6a78bcfa931537887634650aae4453b5f17ce3157d9deeb4ec165"
+    },
+    "bin/openocd/scripts/target/spear3xx.cfg": {
+      "bytes": 1067,
+      "sha256": "23fd297a9bf3be957c0a35de537faaab683601eedc8984a66c19a5f05af09bed"
+    },
+    "bin/openocd/scripts/target/st/stm32mp13x.cfg": {
+      "bytes": 3725,
+      "sha256": "6386636d57e558ddc0b9f1483e85d03c36772a331001e7d03fce6376e44fda9b"
+    },
+    "bin/openocd/scripts/target/st/stm32mp15x.cfg": {
+      "bytes": 6170,
+      "sha256": "079cd6b8b79150cbc6a7f3d2413ae6b9a18e8d568c2b437bc9f383abc7147240"
+    },
+    "bin/openocd/scripts/target/st/stm32mp21x.cfg": {
+      "bytes": 6000,
+      "sha256": "e9594d6139b24688fd3493679f36293c2c63ae400032760184cfb15b5ad213b3"
+    },
+    "bin/openocd/scripts/target/st/stm32mp23x.cfg": {
+      "bytes": 5755,
+      "sha256": "db6b707fc2f7dce9f055997df962a1125b7ed4825aa0df66946ffc454b3d7e84"
+    },
+    "bin/openocd/scripts/target/st/stm32mp25x.cfg": {
+      "bytes": 6698,
+      "sha256": "abd6e912ad1dfc47bddd686557622c899773bc93d4d2a3b556deec7c38f59f3b"
+    },
+    "bin/openocd/scripts/target/stellaris.cfg": {
+      "bytes": 5408,
+      "sha256": "e2e002e1a0e770e18057e54c8e9360e44ac042c2f28d85cf1bfa8fabcd535938"
+    },
+    "bin/openocd/scripts/target/stm32c0x.cfg": {
+      "bytes": 1759,
+      "sha256": "9f221292dc1ac9bf4974cf667676ca8d14531d6c1d317e5d659b0c136f231223"
+    },
+    "bin/openocd/scripts/target/stm32f0x.cfg": {
+      "bytes": 2610,
+      "sha256": "7c5778fc8d4c3935ebc451e3dadd41668974ae33a505981caad4307f4260e310"
+    },
+    "bin/openocd/scripts/target/stm32f1x.cfg": {
+      "bytes": 2514,
+      "sha256": "fe44c3ade7395db34a751c57401ebc2a176ed1ca793c47081cc9f06a8618125e"
+    },
+    "bin/openocd/scripts/target/stm32f2x.cfg": {
+      "bytes": 2676,
+      "sha256": "e7c2ee96993733233de5030ddbb3517f6488cc89ae598af4cc87821d26e4e05d"
+    },
+    "bin/openocd/scripts/target/stm32f3x.cfg": {
+      "bytes": 3584,
+      "sha256": "963a84416334422be2f05d28ca42fb89b278039d9e78687ace7f4c68d6461eb9"
+    },
+    "bin/openocd/scripts/target/stm32f4x.cfg": {
+      "bytes": 4442,
+      "sha256": "e42b6d3a3c9f300efbd936ec09358f6c541f7306e22ad7edffdd0f6f902806bf"
+    },
+    "bin/openocd/scripts/target/stm32f7x.cfg": {
+      "bytes": 6551,
+      "sha256": "0661490b1d9a55f7405002bb62983b6108f9fc7f5fde5b0e3b269d99bb6c4ecd"
+    },
+    "bin/openocd/scripts/target/stm32g0x.cfg": {
+      "bytes": 2392,
+      "sha256": "12824c863e06702b8bc3de42d6c565b06eaae4a975a39ee7e246012c7051e92d"
+    },
+    "bin/openocd/scripts/target/stm32g4x.cfg": {
+      "bytes": 2989,
+      "sha256": "0393a5284b6a64e68e26116fc706cc1a5b2386a915100e82f4f6c0adac679112"
+    },
+    "bin/openocd/scripts/target/stm32h7x_dual_bank.cfg": {
+      "bytes": 186,
+      "sha256": "dcc2c050561698edf9f70266a346db7c20d07040547f41f4a5ee53442d5e391b"
+    },
+    "bin/openocd/scripts/target/stm32h7x.cfg": {
+      "bytes": 9438,
+      "sha256": "7af442b5e64edd9dc864228d24bcce5c5afa4bdc894af862fc8438fafc81a3ae"
+    },
+    "bin/openocd/scripts/target/stm32l0_dual_bank.cfg": {
+      "bytes": 193,
+      "sha256": "375b963ef8b9a26655399c6d9116bed509fd590cfb5688987dddc13531cadcda"
+    },
+    "bin/openocd/scripts/target/stm32l0.cfg": {
+      "bytes": 2241,
+      "sha256": "09f65bd9a49e5becd8fc2bebb6c12328eef5efaf7f681c0ec981c354b8c21bf5"
+    },
+    "bin/openocd/scripts/target/stm32l1.cfg": {
+      "bytes": 2758,
+      "sha256": "d1bc1b28a40ef48231f796a152d0cb23caa3537422c63549b50e7d008f6c28a6"
+    },
+    "bin/openocd/scripts/target/stm32l1x_dual_bank.cfg": {
+      "bytes": 290,
+      "sha256": "014ca989be0e211277d09da027d6e7f03c6e2bedec17ff88709327e56d1168cb"
+    },
+    "bin/openocd/scripts/target/stm32l4x.cfg": {
+      "bytes": 4566,
+      "sha256": "30870b65c1dada6ef5705d44687b06b6c53ef782406031d725bb6e0674220d03"
+    },
+    "bin/openocd/scripts/target/stm32l5x.cfg": {
+      "bytes": 1507,
+      "sha256": "d9d171a4dc7785f7264fd403d6e24f7408aa4b9ccd22ff0e5280d4d6a5609e8c"
+    },
+    "bin/openocd/scripts/target/stm32u0x.cfg": {
+      "bytes": 1444,
+      "sha256": "f9e8a4089b6d0f0ee5b30df52bb7a4f5238fe11e98eec30598f200ac52ba47fe"
+    },
+    "bin/openocd/scripts/target/stm32u3x.cfg": {
+      "bytes": 1346,
+      "sha256": "532332cd52af14437b20380c8ea43895126223c7f61f4ea5dba1a9846c917d54"
+    },
+    "bin/openocd/scripts/target/stm32u5x.cfg": {
+      "bytes": 1942,
+      "sha256": "9be42cf991b805682822e70abad70cc33655cbbd45306e4d124cc06ac814578c"
+    },
+    "bin/openocd/scripts/target/stm32w108xx.cfg": {
+      "bytes": 1752,
+      "sha256": "0f90cdcf9e9ef4e7c6743fb397a116e1bef0ebec42121962164ebbae9d16dfc9"
+    },
+    "bin/openocd/scripts/target/stm32wbax.cfg": {
+      "bytes": 2981,
+      "sha256": "466dc1da6fa0c265ef98c40752b813694cc3b2a6d26c5e234fff0f2d1b62c87c"
+    },
+    "bin/openocd/scripts/target/stm32wbx.cfg": {
+      "bytes": 3152,
+      "sha256": "a91450b36fcab5cdfbadee06056e4822e3f9743e55e0bbc7b31b035a2879982f"
+    },
+    "bin/openocd/scripts/target/stm32wlx.cfg": {
+      "bytes": 5013,
+      "sha256": "7e45768e5259dc213414dc90f8ac1a8696c187cf266a61e27b6e8ebce7f5a03a"
+    },
+    "bin/openocd/scripts/target/stm32x5x_common.cfg": {
+      "bytes": 4954,
+      "sha256": "f9833cc6c8695708f6daed81581604eae8fc1eadd3aea485217bad3e4c7f2ee3"
+    },
+    "bin/openocd/scripts/target/stm32xl.cfg": {
+      "bytes": 249,
+      "sha256": "e9b79c6d2bb99ebdbb3195f163298fbb05a7ed0e4adf68076e2164eca38ce5c1"
+    },
+    "bin/openocd/scripts/target/stm8l.cfg": {
+      "bytes": 1916,
+      "sha256": "425d733316964a9fe42b7b70f40fcc3aa16e2713d395501cb73f2f6dc76fc1bd"
+    },
+    "bin/openocd/scripts/target/stm8l151x2.cfg": {
+      "bytes": 491,
+      "sha256": "4a32397590a1cf253d993e1122c3f5265c6a35dbabdb7f3b1be8c3af88cb622b"
+    },
+    "bin/openocd/scripts/target/stm8l151x3.cfg": {
+      "bytes": 491,
+      "sha256": "38ed2666ca6d9756062bfa9c8d6451b79e31d515911e7e0e54795627cea5d591"
+    },
+    "bin/openocd/scripts/target/stm8l152.cfg": {
+      "bytes": 376,
+      "sha256": "ec42f432b75efc49cf1b31c6f694e78b0d10bd63d1c7a90d9cb4fe23bf98d0d3"
+    },
+    "bin/openocd/scripts/target/stm8l15xx4.cfg": {
+      "bytes": 515,
+      "sha256": "633bc867b571805252d57bc182d2a10b5af323cec825cb4e0916ca266551cca4"
+    },
+    "bin/openocd/scripts/target/stm8l15xx6.cfg": {
+      "bytes": 541,
+      "sha256": "7e120b64486a1c8e0d7c33a0b9196d21b52177a90ded8d74d3cb2f4a99ca6932"
+    },
+    "bin/openocd/scripts/target/stm8l15xx8.cfg": {
+      "bytes": 543,
+      "sha256": "78a22ce5ad67cc939859f1b09ca887895a44ca30b0dbc58050fbc518544dbfc8"
+    },
+    "bin/openocd/scripts/target/stm8s.cfg": {
+      "bytes": 1862,
+      "sha256": "a62cb4fadd66aa9fe9b80805216e69b7049eaec75f8f94e2c55cd8c746f643a0"
+    },
+    "bin/openocd/scripts/target/stm8s003.cfg": {
+      "bytes": 206,
+      "sha256": "71070e85cc7e8bb1937d49a1f7ce880b1c87613bf7b82d53efc78a318d79d26f"
+    },
+    "bin/openocd/scripts/target/stm8s103.cfg": {
+      "bytes": 248,
+      "sha256": "e5981858fc5d30ed0a188f517f536c5de37e8481755b53f5ca73550d55797d98"
+    },
+    "bin/openocd/scripts/target/stm8s105.cfg": {
+      "bytes": 166,
+      "sha256": "fcc7919c3a6dc467c22e642a075c267218965e3e86423a4c1aaf8d18af436ec7"
+    },
+    "bin/openocd/scripts/target/str710.cfg": {
+      "bytes": 1560,
+      "sha256": "39e13b310fe4f50a9e64a98721db8d24367be6fd06befc3a8ce0582ba4bbe26a"
+    },
+    "bin/openocd/scripts/target/str730.cfg": {
+      "bytes": 1442,
+      "sha256": "174bfd5637c01fa41a33adcce2383dbc3321e3aa38076d7ed4070ddd527891b4"
+    },
+    "bin/openocd/scripts/target/str750.cfg": {
+      "bytes": 1975,
+      "sha256": "6468227411226c48840f0fcb650a5d60738cb01aed5de8329760ba2c96b270b5"
+    },
+    "bin/openocd/scripts/target/str912.cfg": {
+      "bytes": 1961,
+      "sha256": "7808e4da1bfcbc07d422a9beb97f810564ca919e18485f8a7d6ff26334a5dfe5"
+    },
+    "bin/openocd/scripts/target/swj-dp.tcl": {
+      "bytes": 1148,
+      "sha256": "aad132008735bbafea3d18a304632c638f0fb99bfc19530c9f577eda2b10410a"
+    },
+    "bin/openocd/scripts/target/swm050.cfg": {
+      "bytes": 1185,
+      "sha256": "92639ae8ade08c1d31de96fd31d02801456ffa9083f4b607e8ea18c99e8c3da7"
+    },
+    "bin/openocd/scripts/target/test_reset_syntax_error.cfg": {
+      "bytes": 449,
+      "sha256": "71376cbea2f54b6b6bc8cf960122d981eb3a7d1a8e04fd0db142d5e0bd7843f9"
+    },
+    "bin/openocd/scripts/target/test_syntax_error.cfg": {
+      "bytes": 130,
+      "sha256": "81d95c7c40f9bca08a7db1623645aa1455ee9335a97806947c47a8d999b5248f"
+    },
+    "bin/openocd/scripts/target/ti_calypso.cfg": {
+      "bytes": 1274,
+      "sha256": "db2ddbe8da2ce3e100046336a61d87e52cbfdbb4007cdd0bfa47396e20df06d6"
+    },
+    "bin/openocd/scripts/target/ti_cc13x0.cfg": {
+      "bytes": 220,
+      "sha256": "d2dd54751a0eb2c7d346f61a68d49d0239be98a488806a3923d82dde8b4f9f96"
+    },
+    "bin/openocd/scripts/target/ti_cc13x2.cfg": {
+      "bytes": 220,
+      "sha256": "1af8703e73f4957f35481bf568151b98866ee065f2eef4e1f11b6d07dab7b922"
+    },
+    "bin/openocd/scripts/target/ti_cc26x0.cfg": {
+      "bytes": 1518,
+      "sha256": "969283b160f50d4fcfa92452b0062ca8fc6bfdef59a652c87d52f6b92f0af328"
+    },
+    "bin/openocd/scripts/target/ti_cc26x2.cfg": {
+      "bytes": 220,
+      "sha256": "dd23e702f22656bcc18f97750d29cec52929888c69e8b0c4ddc11688dabe5a30"
+    },
+    "bin/openocd/scripts/target/ti_cc26x2x7.cfg": {
+      "bytes": 222,
+      "sha256": "54c89bce262a42ed514755f40c315e33ad689feb745e393ffe52cb2da042a61e"
+    },
+    "bin/openocd/scripts/target/ti_cc3220sf.cfg": {
+      "bytes": 1174,
+      "sha256": "481abd3cc6ece1af1d489d35e8541c4ed1059c2b5e70a5887208f0a7cf60497b"
+    },
+    "bin/openocd/scripts/target/ti_cc32xx.cfg": {
+      "bytes": 1466,
+      "sha256": "e67fe6143faf9975406f78cb90a90f23823fb285bb9d6ff251dac0ab220e94a0"
+    },
+    "bin/openocd/scripts/target/ti_dm355.cfg": {
+      "bytes": 3509,
+      "sha256": "b87f15318c9332639ba3728228ebf9868d8d375a050ccb6dea0875aff537b962"
+    },
+    "bin/openocd/scripts/target/ti_dm365.cfg": {
+      "bytes": 3270,
+      "sha256": "bd43dada0be8f08e45eca3ca059199cb64c58ba705da92ac6675e7ac0858d82a"
+    },
+    "bin/openocd/scripts/target/ti_dm6446.cfg": {
+      "bytes": 2788,
+      "sha256": "86d7ae462cd19651dfed1e999afd95b4b7322419e50661d69836be58c0929c11"
+    },
+    "bin/openocd/scripts/target/ti_k3.cfg": {
+      "bytes": 15594,
+      "sha256": "a22ef9f1755e832dc80c3412c1a73f804d681a817114cd2088295f8036338e60"
+    },
+    "bin/openocd/scripts/target/ti_msp432.cfg": {
+      "bytes": 1078,
+      "sha256": "daf3daa630ff640fcdf2c9165896fcb22a08140848ec8916cf7b17eb620932d9"
+    },
+    "bin/openocd/scripts/target/ti_mspm0.cfg": {
+      "bytes": 5706,
+      "sha256": "7ce2c858279f10acd2fac2d49647e461027218bc29b1d84d2656cbd93f12a0ef"
+    },
+    "bin/openocd/scripts/target/ti_rm4x.cfg": {
+      "bytes": 80,
+      "sha256": "9d119d2ad7b4fc35fa882bd6e72ad21e0e0a8c9719da0e2842cf85bb56f945e1"
+    },
+    "bin/openocd/scripts/target/ti_tms570.cfg": {
+      "bytes": 1773,
+      "sha256": "c395ce1c000be7b43c7490a15ae8c63b310193d44840ea111f907fed5fdcbea9"
+    },
+    "bin/openocd/scripts/target/ti_tms570lc43xx.cfg": {
+      "bytes": 131,
+      "sha256": "c307c9e676c43f818131e768ad2f3d213042b5466714b62e7181a38a38709b58"
+    },
+    "bin/openocd/scripts/target/ti_tms570ls1x.cfg": {
+      "bytes": 203,
+      "sha256": "02c006a73453f9288398dea450a635b17712124dc1ddeacb25aa6099e5eaf18e"
+    },
+    "bin/openocd/scripts/target/ti_tms570ls20xxx.cfg": {
+      "bytes": 223,
+      "sha256": "b6bc7fb9b4b4300bc9af6d8f1a4f796f6fef880fe5f2858ec73ba22669ddfcdd"
+    },
+    "bin/openocd/scripts/target/ti_tms570ls3137.cfg": {
+      "bytes": 146,
+      "sha256": "e2f7a6f7fa2d1a1d7aec2488e7e01b9d5c7de85cd80b9af543a3c9aecd992b97"
+    },
+    "bin/openocd/scripts/target/ti-ar7.cfg": {
+      "bytes": 722,
+      "sha256": "bd487133d1bc2b0852b756a960fa41867d425ea197d0dcd08dcf00c725946e3d"
+    },
+    "bin/openocd/scripts/target/ti-cjtag.cfg": {
+      "bytes": 1427,
+      "sha256": "b897e5874179341535b2adb82a4b95ae555ce4de4c79cf46c8595062f5506a39"
+    },
+    "bin/openocd/scripts/target/tmpa900.cfg": {
+      "bytes": 1199,
+      "sha256": "02dbaea315611277cc5d73a76c67888296160a91b348976ec3d3c558ec2b3cee"
+    },
+    "bin/openocd/scripts/target/tmpa910.cfg": {
+      "bytes": 1244,
+      "sha256": "353ac0d16d80879719e69fc1f800c23e2aa731aff209dde6c989f097d06863ae"
+    },
+    "bin/openocd/scripts/target/tnetc4401.cfg": {
+      "bytes": 695,
+      "sha256": "369b5f9d4b45a8f517422ba93142932f1bef21ebf732ab15d5cde5641ad6436e"
+    },
+    "bin/openocd/scripts/target/u8500.cfg": {
+      "bytes": 6305,
+      "sha256": "85662cd1eb6a3cd7ed2fbfb849bf8c5dfd3507844656990bf3d3a73ed553bfb0"
+    },
+    "bin/openocd/scripts/target/vd_aarch64.cfg": {
+      "bytes": 1119,
+      "sha256": "f56a7da532267a1c3a576fabe0debbd38065b82bae70fbb68e30dcd489c3df80"
+    },
+    "bin/openocd/scripts/target/vd_cortex_m.cfg": {
+      "bytes": 310,
+      "sha256": "4a485fb6aef28886453235a41ae88740df0da700fe01ac1570b626e86d1b6aff"
+    },
+    "bin/openocd/scripts/target/vd_riscv.cfg": {
+      "bytes": 405,
+      "sha256": "002b61d05fc57cf152c50e0e70cc9839873042dd1a833f2afc8cf2842afd7941"
+    },
+    "bin/openocd/scripts/target/vybrid_vf6xx.cfg": {
+      "bytes": 849,
+      "sha256": "4b393c89881222e399dc10aebc8f6d02eac56d2a6f06ff45808009c39d6fcea1"
+    },
+    "bin/openocd/scripts/target/xilinx_zynqmp.cfg": {
+      "bytes": 6941,
+      "sha256": "79ba37a198649a03601bb17e2d5bc6cc7a4d026ca349cb1635221ee205b54841"
+    },
+    "bin/openocd/scripts/target/xmc1xxx.cfg": {
+      "bytes": 981,
+      "sha256": "640827c6edd9e0c2aa13ac229bcad50216622b88568a3b3952514b648dd7e424"
+    },
+    "bin/openocd/scripts/target/xmc4xxx.cfg": {
+      "bytes": 1284,
+      "sha256": "30b34e0830fe7f8e9a6ceb097104e37efaf57bfef415e4fc7af2d43223a6952d"
+    },
+    "bin/openocd/scripts/target/xmos_xs1-xau8a-10_arm.cfg": {
+      "bytes": 353,
+      "sha256": "17d7e39234a84278ff6ce1bd250696c0a5ea8f369448ef27e8df2e5888405f29"
+    },
+    "bin/openocd/scripts/target/xtensa-core-esp32.cfg": {
+      "bytes": 6556,
+      "sha256": "e40fed49166002502ab6cf45cf0c4a7e333bbdb4303e064c14d2aa7bf92b9eea"
+    },
+    "bin/openocd/scripts/target/xtensa-core-esp32s2.cfg": {
+      "bytes": 6671,
+      "sha256": "488a3a3575e0f76b949e95e7adc1a1b664ea407b6abb1d233ab32f90dc148c5d"
+    },
+    "bin/openocd/scripts/target/xtensa-core-esp32s3.cfg": {
+      "bytes": 8143,
+      "sha256": "dd8efa7799d0523073acc4b7ee8ad65624627912e3b26cf942a2e912f9a6962c"
+    },
+    "bin/openocd/scripts/target/xtensa-core-nxp_rt600.cfg": {
+      "bytes": 10692,
+      "sha256": "1047d3dc91a0c3774e9abe66af282452b4d47c07322ebce3ff9e0c0f20ff5755"
+    },
+    "bin/openocd/scripts/target/xtensa-core-xt8.cfg": {
+      "bytes": 6998,
+      "sha256": "cbeb42594c206d3e87747f334e1a350f6fd130a6b2c789255ca4e922cdf05b19"
+    },
+    "bin/openocd/scripts/target/xtensa.cfg": {
+      "bytes": 2194,
+      "sha256": "33c0e6db0997c1d0f985acb5a6a0dfdf017068e0e3a7cdace09c86762e831a04"
+    },
+    "bin/openocd/scripts/target/zynq_7000.cfg": {
+      "bytes": 2131,
+      "sha256": "c6c75ef496034d60d32f5ea538c5541740c7d5a9010d9ea4c5e53ce1ed9c16ec"
+    },
+    "bin/openocd/scripts/target/к1879xб1я.cfg": {
+      "bytes": 820,
+      "sha256": "0a4a1bea7641102f571348bc8b64dcfbe58161e1aef01d9be346469cde343d37"
+    },
+    "bin/openocd/scripts/test/selftest.cfg": {
+      "bytes": 463,
+      "sha256": "5e3d448338d2f985c60cb5a415f39432f3e2d1f7ddaa03337ee83874bf009332"
+    },
+    "bin/openocd/scripts/test/syntax1.cfg": {
+      "bytes": 934,
+      "sha256": "84b190dad199f7876ecd9ceb4b6c4ede62436fea6c49949fe502c55e4c3c4375"
+    },
+    "bin/openocd/scripts/tools/firmware-recovery.tcl": {
+      "bytes": 3385,
+      "sha256": "62534487ac149e661bab085c9d8a72ebf3552f0eb3a2cce9a51d8faaea3e2533"
+    },
+    "bin/openocd/scripts/tools/memtest.tcl": {
+      "bytes": 7486,
+      "sha256": "9f84610a95cf75c16713a6b168a40eb32637f6574fc8fab6f8fa36e75150e9a8"
+    },
+    "bin/openocd/scripts/tools/test_cpu_speed.tcl": {
+      "bytes": 1424,
+      "sha256": "ba75d9068822f43f04c88c55ca1d6274ce3b905af1f6f3bf76f60c86a3768c4f"
     }
   }
 }
