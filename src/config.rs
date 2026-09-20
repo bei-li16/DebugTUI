@@ -57,6 +57,9 @@ impl BreakpointKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct BreakpointOptions {
+    /// Stable identity shared by linked per-core breakpoint records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     pub location: String,
     pub kind: BreakpointKind,
     pub enabled: bool,
@@ -67,6 +70,7 @@ pub struct BreakpointOptions {
 impl Default for BreakpointOptions {
     fn default() -> Self {
         Self {
+            group: None,
             location: String::new(),
             kind: BreakpointKind::Code,
             enabled: true,
@@ -110,6 +114,7 @@ pub struct Project {
     pub tasks: Tasks,
     pub ui: Ui,
     pub cores: Vec<Core>,
+    pub multicore: Multicore,
     pub live_watch: Option<LiveWatchConfig>,
     pub sync: Option<SyncConfig>,
     pub memory_access: Vec<MemoryAccess>,
@@ -117,6 +122,33 @@ pub struct Project {
     pub path: Option<PathBuf>,
     #[serde(skip)]
     pub(crate) preference_core: Option<String>,
+}
+/// Software group control. Hardware CTI routing remains in the environment.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Multicore {
+    pub scope: ControlScope,
+    pub halt_peers: bool,
+    /// A shared reset is issued once, through this core's GDB connection.
+    pub restart_core: String,
+    pub restart: Vec<String>,
+}
+impl Default for Multicore {
+    fn default() -> Self {
+        Self {
+            scope: ControlScope::Core,
+            halt_peers: true,
+            restart_core: String::new(),
+            restart: vec![],
+        }
+    }
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ControlScope {
+    All,
+    #[default]
+    Core,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -187,6 +219,9 @@ pub struct Gdb {
     pub env: BTreeMap<String, String>,
     pub unset_env: Vec<String>,
     pub init: Vec<String>,
+    /// Empty reads every named register. Targets may restrict automatic reads
+    /// when optional register banks are inaccessible during early startup.
+    pub registers: Vec<String>,
 }
 impl Default for Gdb {
     fn default() -> Self {
@@ -197,6 +232,7 @@ impl Default for Gdb {
             env: BTreeMap::new(),
             unset_env: vec![],
             init: vec![],
+            registers: vec![],
         }
     }
 }
@@ -445,7 +481,14 @@ impl Project {
             {
                 if !matches!(
                     key.as_str(),
-                    "gdb" | "target" | "service" | "actions" | "session" | "sync" | "memory_access"
+                    "gdb"
+                        | "target"
+                        | "service"
+                        | "actions"
+                        | "session"
+                        | "sync"
+                        | "memory_access"
+                        | "multicore"
                 ) {
                     return Err(format!("Unsupported environment section: {key}"));
                 }
@@ -538,6 +581,7 @@ impl Project {
             &self.actions.run,
             &self.actions.download,
             &self.actions.before_disconnect,
+            &self.multicore.restart,
         ] {
             if commands
                 .iter()
@@ -545,6 +589,14 @@ impl Project {
             {
                 return Err("Environment actions must be nonempty single-line GDB commands".into());
             }
+        }
+        if !self.multicore.restart.is_empty()
+            && !self
+                .cores
+                .iter()
+                .any(|c| c.name == self.multicore.restart_core)
+        {
+            return Err("multicore.restart requires restart_core naming a configured core".into());
         }
         let mut names = std::collections::HashSet::new();
         let mut endpoints = std::collections::HashSet::new();

@@ -41,13 +41,17 @@ $tgzPath = Join-Path $artifactRoot $package.filename
 $stableTgzPath = Join-Path $artifactRoot 'debugtui-cli.tgz'
 Copy-Item -LiteralPath $tgzPath -Destination $stableTgzPath -Force
 if ((Get-FileHash -LiteralPath $stableTgzPath).Hash -ne (Get-FileHash -LiteralPath $tgzPath).Hash) { throw 'Stable npm asset differs from versioned package' }
-$assets = @($zipPath, $tgzPath, $stableTgzPath)
+# Preserve the direct EXE download used by previous releases.
+$exePath = Join-Path $artifactRoot "debugtui-windows-x64-$version.exe"
+Copy-Item -LiteralPath (Join-Path $projectRoot 'bin/debugtui.exe') -Destination $exePath -Force
+if ((Get-FileHash -LiteralPath $exePath).Hash -ne (Get-FileHash -LiteralPath $exe).Hash) { throw 'Direct EXE asset differs from verified ZIP' }
+$assets = @($zipPath, $exePath, $tgzPath, $stableTgzPath)
 if ($IncludeTools) {
     & "$projectRoot\tools\package.ps1" -OutputDirectory $artifactRoot
     $assets += Join-Path $artifactRoot 'debugtui-tools-stm32-jlink-win-x64.zip'
 }
 $hashes = @($assets | ForEach-Object { ((Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()) + '  ' + (Split-Path $_ -Leaf) })
 [IO.File]::WriteAllText((Join-Path $artifactRoot 'SHA256SUMS.txt'), ($hashes -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
-@{version=$version;zip=$zipPath;tgz=$tgzPath;stableTgz=$stableTgzPath;assets=$assets;sha256sums=(Join-Path $artifactRoot 'SHA256SUMS.txt');verifiedDirectory=$verified} | ConvertTo-Json | Set-Content "$artifactRoot\release-assets.json" -Encoding utf8
+@{version=$version;zip=$zipPath;exe=$exePath;tgz=$tgzPath;stableTgz=$stableTgzPath;assets=$assets;sha256sums=(Join-Path $artifactRoot 'SHA256SUMS.txt');verifiedDirectory=$verified} | ConvertTo-Json | Set-Content "$artifactRoot\release-assets.json" -Encoding utf8
 Write-Output 'PASS standalone ZIP: executable, no bundled tools, version and TUI renderer.'
 $assets | ForEach-Object { $file = Get-Item -LiteralPath $_; Write-Output "$($file.Name): $($file.Length) bytes" }

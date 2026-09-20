@@ -1,6 +1,6 @@
 {
   "name": "@debugtui/cli",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Lightweight native terminal debugger powered by a configurable GDB/MI environment",
   "repository": { "type": "git", "url": "git+https://github.com/bei-li16/debugtui.git" },
   "homepage": "https://github.com/bei-li16/debugtui#readme",

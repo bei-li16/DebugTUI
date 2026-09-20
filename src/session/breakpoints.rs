@@ -45,6 +45,7 @@ impl Breakpoint {
             Kind::Code
         };
         Options {
+            group: self.group.clone(),
             location: self.location.clone(),
             kind,
             enabled: self.enabled,
@@ -57,6 +58,19 @@ impl Breakpoint {
 
 impl Engine {
     fn insert_breakpoint(&mut self, o: &Options, restoring: bool) -> Result<Record, String> {
+        let r = self.insert_breakpoint_raw(o, restoring)?;
+        if let Some(group) = &o.group {
+            let id = ["bkpt", "wpt", "hw-rwpt", "hw-awpt"]
+                .iter()
+                .find_map(|key| r.data.field(key))
+                .map(|v| v.string("number"))
+                .filter(|id| valid_id(id))
+                .ok_or("GDB returned no breakpoint identity")?;
+            self.breakpoint_groups.insert(id, group.clone());
+        }
+        Ok(r)
+    }
+    fn insert_breakpoint_raw(&mut self, o: &Options, restoring: bool) -> Result<Record, String> {
         if o.location.trim().is_empty() {
             return Err("A code location or data expression is required".into());
         }
@@ -121,6 +135,7 @@ impl Engine {
         Ok(r)
     }
     pub(super) fn restore_breakpoints(&mut self) {
+        self.breakpoint_groups.clear();
         self.unresolved_breakpoints.clear();
         for (index, spec) in self.saved_breakpoints.clone().iter().enumerate() {
             let o = spec.options();
@@ -131,6 +146,7 @@ impl Engine {
                 );
                 self.unresolved_breakpoints.push(Breakpoint {
                     id: format!("restore-{}", index + 1),
+                    group: o.group,
                     location: o.location,
                     kind: match o.kind {
                         Kind::Read => "read watchpoint",
@@ -159,6 +175,73 @@ impl Engine {
             .filter(|b| !b.temporary && !b.location.is_empty() && !b.id.contains('.'))
             .map(|b| BreakpointSpec::Detailed(b.options()))
             .collect();
+    }
+    /// One member of a coordinator transaction. The group identifies newly
+    /// inserted members as well as their undo, without assuming shared GDB IDs.
+    fn apply_linked_breakpoint(&mut self, p: &Json) -> Result<(), String> {
+        let group = p
+            .get("group")
+            .and_then(Json::as_str)
+            .filter(|s| !s.is_empty())
+            .ok_or("Breakpoint group identity required")?;
+        let number = p.get("number").and_then(Json::as_str);
+        let desired: Option<Options> = serde_json::from_value(
+            p.get("options")
+                .cloned()
+                .ok_or("Breakpoint options required")?,
+        )
+        .map_err(|e| e.to_string())?;
+        self.refresh_breakpoints()?;
+        let existing = self
+            .snapshot
+            .breakpoints
+            .iter()
+            .find(|b| b.group.as_deref() == Some(group))
+            .or_else(|| {
+                self.snapshot
+                    .breakpoints
+                    .iter()
+                    .find(|b| Some(b.id.as_str()) == number)
+            })
+            .cloned();
+        match (existing, desired) {
+            (Some(b), Some(o)) => {
+                if b.location != o.location
+                    || b.options().kind != o.kind
+                    || b.temporary != o.temporary
+                {
+                    return Err("Breakpoint identity changed; select it again".into());
+                }
+                self.update_breakpoint(&b, &o)?;
+                if let Some(stored) = self
+                    .unresolved_breakpoints
+                    .iter_mut()
+                    .find(|v| v.id == b.id)
+                {
+                    stored.group = o.group;
+                } else if let Some(group) = o.group {
+                    self.breakpoint_groups.insert(b.id, group);
+                } else {
+                    self.breakpoint_groups.remove(&b.id);
+                }
+            }
+            (None, Some(o)) => {
+                self.insert_breakpoint(&o, false)?;
+            }
+            (Some(b), None) => {
+                if self.unresolved_breakpoints.iter().any(|v| v.id == b.id) {
+                    self.unresolved_breakpoints.retain(|v| v.id != b.id);
+                } else {
+                    if !valid_id(&b.id) {
+                        return Err("Invalid breakpoint number".into());
+                    }
+                    self.mi(&format!("-break-delete {}", b.id))?;
+                }
+                self.breakpoint_groups.remove(&b.id);
+            }
+            (None, None) => {}
+        }
+        Ok(())
     }
     fn persist_breakpoint_edit(&mut self) -> Result<(), String> {
         self.refresh_breakpoints()?;
@@ -238,6 +321,7 @@ impl Engine {
         let mut result = json!({"updated":true});
         let action = (|| {
             match method {
+                "break_apply" => self.apply_linked_breakpoint(p)?,
                 "break" | "data_break" => {
                     if method == "data_break" {
                         self.stopped()?;
@@ -255,6 +339,7 @@ impl Engine {
                         Kind::Code
                     };
                     let o = Options {
+                        group: None,
                         location: text(if method == "data_break" {
                             "expression"
                         } else {

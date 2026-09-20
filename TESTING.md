@@ -1,5 +1,34 @@
 # DebugTUI 验证记录
 
+## 0.8.3：正式发布验证（2026-09-20）
+
+- 正式版本重新执行 `cargo test --locked -- --test-threads=1`：137 个单元测试和 1 个 CLI 集成测试通过；`cargo clippy --locked --all-targets -- -D warnings` 与 release 构建通过。记录：`artifacts/release-0.8.3/`。
+- 使用正式 release EXE 重跑三个真实 GDB 的多核断点测试，99 个请求全部通过，涵盖核心关联、持久化、失败回滚和混合运行状态。记录：`artifacts/linked-breakpoints-1789906062625/verification.json`。
+- 本版合入下面三个本地修复版本；THA6206 实板、实时 Watch 渲染和单核/多核回归的范围与证据见对应记录。
+
+## 0.8.3-local.3：多核断点（2026-09-20，本地修复版）
+
+- 137 个 Rust 单元测试、1 个 CLI 集成测试、严格 Clippy 检查通过。新增默认单核请求、非法核心/运行中拒绝、相同位置独立断点、不同 GDB 编号关联、回滚队列、鼠标选核/键盘应用、错误保留及 45×12 至 160×45 布局验证。
+- `scripts/test-linked-breakpoints-gdb.cjs` 使用三个真实 GDB，99 个请求通过：部分核心关联、编辑/启停/批量操作、重连/进程重启、删除隔离、第二核缺失符号导致添加失败后的回滚、退回单核、混合运行状态及断点联停。证据：`artifacts/linked-breakpoints-1789900258546/verification.json`。
+- 原多核 13 类场景与单核断点 60 请求回归通过：`artifacts/multicore-1789900841736/verification.json`、`artifacts/breakpoints-native-1789900841737/`。
+- THA6206 Release 实板 61 请求通过：core0 / core1 默认独立新增、跨核关联、条件/忽略次数同步及重连；分别在 `Gpt_Notification_UartPrintf` 和 `DemoApp_MainCore1` 命中并核对两核实际 halted；取消关联、保留无关断点、删除后两核运行且 uart_cnt 增长。证据：`artifacts/multicore-breakpoints-20260920/hardware-release/result.json`。
+- 实板 OpenOCD 分别报告 core.0 和 core.1 各 8 个硬件断点、8 个硬件观察点。此结果是每核资源报告，不是整片芯片共用配额，也不是对所有芯片的固定限制；Flash 普通源码断点由 GDB 自动使用硬件资源。
+
+## 0.8.3-local.2：运行中 Watch 刷新（2026-09-20，本地修复版）
+
+- 修复旧 `[live_watch]` 采样只写 Console、Watch 仍显示停止快照的问题。每次读取发送结构化 `live_watch` 事件；Watch 显示实时值和 `LIVE`，正常采样不再刷 Console。原始 8/16/32 位全局量保留 `<raw N-bit>` 标注，显式单项刷新策略优先。
+- `cargo test --locked -- --test-threads=1`：132 个单元测试与 1 个 CLI 集成测试通过；Clippy `--all-targets -- -D warnings` 通过。新增真实 Watch 行渲染、进制转换、旧快照覆盖防护、过期/错核/已删除/停止后事件丢弃、失败恢复及显式刷新策略优先测试。
+- THA6206 双核实板、GHS ELF、AHB_3、200 ms：core0 和 core1 的 `uart_cnt` 连续变化，与独立 AHB 读取区间一致；五个采样窗口均保持两个核运行，没有隐式 Pause/Continue。切核、状态查询、删除再添加、全核暂停及整片复位后恢复采样通过。记录：`artifacts/tha6206-live-watch-20260920/hardware-final/result.json`。
+- 将上述实板 JSON 事件逐条交给实际 App 和 Ratatui Watch 渲染器，断言每个成功采样值及 `LIVE` 均出现在 Watch 数值行。回放测试通过，彩色缓冲保存在 `artifacts/tha6206-live-watch-20260920/ui-replay/`；这是实板事件的渲染回放，不是 VS Code 截屏。
+- 停止后使用 GDB 快照。软件组暂停存在核间时间差，共享变量可能在先停核刷新后继续变化；实板校验在全核停止后显式 Refresh，再与 AHB 比较。AHB 读取仍受目标缓存一致性约束；本次验证对象是工程中该全局计数器，不代表任意结构体/表达式均可运行时求值。
+
+## 0.8.3-local.1：THA6206 软件多核组控制（2026-09-20，本地修复版）
+
+- `cargo test --locked -- --test-threads=1`：128 个单元测试与 1 个 CLI 集成测试通过；`cargo clippy --locked --all-targets -- -D warnings` 通过。覆盖组范围/部分失败/断点焦点/非阻塞组等待/单次共享复位和全核刷新、UTF-8 服务日志分片、混合运行状态下的按钮可用性及窄窗口布局。
+- `scripts/test-multicore-gdb.cjs target/release/debugtui.exe`：两个真实本机 GDB 的 13 类场景通过，包括组 Continue/Pause、断点联停与等待、单步隔离、重复 Run、范围切换、旧独立/单核行为及连接/服务失败清理。证据：`artifacts/multicore-1789892910291/verification.json`。
+- THA6206 双 Cortex-R52、GHS 2023.1.4 ELF、工程 GDB 16.3 + 定制 OpenOCD、CMSIS-DAP SWD 5 MHz：最终 Release 122 请求、27 项核对通过。每核重复断点联停，单步不改变另一核 PC，运行中 AHB counter 递增，整片复位后两核 GDB PC 同为 0x08000000，独立/组模式切换及重连成功。证据：`artifacts/tha6206-multicore-fix-20260920/hardware-release-safe-regs/result.json` 与日志。
+- 不承诺 CTI 硬件同时暂停；保留底层 GHS ABI 和部分复位寄存器访问诊断，详见该审计目录的 `REPORT.md`。未烧写或修改被测 ELF。
+
 ## 0.8.2：顶部启动按钮与返回配置（2026-09-20）
 
 - 118 项 Rust 单元测试 + 1 项 shell 集成测试通过；Clippy `--all-targets --locked -- -D warnings` 无警告，Release 构建完成。新增覆盖顶部按钮在 45×12 / 80×24 / 120×36 下的命中区域、默认 Enter 启动、正在编辑字段的提交、无效配置不启动、Workspace / Esc 返回及草稿保留。

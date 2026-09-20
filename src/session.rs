@@ -22,6 +22,50 @@ mod breakpoints;
 mod memory;
 mod watch;
 
+pub(crate) fn execution_alias(command: &str) -> Option<&'static str> {
+    Some(match command {
+        "c" | "continue" => "continue",
+        "r" | "run" => "run",
+        "s" | "step" => "step",
+        "n" | "next" => "next",
+        "si" | "stepi" => "step-instruction",
+        "ni" | "nexti" => "next-instruction",
+        "fin" | "finish" => "finish",
+        _ => return None,
+    })
+}
+
+fn register_indices(names: &[String], selected: &[String]) -> Result<Vec<usize>, String> {
+    for name in selected {
+        if name.is_empty() || !names.contains(name) {
+            return Err(format!(
+                "Configured GDB register {name:?} is not exposed by this target"
+            ));
+        }
+    }
+    Ok(names
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| !n.is_empty() && (selected.is_empty() || selected.contains(n)))
+        .map(|(i, _)| i)
+        .collect())
+}
+
+#[cfg(test)]
+mod register_selection_tests {
+    use super::*;
+    #[test]
+    fn excludes_unavailable_banks_without_renumbering_and_rejects_typos() {
+        let names = ["r0", "", "pc", "d0", "s0"].map(String::from);
+        assert_eq!(register_indices(&names, &[]).unwrap(), [0, 2, 3, 4]);
+        assert_eq!(
+            register_indices(&names, &["pc".into(), "r0".into()]).unwrap(),
+            [0, 2]
+        );
+        assert!(register_indices(&names, &["missing".into()]).is_err());
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Frame {
     pub level: u32,
@@ -65,9 +109,13 @@ pub struct WatchTree {
     pub has_more: bool,
     pub limited: bool,
 }
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Breakpoint {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub cores: Vec<usize>,
     pub id: String,
     pub location: String,
     pub kind: String,
@@ -101,6 +149,8 @@ pub struct Snapshot {
     pub core: Option<CoreStatus>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cores: Vec<CoreStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub control_scope: Option<crate::config::ControlScope>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CoreStatus {
@@ -127,6 +177,7 @@ impl Default for Snapshot {
             async_supported: false,
             core: None,
             cores: vec![],
+            control_scope: None,
         }
     }
 }
@@ -155,9 +206,12 @@ impl Request {
         }
     }
 }
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum Event {
+    LiveWatch {
+        sample: crate::live_watch::LiveWatchSample,
+    },
     Snapshot {
         snapshot: Box<Snapshot>,
     },
@@ -325,6 +379,7 @@ struct Engine {
     rpc_echo: crate::live_watch::RpcEcho,
     saved_breakpoints: Vec<crate::config::BreakpointSpec>,
     unresolved_breakpoints: Vec<Breakpoint>,
+    breakpoint_groups: std::collections::HashMap<String, String>,
     reg_names: Vec<String>,
     exiting: bool,
     job: Option<crate::process::Job>,
@@ -473,6 +528,7 @@ impl Engine {
             rpc_echo: Default::default(),
             saved_breakpoints,
             unresolved_breakpoints: vec![],
+            breakpoint_groups: Default::default(),
             reg_names: vec![],
             exiting: false,
             job: None,
@@ -709,7 +765,11 @@ impl Engine {
     }
     fn commands(&mut self, commands: &[String], timeout: Duration) -> Result<(), String> {
         for command in commands {
-            let command = if command.starts_with('-') {
+            // CLI execution commands can leave GDB in foreground mode and make
+            // subsequent MI interrupts hang, even with mi-async enabled.
+            let command = if let Some(method) = execution_alias(command.trim()) {
+                format!("-exec-{method}")
+            } else if command.starts_with('-') {
                 command.clone()
             } else {
                 format!("-interpreter-exec console {}", mi::quote(command))
@@ -1197,13 +1257,7 @@ impl Engine {
                 .map(|v| v.items().iter().map(|x| x.text().to_owned()).collect())
                 .unwrap_or_default();
         }
-        let indices: Vec<usize> = self
-            .reg_names
-            .iter()
-            .enumerate()
-            .filter(|(_, n)| !n.is_empty())
-            .map(|(i, _)| i)
-            .collect();
+        let indices = register_indices(&self.reg_names, &self.project.gdb.registers)?;
         if !indices.is_empty() {
             let cmd = format!(
                 "-data-list-register-values x {}",
@@ -1259,10 +1313,16 @@ impl Engine {
                 v.items()
                     .iter()
                     .map(|x| x.field("bkpt").unwrap_or(x))
-                    .map(Breakpoint::from_mi)
+                    .map(|v| {
+                        let mut b = Breakpoint::from_mi(v);
+                        b.group = self.breakpoint_groups.get(&b.id).cloned();
+                        b
+                    })
                     .collect()
             })
             .unwrap_or_default();
+        self.breakpoint_groups
+            .retain(|id, _| self.snapshot.breakpoints.iter().any(|b| &b.id == id));
         self.snapshot
             .breakpoints
             .extend(self.unresolved_breakpoints.clone());
@@ -1494,6 +1554,24 @@ impl Engine {
                 }
                 Ok(json!({"running":self.snapshot.state=="RUNNING"}))
             }
+            "synchronize" => {
+                self.inactive()?;
+                self.console("maintenance flush register-cache")?;
+                self.sync_target_state()?;
+                Ok(json!({"state":self.snapshot.state}))
+            }
+            "restart_shared" => {
+                self.stopped()?;
+                if self.project.multicore.restart.is_empty() {
+                    return Err("Shared reset is not configured".into());
+                }
+                self.commands(
+                    &self.project.multicore.restart.clone(),
+                    Duration::from_millis(self.project.session.timeout_ms),
+                )?;
+                // The coordinator refreshes every connection after this command.
+                Ok(json!({"restarted":true}))
+            }
             "restart" => {
                 if self.project.actions.restart.is_empty() {
                     return Err("Restart is not configured by this environment".into());
@@ -1550,9 +1628,8 @@ impl Engine {
             "watch_expand" => self.expand_watch(p),
             "watch_resolve" => self.resolve_watch(p),
             "memory_read" => self.read_memory_channel(p),
-            "break" | "data_break" | "delete_break" | "enable_break" | "update_break" => {
-                self.breakpoint_command(method, p)
-            }
+            "break" | "data_break" | "delete_break" | "enable_break" | "update_break"
+            | "break_apply" => self.breakpoint_command(method, p),
             "frame" => {
                 self.stopped()?;
                 let index = p.get("level").and_then(Json::as_u64).unwrap_or(0);

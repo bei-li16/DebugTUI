@@ -207,4 +207,47 @@ mod tests {
         }
         assert_ne!(colors[0], colors[1]);
     }
+    #[test]
+    fn group_scope_labels_and_mixed_state_buttons_are_usable() {
+        let mut p = Project {
+            cores: vec![
+                crate::config::Core::default(),
+                crate::config::Core::default(),
+            ],
+            ..Default::default()
+        };
+        p.multicore.scope = crate::config::ControlScope::All;
+        p.multicore.restart = vec!["monitor chipreset".into()];
+        let mut a = App::new(p, false);
+        a.snapshot.state = "STOPPED".into();
+        a.snapshot.cores = (0..2)
+            .map(|i| session::CoreStatus {
+                index: i,
+                name: format!("core.{i}"),
+                endpoint: i.to_string(),
+                state: if i == 0 { "STOPPED" } else { "RUNNING" }.into(),
+            })
+            .collect();
+        a.snapshot.core = Some(a.snapshot.cores[0].clone());
+        assert!(a.action_enabled("pause"));
+        assert!(a.action_enabled("continue"));
+        assert!(a.action_enabled("restart"));
+        for width in [45, 80, 160] {
+            let mut t = Terminal::new(TestBackend::new(width, 32)).unwrap();
+            t.draw(|f| super::super::draw(f, &mut a)).unwrap();
+            assert!(a.action_hits.iter().any(|(_, m)| *m == "scope-toggle"));
+            assert!(a.action_hits.iter().all(|(r, _)| r.right() <= width));
+            let text = t
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|c| c.symbol())
+                .collect::<String>();
+            assert!(text.contains("Scope: All"));
+        }
+        a.snapshot.control_scope = Some(crate::config::ControlScope::Core);
+        assert!(!a.action_enabled("pause"));
+        assert!(a.action_enabled("continue"));
+    }
 }

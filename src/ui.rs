@@ -53,6 +53,8 @@ mod cores;
 mod effects;
 mod formats;
 mod highlight;
+#[cfg(test)]
+mod live_watch_tests;
 mod monitor;
 mod peripherals;
 mod render;
@@ -68,9 +70,11 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 41] = [
+const COMMANDS: [&str; 43] = [
     "cores",
     "core NAME_OR_INDEX",
+    "scope all|core",
+    "scope-toggle",
     "appearance",
     "animations MODE",
     "format",
@@ -114,6 +118,13 @@ const COMMANDS: [&str; 41] = [
 const DEMO_SOURCE: &str = "/* DebugTUI demo: no target connected */\n#include <stdint.h>\n\n\nvolatile uint32_t counter;\nvolatile uint8_t flag = 1;\n\nvoid process_items(void)\n{\n    for (unsigned i = 0; i < 100; ++i) {\n        update_value(\"sample\\n\");\n        counter++;\n    }\n}\n\nvoid update_value(const char *format)\n{\n    uint8_t ret = 0;\n    flag = 0;\n    /* Place a data breakpoint on flag. */\n}\n";
 const HELP: &str = r#"DebugTUI — GDB debugging workspace
 
+Multi-core: Run All starts each core once, then resumes it.
+Scope: All / Core controls Continue (F5) and Pause (F6).
+All scope: a breakpoint halts running peers and selects the triggering core.
+Step / Next / Finish operate on the selected core; peers stay stopped in All scope.
+Reset Chip always pauses and resets the whole group, even in Core scope.
+Software group commands are ordered; they are not hardware lockstep/CTI synchronization.
+
 Left: Source / Asm / Files / Log
 Right top: System Regs / Peripherals / Stack / Memory / Breaks
 Right bottom: Watch / Locals
@@ -124,7 +135,9 @@ Click Stack rows to select a frame; Delete removes a breakpoint or watch.
 Breaks: click [x] or Space / Enter to disable or enable without deleting.
 + Code / Insert adds a code breakpoint; + Data / d adds a read, write or read/write watchpoint.
 Edit / e / right-click sets enabled state, condition and ignore count; Delete removes the record.
-Enable all / Disable all affect this core only. Disabled records and data breakpoints are saved.
+Cores / c selects the cores for an existing code breakpoint. New source breakpoints use this core only.
+Linked breakpoint edits/deletion include all its cores; Enable all also includes linked peers.
+Disabled records, core membership and data breakpoints are saved.
 Hardware / temporary code breakpoints are available in the editor. Hit totals come from GDB.
 Write watchpoints stop on value changes; Read and Read/write require hardware support.
 Watch: enter a variable below the list, then click + Add or press Enter.
@@ -435,6 +448,7 @@ impl App {
     }
     fn update(&mut self, event: Event) -> bool {
         match event {
+            Event::LiveWatch { sample } => self.apply_live_watch(sample),
             Event::Snapshot { snapshot } => {
                 let core_changed = snapshot.core.as_ref().map(|c| c.index)
                     != self.snapshot.core.as_ref().map(|c| c.index);
@@ -607,7 +621,7 @@ impl App {
         }
         if (method == "download" && !self.project.has_download())
             || (method == "build" && !self.project.has_build())
-            || (method == "restart" && self.project.actions.restart.is_empty())
+            || (method == "restart" && !self.has_reset())
         {
             self.notice = format!("{method} is not configured. Open F2 Setup to configure it.");
             return;
@@ -671,6 +685,8 @@ impl App {
         let arg = arg.trim();
         let unquote = |s: &str| s.trim().trim_matches('"').to_string();
         match name {
+            "scope" => self.submit(engine, "control_scope", json!({"scope":arg})),
+            "scope-toggle" => self.submit(engine, "control_scope", json!({"scope":if self.group_control() { "core" } else { "all" }})),
             "appearance" => self.open_appearance(),
             "format" => self.open_format(None),
             "animations" => {
@@ -717,6 +733,7 @@ impl App {
             "break-edit" => self.open_break_editor(false, true),
             "break-toggle" => self.toggle_selected_break(engine),
             "break-remove" => self.remove_selected_break(engine),
+            "break-cores" => self.open_break_cores(),
             "break-enable-all" | "break-disable-all" => self.break_send(engine, "enable_break", json!({"all":true,"enabled":name == "break-enable-all"})),
             "enable" | "disable" => self.submit(engine, "enable_break", json!({"number":if arg == "all" { "" } else { arg }, "all":arg == "all", "enabled":name == "enable"})),
             "break" => self.submit(engine, "break", json!({"location":unquote(arg)})),
@@ -1168,6 +1185,18 @@ impl App {
             self.command(engine, &format!(":{command}"));
         }
     }
+    fn group_control(&self) -> bool {
+        !self.project.cores.is_empty()
+            && self
+                .snapshot
+                .control_scope
+                .unwrap_or(self.project.multicore.scope)
+                == crate::config::ControlScope::All
+    }
+    fn has_reset(&self) -> bool {
+        !self.project.multicore.restart.is_empty()
+            || (!self.group_control() && !self.project.actions.restart.is_empty())
+    }
     fn action_enabled(&self, command: &str) -> bool {
         if self.quitting {
             return false;
@@ -1180,6 +1209,24 @@ impl App {
         }
         if command.starts_with("break-") {
             return self.break_action_enabled(command);
+        }
+        if command == "scope-toggle" {
+            return !self.project.cores.is_empty();
+        }
+        if (self.group_control() && matches!(command, "run" | "continue" | "pause" | "restart"))
+            || (command == "run" && !self.project.cores.is_empty())
+        {
+            let cores = &self.snapshot.cores;
+            let connected = !cores.is_empty()
+                && cores
+                    .iter()
+                    .all(|c| matches!(c.state.as_str(), "READY" | "STOPPED" | "RUNNING"));
+            return connected
+                && match command {
+                    "pause" => cores.iter().any(|c| c.state == "RUNNING"),
+                    "restart" => self.has_reset(),
+                    _ => cores.iter().any(|c| c.state != "RUNNING"),
+                };
         }
         match command {
             "commandlist" | "quit" | "setup" => true,
@@ -1211,7 +1258,10 @@ impl App {
             }
             "run" | "continue" => matches!(self.snapshot.state.as_str(), "STOPPED" | "READY"),
             "restart" => {
-                self.snapshot.state == "STOPPED" && !self.project.actions.restart.is_empty()
+                (self.snapshot.state == "STOPPED"
+                    || (self.snapshot.state == "RUNNING"
+                        && !self.project.multicore.restart.is_empty()))
+                    && self.has_reset()
             }
             _ => self.snapshot.state == "STOPPED",
         }

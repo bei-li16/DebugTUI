@@ -39,6 +39,7 @@ pub(super) struct Item {
     pub safe_auto: bool,
 }
 struct Sample {
+    legacy: bool,
     binding: Option<Binding>,
     generation: u64,
     channel: String,
@@ -329,6 +330,7 @@ impl App {
             .samples
             .entry(key.clone())
             .or_insert_with(|| Sample {
+                legacy: false,
                 binding: item.memory.clone(),
                 generation,
                 channel: policy.channel.clone(),
@@ -510,9 +512,56 @@ impl App {
         }
         false
     }
+    pub(super) fn apply_live_watch(&mut self, live: crate::live_watch::LiveWatchSample) {
+        if self.snapshot.state != "RUNNING"
+            || live.generation != self.snapshot.generation
+            || live.core != self.snapshot.core.as_ref().map(|c| c.index)
+            || !self
+                .snapshot
+                .watches
+                .iter()
+                .any(|w| w.name == live.expression)
+        {
+            return;
+        }
+        let key = self.monitor_key(&format!("watch:{}", live.expression));
+        // Explicit per-item memory access/refresh settings take precedence over
+        // the legacy raw-global poller; do not overwrite typed samples.
+        if self.project.ui.refresh.contains_key(&key) {
+            return;
+        }
+        let previous = self.monitor.samples.get(&key).and_then(|s| s.value);
+        self.monitor.samples.insert(
+            key,
+            Sample {
+                legacy: true,
+                binding: None,
+                generation: live.generation,
+                channel: String::new(),
+                value: live.value,
+                text: live
+                    .value
+                    .map(|v| format!("{v} <raw {}-bit>", live.bits))
+                    .unwrap_or_default(),
+                error: live.error,
+                changed: previous.zip(live.value).is_some_and(|(a, b)| a != b),
+                due: Instant::now()
+                    + Duration::from_millis(
+                        self.project
+                            .live_watch
+                            .as_ref()
+                            .map(|c| c.interval_ms)
+                            .unwrap_or(200),
+                    ),
+                sampled: live.value.map(|_| Instant::now()),
+            },
+        );
+    }
     pub(super) fn watch_sample(&self, key: &str) -> Option<(String, bool, bool)> {
         let sample = self.monitor.samples.get(&self.monitor_key(key))?;
-        if sample.generation != self.snapshot.generation {
+        if sample.generation != self.snapshot.generation
+            || (sample.legacy && self.snapshot.state != "RUNNING")
+        {
             return None;
         }
         if let Some(error) = &sample.error {
@@ -530,6 +579,7 @@ impl App {
                     .strip_prefix(k)
                     .is_some_and(|tail| tail.starts_with('.')))
                 && s.generation == self.snapshot.generation
+                && (!s.legacy || self.snapshot.state == "RUNNING")
                 && s.error.is_none()
                 && s.sampled.is_some_and(|at| {
                     at.elapsed()

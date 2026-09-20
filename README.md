@@ -1,6 +1,6 @@
 # DebugTUI
 
-基于 GDB/MI 的原生终端调试工作台。当前源码版本 0.8.2，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
+基于 GDB/MI 的原生终端调试工作台。当前版本 0.8.3，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
 
 GitHub：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。源码使用 Apache-2.0；依赖声明见 NOTICE。
 
@@ -9,7 +9,9 @@ GitHub：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。源码使�
 - **Breaks** 行首 `[x]` / `[ ]` 是启用开关，点击或选中后按 **Space / Enter** 切换；禁用保留记录和配置，**Delete** 才删除。源码用 `●` / `○` 区分启用与禁用；对禁用断点按 F9 会重新启用。
 - **+ Code**（Insert / n）添加 `file:line`、函数或 `*address` 断点，可选择硬件断点和命中后删除的临时断点。
 - **+ Data**（d）添加变量或指针表达式，例如 `xTickCount`、`*(uint32_t *)0x20000000`，可选择 **Write / Read / Read/write**。Write 使用 GDB 的值变化语义；读、读写需要目标支持硬件 watchpoint。数量、宽度、对齐限制由 GDB/调试服务器决定，失败时显示其错误。
-- **Edit**（e / 右键）设置启用状态、条件和忽略次数；忽略 N 次表示跳过接下来的 N 次命中。行下方显示 GDB 的实际命中总数与剩余忽略次数。**Enable all / Disable all** 仅影响当前核心。
+- **Edit**（e / 右键）设置启用状态、条件和忽略次数；忽略 N 次表示跳过接下来的 N 次命中。行下方显示当前核 GDB 的实际命中总数与剩余忽略次数。**Enable all / Disable all** 处理当前核列表，并包含列表中多核断点关联的其他核。
+- 点击源码或 **+ Code** 默认只在当前核创建。选中已有代码断点后，点击 **Cores** 或按 **c**，勾选目标核心，**Ctrl+Enter / Apply** 应用；**a** 全选，**s** 只保留当前核。多核断点显示 `[N cores]`，底部列出核心名称。启停、条件/忽略次数修改和删除会应用到该断点关联的所有核；回到单核会移除其他核上的关联副本。当前核必须保留，可先切核再更改所属范围。
+- 核心选择支持持久代码/硬件断点；临时断点和数据观察点仍按核管理。操作前受影响核心都必须连接并暂停；不会为了修改断点隐式暂停目标。跨核失败会尝试回滚此前的修改，回滚失败同样明确报告。相同位置的独立断点不会自动合并。
 - 断点修改立即保存至工程；禁用状态、数据类型、条件与剩余忽略次数跨重连及进程重启恢复。临时断点不持久化。恢复失败的记录标为 `[!]`，仍保留，可重试启用或明确删除。
 - 编辑器支持鼠标、Tab / ↑ ↓、Ctrl+U 清空、Ctrl+Enter 应用、Esc 取消。修改断点前先暂停目标；窄终端仍可用快捷键打开编辑器。
 
@@ -45,16 +47,34 @@ startup_order = 0
 
 - 每核独立 GDB/MI 会话；序号固定按配置顺序。点击 **Cores** 栏按钮、`Ctrl+T`、`:core 0`、`:core cpu1` 切核，`:cores` 查询所有核的状态。多核按钮带运行状态，左右箭头可浏览更多核心。切换后 Source、Asm、System Regs、Stack、Memory、Watch 和外设缓存归属当前核，Asm 等暂停后按需刷新；源码及检查窗口的底色、边线随核心颜色变化，保留 PC/错误本身的语义色。单核工程不显示多余的 Cores 栏。
 - Connect、Reconnect、Run、Disconnect、Exit 作用于整个工作区；Connect/Run 按 `startup_order` 逐核等待命令结果。它保证调试命令执行顺序，不保证前一个核的固件已完成启动。
-- Continue、Pause、Step、Reset、Watch、断点及原始 GDB Console 作用于当前核。多核 Run 中途失败会报告已执行的各核结果；已经运行的核不会被隐式复位。
+- Continue/F5、Pause/F6 可选择全部核或当前核。工具栏 **Scope: All / Core** 或 `:scope all` / `:scope core` 切换当前会话范围；旧配置默认 Core。Run All 始终按启动顺序控制全部核：每次连接/复位后首次执行各核 `run`，之后只继续，已运行核跳过。
+- All 模式下，断点/观察点/异常停止会暂停正在运行的其他核，并切换到触发停止的核。Step/Next/Finish 先暂停其他核，再只执行选中核；跨核锁或同步等待代码可能需要继续全部核才能推进。Core 模式保持独立调试。Watch、新建断点和任意原始 GDB 命令仍属于选中核；显式关联的多核断点编辑按其成员范围分发；Console 中的 `continue`/`c` 等执行别名遵循上述范围。
+- 组模式不会重复执行每核的复位脚本。整片 Reset 需要下述 `multicore.restart`；它先暂停全组，只经指定核执行一次，再清除每个 GDB 的寄存器缓存并刷新状态。即使切到 Core 模式，**Reset Chip** 也作用于整片。没有配置共享复位时，All 模式拒绝 Reset。部分继续/复位失败会报告逐核结果，并尝试停住已运行的核。
 - 任一核连接失败会断开所有核并清理本工作区启动的服务。仅一个 `[[cores]]` 时也会正确管理服务。外部启动的服务不归 TUI 所有。
 - 已有会话时重复 Connect 直接报错并保留连接；需要重建时使用 Reconnect。多核更换共享 ELF 请在 F2 Setup 修改 Program / ELF 后整体启动；`:elf` 保留用于单核。
-- Watch、断点分别保存到各自 `[[cores]]`；未配置时继承顶层列表，`watch = []` / `breakpoints = []` 表示显式空列表。
+- Watch、断点分别保存到各自 `[[cores]]`；多核断点记录通过可选 `group` 标识关联；未配置时继承顶层列表，`watch = []` / `breakpoints = []` 表示显式空列表。
 - 外部 Build / Download 命令执行前释放所有会话及自有服务，成功后恢复先前已连接的工作区；GDB download action 仍只对当前核执行。
 - 当前各核共用 GDB 程序、ELF、Source root 和 SVD；异构核使用不同 ELF/SVD 尚不支持。
 
+例如 THA6206 的组控制（`chipreset` 必须由板级 OpenOCD 配置提供）：
+
+```toml
+[multicore]
+scope = "all"
+halt_peers = true
+restart_core = "core.0"
+restart = ["monitor chipreset"]
+```
+
+组控制是软件顺序协调，不承诺同时启动、同时暂停或周期级锁步。需要精确同步时，仍须板级环境配置并验证 CTI 等硬件链路。`halt_peers = false` 可关闭断点联停；运行时范围切换不写回配置，下次启动采用 TOML 的 `scope`。
+
+可用 `gdb.registers` 指定自动读取的寄存器名称，默认空列表读取所有命名寄存器。THA6206 在复位初态自动读取 VFP 的 d/s 寄存器会引发 OpenOCD `DSCR.ERR`；工程可配置 `registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc", "cpsr"]`。这样保留通用寄存器和程序状态的自动刷新；浮点寄存器可在固件完成初始化后通过 GDB Console 按需读取，或调整列表。程序不会伪造被排除寄存器的值；不存在的寄存器名称会报错。
+
+Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `continue`/`pause` 可带 `{"scope":"core"}` 或 `{"scope":"all"}`，不改变会话范围。快照增加 `control_scope`，组请求返回每核 `results` 和 `cores`；异步断点联停不伪造用户请求响应。`run` 带 `scope:"core"` 可显式只启动当前核。
+
 可选的 `[sync]` 使用 `tcl_endpoint = "localhost:6666"` 与 `open = ["..."]`，在共享服务就绪后、GDB 连接前执行。`method = "tcl"` 或兼容旧配置的 `"cti"` 都执行显式配置的 TCL 命令，不自动识别/配置 CTI。任何命令失败都会中止连接。
 
-可选 `[live_watch]` 配置 `tcl_endpoint`、`bus_target`、`elf`（相对工程路径）、`interval_ms`。仅解析 ELF32/64 小端文件中的唯一全局 8/16/32 位对象，以原始数值记录到 Live 日志；结构体、数组大对象、局部表达式和类型解释仍由停止后的 GDB Watch 负责。启动晚于调试连接，随切核/Watch 列表变化更新，断线重试，断开时取消。读取使用 OpenOCD 的 [target-specific read_memory](https://openocd.org/doc-release/html/CPU-Configuration.html)，不改变全局选中 target；运行时能否读到一致数据取决于芯片、AP 和缓存配置。
+可选 `[live_watch]` 配置 `tcl_endpoint`、`bus_target`、`elf`（相对工程路径）、`interval_ms`。解析 ELF32/64 小端文件中的唯一全局 8/16/32 位对象，在运行时直接更新 Watch 值及 LIVE 标记；不再把每次数值变化刷到 Console。数值标为 `<raw N-bit>`，支持显示进制切换，不推断浮点/有符号类型。结构体、数组大对象、局部表达式和类型解释仍由停止后的 GDB Watch 或逐项 Memory access 负责。随切核、停止代次及 Watch 列表变化更新，暂停时恢复 GDB 的值，断线显示错误并重试，断开时取消。读取使用 OpenOCD 的 [target-specific read_memory](https://openocd.org/doc-release/html/CPU-Configuration.html)，不改变全局选中 target；运行时能否读到一致数据取决于芯片、AP 和缓存配置。Headless 输出结构化 `live_watch` 事件，包含表达式、核、generation、地址、位宽、原始值/错误与时间；GDB 停止快照不被实时值改写。
 
 ### 0.8：按项选择内存通道与实时刷新
 
@@ -79,7 +99,7 @@ while_running = true
 # cores = ["core0", "core1"]  # 可选：仅对这些核心开放
 ```
 
-TUI 只发送指定 target 的 `read_memory`，不执行全局 `targets` 切换。`soc.ahb` 对应哪个 DAP/AP、借哪个核、如何创建多个 CTI，均放在板级 OpenOCD 配置；AP1/AP3 不具备通用固定含义。多核示例见 [tools/examples/multicore-access.md](tools/examples/multicore-access.md)。旧 `[live_watch]` 日志功能仍兼容，新面板功能不需要配置它。
+TUI 只发送指定 target 的 `read_memory`，不执行全局 `targets` 切换。`soc.ahb` 对应哪个 DAP/AP、借哪个核、如何创建多个 CTI，均放在板级 OpenOCD 配置；AP1/AP3 不具备通用固定含义。多核示例见 [tools/examples/multicore-access.md](tools/examples/multicore-access.md)。已有 `[live_watch]` 配置会直接更新 Watch；显式设置的逐项 Memory access / refresh 优先，包括手动或关闭设置。
 
 **STM32F429 本地实测环境**：[tools/debug-env-openocd.toml](tools/debug-env-openocd.toml)，使用 J-Link 探针 + OpenOCD，M4 与独立 `mem_ap` target 均通过这颗芯片实际的 AP0。在 F2 的 Tools / profile 选择该文件即可获得 AHB 和 stopped-only Core 通道；原 J-Link Server 环境仍可用于普通暂停调试，但不能提供这个 TCL 运行时通道。单核已做硬件验证，多核/多 CTI/多 AP 当前为真实双 GDB + 模拟 TCL 路由验证，需要相应多核板卡再做验收。
 

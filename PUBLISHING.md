@@ -1,6 +1,6 @@
 # 发布与安装 DebugTUI
 
-GitHub 仓库：<https://github.com/bei-li16/debugtui>。GitHub 保存源码和 Git 历史；npm Registry 保存供用户安装的版本包。Git push 和 npm publish 是两个独立操作。
+GitHub 仓库：<https://github.com/bei-li16/debugtui>。当前通过 GitHub Release 分发安装包，npm 从 Release URL 安装；源码 push 和 Release 附件发布是两个独立操作。
 
 ## 分发边界（0.2 起）
 
@@ -23,7 +23,7 @@ npm uninstall -g @debugtui/cli
 
 发布步骤：
 
-1. 更新版本、完成测试；执行 ./scripts/release-assets.ps1 -IncludeTools，得到版本化 TUI ZIP、版本化 tgz、固定名称 tgz、可选 tools ZIP 和 SHA256SUMS.txt。
+1. 更新版本、完成测试；执行 ./scripts/release-assets.ps1 -IncludeTools，得到版本化 TUI ZIP、独立 EXE、版本化 tgz、固定名称 tgz、可选 tools ZIP 和 SHA256SUMS.txt。工具未变更时省略 -IncludeTools。
 2. 提交源码和发布脚本，推送提交及对应 v<版本> 标签。bin、target、artifacts 不提交。
 3. 创建草稿 Release，上传 release-assets.json 中 assets 列出的全部文件及 SHA256SUMS.txt，填写发布说明，再发布为 Latest。后续版本也必须上传固定名称 tgz。
 4. 发布后执行 ./scripts/test-release.ps1 -PreviousVersion <上一版本>，从公网 latest 地址验证旧版升级、重复安装、版本、校验和及卸载。

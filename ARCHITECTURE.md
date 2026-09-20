@@ -1,5 +1,13 @@
 # DebugTUI 架构
 
+## 0.8.3-local.3 多核断点
+
+`ui/breakpoints/cores.rs` 提供选中断点的核心复选列表；新建源码断点不带核心范围。`coordinator/breakpoints.rs` 为显式关联的断点分配稳定 group 标识，各核仍拥有自己的 GDB 编号。`BreakpointOptions.group` 保存在各自 `[[cores]].breakpoints` 中；Session 维护本次连接的编号到 group 的映射，重连通过保存的定义重建。快照中的 `cores` 来自真实每核断点列表，不根据地址相同推测关联。
+
+Headless `break_cores {number, cores:[0,1]}` 修改选中核某个已有代码断点的成员；数组必须包含当前核。关联记录的 `enable_break`、`update_break`、`delete_break` 分发到全部成员，用各核真实编号，批量启停包含当前列表涉及的关联成员。先验证所有受影响核处于 READY/STOPPED，再依序执行内部 `break_apply`；每步附有原定义的 undo，包括失败步，以覆盖 GDB 已修改但配置保存失败的情况。失败时反序恢复，保留原错误和回滚错误；始终以重新查询的快照显示结果。跨进程/配置文件写入不是崩溃原子事务。
+
+多核断点成员与运行控制 Scope 独立：成员决定在哪些核安装断点；Scope / halt_peers 决定命中后是否联停。硬件资源由每核调试器报告，不硬编码数量。共享可写内存上的软件断点是指令补丁，不能保证核隔离，需要使用硬件断点。原始 GDB Console 命令仍由当前 GDB 处理。
+
 ## 0.8.1 断点管理
 
 `ui/breakpoints.rs` 提供勾选开关、代码/数据断点编辑器、条件、忽略次数及当前核批量启停。UI 不预先修改快照，等待工作线程重新查询 GDB；一次只发送一个面板修改请求，输入框中的 Delete 不会删除断点。核心切换关闭旧编辑器，列表按 GDB 编号保留选择位置。
@@ -31,7 +39,7 @@ flowchart LR
 - `ui/monitor.rs`：策略按核心 + 数据项保存到 `Ui.refresh`；Watch 树根策略可继承，子项可覆盖。采样只针对可见标量/展开成员，单个请求在途、候选公平轮转，用户动作和补全优先。响应携带本地核心身份与 generation 校验，切核/重连后迟到结果丢弃。错误至少 1 秒退避，频率非硬实时保证。
 - `session/memory.rs`：`watch_resolve` 创建短寿命 GDB 变量对象取成员路径、地址、类型信息并释放，读取目标 ELF/PE 字节序。`memory_read` 默认复用停止时 GDB 内存读取；命名通道使用显式目标 TCL 读取并校验当前核、运行能力、宽度、对齐、响应和超时。每通道按需复用一个 TCP，故障/断开关闭。64 位采用两次 32 位读取；不保证原子性。
 - `memory_access` 和 `sync` 可放环境文件；工程优先覆盖。AP 号/CTI 映射仅存在于板级脚本，TUI 不配置隐式硬件触发或推断缓存一致性。运行态直读不发任何 GDB 指令，不改变全局 OpenOCD selected target，不隐式 halt/resume。
-- 单核只配置 `memory_access` 时仍直接走原 Session，不增加协调线程。`live_watch` 旧日志通道保持兼容，新面板默认关闭轮询，无需该后台功能。
+- 单核只配置 `memory_access` 时仍直接走原 Session，不增加协调线程。配置 `live_watch` 时，独立 TCL 采样器发送结构化 LiveWatchSample，Coordinator 绑定核和停止代次，UI 接入独立的实时显示缓存；普通未配置面板仍默认关闭轮询。
 
 ## 多核调度（0.7.2）
 
@@ -159,6 +167,14 @@ Console 输出使用 `ui/console.rs` 独立视口，包含历史起点、实时�
 `ui/formats.rs` converts scalar integer strings using u128 arithmetic. Preferences are keyed per Watch expression, local file/function/name, system register, SVD device/peripheral/register/field, or memory byte address. Unsupported natural values are preserved. UI saves use a serialized `ui_preferences` worker request; it merges only [ui] into the latest project document and sends no MI. Setup saves preserve concurrent runtime UI preferences alongside watches and breakpoints.
 
 GDB download status records can emit a progress log from actual total-sent / total-size counters. Shell tasks use real stage and elapsed time when no structured progress exists. Animation never infers a successful stop, advances a numeric value, or runs a debug request.
+
+## Multicore control
+
+`coordinator/control.rs` separates control scope from selected inspection core. The default preserves independent Continue/Pause; `multicore.scope = "all"` broadcasts them in startup order. Run initializes each worker once per connection/shared reset and thereafter continues it. Running workers are skipped. Shared reset has one owner and refreshes all register caches after the board command. Remote workspace connect also refreshes every worker after per-core connect hooks, since one hook may reset the whole chip.
+
+A new stopped generation schedules an internal peer-halt batch ahead of queued user requests and focuses its cause. Pending resumes are discarded once a group stop is observed. Internal pause replies are consumed by the coordinator and never reuse user response IDs. Explicit stepping/pausing and connect/reset refreshes do not recursively trigger another group halt. Pause attempts remaining cores after one fails; a failed group resume stops peers already running. This is software coordination with transport latency, not CTI synchronization.
+
+`coordinator/server_log.rs` frames service stdout/stderr bytes into complete UTF-8 lines while recognizing readiness markers without requiring a trailing newline. Normal stderr uses `server-stderr`; actual OpenOCD error lines retain `server-error`. Logging remains bounded and preserves line capture timestamps.
 
 ## Native Watch trees
 

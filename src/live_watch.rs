@@ -1,5 +1,6 @@
 //! Optional OpenOCD raw scalar monitoring. No GDB or single-core dependency.
 use crate::{config::LiveWatchConfig, logging::Stamp, session::Event};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     fs,
@@ -131,6 +132,17 @@ pub struct LiveWatchHandle {
     pub events: Receiver<Event>,
     pub cancellation: Arc<AtomicBool>,
 }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct LiveWatchSample {
+    pub expression: String,
+    pub address: u64,
+    pub bits: u32,
+    pub value: Option<u64>,
+    pub error: Option<String>,
+    pub timestamp: String,
+    pub core: Option<usize>,
+    pub generation: u64,
+}
 impl Drop for LiveWatchHandle {
     fn drop(&mut self) {
         self.cancellation.store(true, Ordering::Relaxed);
@@ -173,7 +185,6 @@ pub fn spawn(
             return;
         }
         let mut stream = None;
-        let mut last = HashMap::new();
         let mut failure = None;
         while !cancel.load(Ordering::Relaxed) {
             let result = (|| -> Result<(), String> {
@@ -194,13 +205,20 @@ pub fn spawn(
                     let text = transact(stream.as_mut().unwrap(), &command)?;
                     let value = parse_value(&text)
                         .ok_or_else(|| format!("Invalid memory value for {name}: {text}"))?;
-                    if last.insert(name.clone(), value) != Some(value) {
-                        log(format!(
-                            "{name} @0x{:x} = 0x{value:x} (raw {}-bit)",
-                            symbol.address,
-                            symbol.size * 8
-                        ));
-                    }
+                    // Deliver every successful sample, including unchanged values,
+                    // so the Watch freshness indicator reflects actual reads.
+                    let _ = tx.try_send(Event::LiveWatch {
+                        sample: LiveWatchSample {
+                            expression: name.clone(),
+                            address: symbol.address,
+                            bits: (symbol.size * 8) as u32,
+                            value: Some(value),
+                            error: None,
+                            timestamp: Stamp::now().wall,
+                            core: None,
+                            generation: 0,
+                        },
+                    });
                 }
                 Ok(())
             })();
@@ -211,6 +229,20 @@ pub fn spawn(
                 }
                 Err(e) => {
                     stream = None;
+                    for (name, symbol) in &resolved {
+                        let _ = tx.try_send(Event::LiveWatch {
+                            sample: LiveWatchSample {
+                                expression: name.clone(),
+                                address: symbol.address,
+                                bits: (symbol.size * 8) as u32,
+                                value: None,
+                                error: Some(e.clone()),
+                                timestamp: Stamp::now().wall,
+                                core: None,
+                                generation: 0,
+                            },
+                        });
+                    }
                     if failure.as_ref() != Some(&e) {
                         log(e.clone());
                         failure = Some(e);
@@ -570,14 +602,16 @@ mod tests {
                 .events
                 .recv_timeout(deadline.saturating_duration_since(Instant::now()))
                 .unwrap();
-            if let Event::Log { text, .. } = event
-                && text.contains("(raw 32-bit)")
+            if let Event::LiveWatch { sample } = event
+                && let Some(value) = sample.value
             {
-                values.push(text);
+                assert_eq!(sample.expression, "counter");
+                assert_eq!(sample.address, 0x20000000);
+                assert_eq!(sample.bits, 32);
+                values.push(value);
             }
         }
-        assert!(values[0].contains("= 0x1"));
-        assert!(values[1].contains("= 0x2"));
+        assert_eq!(values, [1, 2]);
         drop(handle);
         server.join().unwrap();
         fs::remove_file(file).unwrap();

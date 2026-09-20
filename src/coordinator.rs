@@ -1,9 +1,13 @@
 //! Ordered workspace operations and independent per-core debugger state.
 use crate::{
-    config::{Core, Project},
+    config::{ControlScope, Core, Project},
     logging::{Stamp, Trace},
     session::{self, CoreStatus, EngineHandle, Event, Request, Snapshot},
 };
+
+mod breakpoints;
+mod control;
+mod server_log;
 use serde_json::{Value as Json, json};
 use std::{
     collections::VecDeque,
@@ -42,11 +46,15 @@ struct EngineEntry {
     revision: u64,
     exited: bool,
     unresponsive: bool,
+    launched: bool,
 }
 enum Step {
     StartService,
     StopService,
     Core(usize, String),
+    Breakpoint(usize, Json, Option<Json>),
+    Resume(usize),
+    WaitGroupStop(Instant),
 }
 struct Batch {
     request: Request,
@@ -57,6 +65,9 @@ struct Batch {
     last: Json,
     recovering: bool,
     aggregate: bool,
+    internal: bool,
+    current_method: String,
+    break_undo: Option<VecDeque<Step>>,
 }
 struct Coordinator {
     project: Project,
@@ -77,7 +88,8 @@ struct Coordinator {
     server_logs: Receiver<(Stamp, String, String)>,
     server_log_tx: SyncSender<(Stamp, String, String)>,
     live_watch: Option<crate::live_watch::LiveWatchHandle>,
-    live_key: Option<(usize, Vec<String>)>,
+    live_key: Option<(usize, u64, Vec<String>)>,
+    group_stop: Option<usize>,
 }
 impl Coordinator {
     fn new(project: Project, events: SyncSender<Event>, cancellation: Arc<AtomicBool>) -> Self {
@@ -106,6 +118,7 @@ impl Coordinator {
                 revision: 0,
                 exited: false,
                 unresponsive: false,
+                launched: false,
             })
             .collect();
         // Stable indices follow configuration order, not startup order.
@@ -133,6 +146,7 @@ impl Coordinator {
             server_log_tx,
             live_watch: None,
             live_key: None,
+            group_stop: None,
         }
     }
     fn multi(&self) -> bool {
@@ -180,6 +194,8 @@ impl Coordinator {
             s.generation = self.engines[self.active].revision;
             s.cores = self.statuses();
             s.core = s.cores.get(self.active).cloned();
+            s.control_scope = Some(self.project.multicore.scope);
+            self.annotate_breakpoints(&mut s);
         }
         s
     }
@@ -190,7 +206,7 @@ impl Coordinator {
     }
     fn info(&self) -> Json {
         json!({"active_core":self.active,"core_count":self.engines.len(),"core_name":self.engines[self.active].name,
-            "core_names":self.engines.iter().map(|e| &e.name).collect::<Vec<_>>(),"cores":self.statuses()})
+            "core_names":self.engines.iter().map(|e| &e.name).collect::<Vec<_>>(),"cores":self.statuses(),"control_scope":self.project.multicore.scope})
     }
     fn reply(&self, id: u64, result: Json, error: Option<String>) {
         self.emit(Event::Response {
@@ -244,39 +260,13 @@ impl Coordinator {
         }
         let streams: [(Box<dyn Read + Send>, &str); 2] = [
             (Box::new(child.stdout.take().unwrap()), "server"),
-            (Box::new(child.stderr.take().unwrap()), "server-error"),
+            (Box::new(child.stderr.take().unwrap()), "server-stderr"),
         ];
         for (stream, channel) in streams {
             let markers = service.ready.clone();
             let tx = ready_tx.clone();
             let logs = self.server_log_tx.clone();
-            thread::spawn(move || {
-                let mut reader = stream;
-                let mut tail = String::new();
-                loop {
-                    let mut data = [0; 4096];
-                    let n = reader.read(&mut data).unwrap_or(0);
-                    if n == 0 {
-                        break;
-                    }
-                    let text = String::from_utf8_lossy(&data[..n]).into_owned();
-                    tail.push_str(&text);
-                    if markers.iter().any(|m| tail.contains(m)) {
-                        let _ = tx.try_send(());
-                    }
-                    if tail.len() > 8192 {
-                        tail = tail
-                            .chars()
-                            .rev()
-                            .take(4096)
-                            .collect::<String>()
-                            .chars()
-                            .rev()
-                            .collect();
-                    }
-                    let _ = logs.try_send((Stamp::now(), channel.into(), text));
-                }
-            });
+            thread::spawn(move || server_log::read_stream(stream, channel, &markers, tx, logs));
         }
         self.server = Some(child);
         let deadline = Instant::now() + Duration::from_millis(service.timeout_ms);
@@ -341,27 +331,25 @@ impl Coordinator {
     }
     fn start_live(&mut self) {
         let desired = (self.project.live_watch.is_some()
-            && matches!(
-                self.engines[self.active].snapshot.state.as_str(),
-                "STOPPED" | "RUNNING"
-            ))
-        .then(|| {
-            (
-                self.active,
-                self.engines[self.active]
-                    .snapshot
-                    .watches
-                    .iter()
-                    .map(|w| w.name.clone())
-                    .collect::<Vec<_>>(),
-            )
-        });
+            && self.engines[self.active].snapshot.state == "RUNNING")
+            .then(|| {
+                (
+                    self.active,
+                    self.active_generation(),
+                    self.engines[self.active]
+                        .snapshot
+                        .watches
+                        .iter()
+                        .map(|w| w.name.clone())
+                        .collect::<Vec<_>>(),
+                )
+            });
         if desired == self.live_key {
             return;
         }
         self.live_key = desired.clone();
         self.live_watch = None;
-        let Some((_, names)) = desired else {
+        let Some((_, _, names)) = desired else {
             return;
         };
         if let Some(config) = &self.project.live_watch {
@@ -369,6 +357,42 @@ impl Coordinator {
                 Ok(h) => self.live_watch = Some(h),
                 Err(e) => self.log("error", format!("Live Watch unavailable: {e}")),
             }
+        }
+    }
+    fn active_generation(&self) -> u64 {
+        let e = &self.engines[self.active];
+        if self.multi() {
+            e.revision
+        } else {
+            e.snapshot.generation
+        }
+    }
+    fn live_event(&self, event: Event) {
+        let Some((core, generation, names)) = &self.live_key else {
+            return;
+        };
+        if *core != self.active
+            || self.engines[*core].snapshot.state != "RUNNING"
+            || *generation != self.active_generation()
+        {
+            return;
+        }
+        match event {
+            Event::LiveWatch { mut sample } => {
+                if !names.contains(&sample.expression)
+                    || !self.engines[*core]
+                        .snapshot
+                        .watches
+                        .iter()
+                        .any(|w| w.name == sample.expression)
+                {
+                    return;
+                }
+                sample.core = self.multi().then_some(*core);
+                sample.generation = *generation;
+                self.emit(Event::LiveWatch { sample });
+            }
+            event => self.emit(event),
         }
     }
     fn run(&mut self, requests: Receiver<Request>) {
@@ -397,7 +421,7 @@ impl Coordinator {
             if let Some(live) = &self.live_watch {
                 let events: Vec<_> = live.events.try_iter().take(64).collect();
                 for event in events {
-                    self.emit(event);
+                    self.live_event(event);
                 }
             }
             if let Some((i, token, deadline)) = self.batch.as_ref().and_then(|b| b.waiting)
@@ -497,9 +521,13 @@ impl Coordinator {
     }
     fn event(&mut self, i: usize, event: Event) {
         match event {
+            // Live samples belong to the coordinator's separately scoped poller.
+            Event::LiveWatch { .. } => {}
             Event::Exit => self.worker_exit(i),
             Event::Snapshot { snapshot } => {
+                self.observe_group_stop(i, &snapshot);
                 let changed_state = snapshot.state != self.engines[i].snapshot.state;
+                let changed_breaks = snapshot.breakpoints != self.engines[i].snapshot.breakpoints;
                 if snapshot.generation != self.engines[i].snapshot.generation {
                     self.revision += 1;
                     self.engines[i].revision = self.revision;
@@ -514,7 +542,7 @@ impl Coordinator {
                     );
                 }
                 self.engines[i].snapshot = *snapshot;
-                if i == self.active || changed_state {
+                if i == self.active || changed_state || changed_breaks {
                     self.publish();
                 }
             }
@@ -555,6 +583,12 @@ impl Coordinator {
                 }
                 let mut b = self.batch.take().unwrap();
                 b.waiting = None;
+                if ok && matches!(b.current_method.as_str(), "run" | "continue") {
+                    self.engines[i].launched = true;
+                }
+                if matches!(b.current_method.as_str(), "connect" | "disconnect") {
+                    self.engines[i].launched = false;
+                }
                 b.results.push(json!({"index":i,"name":self.engines[i].name,"ok":ok,"result":result,"error":error}));
                 b.last = result;
                 if !ok {
@@ -572,7 +606,16 @@ impl Coordinator {
         }
     }
     fn fail(&mut self, b: &mut Batch, error: String) {
-        b.errors.push(error);
+        b.errors.push(if b.recovering {
+            format!("Rollback: {error}")
+        } else {
+            error
+        });
+        if let Some(undo) = b.break_undo.take() {
+            b.steps = undo;
+            b.recovering = true;
+            return;
+        }
         if !b.recovering
             && matches!(
                 b.request.method.as_str(),
@@ -588,11 +631,36 @@ impl Coordinator {
                 .map(|&i| Step::Core(i, "disconnect".into()))
                 .collect();
             b.steps.push_back(Step::StopService);
-        } else if !b.recovering && !matches!(b.request.method.as_str(), "quit" | "disconnect") {
+        } else if !b.recovering
+            && !matches!(b.request.method.as_str(), "quit" | "disconnect" | "pause")
+        {
             b.steps.clear();
+            if b.aggregate && matches!(b.request.method.as_str(), "run" | "continue" | "restart") {
+                // A partially resumed/reset group must not silently keep running.
+                b.recovering = true;
+                for (i, e) in self.engines.iter().enumerate() {
+                    if e.snapshot.state == "RUNNING" {
+                        b.steps.push_back(Step::Core(i, "pause".into()));
+                    }
+                }
+                if b.request.method == "restart" {
+                    for (i, e) in self.engines.iter().enumerate() {
+                        if matches!(e.snapshot.state.as_str(), "READY" | "STOPPED" | "RUNNING") {
+                            b.steps.push_back(Step::Core(i, "synchronize".into()));
+                        }
+                    }
+                }
+            }
         }
     }
     fn advance(&mut self) {
+        if self.batch.is_none()
+            && self.group_stop.is_some()
+            && !self.exiting
+            && !self.cancellation.load(Ordering::Relaxed)
+        {
+            self.begin_peer_halt();
+        }
         if self.batch.is_none()
             && let Some(req) = self.queue.pop_front()
         {
@@ -605,8 +673,67 @@ impl Coordinator {
             self.batch = Some(b);
             return;
         }
-        while let Some(step) = b.steps.pop_front() {
+        while let Some(mut step) = b.steps.pop_front() {
+            let mut explicit_params = None;
+            if let Step::Breakpoint(core, params, undo) = step {
+                if let (Some(rollback), Some(undo)) = (&mut b.break_undo, undo) {
+                    rollback.push_front(Step::Breakpoint(core, undo, None));
+                }
+                explicit_params = Some(params);
+                step = Step::Core(core, "break_apply".into());
+            }
+            if let Step::Resume(i) = step {
+                if self.group_stop.is_some() || self.engines[i].snapshot.state == "RUNNING" {
+                    continue;
+                }
+                step = Step::Core(
+                    i,
+                    if self.engines[i].launched {
+                        "continue"
+                    } else {
+                        "run"
+                    }
+                    .into(),
+                );
+            }
             match step {
+                Step::Resume(_) | Step::Breakpoint(..) => unreachable!(),
+                Step::WaitGroupStop(deadline) => {
+                    if self.cancellation.load(Ordering::Relaxed) {
+                        b.errors.push("Group wait cancelled".into());
+                        b.steps.clear();
+                        continue;
+                    }
+                    if Instant::now() >= deadline {
+                        b.errors.push(
+                            "Timed out waiting for the group to stop; cores may still be running"
+                                .into(),
+                        );
+                        continue;
+                    }
+                    let active = &self.engines[self.active].snapshot;
+                    if active.state == "STOPPED"
+                        && !self.engines.iter().any(|e| e.snapshot.state == "RUNNING")
+                    {
+                        b.last = json!({"reason":active.stop_reason,"frame":active.frame,"core":self.active,"cores":self.statuses()});
+                        continue;
+                    }
+                    b.steps.push_front(Step::WaitGroupStop(deadline));
+                    if self.group_stop.is_some() {
+                        for &i in self.order.iter().rev() {
+                            if self.engines[i].snapshot.state == "RUNNING" {
+                                b.steps.push_front(Step::Core(i, "pause".into()));
+                            }
+                        }
+                        if !matches!(b.steps.front(), Some(Step::WaitGroupStop(_))) {
+                            continue;
+                        }
+                    }
+                    // Process peer events while waiting; never block a worker
+                    // whose pending wait would prevent its own group interrupt.
+                    self.batch = Some(b);
+                    return;
+                }
                 Step::StopService => self.stop_service(),
                 Step::StartService => {
                     if let Err(e) = self.start_service() {
@@ -627,7 +754,9 @@ impl Coordinator {
                     }
                     let id = self.next_id;
                     self.next_id += 1;
-                    let params = if method == b.request.method {
+                    let params = if let Some(params) = explicit_params {
+                        params
+                    } else if method == b.request.method {
                         b.request.params.clone()
                     } else {
                         json!({})
@@ -646,6 +775,7 @@ impl Coordinator {
                         .send(Request::new(id, &method, params))
                     {
                         Ok(()) => {
+                            b.current_method = method;
                             b.waiting =
                                 Some((i, id, Instant::now() + Duration::from_millis(timeout)));
                             self.batch = Some(b);
@@ -679,10 +809,19 @@ impl Coordinator {
             info["results"] = json!(b.results);
             match b.request.method.as_str() {
                 "connect" | "reconnect" => info["connected"] = json!(ok),
-                "run" => {
+                "run" | "continue" => {
                     info["running"] =
                         json!(ok && self.engines.iter().all(|e| e.snapshot.state == "RUNNING"))
                 }
+                "pause" => {
+                    info["stopped"] = json!(
+                        ok && self
+                            .engines
+                            .iter()
+                            .all(|e| matches!(e.snapshot.state.as_str(), "STOPPED" | "READY"))
+                    )
+                }
+                "restart" => info["restarted"] = json!(ok),
                 "quit" | "disconnect" => info["disconnected"] = json!(ok),
                 _ => {}
             }
@@ -692,9 +831,29 @@ impl Coordinator {
         } else {
             b.last
         };
-        self.reply(b.request.id, result, (!ok).then(|| b.errors.join("; ")));
+        if b.break_undo.is_some() || b.request.method == "break_cores" {
+            self.publish();
+        }
+        if b.internal {
+            self.group_stop = None;
+            if !ok {
+                self.log(
+                    "error",
+                    format!("Group halt incomplete: {}", b.errors.join("; ")),
+                );
+            }
+            self.publish();
+        } else {
+            self.reply(b.request.id, result, (!ok).then(|| b.errors.join("; ")));
+        }
     }
-    fn begin(&mut self, req: Request) {
+    fn begin(&mut self, mut req: Request) {
+        if self.multi() && self.begin_breakpoint_edit(&req) {
+            return;
+        }
+        if self.multi() && self.begin_control(&mut req) {
+            return;
+        }
         if self.multi()
             && req.method == "connect"
             && self
@@ -781,6 +940,9 @@ impl Coordinator {
                 last: Json::Null,
                 recovering: false,
                 aggregate,
+                internal: false,
+                current_method: String::new(),
+                break_undo: None,
             });
             return;
         }
@@ -823,6 +985,15 @@ impl Coordinator {
         if matches!(req.method.as_str(), "quit" | "disconnect") {
             steps.push_back(Step::StopService);
         }
+        if multi
+            && self.project.target.mode != "local"
+            && matches!(req.method.as_str(), "connect" | "reconnect")
+        {
+            // One core's after_connect may reset the entire chip.
+            for &i in &self.order {
+                steps.push_back(Step::Core(i, "synchronize".into()));
+            }
+        }
         self.batch = Some(Batch {
             request: req,
             steps,
@@ -832,6 +1003,9 @@ impl Coordinator {
             last: Json::Null,
             recovering: false,
             aggregate,
+            internal: false,
+            current_method: String::new(),
+            break_undo: None,
         });
     }
 }

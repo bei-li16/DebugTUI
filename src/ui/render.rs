@@ -413,7 +413,45 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     theme::surface(f, rect, theme::PANEL);
     // Keep source visible in very short terminals; every action remains in Help.
     let compact = [ACTIONS[1], ACTIONS[2], ACTIONS[8], ACTIONS[9]];
-    let actions: &[(&str, &str)] = if rect.height < 8 { &compact } else { &ACTIONS };
+    let mut actions = if rect.height < 8 {
+        compact.to_vec()
+    } else {
+        ACTIONS.to_vec()
+    };
+    if !a.project.cores.is_empty() {
+        let group = a.group_control();
+        for (label, command) in &mut actions {
+            *label = match *command {
+                "run" => "▶ Run All",
+                "continue" => {
+                    if group {
+                        "▷ Continue All"
+                    } else {
+                        "▷ Continue Core"
+                    }
+                }
+                "pause" => {
+                    if group {
+                        "Ⅱ Pause All"
+                    } else {
+                        "Ⅱ Pause Core"
+                    }
+                }
+                "restart" if !a.project.multicore.restart.is_empty() => "↺ Reset Chip",
+                "step" => "↓ Step Core",
+                "next" => "→ Next Core",
+                "finish" => "↑ Finish Core",
+                _ => label,
+            };
+        }
+        actions.insert(
+            0,
+            (
+                if group { "Scope: All" } else { "Scope: Core" },
+                "scope-toggle",
+            ),
+        );
+    }
     let labels: Vec<_> = actions.iter().map(|(name, _)| *name).collect();
     let toolbar_height = wrapped_height(&labels, rect.width);
     let rows = Layout::vertical([
@@ -423,7 +461,7 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     ])
     .split(rect);
     tabs(f, a, rows[0], &MAIN_PANES, a.main_pane);
-    toolbar(f, a, rows[1], actions);
+    toolbar(f, a, rows[1], &actions);
     let title = match a.main_pane {
         0 => String::new(),
         5 => " Assembly · follows $pc · :disasm ADDRESS ".into(),
@@ -917,6 +955,7 @@ fn hint(command: &str) -> &str {
         "setup" => "Select project / environment",
         "connect" => "Connect debugger",
         "reconnect" => "Disconnect, then connect again",
+        "scope" | "scope-toggle" => "Continue/Pause: all cores or current core",
         "run" => "Start using the environment's run action",
         "continue" => "Resume execution (F5)",
         "pause" => "Stop execution (F6)",

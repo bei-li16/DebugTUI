@@ -1,11 +1,13 @@
 //! Breakpoint manager: row checkboxes, explicit removal, and a keyboard/mouse editor.
 use super::*;
+mod cores;
 use crate::config::{BreakpointKind as Kind, BreakpointOptions as Options};
 
 pub(super) const ACTIONS: &[(&str, &str)] = &[
     ("+ Code", "break-new"),
     ("+ Data", "break-data"),
     ("Edit", "break-edit"),
+    ("Cores", "break-cores"),
     ("Toggle", "break-toggle"),
     ("Delete", "break-remove"),
     ("Enable all", "break-enable-all"),
@@ -28,13 +30,14 @@ struct Editor {
 #[derive(Default)]
 pub(super) struct Breaks {
     editor: Option<Editor>,
+    core_editor: Option<cores::CoreEditor>,
     pending: Option<u64>,
     hits: Vec<(Rect, usize)>,
     kinds: Vec<(Rect, Kind)>,
 }
 impl Breaks {
     pub fn modal(&self) -> bool {
-        self.editor.is_some()
+        self.editor.is_some() || self.core_editor.is_some()
     }
 }
 
@@ -52,6 +55,12 @@ impl App {
         match action {
             "break-data" => self.snapshot.state == "STOPPED",
             "break-new" => true,
+            "break-cores" => {
+                self.snapshot.cores.len() > 1
+                    && self.selected_break().is_some_and(|b| {
+                        !b.temporary && !b.options().kind.is_data() && !b.id.contains('.')
+                    })
+            }
             "break-enable-all" | "break-disable-all" => !self.snapshot.breakpoints.is_empty(),
             _ => self.selected_break().is_some(),
         }
@@ -140,6 +149,7 @@ impl App {
         let selected = self.selected_break().map(|b| b.id.as_str());
         let index = if core_changed {
             self.breaks.editor = None;
+            self.breaks.core_editor = None;
             0
         } else {
             selected
@@ -159,6 +169,9 @@ impl App {
         self.breaks.pending = None;
         if ok {
             self.breaks.editor = None;
+            self.breaks.core_editor = None;
+        } else if let Some(editor) = &mut self.breaks.core_editor {
+            editor.error = error.unwrap_or("Breakpoint core edit failed").into();
         } else if let Some(editor) = &mut self.breaks.editor {
             editor.error = error.unwrap_or("Breakpoint edit failed").into();
         }
@@ -203,6 +216,7 @@ impl App {
             KeyCode::Insert | KeyCode::Char('n') => self.open_break_editor(false, false),
             KeyCode::Char('d') => self.open_break_editor(true, false),
             KeyCode::Char('e') => self.open_break_editor(false, true),
+            KeyCode::Char('c') => self.open_break_cores(),
             KeyCode::Delete => self.remove_selected_break(engine),
             _ => return false,
         }
@@ -258,6 +272,9 @@ impl App {
         key: KeyEvent,
         engine: Option<&EngineHandle>,
     ) -> bool {
+        if self.breaks.core_editor.is_some() {
+            return self.break_cores_key(key, engine);
+        }
         let Some(editor) = &mut self.breaks.editor else {
             return false;
         };
@@ -350,6 +367,9 @@ impl App {
         mouse: MouseEvent,
         engine: Option<&EngineHandle>,
     ) -> bool {
+        if self.breaks.core_editor.is_some() {
+            return self.break_cores_mouse(mouse, engine);
+        }
         if self.breaks.editor.is_none() {
             return false;
         }
@@ -398,10 +418,15 @@ pub(super) fn rows(a: &App, start: usize, height: usize) -> Vec<Line<'static>> {
             };
             let state = if b.enabled { theme::AMBER } else { theme::DIM };
             let info = format!(
-                "{}{}{}",
+                "{}{}{}{}",
                 if b.pending { " pending" } else { "" },
                 if b.temporary { " once" } else { "" },
-                if !b.condition.is_empty() { " if" } else { "" }
+                if !b.condition.is_empty() { " if" } else { "" },
+                if b.cores.len() > 1 {
+                    format!(" [{} cores]", b.cores.len())
+                } else {
+                    String::new()
+                }
             );
             let display = if !b.options().kind.is_data() && !b.file.is_empty() && b.line > 0 {
                 format!(
@@ -442,7 +467,7 @@ pub(super) fn detail(a: &App) -> String {
                 )
             } else {
                 format!(
-                    "Hits {} · Ignore {} · {}{}",
+                    "Hits {} · Ignore {} · {}{} · Cores: {}",
                     b.hit_count,
                     b.ignore_count,
                     if b.condition.is_empty() {
@@ -450,13 +475,27 @@ pub(super) fn detail(a: &App) -> String {
                     } else {
                         "If "
                     },
-                    b.condition
+                    b.condition,
+                    if b.cores.is_empty() {
+                        "current".into()
+                    } else {
+                        b.cores
+                            .iter()
+                            .filter_map(|i| a.snapshot.cores.get(*i))
+                            .map(|c| c.name.clone())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
                 )
             }
         })
         .unwrap_or_else(|| "Click [x] / Space: enable or disable · Right-click: edit".into())
 }
 pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
+    if a.breaks.core_editor.is_some() {
+        cores::draw(f, a);
+        return;
+    }
     a.breaks.hits.clear();
     a.breaks.kinds.clear();
     let Some(e) = &a.breaks.editor else {
