@@ -1,0 +1,1520 @@
+% !TeX program = xelatex
+% Standalone source. Compile from docs with XeLaTeX, three passes.
+\documentclass[UTF8,a4paper,11pt,oneside,fontset=none]{ctexart}
+\usepackage[margin=22mm,headheight=15pt,headsep=8mm,footskip=11mm]{geometry}
+\usepackage{fontspec}
+\setmainfont{Times New Roman}
+\setsansfont{Arial}
+\setmonofont{Consolas}[Scale=0.88]
+\setCJKmainfont{SimSun}[BoldFont=SimHei]
+\setCJKsansfont{Microsoft YaHei}
+\setCJKmonofont{SimSun}
+\usepackage{graphicx,xcolor,booktabs,tabularx,longtable,array}
+\usepackage{amsmath,enumitem,listings,fancyhdr,tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc}
+\usepackage[unicode,colorlinks=true,linkcolor=teal!60!black,urlcolor=teal!60!black]{hyperref}
+\usepackage{xurl}
+\usepackage{bookmark,float,needspace}
+\definecolor{ink}{HTML}{253444}
+\definecolor{accent}{HTML}{A65028}
+\definecolor{pale}{HTML}{F2F5F7}
+\definecolor{line}{HTML}{B7C8D2}
+\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={基于本地 v0.8.3 源码与 STM32F429 验证资料}}
+\ctexset{section={format=\Large\bfseries\color{ink}},subsection={format=\large\bfseries\color{ink}}}
+\pagestyle{fancy}\fancyhf{}
+\fancyhead[L]{\small\sffamily DebugTUI / User Manual}
+\fancyhead[R]{\small v0.8.3 · 2026-09-21}
+\fancyfoot[L]{\footnotesize 本地源码与测试证据版}
+\fancyfoot[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{4pt}
+\setlength{\emergencystretch}{3em}
+\renewcommand{\arraystretch}{1.25}
+\setlength{\tabcolsep}{3pt}
+\setlist{nosep,topsep=5pt,leftmargin=2em}
+\setcounter{tocdepth}{2}
+\newcolumntype{P}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\src}[1]{\par\noindent\begin{minipage}{\linewidth}{\footnotesize\color{gray}实现依据：#1}\end{minipage}\par}
+\newcommand{\notice}[1]{\par\noindent\colorbox{pale}{\parbox{\dimexpr\linewidth-2\fboxsep}{\small #1}}\par}
+\newcommand{\newsection}[1]{\par\Needspace{10\baselineskip}\section{#1}}
+\lstset{basicstyle=\ttfamily\small,backgroundcolor=\color{pale},frame=single,rulecolor=\color{line},breaklines=true,columns=fullflexible,keepspaces=true,showstringspaces=false,tabsize=2,xleftmargin=3pt,xrightmargin=3pt,aboveskip=8pt,belowskip=8pt}
+\tikzset{box/.style={draw=line,rounded corners=3pt,fill=pale,align=center,minimum height=10mm,text width=38mm,font=\small,inner sep=5pt},smallbox/.style={box,text width=28mm},arr/.style={-{Latex[length=2.2mm]},thick,draw=ink},data/.style={arr,draw=teal!70!black},tag/.style={font=\footnotesize,fill=white,inner sep=2pt,align=center},decision/.style={diamond,aspect=2.4,draw=line,fill=pale,align=center,font=\small,inner sep=2pt}}
+\begin{document}
+\begin{titlepage}
+\color{ink}
+\vspace*{12mm}
+{\sffamily\Large ENGINEERING MANUAL}\par
+\vspace{17mm}
+{\sffamily\fontsize{44}{52}\selectfont\bfseries DebugTUI}\par
+\vspace{6mm}
+{\Huge\bfseries 用户手册}\par
+\vspace{8mm}
+{\Large 实现 · 功能 · 架构 · 协议栈}\par
+{\Large 信号与数据流 · STM32F429 实际适配}\par
+\vspace{14mm}
+\noindent\textcolor{accent}{\rule{\linewidth}{2pt}}\par
+\vspace{8mm}
+\begin{tikzpicture}[node distance=10mm]
+\node[box,text width=36mm] (t) {DebugTUI\\Rust / TUI / JSONL};
+\node[box,text width=36mm,right=10mm of t] (g) {GDB + 调试服务器\\MI / RSP / TCL};
+\node[box,text width=36mm,right=10mm of g] (c) {探针 + STM32F429\\USB / SWD / AP0};
+\draw[arr] (t)--(g);\draw[arr] (g)--(c);
+\end{tikzpicture}
+\vfill
+\begin{tabular}{@{}ll}
+工程版本 & 0.8.3，配置格式 version = 2\\
+分析基线 & \code{5ab08a2e925f01f9cfaccbd098963d3c598d8d3d}\\
+基线提交 & 2026-09-20，新增 STM32F429 CMSIS-DAP profile\\
+编写日期 & 2026-09-21（Asia/Shanghai）\\
+适用平台 & 当前发布及本地验证：Windows x64\\
+文档文件 & \code{docs/usermanual.tex} / \code{docs/usermanual.pdf}
+\end{tabular}
+\vspace{10mm}
+\end{titlepage}
+\pagenumbering{roman}
+\section*{阅读说明与证据范围}
+\addcontentsline{toc}{section}{阅读说明与证据范围}
+本手册面向使用者、芯片适配人员和维护者。内容以本地工程的 Rust 实现、TOML 配置、板级脚本、测试脚本和实际日志为依据，覆盖从终端操作到探针、芯片的完整链路。第三方 OpenOCD/GDB 二进制按可见版本、配置及接口分析，不将二进制分发目录误当作 DebugTUI 自研代码。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{27mm}Y@{}}\toprule
+证据类别 & 本手册的使用方式\\\midrule
+当前源码 & 功能、默认值、路由和约束的首要依据；与旧 README 冲突时采用代码事实。\\
+源码验证 & 初版编写时执行 137 项 Rust 单元测试和 1 项 CLI 集成测试，全部通过；本次修订不改变产品源码。\\
+本地历史实板 & 复核 2026-09-16 J-Link 长会话故障及 2026-09-20 CMSIS-DAP/F429 报告、JSON 和原始日志；不声称本次重测。\\
+仓库历史说明 & TESTING.md 中多核 THA6206 等记录用于界定历史范围；本机未找到的原始目录不视为已复核证据。\\
+外部资料 & 核对 MI/RSP、探针协议、CoreSight/ADI、Trace 和芯片接口；通用架构能力不等于本地已实现或已验证。\\\bottomrule
+\end{tabularx}
+
+工程主目录为 \path{G:/Data/GitFiles/DebugTUI}；关联测试固件位于 \path{G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project}。后者是另一个本地工程，并不随 DebugTUI 分发。文中的绝对路径用于复现本机环境；迁移到其他机器时须改为实际路径或保持相对目录关系。
+
+\notice{本地 J-Link 长会话曾在约 52--53 秒出现底层访问失效；用户怀疑所用探针为 clone，根因尚未确认，见第\ref{sec:jlink-duration}节。下载成功与进度显示正常也是两个独立结论；匿名 tuple 解析、SVD 默认端序和资料差异见第\ref{sec:limits}节。}
+
+建议首次使用先阅读操作与协议栈；理解探针和片上调试时接着看第\ref{sec:probe}、\ref{sec:coresight}节，再进入工具配置和第\ref{sec:f429}节的 STM32F429 实操。移植、自动化分别见第\ref{sec:porting}、\ref{sec:jsonl}节。图中箭头表达请求、数据或触发关系，具体含义由标注说明；均不是电气时序比例图。
+\clearpage{\small\setlength{\parskip}{0pt}\tableofcontents}
+\clearpage\pagenumbering{arabic}
+
+\section{产品定位与功能边界}
+DebugTUI 是基于 GDB/MI2 的原生终端调试工作台。Ratatui 绘制字符单元格，Crossterm 接收终端事件，Rust 会话核心负责命令、异步状态和进程生命周期。TUI 与 JSON Lines 自动化入口共用核心；运行时无需常驻 Node、Python 或浏览器。npm 是一种分发方式，不是调试引擎。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{28mm}Y@{}}\toprule
+能力 & 用户可获得的行为\\\midrule
+执行控制 & Connect/Reconnect/Disconnect、Run、Continue、Pause、Reset、Step In/Over/Out、指令单步。Reset/Download 由环境动作决定。\\
+代码定位 & 源文件列表、源码标签、搜索、PC 定位、栈帧选择、按需反汇编、源码路径映射。源码是只读浏览。\\
+数据检查 & 系统寄存器、Watch、Locals、Memory、CMSIS-SVD 外设/寄存器/位域、独立进制设置。\\
+断点 & 普通/硬件/临时代码断点，写/读/读写数据观察点，启停、条件、忽略次数、命中数、跨重连恢复。\\
+实时观察 & 可见项选择显式内存通道；OpenOCD TCL 能力允许时在运行中读内存；另有旧式 ELF 原始全局量 Live Watch。\\
+多核 & 每核独立 GDB，会话组控制、断点联停、单步隔离、共享复位、显式多核断点关联。\\
+工程操作 & Setup 配置表单、Build/Download 外部命令、环境引用、偏好保存、日志、退出清理。\\
+自动化 & 标准输入/输出 JSONL、脚本串行执行、结构化快照、响应、日志与实时采样事件。\\\bottomrule
+\end{tabularx}
+
+\subsection{哪些信息由谁负责}
+GDB 解释 ELF/DWARF、表达式、栈和 CPU 寄存器。OpenOCD 或 J-Link GDB Server 负责目标访问、断点资源和 Flash 算法。探针承载 USB 到 SWD/JTAG 的转换；芯片提供调试端口及调试资源。DebugTUI 不实现 SWD 波形，不直接解析 DWARF，不内置某颗芯片的寄存器白名单。
+
+SVD 是寄存器描述，不是 Flash 算法，也不建立探针连接。旧式 Live Watch 自行读取 ELF 符号表，仅识别有限的原始全局对象；它不能替代 GDB 类型系统。
+
+\subsection{未提供或不能泛化的能力}
+当前没有专用 FreeRTOS 任务浏览器、RTT/SWO/ETM 跟踪面板、内置源码编辑器、DAP（Debug Adapter Protocol）服务或多人共享调试会话。能调试 FreeRTOS 固件，不等于能枚举和切换全部 RTOS 任务。软件多核协调不保证硬件同时停止或周期级同步；各核目前共享 GDB 程序、ELF、Source root 和 SVD。
+\src{\path{Cargo.toml}；\path{src/main.rs}；\path{src/session.rs}；\path{src/coordinator.rs}；\path{src/ui.rs}。}
+
+\newsection{安装、首次启动与日常工作流}
+\subsection{准备材料}
+当前发布目标为 Windows x64。运行调试至少需要 DebugTUI EXE、匹配目标架构的 GDB；远程嵌入式场景还需 GDB Server、探针驱动和板卡。源码调试需要与板上固件匹配的 ELF 和源码；外设视图另需 SVD。工具目录应放在工程或独立工具区，避免随 npm 升级被替换。
+
+本地构建与已有包安装示例：
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+# In the DebugTUI repository:
+./scripts/build.ps1 -Release
+./target/release/debugtui.exe --version
+./target/release/debugtui.exe --demo
+
+# Existing portable executable: run directly.
+# Existing npm archive: substitute its actual filename.
+npm install -g ./artifacts/debugtui-cli-0.8.3.tgz
+debugtui
+\end{lstlisting}
+\end{minipage}\par
+仓库 PUBLISHING.md 描述了 GitHub Release URL 安装流程；本文不将本地包版本等同于远端 Latest。主程序包不包含 tools 和 SVD，交付时须分别准备。
+
+\subsection{首次启动}
+无参数执行 \code{debugtui} 进入 Setup，不启动 GDB 或占用探针。依次检查 Project、Tools/profile、GDB、Program/ELF、Source root、SVD、目标模式/端口、Build/Download 和退出策略。顶部 Start debugging 默认聚焦；Enter、Ctrl+R、Ctrl+Enter、F5 或鼠标均可启动。Save 只保存；Workspace/Esc 回到原工作区并保留草稿。
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+debugtui --project ./firmware --setup
+debugtui --project ./firmware/debug.toml
+debugtui --gdb C:/MinGW/bin/gdb.exe --local --elf ./app.exe
+debugtui --gdb C:/tools/arm-none-eabi-gdb.exe `
+  --connect 127.0.0.1:3333 --elf ./build/app.elf
+\end{lstlisting}
+\end{minipage}\par
+\code{--connect} 和 \code{--local} 禁用自有 service 启动，但不会清除已选 profile 的其他连接动作。若只想建立通用连接，使用明确的 GDB/目标参数且不加载芯片 profile。只有工程中的 \code{tools/debug-env.toml} 在适当条件下会被发现，TUI 安装目录不作为隐式工具搜索根。
+
+\subsection{一次调试的操作顺序}
+\begin{enumerate}
+\item 连接，检查 STOPPED/READY 状态及日志，确认固件和 ELF 匹配。
+\item 在已暂停目标上添加源码断点、Watch，浏览栈和外设。
+\item F5 继续，等待真实停止事件；F6 暂停，F10/F11/Shift+F11 单步。
+\item 需要运行时观察时，暂停解析地址，再显式启用允许的内存通道。
+\item Build/Download 前核对工程目录和动作；下载在 TUI 中需要确认。
+\item 使用 Ctrl+Q 结束，核对断开日志；退出后的板上运行策略来自 profile。
+\end{enumerate}
+\src{\path{src/cli.rs}: Options；\path{src/launch.rs}: Document/Setup；\path{src/ui.rs}: run；\path{scripts/build.ps1}。}
+
+\newsection{工作台、快捷键与控制台}
+\begin{figure}[H]\centering
+\begin{tikzpicture}[x=1cm,y=1cm]
+\draw[fill=pale,draw=line,rounded corners] (0,0) rectangle (15,8.2);
+\node[align=left,font=\small] at (7.5,7.65) {版本 / 会话状态 / endpoint / 当前核心};
+\draw[line] (0,7.1)--(15,7.1);
+\node[font=\small] at (7.5,6.75) {Project：Setup · Build · Download　　执行：Run · Continue · Pause · Step};
+\draw[line] (0,6.3)--(15,6.3);
+\draw[line] (9,2.0)--(9,6.3);\draw[line] (9,3.8)--(15,3.8);
+\node[align=center] at (4.5,4.2) {Source / Asm / Files / Log\\[4mm]源码标签、PC、断点、独立滚动};
+\node[align=center,font=\small] at (12,5.15) {System Regs / Peripherals\\Stack / Memory / Breaks};
+\node[align=center,font=\small] at (12,2.9) {Watch / Locals\\表达式输入、成员树、LIVE};
+\draw[line] (0,2)--(15,2);\node[font=\small] at (7.5,1.25) {Console 输出历史 / 跟随开关 / 新消息计数};
+\draw[line] (0,0.65)--(15,0.65);\node[font=\small,anchor=west] at (0.3,0.32) {gdb> 原始命令或 :工作台命令};
+\end{tikzpicture}
+\caption{工作台逻辑布局示意；面板比例随终端大小调整，并非实板截图。}
+\end{figure}
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{47mm}Y@{}}\toprule
+按键 & 操作\\\midrule
+F2 / Ctrl+P / Ctrl+Q & Setup / Help 命令面板 / 清理并退出\\
+F5 / F6（或 Ctrl+C） & 继续或从 READY 启动 / 暂停\\
+F9 / F10 / F11 / Shift+F11 & 源码断点 / 越过 / 进入 / 跳出\\
+Tab / Shift+Tab & 切换视图与键盘焦点；弹窗内切字段\\
+Ctrl+F / Ctrl+O & 源码搜索 / 搜索已打开的文件\\
+Ctrl+PgUp / Ctrl+PgDn / Ctrl+W & 切源码标签 / 关闭当前源码标签\\
+Ctrl+T & 多核工作区切换当前检查核\\
+\code{/} / \code{:} / Esc & 聚焦控制台 / 输入工作台命令 / 退出输入或关闭弹窗\\
+f / 右键 & 选中数值的格式菜单；Watch/外设中再按 r 可配置内存通道\\\bottomrule
+\end{tabularx}
+
+三组面板分别保存活动标签；点击右侧标签不切走源码。窄于 100 列时只显示当前焦点所属面板组，建议使用至少 120×36 的终端获得完整工作台。滚轮和滚动条作用于所在视图。Console 向上浏览后停止跟随，End 回到实时输出；输入区保持独立。
+\src{\path{src/ui.rs}: PANES、HELP、key、mouse；\path{src/ui/render.rs}；\path{src/ui/console.rs}。}
+
+\subsection{原始 GDB 命令与工作台命令}
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+:watch xTickCount
+:break Task100ms
+:memory $sp 256
+:disasm $pc
+:frame 1
+:refresh
+
+p/x xTickCount
+info registers
+compare-sections .text
+\end{lstlisting}
+\end{minipage}\par
+冒号命令由 UI 解析为结构化 Request；原始命令通常封装成 \code{-interpreter-exec console}。常见执行别名如 \code{c}/\code{continue}、\code{s}/\code{step} 经会话层路由；多核的组控制应优先使用工具栏或结构化方法。原始复杂 GDB 命令仍属当前核，不能假定所有执行别名都遵循 Scope。
+
+Console 与 Watch 各有输入缓冲和历史/补全状态。输入停顿约 150 ms 后最多发送一个补全请求，最多返回 64 项；运行中不查询符号。裸变量前缀走 \code{-symbol-info-variables}，成员或 GDB 命令走 \code{-complete}；选中补全不执行表达式。
+
+Source 标签按映射后规范路径去重，每个文件记住滚动和光标。手动打开或关闭源码不切 GDB 栈帧；选择 Stack 行才切上下文。新停止会定位真正的文件和 PC，无源码的停止清空当前源码视图，避免误认旧位置。单文件读取限制为 2 MiB / 30000 行。
+
+\notice{F5 Continue 与工具栏 Run 不应混用：本地 READY 的 Continue 会启动程序；STM32 profile 的 Run 明确包含 reset halt，可能重启应用。普通 STOPPED 下 F5 仅继续执行。}
+
+\newsection{断点与数据观察点}
+\subsection{建立、禁用、删除与编辑}
+Source 行号点击或 F9 切换源码断点；Breaks 的 + Code（Insert/n）接受函数、\code{file:line} 或 \code{*address}。选 Hardware 显式要求硬件断点；Temporary 在命中后删除且不持久化。已有禁用源码断点按 F9 会重新启用。
+
+Breaks 的行首开关或 Space/Enter 只切换启用状态，Delete 才删除。Edit（e/右键）设置条件和忽略次数；忽略 N 表示跳过接下来 N 次命中，UI 显示 GDB 实际命中总数和剩余忽略次数，不自行计数。条件必须是目标 GDB 能解释的表达式。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{28mm}P{39mm}Y@{}}\toprule
+类型 & MI 命令 & 语义和限制\\\midrule
+代码 & \code{-break-insert} & 普通断点，Flash 地址可能由 GDB 自动选择硬件资源。\\
+硬件代码 & \code{-break-insert -h} & 不通过可写内存修改指令；数量受目标资源限制。\\
+写观察点 & \code{-break-watch} & 值变化语义；相同值写入不一定停下。\\
+读观察点 & \code{-break-watch -r} & 需要目标支持读访问捕获。\\
+读写观察点 & \code{-break-watch -a} & 需要目标支持访问捕获。\\\bottomrule
+\end{tabularx}
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+:break Task100ms
+:data-break write xTickCount
+:data-break read *(unsigned int *)&xTickCount
+:data-break access *(uint32_t *)0x20000000
+:disable 2
+:enable 2
+:disable all
+\end{lstlisting}
+\end{minipage}\par
+\code{uint32_t} 等类型必须存在于当前 ELF 调试信息中。地址例子只说明语法，实际访问先确认该地址用途。硬件观察点宽度、对齐和可用数量由 GDB/Server 判断。不要把本板日志中的资源数量当作所有 Cortex-M 的固定配额。
+
+\subsection{恢复和失败行为}
+详细定义保存在项目配置中，含 kind、enabled、condition、ignore\_count、temporary 以及可选 group；重连重新创建，GDB 编号可能变化。恢复失败保留可见 \code{[!]} 记录，可重试或删除。修改已有断点失败会尝试恢复原设置，新增数据断点的附加设置失败会清理已创建项，随后查询真实状态。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[[breakpoints]]
+location = "Task100ms"
+kind = "hardware"
+enabled = true
+condition = "xTickCount > 1000"
+ignore_count = 2
+temporary = false
+\end{lstlisting}
+\end{minipage}\par
+旧式 \code{breakpoints = ["main"]} 仍接受。通过面板修改立即保存；Watch 列表的保存主要在断开/退出时完成，不要把两者的持久化时机混为一谈。临时会话没有项目路径时无法获得同样的磁盘持久化。
+\src{\path{src/session/breakpoints.rs}；\path{src/ui/breakpoints.rs}；\path{src/config.rs}: BreakpointSpec、save\_preferences。}
+
+\newsection{变量、寄存器、内存与 SVD}
+\subsection{Watch 和 Locals}
+Watch 底部输入表达式并按 Enter 或 + Add；删除顶层表达式使用 ×、Delete 或 Del Remove。运行中可增删，新增值等待下一次暂停。删除不会写变量或删除硬件观察点。Locals 跟随选中栈帧，不是所有任务/所有函数局部变量的全局集合。
+
+结构体、数组、指针可以展开；每页 32 个子节点，每根最多 256 节点、8 层，根表达式最多 64 项。暂停刷新时创建短寿命 GDB variable object，只读取展开分支，然后删除根对象及全部子对象。折叠/删除不发目标读取；不依赖 Python pretty printer，不支持变量对象的 GDB 回退到标量求值。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+object.member
+(struct MyType *)0x20000000
+*(struct MyType *)0x20000000
+((struct MyType *)0x20000000)->member
+*(uint32_t *)0x20000000
+\end{lstlisting}
+\end{minipage}\par
+强转无法创造真实类型定义。错误地址、优化掉的变量或缺失调试信息会形成行内错误；更换源码文件也不会改变 ELF 中已有的类型和行号信息。
+
+\subsection{数值格式与 CPU 寄存器}
+Watch、Locals、Memory 字节默认十进制；CPU 寄存器、SVD 寄存器/位域默认十六进制；地址固定十六进制。右键或 f 独立选择二/八/十/十六进制。转换使用最多 128 位整数计算，不写目标，不改 GDB 全局 radix；负数保留负号，浮点/枚举/字符串等保留自然表示。Locals 格式键包含文件和函数，成员格式键包含树路径。
+
+寄存器名称和编号从 GDB 动态取得；\code{gdb.registers = []} 默认读取所有命名寄存器。配置非空列表可避开复位时不可访问的浮点寄存器组，不存在的名称会报错。专用面板用于读取；需要修改寄存器或内存时使用明确的原始 GDB 命令，修改会影响目标运行。
+
+\subsection{SVD 外设视图}
+\code{program.svd} 选择 CMSIS-SVD 文件。解析器展开 derivedFrom、数组、cluster 和属性继承，生成设备、外设、寄存器和位域模型；位域从父寄存器值按位偏移/宽度解码，不额外读总线。
+
+默认只在停止、外设面板可见、分组展开时读当前可见寄存器，每个停止代次读一次。只写寄存器跳过；声明 readAction 的寄存器或位域禁止自动刷新，可显式手动读其父寄存器。r / Refresh selected 触发单次读取，错误在行内展示。未声明的硬件副作用不能从 XML 推断。
+
+文件最大 32 MiB，要求字节寻址；读取只接受自然对齐的 8/16/32/64 位。\textbf{当前源码在缺失或未知 endian 时默认小端}，与旧说明中的“不猜测”不同；移植时必须核对 SVD。本地 STM32F429 为小端，不受该默认值差异影响。
+\src{\path{src/session/watch.rs}；\path{src/ui/watch.rs}；\path{src/ui/formats.rs}；\path{src/svd.rs}: Device::parse；\path{src/ui/peripherals.rs}。}
+
+\newsection{运行时内存读取与数据新鲜度}\label{sec:live}
+运行中显示的普通快照是上次停止值。若要在不暂停 CPU 的条件下读 SRAM 或外设，必须选择环境明确声明的 OpenOCD 通道，并理解读总线与 GDB 求表达式的区别。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{30mm}Y Y@{}}\toprule
+路径 & 解析与能力 & 调度与显示\\\midrule
+默认 GDB & 停止时由 GDB 获取地址/类型或内存；不允许运行中读取。 & 停止快照及可见面板按需更新。\\
+逐项 Memory access & 先由 GDB 解析可取地址标量，随后按命名 TCL target 读取；支持 8/16/32/64 位、符号整数和 float/double。 & UI 调度当前可见项，50--60000 ms，失败至少 1 s 退避；独立缓存标记 LIVE。\\
+旧 live\_watch & 直接解析小端 ELF32/64 符号表中的唯一全局 8/16/32 位对象；不推断 C 类型。 & 独立采样线程，运行时采样当前核 Watch 列表；事件标记 raw N-bit。此路径不采用逐项可见性调度。\\\bottomrule
+\end{tabularx}
+
+\subsection{逐项设置方法}
+暂停后添加 Watch 并等其值正常显示；右键数值或 f，再按 r 打开 Memory access / Live refresh。Access 选 \code{ahb}，Live refresh 选 On，Interval 设为 100，Apply \& save。Read once \& save 保存策略并单读，不要求循环。关闭面板或折叠成员会停止对应的逐项后台读取。
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[ui.refresh."single|watch:xTickCount"]
+channel = "ahb"
+interval_ms = 100
+\end{lstlisting}
+\end{minipage}\par
+channel 为空代表默认 GDB；interval\_ms 为 0 关闭循环。多核键由 UI 按核生成，优先通过菜单保存。根结构体策略可由成员继承，成员可单独覆盖。显式逐项策略优先于旧 live\_watch，包括关闭或手动设置。
+
+\subsection{必须理解的地址和一致性限制}
+可取地址的标量、指针和成员可解析；临时结果、CPU 寄存器、位域和无地址表达式不能直接总线轮询。指针对象的采样可读到指针值，但已解析的解引用成员不会在运行中自动跟踪指针的新地址，下次暂停才重新解析。64 位值以两次 32 位读组合，不保证原子性。
+
+一次读取成功只代表该次事务成功，不保证多个变量构成同一时刻的快照。即使 CPU 停止，DMA、外设或其他核仍可能修改内存。运行读取频率是尽力而为：串行请求、探针吞吐、前台命令和超时都会降低频率；100 ms 不是固定 10 Hz 的硬实时承诺。移植至有缓存/MMU 的平台还须核对物理地址与核内视图。
+\src{\path{src/session/memory.rs}；\path{src/ui/monitor.rs}: ensure\_monitors、monitor\_response；\path{src/live_watch.rs}。}
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=8mm]
+\node[box,text width=105mm] (v) {当前可见项 + 刷新策略 + 间隔到期};
+\node[box,text width=105mm,below=of v] (g) {检查核 / generation / 用户请求优先级；最多一个采样请求在途};
+\node[box,text width=43mm,below=8mm of g.south,xshift=-29mm] (r) {暂停时解析表达式\\GDB → 地址/宽度/类型/端序};
+\node[box,text width=43mm,below=8mm of g.south,xshift=29mm] (t) {显式通道读内存\\TCL → target read\_memory};
+\node[box,text width=105mm,below=10mm of r.south,xshift=29mm] (u) {验证响应的核与代次 → 解码 → 独立 LIVE 缓存 → 绘制};
+\draw[arr] (v)--(g);\draw[arr] (g)--(r);\draw[arr] (g)--(t);
+\draw[data] (r.south)--($(u.north)+(-29mm,0)$);
+\draw[data] (t.south)--($(u.north)+(29mm,0)$);
+\end{tikzpicture}
+\caption{逐项内存通道数据流。错核、过期或已删除观察项的响应丢弃。}
+\end{figure}
+
+\newsection{完整嵌入式调试系统与协议栈}\label{sec:stack}
+前六节描述从工作台发出的操作。本节沿着一次调试请求向下追踪：主机协议把意图交给 Server，Server 通过探针访问芯片；后续两节再展开物理接口和片内路径。这些层次必须一起匹配，才能解释“USB 已识别但不能调试”或“能暂停但没有 Trace”等现象。
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=9mm]
+\node[box,text width=112mm] (ui) {人工键鼠 / JSONL 脚本 → DebugTUI UI / Session / Coordinator};
+\node[box,text width=52mm,below=9mm of ui.south,xshift=-32mm] (gdb) {GDB 主机进程\\ELF / DWARF / 表达式 / MI2};
+\node[box,text width=37mm,below=9mm of ui.south,xshift=32mm] (tcl) {可选 TCL RPC 客户端\\命名 target 运行读};
+\node[box,text width=112mm,below=33mm of ui] (server) {OpenOCD 或 J-Link GDB Server\\远程协议、Flash 算法、目标状态、调试资源};
+\node[box,text width=112mm,below=of server] (probe) {USB 探针：CMSIS-DAP 或 J-Link};
+\node[box,text width=112mm,below=of probe] (chip) {STM32F429：SW-DP → AP0 / AHB → 核心调试 + SRAM + 外设};
+\draw[arr] (ui)--node[tag,left]{stdin/stdout\quad MI2}(gdb);
+\draw[arr] (ui)--(tcl);
+\draw[arr] (gdb)--node[tag,left]{TCP 3333\quad RSP}(server);
+\draw[arr] (tcl)--node[tag,right]{TCP 6666\quad OpenOCD}(server);
+\draw[arr] (server)--node[tag,right]{USB}(probe);
+\draw[arr] (probe)--node[tag,right]{SWDIO / SWCLK}(chip);
+\end{tikzpicture}
+\caption{本地 STM32F429 调试栈；J-Link Server profile 不提供此处的 TCL 旁路。}
+\end{figure}
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{25mm}P{37mm}Y@{}}\toprule
+层 & 载体/端点 & 主要职责\\\midrule
+人机/自动化 & 终端字符、键鼠、JSONL & 发出意图、显示结果；两种启动模式不共享同一实时会话。\\
+应用会话 & Rust mpsc 通道 & Request/Response、快照、日志、错误、取消。\\
+调试器接口 & GDB stdin/stdout，MI2 & 带 token 的命令、结果及异步执行事件。\\
+远程调试 & TCP，GDB RSP & GDB 与 Server 交换寄存器、内存、断点和控制请求。\\
+内存旁路 & TCP，TCL RPC & DebugTUI 直接请求 OpenOCD 指定 target 读内存。\\
+适配器 & USB，探针协议 & Server 控制 CMSIS-DAP 或 J-Link；TUI 不实现此层。\\
+目标链路 & SWD，SW-DP/MEM-AP & 寄存器/总线访问和核心调试；这里的 AP0 属于 F429 配置。\\\bottomrule
+\end{tabularx}
+
+MI 是 GDB 的主机接口，RSP 是 GDB 与 Server 的远程接口，CMSIS-DAP 是探针接口，三者不可互换。OpenOCD 的 TCL 是额外控制入口，不是 MI 或 telnet。\href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI.html}{GDB/MI 官方说明}、\href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/Overview.html}{RSP 概览}和\href{https://openocd.org/doc/html/Tcl-Scripting-API.html}{TCL RPC 文档}给出各层语义。
+\src{\path{src/session.rs}: connect\_inner；\path{src/live_watch.rs}: transact；三个 tools/debug-env*.toml。}
+
+\newsection{探针、软硬件协议与物理连接}\label{sec:probe}
+\subsection{先区分产品、主机协议和目标接口}
+SWD、JTAG、J-Link 和 CMSIS-DAP 经常同时出现在连接说明里，但它们并非四种互斥的线缆协议。J-Link 是探针及其软件产品体系；CMSIS-DAP 定义主机与探针固件之间的标准命令接口；SWD/JTAG 则处于探针与目标芯片之间。一个 CMSIS-DAP 探针或 J-Link 探针都可能支持 SWD 和 JTAG，具体能力取决于型号、固件与驱动。
+
+\begin{longtable}{@{}P{29mm}P{48mm}P{84mm}@{}}\toprule
+概念 & 所处位置 & 对本工程的含义\\\midrule\endhead
+GDB/MI、RSP & UI ↔ GDB；GDB ↔ Server & DebugTUI 发 MI；Server 将 RSP 请求转换为目标访问。它们不指定 USB 驱动或板上的引脚。\\
+J-Link & 硬件探针、固件、主机库和工具 & 可由 J-Link GDB Server 或 OpenOCD 的 jlink 驱动使用；两套服务端实现和主机依赖不同。\\
+CMSIS-DAP & 主机 ↔ 探针固件 & DAP\_Info、DAP\_Connect、DAP\_Transfer 等命令用于查询能力、选择接口和搬运访问；不是 Cortex-M 内部的 AP 编号。\\
+SWD & 探针 ↔ SW-DP & SWCLK 与双向 SWDIO 承载调试请求、应答和数据；地、电压参考及复位另计。\\
+JTAG & 探针 ↔ TAP/扫描链 & TCK、TMS、TDI、TDO；可有 nTRST。经 TAP 的指令/数据扫描访问调试逻辑，也用于边界扫描；不保证所有 JTAG 工具都懂 ARM 调试。\\
+SWO / SWV & 芯片 → 采集端 & SWO 是单线 Trace 输出；SWV 常指利用该通路观察事件/变量的工具能力。它们不是 SWDIO 的另一个名称。\\
+CMSIS-SVD & 离线描述文件 & 解释外设寄存器名称、位域及访问属性；不负责 USB、SWD 或 CoreSight 探测。\\\bottomrule
+\end{longtable}
+
+“DAP”也需按上下文阅读：芯片内的 Debug Access Port 是 ARM 调试访问体系；CMSIS-DAP 是探针协议/固件规范；编辑器中的 Debug Adapter Protocol 又是另一层软件接口。本工程的 \code{--headless --stdio} 使用自定义 JSONL，而非编辑器 DAP。
+同类概念还有 ST-Link（ST 的探针及主机协议体系）和 FTDI MPSSE（可由主机驱动产生 JTAG/SWD 所需时序的 USB 引擎）。它们也不能与 SWD/JTAG 直接画等号。OpenOCD 是否支持某个适配器，取决于构建中的驱动、硬件电路和配置；当前 tools 只提供下述三条已配置路径，没有据此声明 ST-Link/FTDI 的本地验收结果。
+\src{\href{https://arm-software.github.io/CMSIS-DAP/latest/}{Arm CMSIS-DAP Overview}；\path{src/main.rs}；\path{tools/bin/openocd/scripts/interface/cmsis-dap.cfg}、\path{tools/bin/openocd/scripts/interface/jlink.cfg}。}
+
+\subsection{USB 驱动、探针固件与 Server 如何配合}\label{sec:usb-drivers}
+这里的“驱动”至少有三种含义：Windows 设备驱动负责打开 USB 接口；Server 内的 adapter driver 实现探针命令；芯片/Flash driver 负责核控制和烧写算法。更改 \code{adapter driver} 不会自动替换 Windows 驱动，也不会让不支持某芯片的 Flash 算法获得支持。
+
+\begin{longtable}{@{}P{34mm}P{60mm}P{67mm}@{}}\toprule
+本机路径 & 主机到探针的软件链 & 排错重点\\\midrule\endhead
+GDB + J-Link Server & JLinkGDBServerCL → JLinkARM.dll → SEGGER 支持的 USB 驱动 → J-Link 固件 & 核对同套 Server/DLL、实际绑定驱动、探针版本。Windows 能枚举 USB 并不表示 DLL 能打开它。\\
+GDB + OpenOCD/J-Link & OpenOCD jlink adapter → libjaylink/libusb → USB → J-Link 固件 & 本地分发静态链接 libjaylink。Windows 接口须匹配该 USB 后端；与上一行切换时要核对驱动绑定。\\
+GDB + OpenOCD/CMSIS-DAP & OpenOCD cmsis-dap adapter → HID 或 USB bulk 后端 → CMSIS-DAP 固件 & 本地历史日志明确是 HID；不能仅从固件字符串“2.0”推断已经使用 bulk。\\\bottomrule
+\end{longtable}
+
+CMSIS-DAP v1 通常使用 USB HID 报告，Windows 可利用通用 HID 驱动；v2 配置使用 USB bulk，Windows 常经 WinUSB，命令/响应可按包批量搬运，并可选配独立 SWO 流端点。\textbf{USB 类、命令协议版本、产品固件版本是三个维度}。设备是否提供 HID/bulk、是否实现 SWO、最大包长和速率，都应从接口描述符与实际能力查询确认。固件菜单写有 CMSIS-DAP，不等于所有可选功能均可用。
+
+OpenOCD 的 \code{cmsis-dap backend auto/hid/usb_bulk} 决定主机后端，\code{transport select swd} 决定目标侧传输；\code{adapter speed 1000} 请求的是目标调试时钟，单位 kHz，不是 USB 速率或 CPU 主频。最新上游文档可能还包含本地分发未验证的其他后端，不应直接抄入项目。参考 \href{https://arm-software.github.io/CMSIS_5/5.7.0/DAP/html/group__DAP__ConfigUSB__gr.html}{Arm USB 配置说明}和 \href{https://openocd.org/doc/html/Debug-Adapter-Configuration.html}{OpenOCD adapter 文档}。
+
+本机曾因 J-Link 接口绑定为 WinUSB/libwdi 而让 SEGGER Server 报 \code{Could not connect to J-Link}。这是\emph{启动阶段无法打开探针}的问题，和第\ref{sec:jlink-duration}节“已经工作约 53 秒后失效”的问题应分开记录。核对设备管理器中的接口、驱动提供者、探针序号与 Server 输出，避免多个服务同时占用同一探针。若是复合 USB 设备，还需辨认调试接口与串口接口。
+\src{\path{tools/bin/openocd/PROVENANCE.txt}；三个 \path{tools/debug-env*.toml}；本地 0.8.0 驱动诊断及 DAP 实板报告。}
+
+\subsection{SWD、JTAG 与复位信号}
+SWD 通过一次请求选择 DP/AP、读写方向和寄存器地址，再进行总线方向切换、ACK 与数据传输；Server/探针处理 OK、WAIT、FAULT 等响应、重试和协议错误。WAIT 不等于目标必然死机，FAULT 也不必然表示 USB 已断。实际故障需与电源、地址、访问权限及 DP 错误状态一起解释。
+
+JTAG 使用 TAP 状态机，通过 IR/DR 扫描选择指令和移入/移出数据；多器件扫描链还需正确的 TAP 顺序、IR 长度及旁路配置。芯片内多核不等于板上必须有多个 TAP。SWJ-DP 可将共享引脚切换到 SWD 或 JTAG 模式；SWD 的新版本还存在多点连接能力，但本地 F429 profile 只使用单个 DAP，未启用或验证多点模式。
+
+NRST/SRST 是目标系统复位，nTRST 是 JTAG TAP 复位，SWD line reset 则恢复传输状态；三者不能互换。\code{SYSRESETREQ} 是芯片内部的系统复位请求机制，板级“连接时保持复位”还取决于 NRST 接线、探针电路和 Server 配置。不能因为 profile 中有 \code{reset halt}，就假定它一定拉动了物理 NRST。
+
+\subsection{STM32F429 接线与电气边界}
+STM32F429 本地 profile 使用 SWD。调试信号与 UART 日志是不同链路；当前工程未提供 UART 接收面板，应用串口输出不会因为连接 GDB 自动出现在 Console。Console 的 target 通道来自 GDB/Server 输出，不能当作任意串口的镜像。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{25mm}P{28mm}Y@{}}\toprule
+信号 & 方向/作用 & 接线与确认\\\midrule
+VTref / Vtarget & 目标 → 探针参考 & 使用板卡实际调试电平；参考电压不等于探针必然给板供电。\\
+GND & 公共参考 & 板卡与探针共地，缩短回流路径。\\
+SWCLK & 探针 → 芯片 & 时钟，STM32F429 常用 PA14/SWCLK；profile 配置 1 MHz 或 4 MHz。\\
+SWDIO & 双向 & 调试数据，STM32F429 常用 PA13/SWDIO；固件重配引脚可导致失联。\\
+NRST & 复位控制 & 建议板级引出；是否采用硬件复位取决于 reset\_config，不能只看接线。\\
+SWO & 可选跟踪输出 & STM32F429 的 PB3 可用于 SWO；本手册 profile 未启用专用 SWO 采集。\\\bottomrule
+\end{tabularx}
+引脚功能应核对具体封装、原理图和 ST 手册；这里不推定某块板的接插件针序。调试电压、板卡供电和连接器定义以实物为准。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=18mm]
+\node[box,text width=32mm] (p) {CMSIS-DAP / J-Link\\USB 调试探针};
+\node[box,text width=40mm,right=34mm of p] (m) {STM32F429\\SW-DP / AP0};
+\draw[arr] ($(p.east)+(0,0.45)$)--node[tag,above]{SWCLK}($(m.west)+(0,0.45)$);
+\draw[arr,<->] (p.east)--node[tag,above]{SWDIO}(m.west);
+\draw[arr] ($(p.east)+(0,-0.45)$)--node[tag,below]{NRST（按板级策略）}($(m.west)+(0,-0.45)$);
+\draw[ink,thick] ($(p.south)+(0,-0.50)$)--node[tag,below]{GND（共地）}($(m.south)+(0,-0.50)$);
+\draw[arr,<-] ($(p.south)+(0,-1.15)$)--node[tag,below,text=ink]{VTref（目标 → 探针，电压参考）}($(m.south)+(0,-1.15)$);
+\end{tikzpicture}
+\caption{信号关系示意。调试线中承载的访问并不等同于 CPU 执行的指令流。}
+\end{figure}
+
+F429 的 Cortex-M4、Flash、SRAM 和外设经芯片内部调试/总线路径访问。CPU target 与独立 mem\_ap target 是同一颗芯片的两个软件访问入口，\textbf{不是两个 CPU，也不是两个物理 AP}。本地两者共用 DAP 的 AP0。DP ID 和芯片 ID 也不同：本地日志 DPIDR 为 \code{0x2ba01477}，DBGMCU 设备 ID 为 \code{0x20016419}。
+
+\notice{连接不是完全无副作用的观察：本地 OpenOCD 的 stm32f4x.cfg 在 examine-end 设置低功耗调试位和看门狗暂停位；下载还会使用 SRAM 工作区。需要复现运行故障时，应把调试环境对时序和寄存器的影响纳入判断。}
+\src{\path{tools/bin/openocd/scripts/target/stm32f4x.cfg}: examine-end、work-area；\path{artifacts/dap-ui-20260920-2307/raw-openocd.stderr.log}。引脚语义另参 ST RM0090 / 数据手册。}
+
+\newsection{ARM 调试架构：CoreSight、DAP 与 Trace}\label{sec:coresight}
+本节把探针送入芯片的访问与实际工作台功能联系起来。采用 STM32F429/Cortex-M4 所在的 ADIv5 调试模型作为主线，再解释多核 SoC 中常见的 APB-AP、CTI 和 Trace 组件。ADI 的其他版本、Cortex-A/R 或厂商集成不必具有相同寄存器、AP 编号或访问限制。
+
+\subsection{三条路径：访问、触发、追踪}
+CoreSight 是片上调试与追踪架构及组件体系，不是某种 USB 探针协议。它规定可发现的组件、寄存器接口以及 Trace/触发互连；具体芯片只集成其中一部分。\textbf{DAP 提供访问入口}，用于到达调试组件及系统资源；严格按 CoreSight 可见组件的定义，DAP 本身不等同于一个普通的 CoreSight 组件。
+
+把系统分成三条路径更容易理解本工程的边界：\textbf{调试访问路径}读写寄存器、内存并控制 CPU；\textbf{交叉触发路径}传播停止、重启或采集触发事件；\textbf{Trace 路径}传送运行期间生成的追踪数据。它们可以协作，但访问成功不代表触发路由已配置，更不代表能够采集 Trace。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{28mm}P{64mm}Y@{}}\toprule
+路径 & 典型组成 & DebugTUI 当前参与方式\\\midrule
+访问/配置 & SWD/JTAG → DP → AP → 内存/调试寄存器 & 通过 GDB/Server；运行读可走 OpenOCD TCL。\\
+事件触发 & 核/ETM 事件 → CTI → CTM → CTI → 动作 & 仅可透传显式 sync.open 配置；组控制另由软件协调。\\
+Trace 数据 & ITM/DWT/ETM → ATB/链路 → 缓冲或输出 → 采集器 & 未实现采集、解码或时间线 UI；与 LIVE 轮询不同。\\\bottomrule
+\end{tabularx}
+\src{\href{https://documentation-service.arm.com/static/5f9009d5f86e16515cdc0417}{Arm CoreSight Architecture v2.0}；\path{src/coordinator.rs}；\path{src/session/memory.rs}。}
+
+\subsection{DAP、DP、AP 和片上总线}
+DAP（Debug Access Port）在这里指由外部 Debug Port 和若干 Access Port 组成的访问设施。\textbf{DP 面向外部链路}：SW-DP 接受 SWD，JTAG-DP 接受 JTAG；SWJ-DP 可选择二者。DP 提供访问状态、错误处理和调试电源请求等入口。\textbf{AP 面向片内资源}：Server 选择 AP 后，利用其接口访问某条总线或其他调试结构。
+
+MEM-AP 是内存映射访问端口的通用模型。AHB-AP、APB-AP、AXI-AP 的名称说明其片内一侧连接的总线；JTAG-AP 则用于到达内部 JTAG 链，不是“外部改用 JTAG 时必然用到的 AP”。AP 编号不是 CPU 编号，也不是厂商间通用的用途枚举。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=8mm]
+\node[box,text width=110mm] (probe) {探针 → SWD 或 JTAG → DP（外部协议、状态、电源请求）};
+\node[box,text width=110mm,below=of probe] (sel) {按芯片拓扑选择 AP；AP 编号与 CPU 数量没有固定对应};
+\node[box,text width=40mm,below=9mm of sel.south,xshift=-48mm] (ahb) {AHB-AP / AXI-AP\\系统内存与总线};
+\node[box,text width=40mm,below=9mm of sel.south] (apb) {APB-AP\\调试寄存器空间};
+\node[box,text width=40mm,below=9mm of sel.south,xshift=48mm] (jtag) {JTAG-AP\\内部扫描链};
+\draw[arr] (probe)--(sel);
+\draw[arr] (sel)--(ahb);\draw[arr] (sel)--(apb);\draw[arr] (sel)--(jtag);
+\node[box,text width=110mm,below=12mm of apb] (f429) {F429 本地实例：SW-DP → AP0（AHB-AP）\\核心调试 / Flash / SRAM / 经桥接访问外设};
+\draw[data] (ahb.south)--($(f429.north)+(-42mm,0)$);
+\end{tikzpicture}
+\caption{通用 DAP 访问分类与 F429 实例。上方各 AP 为架构示意，不表示 F429 实现了三种 AP。}
+\end{figure}
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{28mm}P{58mm}Y@{}}\toprule
+端口 & 常见用途 & 适配时必须确认\\\midrule
+AHB-AP & 作为 AHB 访问主设备访问系统地址空间；Cortex-M 中常见 & 可达地址、传输宽度、总线时钟、访问保护。\\
+APB-AP & 访问调试 APB 上的核调试、CTI、ETM 等寄存器 & 调试地址空间和上电状态；不假定覆盖全部系统 RAM。\\
+AXI-AP & 访问采用 AXI 的系统地址空间 & 位宽、地址范围、权限及缓存一致性属性。\\
+JTAG-AP & 由 DAP 转到芯片内部 JTAG 结构 & 内部 TAP、链路控制和特定目标支持。\\\bottomrule
+\end{tabularx}
+
+名称相似也不能直接等同：STM32 的 RCC/GPIO 等外设可能位于系统 APB 总线上，但外部调试可由 AHB-AP 经 AHB-to-APB 桥到达。\textbf{“读取 APB 外设”不意味着必须存在独立 APB-AP}。在本地配置中再创建一个名为 \code{stm32f4x.apb} 的软件 target，也不会凭空增加硬件端口。
+\src{\href{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/how-to-debug-coresight-basics-part-2}{Arm CoreSight basics Part 2}；\path{tools/config/stm32f429-dap.cfg}。}
+
+\subsection{一次内存访问在 DP/AP 内部如何完成}
+以 ADIv5 MEM-AP 的概念流程说明：Server 首先识别 DP，并确认调试/系统电源请求得到响应；选择正确 AP 与寄存器 bank；设置 \code{CSW} 中的访问尺寸等属性，把目标地址写入 \code{TAR}，再通过 \code{DRW} 发起数据传输。AP 读存在流水/延后返回语义，需要按协议完成后续取数，例如通过 DP 的 \code{RDBUFF} 获取最终读结果；不能把“发出 AP 读请求”当作已经拿到该地址的值。
+
+这些步骤由 Server、适配器库与探针固件配合完成，并可能批量化或缓存配置。DebugTUI 只提交高层内存请求，不在 Rust UI 中实现 CSW/TAR/DRW，也不能从一次 MI 响应反推出发生了多少个 SWD 时钟周期。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=7mm]
+\node[box,text width=115mm] (ui) {Memory/Watch → GDB 内存请求，或命名 TCL read\_memory};
+\node[box,text width=115mm,below=of ui] (ap) {Server：选择 DAP/AP → 配置访问尺寸 → 指定目标地址};
+\node[box,text width=115mm,below=of ap] (bus) {探针/DP/AP：传输请求 → 片内总线访问 → 完成取数与状态检查};
+\node[box,text width=115mm,below=of bus] (ret) {返回字节/错误 → 宽度与端序解码 → generation 校验 → 面板};
+\draw[arr] (ui)--(ap);\draw[arr] (ap)--(bus);\draw[data] (bus)--(ret);
+\end{tikzpicture}
+\caption{内存请求的逻辑完成路径。批量读取、AP 流水和主机请求并非一一对应。}
+\end{figure}
+
+\code{DPIDR} 说明调试端口，AP 的 \code{IDR} 说明端口类别；MEM-AP 的 \code{BASE} 和 CoreSight ROM table 可引导工具发现内存映射组件，再利用组件/外设标识确认类型。它们与 STM32 的 \code{DBGMCU_IDCODE}、CPU 的 \code{CPUID} 不是同一个身份。软件 target 名、AP 编号、组件地址也不能相互替代。ROM table 有条目并不自动证明对应组件当前已上电、已解锁或允许访问。
+
+发生 WAIT/FAULT 时，应区分外部传输响应和片内总线完成状态；DP sticky error 会影响后续访问，恢复由了解该协议的 Server 处理。若端口仍能识别而系统地址不可读，电源/时钟域、地址映射、复位、保护状态和 AP 路由都是可能原因。提高 TUI 的等待时间不能修复错误的硬件路由。
+\src{\href{https://documentation-service.arm.com/static/622222b2e6f58973271ebc21}{Arm ADIv5.0--ADIv5.2 Architecture}，MEM-AP 与 DP 章节；\path{src/session/memory.rs}。}
+
+\subsection{Cortex-M4 的停核、断点与观察点}
+DAP 使寄存器可达；核调试逻辑决定如何暂停、单步和转移核心寄存器。Cortex-M4 常见的 \code{DHCSR} 用于调试控制/状态，\code{DCRSR}/\code{DCRDR} 配合选择和传输核心寄存器，\code{DEMCR} 包含 vector catch 及追踪相关控制。GDB 中看到的 R0、PC、SP、xPSR 不应简单理解为同名普通 RAM 地址。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{30mm}P{39mm}Y@{}}\toprule
+资源 & 工作职责 & 在 DebugTUI 中的表现\\\midrule
+Core debug & 暂停、继续、单步、核心寄存器传输 & Pause/Step 和 System Regs；完成状态由 Server/GDB 确认。\\
+FPB & Flash Patch and Breakpoint，指令地址匹配等 & 硬件代码断点；本机 Server 报告 6 个硬件断点资源。软件/Flash 断点策略仍取决于服务端。\\
+DWT & Data Watchpoint and Trace，地址比较、计数及可选事件 & 数据观察点通常消耗比较器；本地报告 4 个观察点资源。Watch 表达式列表本身不分配 DWT。\\
+ITM / ETM & 软件插桩事件 / 执行流追踪来源 & 当前没有对应的采集解码面板；详见第\ref{sec:trace}节。\\\bottomrule
+\end{tabularx}
+
+DWT 可以同时承担观察点与追踪事件相关任务，因此资源配置可能互相影响；“芯片有四个比较器”不代表每种组合都有四个任意条件槽位。停止后的寄存器快照还需使用正确线程/栈上下文。FreeRTOS 调试中看到 PSP/MSP 的区别，不等于 TUI 已实现 RTOS 任务枚举。
+\src{\href{https://documentation-service.arm.com/static/5fce431be167456a35b36ade}{Arm Cortex-M4 TRM}；本地 OpenOCD 探测日志；\path{src/session.rs}、\path{src/session/breakpoints.rs}。}
+
+\subsection{F429 的两个软件 target 与一个 AP0}
+在本地板级脚本中，\code{stm32f4x.cpu} 是 Cortex-M CPU target；\code{stm32f4x.ahb} 是独立的 \code{mem_ap} target。两者引用同一个 \code{stm32f4x.dap}，且 AP 均为 0。前者提供停核、寄存器、断点和 GDB 服务，后者给 TCL 运行时内存读提供独立入口，并关闭自己的 GDB 端口。
+
+因此，\code{channel="ahb"} 是 TUI 命名通道到 OpenOCD target 的映射，不是“切换到第二颗 CPU”。读取 RCC 外设走 AHB-AP 到芯片总线，读取 RAM 也走同一实际 AP；是否能在运行中访问、读到的数据是否一致，仍由目标状态和总线系统决定。\code{while_running=true} 只声明并开放已有能力，不会解除芯片保护或给 AP 上电。
+
+\code{targets stm32f4x.cpu} 在本地脚本初始化时设置默认 CPU；实时读取使用 \code{stm32f4x.ahb read_memory ...}，不不断切换全局 target。CPU 与 MEM-AP 访问共享物理资源，故高频轮询可能增加总线和探针负载。对更复杂的 A/R 多核 SoC，核内缓存、MMU、调试 APB、电源域和独立 AP 还会增加限制，不能直接套用 F429 的地址与 AP0。
+\src{\path{tools/config/stm32f429-dap.cfg}、\path{tools/config/stm32f429-live.cfg}；\path{tools/debug-env-cmsis-dap.toml}；\path{src/live_watch.rs}: transact。}
+
+\subsection{CTI、CTM 与硬件交叉触发}\label{sec:cti}
+CTI（Cross Trigger Interface）把本地触发输入映射到触发通道，再把选中的通道映射到本地输出；CTM（Cross Trigger Matrix）在多个 CTI 之间传播通道事件。ECT（Embedded Cross Trigger）是这套交叉触发设施的统称。例如核 0 进入调试态，经路由请求核 1 停止，或令 Trace 采集器在某个事件附近保留数据窗口。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=7mm]
+\node[box,text width=119mm] (sw) {本工程的软件联停：核 0 的 MI 停止事件 → Coordinator → 核 1 的 GDB Pause};
+\node[box,text width=35mm,below=14mm of sw.south,xshift=-49mm] (a) {核 0 / ETM 事件\\CTI 输入映射};
+\node[box,text width=35mm,below=14mm of sw.south] (b) {CTM\\传播选定通道};
+\node[box,text width=35mm,below=14mm of sw.south,xshift=49mm] (c) {CTI 输出映射\\核 1 / Trace 动作};
+\draw[data] (a)--(b);\draw[data] (b)--(c);
+\node[below=8mm of b,text width=135mm,align=center,font=\small] {下行是芯片硬件路径，需核对事件编号、方向、时钟/电源、使能及确认条件。};
+\end{tikzpicture}
+\caption{软件联停与硬件交叉触发各有独立路径；通道号不是 AP 号或 TUI 核索引。}
+\end{figure}
+
+适配 CTI 时先从芯片 TRM/集成资料确认 CTI 基址、触发输入输出接线、通道数、时钟与权限，再配置输入映射、通道门控和输出映射；对保持型事件还须遵循清除/确认规则。错误映射可能导致事件无法传播或反复触发。硬件联停延迟受实际拓扑影响，也不能笼统承诺所有核同周期停止。
+
+本工程 \code{[sync]} 中的 \code{method="cti"} 是兼容配置名，与 \code{method="tcl"} 一样执行 \code{sync.open} 中明确给出的 TCL 命令。它不发现 CTI、不自动分配通道、不生成寄存器值。\code{halt_peers} 是收到停止事件后的软件协调；\code{startup_order} 是会话启动顺序；二者都不会建立 CTI 硬件连接。本地单核 F429 profile 未配置 CTI，不据此推断芯片中存在某组可用 CTI。
+\src{\href{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/how-to-debug-coresight-basics-part-1}{Arm CoreSight basics Part 1：Cross Triggering}；\path{src/coordinator.rs}、\path{src/coordinator/control.rs}；\path{tools/examples/multicore-access.md}。}
+
+\subsection{ETM、ITM、DWT、ATB 与 Trace 接收端}\label{sec:trace}
+调试快照回答“现在停在哪里”，Trace 则尝试保存“到达这里之前发生了什么”。硬件 Trace 由事件源持续生成编码流；主机随后结合正确的程序镜像和解码规则还原执行信息。它不等同于 TUI 每 100 ms 读一次变量，也不等同于 GDB 日志或 UART printf。
+
+\begin{longtable}{@{}P{25mm}P{64mm}P{72mm}@{}}\toprule
+组件 & 作用 & 常见误解与限制\\\midrule\endhead
+ETM & Embedded Trace Macrocell；观察处理器执行，生成压缩追踪流 & ETM-M4 提供指令追踪，不能据此宣称记录了所有内存数据访问。是否存在及资源数量取决于芯片。\\
+ITM & Instrumentation Trace Macrocell；接收软件 stimulus 写入及相关硬件事件 & 常用于轻量软件事件；插桩本身有成本，需要正确时钟、使能与输出配置。\\
+DWT & 比较器、周期计数、采样或异常等事件来源 & 可为 ITM/Trace 提供事件；并非一条无限带宽、无丢失的全内存访问记录。\\
+ATB & AMBA Trace Bus；在片上传送带来源标识的 Trace 数据 & 不是 APB 控制总线；经 APB 可配置组件，但 Trace 字节走另一条数据路径。\\
+Funnel / Replicator & 多路汇聚 / 一路分发到多个去向 & 需要有效来源 ID、路由和带宽；不负责解释指令含义。\\
+TPIU & Trace Port Interface Unit；格式化并输出到外部采集口 & 是输出设施，不是存储全部历史的内存；支持的串行/并行模式与芯片实现有关。\\
+ETB / TMC & ETB 片上 Trace 缓冲；TMC 可采用 ETF 缓冲或 ETR 路由到系统内存等配置 & 是通用 CoreSight 示例，本地 F429 手册不假定这些组件存在；容量、溢出和停止条件必须明确。\\
+外部采集器/解码器 & 接收 SWO 或并行 Trace，保存并解码 & 普通 SWD 调试能力不保证拥有 Trace 引脚、采样带宽、软件许可或对应解码器。\\\bottomrule
+\end{longtable}
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=7mm]
+\node[box,text width=42mm] (etm) {CPU 执行 → ETM\\指令追踪};
+\node[box,text width=52mm,right=12mm of etm] (itm) {软件事件 / DWT → ITM\\事件、采样等};
+\node[box,text width=112mm,below=13mm of etm.south,xshift=31mm] (atb) {ATB 数据链路 / 可选 Funnel；区分 Trace source ID};
+\node[box,text width=50mm,below=10mm of atb.south,xshift=-31mm] (sink) {可选 ETB / TMC\\片上缓冲或系统内存};
+\node[box,text width=50mm,below=10mm of atb.south,xshift=31mm] (tpiu) {TPIU → 外部采集器\\芯片支持的输出模式};
+\node[box,text width=112mm,below=13mm of sink.south,xshift=31mm] (host) {主机解码 + 匹配的程序镜像 → 指令/事件时间线};
+\draw[data] (etm)--(atb);\draw[data] (itm)--(atb);
+\draw[data] (atb)--(sink);\draw[data] (atb)--(tpiu);
+\draw[data] (sink)--(host);\draw[data] (tpiu)--(host);
+\end{tikzpicture}
+\caption{通用 Trace 数据流。图中可选缓冲与输出不是 F429 的硬件清单，也不是当前 DebugTUI 的实现。}
+\end{figure}
+
+Funnel/Replicator、缓冲、TPIU 组成数据通路；CTI/CTM 传递触发事件；DAP/AP 访问配置寄存器。这三条路径在采集任务中协作：配置来源和路由、启动接收端、使能来源、运行到触发条件、停止并排空缓冲，再解码。不同实现的启动/停止顺序须遵循对应手册，不能用一串通用地址写操作代替。
+
+Trace 数据量可能超过引脚、USB 或主机处理能力。采样频率、来源筛选、缓冲容量、溢出标志、时间戳来源与时钟变化都影响可解释性。缺失区间不能用“图上连续”来掩盖；多个来源即使有时间戳，也需确认同一时间基准。ETM 解码依赖正确的执行镜像；固件重新下载后继续使用旧 ELF，可能得到错误的源码或执行路径。
+\src{\href{https://documentation-service.arm.com/static/5e8ecc36c5ee7d4a00693f2f}{Arm ETM-M4 TRM}；\href{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/how-to-debug-coresight-basics-part-3}{Arm CoreSight basics Part 3}；\href{https://community.arm.com/cfs-file/__key/telligent-evolution-components-attachments/00-476-00-00-00-00-67-99/DDI0461B_5F00_tmc_5F00_r0p1_5F00_trm_2800_1_2900_.pdf}{Arm TMC TRM}。}
+
+\subsection{将通用架构落到 STM32F429 与本工程}
+STM32F429 的具体调试能力应从 RM0090 的 Debug support 章节及所用封装数据手册核对。PB3 可复用 JTDO/TRACESWO，因此本芯片异步 SWO 与 JTAG TDO 的复用关系必须考虑；SWO 并非额外占用 SWDIO。并行 Trace 使用 TRACECLK/TRACED 等独立信号，是否引出及能否使用取决于封装、板卡布线和其他外设复用。
+
+若从当前 SWD 改为 JTAG，F429 的相关复用信号为 PA13/JTMS、PA14/JTCK、PA15/JTDI、PB3/JTDO、PB4/NJTRST。并行 Trace 的常见分配为 PE2/TRACECLK、PE3--PE6/TRACED0--3；这些是芯片信号映射，不能当成本机板卡连接器已经布线的证明。例如 ST 的 \href{https://www.st.com/resource/en/user_manual/um1667-stm32429ieval-evaluation-board-for-stm32f429-mcus-stmicroelectronics.pdf}{STM32429I-EVAL 板手册}还列出了与存储器信号复用时的板级连接条件，本地测试板应查自己的原理图。
+
+对 Cortex-M4/F429 的使用，SWO 主要用于 ITM/DWT 串行事件通路；ETM 执行追踪应核对并行 Trace 端口和具有相应采集能力的设备，不能把“探针支持 SWO”推导成“能完整采集 ETM”。SWO 接收时钟/波特率也不是 SWD 频率；修改系统时钟后，采集端需要匹配实际 Trace 时钟。参考 \href{https://www.st.com/resource/en/reference_manual/rm0090-stm32f407-advanced-armbased-32bit-mcus-stmicroelectronics.pdf}{ST RM0090，第 38 章}与具体器件数据手册。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{42mm}Y@{}}\toprule
+当前工程能力 & 与架构的实际对应\\\midrule
+暂停、单步、断点、寄存器 & 经 GDB/Server 使用 CPU 调试与 FPB/DWT；已包含本地实板证据。\\
+ahb 运行读 & 经 TCL 命名 target 访问 AP0；离散内存采样，不保存所有中间变化。\\
+SVD Peripherals & 以 XML 描述解释内存映射寄存器；不自动发现 CoreSight 拓扑。\\
+多核联停 / sync.open & 软件组协调 / 显式环境命令入口；需要板级 CTI 验证才能声明硬件联动。\\
+SWO / ETM / RTT & 当前没有专用采集/解码 UI。RTT 是目标 RAM 缓冲的数据通路，也不是 ETM 或 SWO 的别名。\\\bottomrule
+\end{tabularx}
+
+实际移植应先验证调试访问，再验证运行时读取或 CTI，最后单独验收 Trace 的完整采集链。即使外部工具能显示 SWV，也不意味着 DebugTUI 已接入该数据源。后续工具配置只建立本工程已实现的 GDB/TCL 路径，避免把芯片可选能力混入现有 profile 的承诺。
+
+\newsection{tools：GDB、OpenOCD 与 J-Link Server}\label{sec:tools}
+\subsection{三个现有 profile 的差异}
+下表均为仓库实际配置。三者复用 ARM GDB 和 GDB 端口 3333；两个 OpenOCD profile 还使用 TCL 6666，telnet 禁用，仅监听本机。同一端口不能由两个服务同时占用。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{31mm}Y Y Y@{}}\toprule
+项目 & J-Link Server & OpenOCD/J-Link & OpenOCD/CMSIS-DAP\\\midrule
+profile 文件 & \path{debug-env.toml} & \path{debug-env-openocd.toml} & \path{debug-env-cmsis-dap.toml}\\
+服务程序 & JLinkGDBServerCL & openocd & openocd\\
+探针驱动 & SEGGER USB 栈 & OpenOCD jlink & OpenOCD cmsis-dap\\
+芯片/接口 & STM32F429IG / SWD & stm32f4x / SWD & stm32f4x / SWD\\
+速度 & 4000 kHz & 1000 kHz & 1000 kHz\\
+TCL 实时读 & 未提供 & ahb / core-tcl & ahb / core-tcl\\
+退出前动作 & monitor go & monitor resume & monitor resume\\
+本地证据 & 有历史连接记录；0.8.0 回归受 USB 驱动阻断 & 0.8.0/F429 运行读取等实板通过 & 2026-09-20 最新本地实板资料完整\\\bottomrule
+\end{tabularx}
+
+\subsection{GDB 最小运行环境}
+仓库 GDB 的工具链发行标识为 GNU Tools for STM32 13.3.rel1.20240926-1715。调试器版本为 GDB 14.2.90.20240526-git。profile 不只指定 EXE，还设置 data-directory、debug-file-directory、auto-load 路径，移除继承的 PYTHONHOME/PYTHONPATH；这些安排用于该工具分发，不代表任意 GDB 都必须采用相同目录结构。
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[gdb]
+executable = "./bin/gdb/bin/arm-none-eabi-gdb.exe"
+args = [
+  "--data-directory=${profile_dir}/bin/gdb/arm-none-eabi/share/gdb",
+  "-iex", "set debug-file-directory ${profile_dir}/bin/gdb/lib/debug",
+  "-iex", "set auto-load scripts-directory ${profile_dir}/bin/gdb/arm-none-eabi/share/gdb/auto-load",
+  "-iex", "set auto-load safe-path ${profile_dir}/bin/gdb/arm-none-eabi/share/gdb/auto-load"
+]
+unset_env = ["PYTHONHOME", "PYTHONPATH"]
+init = ["set remotetimeout 5", "set tcp connect-timeout 5"]
+\end{lstlisting}
+\end{minipage}\par
+核心追加 \code{-nx -q --interpreter=mi2}，关闭分页与交互确认，尝试开启 mi-async。GDB 自身资源或 DLL 问题应先在独立命令行复现；TUI 不补造目标能力。
+
+\subsection{OpenOCD 服务和目标动作}
+仓库分发为 xPack OpenOCD 0.12.0-7，实际版本串为 \code{0.12.0+dev-02228-ge5888bda3-dirty}（2025-10-04）。配套 libusb、libftdi DLL 与 upstream scripts 已纳入工具校验清单。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[service]
+command = "./bin/openocd/bin/openocd.exe"
+args = ["-s", "${profile_dir}/bin/openocd/scripts",
+        "-f", "${profile_dir}/config/stm32f429-dap.cfg"]
+ready = ["Listening on port 3333 for gdb connections"]
+timeout_ms = 15000
+
+[target]
+mode = "extended-remote"
+endpoint = "127.0.0.1:3333"
+after_connect = ["monitor halt", "maintenance flush register-cache"]
+
+[actions]
+restart = ["monitor reset halt", "maintenance flush register-cache"]
+run = ["monitor reset halt", "maintenance flush register-cache",
+       "-exec-continue"]
+download = ["-target-download", "monitor reset halt",
+            "maintenance flush register-cache"]
+before_disconnect = ["monitor resume"]
+
+[session]
+on_exit = "detach"
+\end{lstlisting}
+\end{minipage}\par
+这是 CMSIS-DAP profile 中对应片段；J-Link/OpenOCD 只将板级文件换成 \code{stm32f429-live.cfg}。ready 是输出子串就绪条件，不代表符号已加载或应用完成启动；之后仍需 GDB 连接和实际状态查询。
+
+\subsection{J-Link Server 服务片段}
+本地 J-Link 路径有普通调试成功记录，也有约 52--53 秒后的长会话访问失效记录。使用本 profile 前应同时阅读第\ref{sec:jlink-duration}节；短程连接成功不能代替长会话稳定性验证。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[service]
+command = "./bin/jlink/JLinkGDBServerCL.exe"
+args = ["-device", "STM32F429IG", "-if", "SWD",
+        "-speed", "4000", "-port", "3333", "-select", "USB",
+        "-localhostonly", "-nogui", "-halt", "-singlerun"]
+ready = ["Waiting for GDB connection", "Connected to target"]
+timeout_ms = 15000
+\end{lstlisting}
+\end{minipage}\par
+该环境的 restart 依次执行 reset、halt 和刷新寄存器缓存。run 在此基础上继续，download 首先 \code{-target-download}。\code{-singlerun} 使 Server 在客户端断开后自行结束，外部服务也可能因此退出，不意味着 TUI 杀死了它。参数语义见\href{https://kb.segger.com/J-Link_GDB_Server}{SEGGER 官方 GDB Server 文档}；本地旧版使用 \code{-select USB}，不要直接照搬新版本专用参数。
+
+\subsection{手动启动与所有权}
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+# Repository root, terminal 1:
+./tools/bin/openocd/bin/openocd.exe `
+  -s ./tools/bin/openocd/scripts `
+  -f ./tools/config/stm32f429-dap.cfg
+
+# Terminal 2, retaining this profile's GDB arguments and actions:
+debugtui --environment ./tools/debug-env-cmsis-dap.toml `
+  --connect 127.0.0.1:3333 --elf <matching.elf>
+\end{lstlisting}
+\end{minipage}\par
+外部启动的服务由启动者管理。TUI 的工作区重建、任务执行或退出只终止自己启动的服务/GDB/子任务。\code{tools/start_server.bat} 和 \code{tools/gdb.bat} 是 J-Link 传统命令行入口，读取 \code{config/paths.bat}；TUI 读取 TOML，不读取该 BAT 中的环境默认值。
+\src{\path{tools/debug-env.toml}；\path{tools/debug-env-openocd.toml}；\path{tools/debug-env-cmsis-dap.toml}；\path{tools/bin/openocd/PROVENANCE.txt}；\path{tools/dependencies.lock.json}。}
+
+\newsection{STM32F429 本地实板配置与操作}\label{sec:f429}
+\subsection{确认本机实际型号和固件}
+本机服务配置指定 STM32F429IG，关联固件链接脚本为 \code{STM32F429IGTX_FLASH.ld}。历史 OpenOCD 实测报告 Cortex-M4 r0p1、1024 KiB Flash、6 个代码断点资源与 4 个观察点资源。这些是此板此环境的报告值，不是 DebugTUI 写死的限制。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{33mm}Y@{}}\toprule
+项目 & 核对结果\\\midrule
+芯片基础 & STM32F429 系列 Cortex-M4 + FPU；官方系列最高 180 MHz。本手册不以此推定该固件的实际运行频率。\\
+主 Flash & 链接 ORIGIN=0x08000000，LENGTH=1024K。\\
+主 SRAM & 链接 ORIGIN=0x20000000，LENGTH=192K；栈顶 0x20030000。\\
+CCM RAM & 链接 ORIGIN=0x10000000，LENGTH=64K。声明区域不代表全部被使用或可经任意 AP 路径访问。\\
+程序文件 & \path{build/FreeRTOS_STM32F429.elf}，不要误选历史 \path{Debug/FreeRTOS_Project.elf}。\\
+编译参数 & \code{-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -O0 -g3}。\\
+RTOS 配置 & FreeRTOS 抢占式；tick 1000 Hz，heap 配置 15360 字节。\\
+本地 DAP 探针 & 历史报告 ATK-FS-HID-CMSIS-DAP，固件 2.0.0，SWD 1000 kHz。\\\bottomrule
+\end{tabularx}
+芯片系列概况参\href{https://www.st.com/en/microcontrollers-microprocessors/stm32f429ig.html}{ST STM32F429IG 产品资料}；本表容量取自本地链接脚本和历史设备识别，不将系列“最大容量”误写为此板容量。主 SRAM 与 CCM 应分别看待，不应把它们当作从 0x20000000 开始连续的 256 KiB。
+
+\subsection{可复制的项目配置}
+以下配置以本机 FreeRTOS\_Project 目录为根，使用当前 CMSIS-DAP profile。与磁盘实际配置相比，将用户临时源码行断点替换为便于说明的 main，保留其目录关系；这是手册示例，本文未改写用户工程。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+version = 2
+watch = ["xTickCount", "uwTick"]
+breakpoints = ["main"]
+
+[tools]
+profile = "../../../DebugTUI/tools/debug-env-cmsis-dap.toml"
+[program]
+elf = "build/FreeRTOS_STM32F429.elf"
+source_root = "."
+svd = "../../../DebugTUI/resources/svd/stm32/STM32F429.svd"
+[tasks]
+build = "mingw32-make -j8"
+download = ""
+timeout_ms = 300000
+[session]
+log_dir = "debug-logs"
+on_exit = "detach"
+timeout_ms = 8000
+\end{lstlisting}
+\end{minipage}\par
+\code{download = ""} 使下载回退至 profile 的 GDB action。旧工程如果仍保留启动 J-Link 的外部下载命令，它会优先于新的 CMSIS-DAP profile，必须检查清楚。Build 依赖工程自己的 GCC/make 和 PATH；tools 的最小包只含调试器/Server，不包含完整固件构建工具链。该 Makefile 使用 which、ls 等工具查找 GCC，构建环境还需提供对应命令或适配工程脚本。
+
+\subsection{板级 OpenOCD 脚本}
+以下是本地 \code{stm32f429-dap.cfg} 的实际有效配置：
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+bindto 127.0.0.1
+gdb port 3333
+tcl port 6666
+telnet port disabled
+source [find interface/cmsis-dap.cfg]
+transport select swd
+source [find target/stm32f4x.cfg]
+adapter speed 1000
+target create stm32f4x.ahb mem_ap \
+  -dap stm32f4x.dap -ap-num 0 -endian little
+stm32f4x.ahb configure -gdb-port disabled
+targets stm32f4x.cpu
+\end{lstlisting}
+\end{minipage}\par
+\code{stm32f4x.cfg} 建立 DAP、cortex\_m CPU target、stm32f2x Flash 驱动、OTP bank 和 32 KiB SRAM 工作区。该 Flash 驱动名用于 STM32F4 是脚本本来的选择，并非配置误写为 F2。下载可使用工作区 \code{0x20000000}、大小 \code{0x8000}，且 backup=0；不要期待下载前 RAM 状态被保留。
+
+脚本的默认软复位路径是 SYSRESETREQ；实际 NRST 行为仍须按 reset\_config 和板卡连线核对。examine-end 会设置 \code{DBGMCU_CR} 低功耗调试位和 \code{DBGMCU_APB1_FZ} 看门狗停止位。\code{adapter speed 1000} 写在 target 文件之后，覆盖其默认速度。\code{targets stm32f4x.cpu} 只在板级初始化中选择 CPU；TUI 后续内存轮询不会不断切换全局 target。
+
+\subsection{两个命名内存通道}
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[[memory_access]]
+id = "ahb"
+label = "AHB MEM-AP 0"
+tcl_endpoint = "127.0.0.1:6666"
+target = "stm32f4x.ahb"
+while_running = true
+
+[[memory_access]]
+id = "core-tcl"
+label = "Core target (stopped)"
+tcl_endpoint = "127.0.0.1:6666"
+target = "stm32f4x.cpu"
+while_running = false
+\end{lstlisting}
+\end{minipage}\par
+此处 while\_running 是配置能力声明，TUI 会按它放行或拒绝；声明为 true 并不能让不支持总线访问的硬件变得可用。未指定 channel 的 GDB 路径始终停止限定。
+
+\subsection{从连接到运行的实操}
+\begin{enumerate}
+\item 在 Setup 选择上述配置，连接后检查 CPU 识别与 STOPPED。若只出现 Server 监听端口，尚不能断言整个会话成功。
+\item Console 执行 \code{compare-sections .text}，核对匹配后才解释源码/变量。历史曾遇到旧 Debug ELF 与板上固件不同，换成 build ELF 后 matched。
+\item 在 \code{Task100ms} 或实际 \code{user_task.c} 的调用行设置断点。F5 命中后检查 Stack/Locals；Step In 可进入 \code{Led_Task}，Step Out 返回调用者，Step Over 越过调用。具体行号随固件版本变化。
+\item 添加 \code{xTickCount}、\code{uwTick}；先在停止时解析，再对 xTickCount 选 ahb、100 ms 并继续。LIVE 数值应变化，停止代次不会因读总线递增。
+\item 暂停并 Refresh，将 GDB、core-tcl、ahb 的稳定 RAM 值作对照。对正在自主变化的外设或 DMA 数据，不要求两次读绝对相同。
+\item 如需烧录，先 Build，确认 ELF 和 profile 后点击 Download 并确认；完成后用 \code{compare-sections} 复核全部可加载段。
+\item Ctrl+Q 退出；本 profile 在退出前 resume、detach，目标预期恢复运行，仍应以实际设备状态为准。
+\end{enumerate}
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{34mm}P{33mm}Y@{}}\toprule
+已用于对照的寄存器 & 地址 & 读取解释\\\midrule
+RCC.CR / RCC.CFGR & 0x40023800 / 0x40023808 & 时钟控制/配置；时钟调整时数值可变化。\\
+GPIOB.MODER & 0x40020400 & GPIO 模式，适合核对 SVD 位域与原始读。\\
+DBGMCU.IDCODE & 0xE0042000 & 本地历史读 0x20016419；不能与 DPIDR 混淆。\\\bottomrule
+\end{tabularx}
+SVD 文件版本 1.9，含 84 个外设描述，原文件 2118594 字节。其描述覆盖范围不等于全部寄存器均已实板读写验证。\code{xTickCount} 的地址应由当前 ELF 求得，不能固定抄录某次测试的地址。
+\src{关联固件 \path{debug.toml}、\path{Makefile}、\path{STM32F429IGTX_FLASH.ld}、\path{Core/Inc/FreeRTOSConfig.h}、\path{BSP/USER_TASK/Src/user_task.c}；\path{resources/svd/stm32/catalog.json}；第\ref{sec:evidence}节证据表。}
+
+\newsection{项目与环境配置参考}\label{sec:config}
+\subsection{覆盖、路径和保存规则}
+配置优先级为：默认值 → tools 环境 → 项目字段 → CLI。表按字段合并，数组整体替换；项目中写空数组会清空相应环境数组。环境当前允许 \code{gdb}、\code{target}、\code{service}、\code{actions}、\code{session}、\code{sync}、\code{memory_access}、\code{multicore}，不接受 \code{program}、\code{cores}、\code{live_watch} 等工程表。大部分结构启用 deny\_unknown\_fields，字段拼错会报错。
+
+含斜杠的 gdb.executable、service.command 和 cwd 相对定义它们的 TOML 文件；裸命令从 PATH 查找。\code{${profile_dir}} 只在环境文件展开。program、source\_map.to、live\_watch.elf、session.log\_dir 等最终相对项目目录解析；不要认为环境文件中的所有路径字段都会自动相对 profile。CLI 路径相对启动时 cwd 处理。
+
+保存 Setup 时保留环境引用和工程显式配置，不把整个展开环境写回项目。运行时偏好写入使用全局互斥锁，将相关列表/UI 表合并到最新文档。检测到外部启动配置冲突时拒绝盲写并要求重新加载；跨进程修改及崩溃期间并非数据库式原子事务。
+
+\subsection{核心字段}
+\begin{longtable}{@{}P{42mm}P{32mm}P{87mm}@{}}\toprule
+字段 & 默认/类型 & 说明\\\midrule\endhead
+version & 支持不大于 2 & 建议显式写 2；旧 [server] 被拒绝并提示迁移。\\
+tools.profile / root & 空/路径 & profile 优先，root 对应 root/debug-env.toml。\\
+gdb.executable & gdb & 与目标架构匹配的 MI2 调试器。\\
+gdb.args / init & 空数组 & 程序参数 / GDB 初始化命令。\\
+gdb.cwd / env / unset\_env & 可选/映射/数组 & 宿主进程环境；默认 LC\_ALL=C。\\
+gdb.registers & 空数组 & 空表示读取所有命名寄存器；非空按名称筛选。\\
+target.mode & remote & remote、extended-remote 或 local。\\
+target.endpoint & 空字符串 & 远程 HOST:PORT；多核可由各 core.endpoint 提供。\\
+target.after\_connect & 空数组 & 建立目标连接后执行。\\
+program.elf / svd & 空路径 & 符号/程序与可选外设描述；ELF 可省略。\\
+program.source\_root & 项目目录 & 源码定位及外部 tasks 的工作目录。\\
+service & 可省略 & 没有此表时只启动 GDB。\\
+service.enabled & true & false 使用外部服务。\\
+service.command / args & 路径/数组 & 通用进程启动，不以 shell 拼接。\\
+service.cwd / env / unset\_env & 可选 & 独立于 GDB 环境。\\
+service.ready & 空数组 & 非空时等待任一就绪片段；空则启动后直接连接。\\
+service.timeout\_ms & 15000 & 服务就绪等待上限，必须大于 0。\\
+actions.run & 空数组 & 空时默认 -exec-run；芯片 profile 可声明 reset/continue。\\
+actions.restart / download & 空数组 & 为空时动作不可用，download 可由 tasks 覆盖。\\
+actions.before\_disconnect & 空数组 & 停止后、detach/disconnect 前执行。\\
+session.on\_exit & detach & detach、resume、disconnect。\\
+session.timeout\_ms & 8000 & 普通 MI 请求超时；不是全部链路的唯一超时。\\
+session.log\_dir & 未配置 & 配置后创建独立会话日志。\\
+tasks.build / download & 空字符串 & 单行 shell 命令，工作目录固定 source\_root。\\
+tasks.timeout\_ms & 300000 & 外部任务超时，必须大于 0。\\
+watch / breakpoints & 空数组 & 表达式列表 / 兼容字符串或详细断点对象。\\
+source\_map & 数组表 & from 是编译路径前缀，to 是本地目录。\\
+ui.animations / unicode & subtle / true & off、subtle、full；Unicode 动效字符开关。\\
+ui.formats / refresh & 空映射 & 数值格式 / 按核按项的读取策略。\\\bottomrule
+\end{longtable}
+
+\subsection{多核和总线字段}
+\noindent\begin{tabularx}{\linewidth}{@{}P{43mm}Y@{}}\toprule
+配置 & 含义\\\midrule
+\code{[[cores]]} & name 唯一；远程 endpoint 唯一；startup\_order 默认 0。可配 init、after\_connect、run、watch、breakpoints。\\
+\code{[multicore]} & scope 默认 core；halt\_peers 默认 true；共享复位由 restart\_core 和 restart 数组定义。\\
+\code{[[memory_access]]} & 唯一 id、label、tcl\_endpoint、target、while\_running；cores 可选限制通道可用于哪些核。\\
+\code{[live_watch]} & tcl\_endpoint、bus\_target、elf、正数 interval\_ms；工程配置，非环境表。\\
+\code{[sync]} & method 接受 tcl、cti 或空；open 为显式 TCL 数组，非空时要求显式 cores；失败中止连接。\\\bottomrule
+\end{tabularx}
+核的 watch/breakpoints 未配置表示继承顶层，显式空数组表示不继承。但 \textbf{core.after\_connect 与 core.run 的空数组在当前 derive\_project 中仍保留顶层动作}；要清除应在顶层重新设计动作，不能照搬所有数组的覆盖规则。core.init 追加在共享 gdb.init 后执行。
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[[source_map]]
+from = "D:/old/build/workspace/firmware"
+to = "."
+
+[ui]
+animations = "subtle"
+unicode = true
+[ui.formats]
+"watch:xTickCount" = "hex"
+\end{lstlisting}
+\end{minipage}\par
+源码映射先作边界匹配，再尝试原路径、source\_root 和 ELF 所在目录。映射修复的是文件定位，不能修复 ELF 与烧录镜像不一致。
+\src{\path{src/config.rs}: Project::from\_document/validate、各 Default；\path{src/cli.rs}: document；\path{src/launch.rs}: Document::save；\path{src/coordinator.rs}: derive\_project。}
+
+\newsection{实现架构、模块与并发关系}\label{sec:architecture}
+\subsection{架构分层}
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=9mm]
+\node[box,text width=48mm] (main) {main / cli\\TUI 或 JSONL 入口};
+\node[box,text width=48mm,right=13mm of main] (conf) {launch / config\\工程文档、参数、环境合并};
+\node[box,text width=109mm] (ui) at ($(main.south)!0.5!(conf.south)+(0,-1.15)$) {ui + 子模块：输入、布局、缓存、补全、刷新、外观};
+\node[box,text width=109mm,below=of ui] (co) {可选 Coordinator：多核路由、共享服务、组控制、回滚};
+\node[box,text width=48mm,below=9mm of co.south,xshift=-31mm] (s0) {Session 0 / Engine\\状态机 + MI 队列};
+\node[box,text width=48mm,below=9mm of co.south,xshift=31mm] (s1) {Session N / Engine\\状态机 + MI 队列};
+\node[box,text width=109mm,below=29mm of co] (io) {mi / process / logging / live\_watch / svd\\协议解析、进程所有权、日志、TCL/ELF、描述模型};
+\draw[arr] (main)--(ui);\draw[arr,dashed] (conf)--(ui);
+\draw[arr] (ui)--(co);\draw[arr] (co)--(s0);\draw[arr] (co)--(s1);
+\draw[arr] (s0)--(io);\draw[arr] (s1)--(io);
+\end{tikzpicture}
+\caption{代码职责图。普通单核未配置 cores/live\_watch/sync 时直接创建 Session。}
+\end{figure}
+
+普通单核仅配置 memory\_access 也不增加 Coordinator 线程；逐项 TCL 读仍在 Session 请求路径中执行。显式 cores、live\_watch 或 sync 任一存在时走协调层。即使 cores 只有一项，也属于显式核工作区；稳定核索引按配置数组位置，启动顺序另由 startup\_order 排序。
+
+\subsection{线程和数据结构}
+UI 主线程维护 App、面板状态与输入；Session 工作线程拥有 GDB、Server、Snapshot、断点/Watch 定义、按通道 TCP 缓存。GDB stdout 读取线程解析 MI，stderr 和服务输出读取线程采集日志。旧式 Live Watch 配置增加独立采样线程。Windows 下所有自有进程归入 Job Object。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{39mm}Y@{}}\toprule
+对象 & 关键内容\\\midrule
+Request & id: u64、method: String、params: JSON。\\
+Event & snapshot、response、log、live\_watch、exit。\\
+Snapshot & state、stop\_reason、frame、stack、locals、watches、registers、breakpoints、files、assembly、memory、generation、async\_supported；多核再带 core/cores/control\_scope。\\
+Variable / WatchTree & name/value/changed/error，及可选类型、成员路径、子节点、展开和分页标志。\\
+Breakpoint & 每核真实 id、location、kind、enabled、condition、ignore\_count、hit\_count、restore\_error；可选 group/cores。\\
+EngineHandle & 命令发送端、事件接收端和共享取消标志 Arc<AtomicBool>。\\\bottomrule
+\end{tabularx}
+命令通道采用 mpsc，事件为容量 512 的 sync\_channel；GDB 解析记录通道容量 256。日志缓冲有界，不能认为在无限输出压力下保存所有历史。Worker 正常约每 20 ms 检查请求，等待 MI 时仍消费异步记录，避免把 \code{*stopped} 误当作请求结果。
+
+\subsection{UI 的按需工作与资源边界}
+Asm/Memory 根据停止代次、栈帧地址及层级失效，等待前台命令结束才读取；失败后等待显式 refresh 或下次停止，不高频重试。Source 只保留当前文件文本，各标签保存路径/滚动状态。SVD 有独立寄存器缓存，不写 Memory 面板快照；实时采样有独立缓存，不回写普通 GDB Snapshot。
+
+外观模块消费已有事件，不访问 GDB：短动画最高约 25 FPS，运行/忙碌提示约 2.5 Hz，空闲或失焦暂停装饰绘制。效果上限包括 256 个短脉冲、2048 个值历史、3 个实际停止落点；数值变化直接显示最终值，动画不伪造运行进度。
+\src{\path{src/session.rs}: Engine、spawn、run；\path{src/coordinator.rs}: spawn；\path{src/ui.rs}: ensure\_visible\_data；\path{src/ui/effects.rs}；\path{src/ui/source_tabs.rs}。}
+
+\newsection{MI、RSP、TCL 的报文与流转}\label{sec:protocol}
+\subsection{GDB/MI2：token 与异步记录}
+DebugTUI 给每条 MI 命令加递增 token，写入 GDB stdin。只有 \code{^} 且 token 匹配的结果记录结束当前请求；其间的流输出、运行/停止通知继续更新会话。\code{^done} 或 \code{^running} 是命令结果，不能替代真正的停止通知。MI 语法详见\href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI-Output-Syntax.html}{GDB 官方输出语法}。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+17-exec-continue
+17^running
+*running,thread-id="all"
+*stopped,reason="breakpoint-hit",bkptno="1",
+  frame={addr="0x08001234",func="Task100ms",line="40"}
+\end{lstlisting}
+\end{minipage}\par
+上例为便于阅读的逻辑报文示意，实际每条 MI 记录为一行；地址/行号不是本次实板采样。解析后的 Record 保存 token、kind、class 和 Value。Value 有 Text、Tuple（键值对向量）与 List，可保留重复键和顺序，处理引号、反斜杠、八进制 UTF-8 转义以及嵌套边界。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{21mm}P{34mm}Y@{}}\toprule
+标记 & 类别 & 核心处理\\\midrule
+\code{^} & 结果 & token 匹配，error 返回 msg；其余交给调用者。\\
+\code{*} & 执行异步 & running/stopped；停止增加 generation、清空过期反汇编/内存。\\
+\code{=} & 通知 & breakpoint-* 触发后续刷新。\\
+\code{+} & 状态 & 尝试处理 download 的 total-sent/total-size；已知匿名 tuple 例外见限制。\\
+\code{~} & GDB 控制台流 & 日志通道 gdb。\\
+\code{@} & 目标输出流 & 日志通道 target；内部 TCL 回显可被过滤为 diagnostic。\\
+\texttt{\&} & 诊断流 & diagnostic。\\\bottomrule
+\end{tabularx}
+单条 MI 记录限制 1 MiB；遇到超长记录读取线程结束并报告。普通 MI 超时进入 FAULT，要求重连恢复，避免迟到结果误配新请求。
+
+\subsection{RSP：由 GDB 和 Server 实现}
+远程包基本形式为 \code{$payload#checksum}，存在应答和可协商特性；常见内存、寄存器、继续和停止回复由 GDB/Server 处理。\code{monitor} 经 GDB 转为远程命令，故 monitor reset 与 monitor resume 的语义由服务器定义。DebugTUI 不自己封装 RSP，也不能从 MI 一条命令推定对应一个 SWD 总线事务。
+
+\subsection{TCL RPC：显式 target 与错误封装}
+OpenOCD RPC 在 TCP 上以字节 \code{0x1a} 结束命令和响应。客户端对 TCL 单词转义，使用 catch 携带返回码，格式化为 \code{__DEBUGTUI_RPC__<code>:<value>}；只把 code=0 作为成功，并检查完整终止符、UTF-8、宽度与数量。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+# Logical payload before the status wrapper:
+"stm32f4x.ahb" read_memory 0x20000000 32 1
+
+# Status-bearing response, followed by byte 0x1a:
+__DEBUGTUI_RPC__0:1234
+\end{lstlisting}
+\end{minipage}\par
+总线读取地址示例不承诺该处是变量。\code{target read_memory} 的对象选择语义见\href{https://openocd.org/doc/html/CPU-Configuration.html}{OpenOCD target 配置文档}。每通道按需复用一个 TCP；故障关闭缓存连接，后续重试重新连接。连接/读写超时约 500 ms，事务循环还设 2 s 截止和 8192 字节响应上限，实际可能先触发 socket 超时。
+
+\subsection{一次“停止并查看变量”的时序}
+\begin{figure}[H]\centering
+\begin{tikzpicture}[x=1cm,y=1cm,font=\small]
+\foreach \x/\t in {0/UI,4/Session,8/GDB,12/{Server/芯片}}{\node[align=center] at (\x,0) {\t};\draw[dashed,line] (\x,-0.5)--(\x,-8.0);}
+\draw[arr] (0,-1)--node[tag,above]{Pause Request id}(4,-1);
+\draw[arr] (4,-1.8)--node[tag,above]{token-exec-interrupt --all}(8,-1.8);
+\draw[arr] (8,-2.6)--node[tag,above]{远程中断}(12,-2.6);
+\draw[data] (12,-3.4)--node[tag,above]{停止回复}(8,-3.4);
+\draw[data] (8,-4.2)--node[tag,above]{*stopped}(4,-4.2);
+\draw[arr] (4,-5)--node[tag,above]{stack / watch / registers}(8,-5);
+\draw[data] (8,-5.8)--node[tag,above]{\code{^done}，含真实数据}(4,-5.8);
+\draw[data] (4,-6.6)--node[tag,above]{Snapshot + Response}(0,-6.6);
+\node[tag,align=left] at (6,-7.5) {MI 结果与异步通知可能交错；未收到通知时有状态核对分支。};
+\end{tikzpicture}
+\caption{正常暂停路径。GDB 的中断确认不等于目标已经停止。}
+\end{figure}
+\src{\path{src/mi.rs}；\path{src/session.rs}: request、record、interrupt\_target；\path{src/live_watch.rs}: connect、word、transact。}
+
+\newsection{连接、执行、暂停与退出状态机}
+\subsection{连接流程}
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=6mm]
+\node[box,text width=110mm] (a) {读取工程 → 合并环境/CLI → 校验目标、路径和动作};
+\node[box,text width=110mm,below=of a] (b) {按需启动自有 Server → 等待 ready；外部服务跳过启动};
+\node[box,text width=110mm,below=of b] (c) {多核可选 sync.open → 创建 GDB MI2 管道};
+\node[box,text width=110mm,below=of c] (d) {设置分页/异步 → 加载 ELF → 配置源码映射 → gdb.init};
+\node[box,text width=110mm,below=of d] (e) {target-select（本机模式跳过）→ after\_connect → 恢复断点};
+\node[box,text width=110mm,below=of e] (f) {查询线程和当前帧 → READY / STOPPED / RUNNING → 发布快照};
+\foreach \u/\v in {a/b,b/c,c/d,d/e,e/f}{\draw[arr] (\u)--(\v);}
+\end{tikzpicture}
+\caption{连接成功由后续查询确认；中间失败清理本次启动的资源，多核回滚已连核。}
+\end{figure}
+没有 ELF 可以连接，但源码和表达式信息受限。配置了 Build 且 ELF 尚不存在时允许先进入工作区构建；“能打开工作台”不等于“已连接目标”。Setup 中再次 Start 先清理旧会话并等待退出，再保存和启动新会话；清理失败停止切换。
+
+\subsection{稳定状态和暂态}
+\noindent\begin{tabularx}{\linewidth}{@{}P{33mm}Y@{}}\toprule
+状态 & 解释与操作\\\midrule
+DISCONNECTED & 无有效连接；可配置、Build、Connect。\\
+STARTING SERVER / STARTING GDB / CONNECTING & 正在准备；不得当作已暂停或可以读寄存器。\\
+READY & GDB 有效，但没有活动 inferior/可用栈帧，例如本机尚未 run 或程序已退出；可设代码断点。\\
+STOPPED & 目标停止，可读普通快照、单步、设置数据观察点和执行需停止的动作。\\
+RUNNING & 普通面板保留缓存；可 Pause；只有明确能力的通道可运行读。\\
+DOWNLOADING & 执行环境下载动作；MI 完成后重新核对目标状态。\\
+DISCONNECTING & 清理、detach/disconnect、退出 GDB 和自有服务。\\
+FAULT & GDB 关闭、请求超时等异常；目标状态可能未知，应检查日志再 Reconnect。\\\bottomrule
+\end{tabularx}
+
+\subsection{暂停竞态的处理}
+Pause 先发 \code{-exec-interrupt --all}，等待真实异步停止。约 250 ms 尚未确认时发 \code{-thread-info}：全部线程确认为 stopped 才同步停止状态；无 inferior 则进入 READY。目标仍运行时在约 1 s 后最多补发一次 interrupt，等待流程有界，通常使用 5 s 停止等待窗口（具体 MI 请求仍受各自超时影响）。
+
+GDB 报“目标已停止”或 “Inferior not executing”时也先核对，不通过 reset 或重连伪造成功。对运行中明确拒绝 thread-info 的远程 GDB 保持等待；超时错误表示目标可能仍在运行。新停止增加 generation，使旧汇编、内存和实时采样代次失效。切核还有协调层 revision，避免后台核数据覆盖当前核。
+
+\subsection{Build/Download 与退出流程}
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=7mm]
+\node[box,text width=47mm] (a) {外部 Build/Download\\记住之前是否连接};
+\node[box,text width=47mm,right=12mm of a] (b) {释放全部会话和自有服务\\在 Source root 执行 shell};
+\node[box,text width=47mm,below=of a] (d) {成功且此前连接\\重新启动服务、加载新 ELF};
+\node[box,text width=47mm,below=of b] (c) {采集 stdout/stderr\\退出码、超时或取消};
+\draw[arr] (a)--(b);\draw[arr] (b)--(c);\draw[arr] (c)--node[tag,above]{成功}(d);
+\node[font=\small,below=7mm of c,align=center] {失败保持断开，日志保留原因};
+\end{tikzpicture}
+\caption{外部任务流程；GDB actions.download 在当前会话/当前核执行，路径不同。}
+\end{figure}
+Windows 的外部任务通过 \code{cmd.exe /D /V:OFF /S /C} 执行；PowerShell 脚本须显式写解释器。任务字符串不是 GDB 命令数组；GDB actions 中以连字符开头的命令按 MI 发送，其他命令通过 GDB Console。原始配置命令有真实执行能力，应使用可信工程配置。
+
+正常断开依次取消总线连接、必要时 Pause、查询并记住断点、删除本会话目标断点、执行 before\_disconnect，再按策略 resume/detach/disconnect，退出 GDB，回收自有服务，保存 Watch 和断点定义。错误会被汇总并报告，不能把“进程消失”当作“目标状态正确”。
+
+Windows Job 设置 KILL\_ON\_JOB\_CLOSE，应用异常结束时回收自有进程树；这不保证硬件 detach 成功，也不替代板卡运行状态检查。非 Windows Job 实现目前是空壳，进程树清理与发布验证尚不具备同等保证。
+\src{\path{src/session.rs}: connect、sync\_target\_state、wait\_for\_stop、disconnect、project\_task；\path{src/process.rs}；\path{src/ui.rs}: SWITCH\_QUIT。}
+
+\newsection{多核工作区与跨核断点}\label{sec:multi}
+STM32F429 是单核例子；本节配置用于多核平台的实现说明，不应向 F429 虚构第二个 CPU。每核有独立 GDB 进程和 endpoint，但共享程序/描述文件以及可选 Server。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[[cores]]
+name = "core0"
+endpoint = "127.0.0.1:3333"
+startup_order = 0
+watch = ["counter"]
+
+[[cores]]
+name = "core1"
+endpoint = "127.0.0.1:3334"
+startup_order = 1
+watch = []
+
+[multicore]
+scope = "all"
+halt_peers = true
+restart_core = "core0"
+restart = ["monitor chipreset"]
+\end{lstlisting}
+\end{minipage}\par
+\code{chipreset} 必须由目标板级脚本提供，上例不是通用 OpenOCD 命令。Connect/Run 按 startup\_order 顺序等结果，只保证命令顺序，不保证前一核完成固件初始化。全局连接失败断开全部核并清理自有共享服务。重复 Connect 报错并保留现有连接，重建使用 Reconnect。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{37mm}Y@{}}\toprule
+操作 & 作用范围\\\midrule
+Connect / Reconnect / Disconnect / Exit & 整个工作区。\\
+Run All & 每次连接/共享复位后先执行各核 run，之后继续；已运行核跳过。结构化 run 可用 scope=core。\\
+Continue/Pause & 根据 Scope All/Core；单请求可覆盖 scope，不改变会话默认范围。\\
+Step/Next/Finish & 只推进当前核；All 模式先暂停其他运行核。跨核等待/锁可能因此无法前进。\\
+断点自动联停 & All 且 halt\_peers=true 时观察新停止，暂停其他运行核并切至触发核。\\
+共享 Reset Chip & 一次通过指定核执行复位，然后清每核寄存器缓存并刷新；即使 Core 范围也作用整片。\\
+Watch/原始 GDB/新建断点 & 当前核；显式关联的断点编辑另按成员核分发。\\\bottomrule
+\end{tabularx}
+
+\subsection{协调器的响应和失败语义}
+Coordinator 将用户 id 与内部逐核 id 分离。一个 Batch 顺序等待子步骤，记录每核 result/error；汇总后回复用户。内部断点联停不会冒充用户 response。某核继续失败时尝试停住已运行核；暂停某核失败仍尝试剩余核；共享复位后的状态须逐核刷新。
+
+\subsection{关联断点不是相同地址推测}
+新建断点默认当前核。选中已有持久代码/硬件断点，Cores/c 勾选其他核，Ctrl+Enter 应用；当前核必须保留，临时断点和数据观察点不支持这种关联。每组保存稳定 group，但每核 GDB 编号独立，快照 cores 来自真实列表。
+
+关联启停、修改条件/忽略数、删除会分发全部成员；Enable/Disable all 还包含当前列表中的关联外核。操作前要求受影响核均 READY/STOPPED，不会隐式 Pause。添加或编辑失败时反向执行 undo，连失败步骤也尝试恢复以覆盖“目标已改但配置保存失败”；回滚失败同样报告。软件断点会修改指令，若多个核共享可写代码内存，单核安装也可能影响其他核，应使用合适的硬件断点策略。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=7mm]
+\node[box,text width=110mm] (a) {用户修改 group → 验证成员/状态 → 构造逐核操作及 undo};
+\node[box,text width=110mm,below=of a] (b) {core0 实际编号 → core1 实际编号 → …，依序等待};
+\node[box,text width=46mm,below=of b.south,xshift=-30mm] (ok) {全部成功\\查真实快照、保存、回复};
+\node[box,text width=46mm,below=of b.south,xshift=30mm] (bad) {任一步失败\\反序回滚、查快照、报错};
+\draw[arr] (a)--(b);\draw[arr] (b)--(ok);\draw[arr] (b)--(bad);
+\end{tikzpicture}
+\caption{跨核断点修改是有回滚的顺序协调，不是崩溃原子事务。}
+\end{figure}
+
+\subsection{sync、CTI 和 AP 适配边界}
+第\ref{sec:cti}节已说明 CTI/CTM 的硬件路径；这里对应的是其在工作区生命周期中的配置入口。
+\code{sync.open} 在共享 Server 就绪后、GDB 连接前执行，method=tcl 或兼容的 cti 都只发送明确配置的 TCL 字符串。TUI 不识别 CTI 拓扑、不配置 AP、不承诺硬件联停；CTI base、通道、核关联和 MEM-AP 路由均属板级脚本。多个通道可用不同端口，CPU target 名称也不等于固定 AP 编号。
+
+历史 TESTING.md 包含 THA6206 双 Cortex-R52 的实板说明；本地现有 artifacts 未找到其中列出的原始 THA6206 目录。本手册据此记录“仓库声称曾验证”，不把它提升为本次复核的硬件结论。较早“无多核板卡”的文字是历史范围，不能覆盖后续版本说明。
+\src{\path{src/coordinator.rs}；\path{src/coordinator/control.rs}；\path{src/coordinator/breakpoints.rs}；\path{src/ui/breakpoints/cores.rs}；\path{tools/examples/multicore-access.md}。}
+
+\newsection{Headless JSONL 自动化接口}\label{sec:jsonl}
+\subsection{启动、请求与事件约定}
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+debugtui --project ./debug.toml --headless --stdio
+debugtui --project ./debug.toml --script ./commands.jsonl
+\end{lstlisting}
+\end{minipage}\par
+stdin 每行一个 JSON 请求，空行忽略；stdout 每行一个事件，立即 flush。\code{--script} 自动启用 headless，顺序执行文件；请求失败停止后续脚本并清理，返回非零退出码。脚本 EOF 自动发 quit；交互 stdin EOF 也进入清理。\code{--stdio} 本身也启用 headless。\code{params} 可省略，但需要参数的方法会自行校验。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+{"id":1,"method":"connect","params":{}}
+{"id":2,"method":"watch","params":{"expression":"xTickCount"}}
+{"id":3,"method":"continue","params":{}}
+{"id":4,"method":"pause","params":{}}
+{"id":5,"method":"evaluate","params":{"expression":"xTickCount"}}
+{"id":6,"method":"quit","params":{}}
+\end{lstlisting}
+\end{minipage}\par
+该示例假定远程 profile 连接后暂停。脚本没有内置 sleep；需要运行一段时间再采样时使用外部客户端控制请求时机，而不是把多行紧邻请求当作等待。
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+{"event":"response","id":5,"ok":true,
+ "result":{"value":"12345"},"error":null}
+{"event":"snapshot","snapshot":{"state":"STOPPED", ...}}
+{"event":"log","channel":"gdb","text":"...",
+ "timestamp":"...","elapsed_ms":1200}
+{"event":"live_watch","sample":{"expression":"uwTick",
+ "address":536870912,"bits":32,"value":12345,"error":null,
+ "timestamp":"...","core":null,"generation":4}}
+{"event":"exit"}
+\end{lstlisting}
+\end{minipage}\par
+上段为事件结构示意，省略号不是合法 JSON，实际输出包含完整字段。客户端必须按 event 和 response.id 分类，不要把 stdout 每行当作一个请求结果；异步日志和快照可穿插。普通 \code{status} 返回缓存状态，不保证进行新的硬件读取。\code{continue/step} 成功可能只表示已发出执行动作；要等待停止使用 \code{wait_stopped} 或监听 snapshot。
+
+\subsection{方法参考}
+\begin{longtable}{@{}P{40mm}P{60mm}P{61mm}@{}}\toprule
+method & params & 行为/条件\\\midrule\endhead
+connect / reconnect & \texttt{\{\}} & 连接/先清理再连接。\\
+disconnect / quit & \texttt{\{\}} & 断开/断开后终止 worker。\\
+status & \texttt{\{\}} & 当前 Snapshot。\\
+continue / run / pause & 可选 \code{scope:"core"|"all"} & scope 适用于多核协调。\\
+wait\_stopped & \code{timeout_ms} & 单核默认 10000、最大 60000 ms；All 组默认 8000、限制 1--120000 ms。\\
+step / next / stepi / finish & \texttt{\{\}} & 源级进入/越过、指令进入、跳出；需要 STOPPED。\\
+restart & \texttt{\{\}} & 执行配置的复位，组策略另见前节。\\
+evaluate & \code{expression} & 停止求值，返回 value 文本。\\
+watch / unwatch & \code{expression} & 增删根表达式；非停止时新增先占位。\\
+watch\_expand & expression、path 数组、expanded；可选 more & path 为子索引路径；展开需停止，折叠本地处理。\\
+watch\_resolve & expression，可选 path & 停止时返回 address、bits、signed、float、little\_endian、type。\\
+memory\_read & 数值 address、bits、little\_endian；可选 channel & channel 空走默认 GDB；非空走命名 TCL。\\
+peripheral\_read & 数值 address、bits、little\_endian & 停止读单寄存器，不修改 Memory 面板。\\
+memory & 文本 address，可选 count & 停止；count 默认 256，限制 1--4096 字节，更新 Memory 快照。\\
+disassemble & 可选文本 address & 默认 \code{$pc}，读取起点之后 128 字节范围。\\
+frame & level & 选择栈帧并刷新上下文。\\
+files / refresh & \texttt{\{\}} & 文件列表 / 刷新当前停止上下文。\\
+break & location；可选 hardware、temporary、enabled、condition、ignore\_count & 代码断点可在 READY/STOPPED 创建。\\
+data\_break & expression；access=write/read/access；可选 enabled、condition、ignore\_count & 数据断点需 STOPPED。\\
+enable\_break & number 和 enabled；或 all=true、enabled & 启停；number 是字符串。\\
+update\_break & number；可选 enabled、condition、ignore\_count & 修改现有定义。\\
+delete\_break & number & 删除指定编号；单核缺失/空 number 会删除全部断点，应显式传入。\\
+break\_cores & number、cores 索引数组 & 多核关联持久代码断点，必须包含当前核。\\
+select\_core / cores & index 或 name / 空参数 & 多核切核/查看核列表。\\
+control\_scope & scope=all/core & 多核改变本会话范围，不写回 TOML。\\
+console & command & 原生 GDB；一般要求 READY/STOPPED，部分执行别名特殊路由。\\
+complete & text；可选 expression: bool & 符号/命令补全，不执行输入。\\
+set\_elf & path & 仅单核且已断开；多核在 Setup 修改共享 ELF。\\
+build / download & \texttt{\{\}} & 执行配置动作；headless 无 UI 下载确认。\\
+ui\_preferences & Ui 对象 & 保存 UI 配置，无 MI；建议先读取工程并完整合并。\\\bottomrule
+\end{longtable}
+\code{break_apply}、\code{synchronize}、\code{restart_shared} 为协调实现内部使用的方法，客户端应使用上表公开操作，避免绕过组控制约束。当前接口是项目自定义 JSONL，不含 \code{jsonrpc:"2.0"}，没有网络多客户端服务或正式协商版本字段；自动化应固定程序版本并保留原始事件。
+
+\subsection{客户端实现注意事项}
+\begin{enumerate}
+\item 使用不重复的非保留 u64 id；将 response.ok/error 与目标 state 分开判定。内部 EOF quit 使用 u64 最大值。
+\item 持续消费 stdout，避免有界事件通道因客户端不读而阻塞；stderr 保存启动/脚本错误。
+\item 先 connect 并确认状态；执行控制后根据需要等 wait\_stopped；退出等 response 和 exit。
+\item 数值 address/bits/value 使用 JSON 数字。JavaScript 对大于 $2^{53}-1$ 的整数不能精确表达，应使用保留整数精度的解析库或原始 JSON 文本处理；不能在解析为 Number 后再转 BigInt 修复。
+\item 64 位内存值也不保证总线原子性。自动化调用 peripheral\_read 是通用内存操作，核心不知道地址对应的 SVD 副作用；调用者仍应应用元数据访问规则。
+\end{enumerate}
+\src{\path{src/main.rs}: run\_headless；\path{src/session.rs}: Request/Event/execute；\path{src/session/memory.rs}；\path{src/coordinator.rs}。}
+
+\newsection{将 DebugTUI 适配到其他芯片}\label{sec:porting}
+新的芯片适配通常修改工具环境和板级脚本即可，无需重新编译 TUI。按以下顺序建立可验证的链路，比一次启用全部功能更容易定位错误。
+\begin{enumerate}
+\item \textbf{确定硬件信息。} 型号、核架构、端序、Flash/RAM、调试接口、供电、复位、保护状态、DAP/AP/CTI 拓扑从该芯片资料和板卡原理图取得。
+\item \textbf{独立验证 Server。} 选其支持的 target/Flash 驱动，确认探针可连接、识别 CPU、暂停和读稳定内存。OpenOCD/J-Link 不能互换全部 monitor 命令。
+\item \textbf{独立验证 GDB。} 使用兼容目标架构和 ELF/DWARF 的 GDB，手动 remote/extended-remote，核对寄存器、PC、符号、断点、继续/暂停和退出。
+\item \textbf{写环境 profile。} 定义 GDB 和 Server 资源路径、ready、端口和 after\_connect；仅加入已验证的 run/restart/download/before\_disconnect。
+\item \textbf{配置项目。} 正确 ELF、source\_root、源码映射、任务命令、SVD。核对 ELF 与烧录镜像，不因文件名相同而假定相同内容。
+\item \textbf{增加运行读取。} 根据实际 AP 路由建立 mem\_ap target，声明 memory\_access，先停止对照，再运行采样，验证无隐式停核及读后正常调试。
+\item \textbf{增加多核。} 每核唯一 endpoint、明确启动顺序和共享复位 owner；再验断点联停、单步隔离和部分失败恢复。CTI 必须单独做硬件验收。
+\end{enumerate}
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{35mm}Y@{}}\toprule
+移植项 & 验收标准\\\midrule
+连接 & 重复连接/失败/重连行为清楚，外部服务不被误回收。\\
+符号/源码 & PC 所在函数和源行合理，compare-sections 或等效验证一致。\\
+控制 & 连续 Continue/Pause、长时间运行后暂停、源级/指令单步均正确。\\
+断点 & 代码、硬件、临时、支持的数据模式实际触发；资源耗尽给出错误。\\
+数据 & CPU/GDB 与总线稳定值一致，字节序、宽度、对齐、错误地址均有结果。\\
+运行读 & 无隐式 halt/resume，旧地址生命周期清楚，隐藏逐项面板停止轮询。\\
+下载 & Flash 算法、SRAM 工作区、加载段、向量表/启动地址和校验明确。\\
+退出 & 明确板上保持/恢复策略，无自有进程或监听残留。\\\bottomrule
+\end{tabularx}
+
+对于 RISC-V 使用匹配的 GDB 和服务，仓库 \code{tools/examples/riscv-external.toml} 仅是模板；对于不同 ELF/SVD 的异构核，当前共享文件限制使其不能完整适配。对于 Cortex-R/A，复位初态某些浮点寄存器不可读可配置 gdb.registers；总线值与核缓存之间的一致性由芯片/服务配置保证。
+\src{\path{tools/examples/openocd.toml}、\path{tools/examples/riscv-external.toml}、\path{tools/examples/multicore-access.md}；\path{src/config.rs}。}
+
+\newsection{日志、诊断与常见故障}\label{sec:diagnostics}
+\subsection{日志组织}
+\code{--log-dir PATH} 或 session.log\_dir 开启落盘。每次连接新建 \code{session-日期-时间-毫秒.log}，通过 create\_new 防覆盖；时间在产生/读取日志时捕获，文件每行含绝对时间和单调会话耗时。多核日志在 \code{core-N/}，共享服务在 \code{coordinator/}。Console 是阅读过滤视图，不代替完整会话日志。
+
+\subsection{按故障层次查找}
+
+\begin{longtable}{@{}P{35mm}P{67mm}P{59mm}@{}}\toprule
+现象 & 先查什么 & 处理方向\\\midrule\endhead
+无法找到 GDB / DLL & executable、data-directory、PATH、工具包完整性 & 单独运行 --version；按定义文件核对相对路径。\\
+Server 启动超时 & server 输出、ready 文本、USB 驱动、端口 & 确认真实监听文本；已运行服务用 --connect。\\
+Could not connect to J-Link & 探针驱动是否为 SEGGER 或 WinUSB/libwdi & 历史本机存在驱动不匹配；用已验证的 OpenOCD profile 或正确安装相应驱动。\\
+J-Link 约 52--53 秒后失效 & 首个异常时间、monitor 读取、Server/DLL/固件与探针身份 & 已有绕过 TUI 的历史复现；clone 是待验证线索。详见第\ref{sec:jlink-duration}节，勿仅增加超时或反复自动重连。\\
+源码/变量与实际不符 & ELF、Flash 校验、优化、路径映射 & 先确认镜像一致，再修 source\_map；不要只换源码。\\
+单步跳行、变量 optimized out & 编译优化和调试信息 & 使用匹配的调试构建；本地固件为 -O0 -g3。\\
+RUNNING 时旧值不变 & 是否普通停止快照；是否启用了合法通道 & LIVE 只来自成功采样；先暂停解析地址，启用 ahb。\\
+Live read unavailable & 通道是否存在、cores 限制、while\_running、地址类型 & 默认 GDB/core-tcl 停止限定；无地址表达式不能总线读。\\
+运行读与 GDB 不相等 & 是否同一时间、DMA/其他核、缓存、类型/端序 & 全部相关核停止后 Refresh，再对稳定值比较。\\
+Peripherals 无值 & SVD 路径、展开/可见状态、访问属性、位宽/对齐 & 只写不读；副作用项只能显式手动操作；未知 endian 核对源码默认。\\
+暂停超时 & MI interrupt、thread-info、异步 stop、服务端状态 & 保留日志；FAULT 后显式 Reconnect；不要把重置当作暂停。\\
+断点恢复 [!] & 符号位置、可用硬件资源、数据类型、错误文本 & 暂停后重试启用或删除；记录未被静默丢弃。\\
+下载进度 protocol error & 是否 +download 匿名 tuple；最终 \code{^done} 和段校验 & 当前已知显示问题，核对实际下载结果，勿据进度条判定成功。\\
+Download command 显示空 & tasks.download 与 actions.download 的层级 & 空脚本可回退 GDB action，确认框显示实际动作。\\
+Build 不找到 make/GCC & Source root、继承 PATH、Makefile 工具依赖 & 先在同一目录/环境独立构建。\\
+终端功能键无响应 & 焦点、终端快捷键拦截、尺寸 & 使用可见按钮；检查宿主终端按键路由。\\
+退出后板仍运行 & before\_disconnect 和 on\_exit & 本地 profile 明确 resume/go 后 detach，这是配置行为。\\\bottomrule
+\end{longtable}
+
+定位时记录程序版本、源码 SHA、profile、匹配 ELF 的哈希、探针/Server 版本、复现步骤、原始 MI 日志和最终目标状态。保存日志可包含变量和源码路径，应按工程资料的敏感程度管理。
+\src{\path{src/logging.rs}；\path{src/session.rs}: log\_at、start\_server；\path{src/coordinator/server_log.rs}；本地历史报告。}
+
+\subsection{案例：GDB + J-Link Server 在约 52--53 秒后失效}\label{sec:jlink-duration}
+这一问题已在本地历史测试中复现，本版手册将它列为\textbf{尚未确认根因的长会话故障}。用户描述为“调试会话断开”，并怀疑所用 J-Link 为 clone 硬件。原始证据更精确地显示：目标访问先失效，出现寄存器读数异常、断点操作失败或停止等待超时；不能将每次异常一概等同为 TCP socket 断开或 Server 进程退出。
+
+\subsubsection*{复现条件与时间证据}
+2026-09-16 的隔离实验直接启动 ARM GDB/MI 和 J-Link GDB Server V7.94e，绕过 DebugTUI。日志中 DLL 为 V7.94e，探针报告 \code{Hardware: V8.00}、\code{Firmware: J-Link ARM V8 compiled Jan 31 2018 18:34:52}；目标 STM32F429IG，SWD 4000 kHz。型号与固件字符串是设备自报信息，不是正品鉴定结论。
+
+测试使用当时的 FreeRTOS ELF；六个只读段已与 Flash 匹配，随后在同一断点循环 Continue 和对应操作，不下载固件。每组短会话为 3 × 100 次，四组合计 1200 次通过；每会话约 18--23 秒。扩大单会话次数后出现如下结果：
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{24mm}P{20mm}P{29mm}Y@{}}\toprule
+分组 & 已完成轮数 & 首个异常时间 & 首个异常所在阶段/症状\\\midrule
+Next & 241 & 52.522 s & 第 242 轮 Continue；寄存器失真，随后等待停止超时。\\
+Step & 249 & 53.325 s & 第 250 轮 Continue；Server 报断点资源不足/插入失败，GDB 随后 Command aborted。\\
+Stepi & 268 & 52.575 s & 第 269 轮 Continue；断点插入失败和 Command aborted。\\
+Monitor Step & 310 & 52.893 s & 第 311 轮 Continue 后 PC/SP/LR/xPSR 同为 0xab78；monitor regs 为零。\\\bottomrule
+\end{tabularx}
+
+时间基准为隔离脚本的会话开始、紧邻 Server 启动，\textbf{不是点击 UI Connect 后精确倒计时}。上表取自原始 trace 首次异常；\code{result.json} 的 elapsedMs 还包含后续等待/诊断，不能用它替代首次故障时间。四组异常都发生在返回断点的 Continue 阶段，不能据分组名称认定是四种单步算法各自有错。
+
+静置实验进一步排除了“必须反复单步才能触发”：停在断点后 30 秒不发命令，读取正常，后续 10 次 monitor 单步通过；两次静置 60 秒后，在尚未执行单步时 \code{monitor regs} 已全零。刷新 GDB 寄存器缓存后，PC/SP/LR/xPSR 分别全部变成 \code{0x5428} 或 \code{0x9768}。CPUID（0xE000ED00）、DHCSR（0xE000EDF0）、CFSR（0xE000ED28）、HFSR（0xE000ED2C）读取也返回 Failed。
+
+\notice{MI 的 \code{^done} 只说明 monitor 命令完成传递/处理，不保证其文本内的目标读取成功。Step/Stepi 日志还出现同一 token 先 \code{^running}、后 \code{^error,msg="Command aborted."}；只接受第一次响应会把真正的执行错误表现为等待超时。}
+
+\subsubsection*{clone 线索应如何解释}
+当前证据支持“异常不依赖 DebugTUI 的渲染与请求调度，也不依赖是否执行源码单步”。它尚不能在 J-Link Server/DLL、探针固件/硬件、USB/SWD 链路与目标调试状态之间做唯一归因。用户对 clone 探针的判断是重要排查线索，本手册保留这一信息；但本次核对的长会话原始日志没有发现明确的 clone/counterfeit 拒绝文本，也没有更换已知正常探针的同条件 A/B 结果。
+
+因此不能把 52--53 秒直接写成“SEGGER 固定反 clone 超时机制”，也不能把 V8 自动等同为假货。SEGGER 对旧硬件的支持范围应按 \href{https://kb.segger.com/J-Link_BASE_V8}{J-Link BASE V8 官方说明}核对；使用来源明确、受工具支持的探针与对应软件组合，才能使长期测试结果可重复。对于本地疑似 clone，优先用已知正常的同类探针复测，而不是把软件降级、改固件或周期重连当作根因修复。
+
+本地 profile 中的 Server ready 超时为 15000 ms，普通 MI 请求超时默认为 8000 ms，GDB remotetimeout 为 5 秒；它们分别限制启动或单次等待，不是 53 秒会话寿命。\code{-singlerun} 表示 GDB 客户端断开后结束 Server，也不是按秒定时关闭。修改这些值之前，应先由日志确认究竟是哪一个等待超时。
+
+历史中 SWD 降到 1000 kHz、关闭 Flash 断点并使用硬件断点，仍曾出现异常；刷新缓存也没有恢复正确读取。另一路 CMSIS-DAP/OpenOCD 的 90 秒运行通过是该组合的有效记录，但它同时更换了 Server、探针和连接参数，\textbf{不能反向证明原故障必定由 clone 检测导致}。
+
+\subsubsection*{可复核的诊断顺序}
+\begin{enumerate}
+\item \textbf{保存故障现场。} 记录 Server/GDB 进程与端口是否仍在、首次错误时间、USB 是否重新枚举及目标电压/复位情况；保留原始 MI 与 Server 输出。不要先重连再采集唯一证据。
+\item \textbf{确认是哪一层失效。} 在已暂停的目标上对照 monitor 寄存器和稳定的系统地址；既看 MI 类别，也看 Failed、全零或重复异常读数。无法确认停核/访问状态时停止修改寄存器和内存，不把异常 PC 当作真实程序走飞位置。
+\item \textbf{绕过 TUI 做持续时间对照。} 使用同一 ELF/固件、Server/DLL、探针、线缆与 SWD 速率，分别做静置和操作循环；记录首次失效时间而非单纯记录操作次数。
+\item \textbf{按单一变量替换。} 首先用已知正常且受支持的探针保留其他条件对照；再分别排查 USB 线/端口、目标供电/复位、工具组合。驱动兼容性需保证一致可用，避免把“换探针后打不开 USB”混入结果。
+\item \textbf{扩大验收窗口。} 建议每个候选组合至少多次覆盖 30/60/120 秒的静置与持续操作，并继续到数分钟；这是排查建议，不是本次新增实测。检查寄存器、停核位置、内存和错误日志，不能只确认连接图标仍亮。
+\end{enumerate}
+
+仓库已有 \path{scripts/test-step-isolation.cjs}。它硬编码了当时 \code{user_task.c:40} 断点及若干期望 PC，是\textbf{特定固件测试夹具}，不应直接拿最新 ELF 无条件运行。准备相符镜像，或先根据实际符号/反汇编调整测试预期后，才能使用以下命令模式；这些命令会复位和运行目标，本次文档修订未执行它们。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+# ELF must match this test fixture's breakpoint and expected PCs.
+node scripts/test-step-isolation.cjs <matching-ELF> 500 1
+node scripts/test-step-isolation.cjs <matching-ELF> 10 1 monitor 30000
+node scripts/test-step-isolation.cjs <matching-ELF> 10 1 monitor 60000
+\end{lstlisting}
+\end{minipage}\par
+
+\subsubsection*{原始证据位置}
+\begin{itemize}
+\item 四组长会话：\path{artifacts/step-isolation-2026-09-16T13-54-58-531Z/}，各组含 \code{trace.log}、\code{timeline.json}、\code{result.json}，根目录有汇总。
+\item 静置 60 秒：\path{artifacts/step-isolation-2026-09-16T13-59-37-549Z/}；重复：\path{artifacts/step-isolation-2026-09-16T14-01-45-671Z/}。
+\item 静置 30 秒：\path{artifacts/step-isolation-2026-09-16T14-01-10-862Z/}；1200 次短会话：\path{artifacts/step-isolation-2026-09-16T13-50-39-156Z/}。
+\end{itemize}
+以上目录本机存在；本次重点核对长会话 trace 的时间戳与三组静置 result。历史 ELF SHA-256 为 \code{076B3D1D9CC4DC04BBBBB6269E816673BA78CBF9730E54BF8B9A4718D842FCDD}，不要与后续 CMSIS-DAP 报告的构建混用。资料汇总见 \path{TESTING.md} 的“追加隔离实验”。
+
+\newsection{构建、测试、打包与证据矩阵}\label{sec:evidence}
+\subsection{开发环境和测试分层}
+工程使用 Rust 2024 edition；当前 Ratatui 0.30.2 依赖要求 Rust 1.88.0。主要直接依赖还有 Crossterm 0.29、Serde/serde\_json 1、toml 0.9、unicode-width 0.2、svd-parser 0.14.10（expand）。具体解析版本固定在 Cargo.lock。release 采用 opt-level=s、thin LTO、单 codegen unit、strip。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+./scripts/build.ps1 -Test
+./scripts/build.ps1 -Release
+
+# With the repository Rust environment on PATH:
+cargo test --locked -- --test-threads=1
+cargo clippy --locked --all-targets -- -D warnings
+\end{lstlisting}
+\end{minipage}\par
+build.ps1 可使用仓库 .dev/cargo 和 .dev/rustup；GNU 链接器可通过 DEBUGTUI\_GCC\_DIR 加入 PATH。Node 仅用于开发测试脚本、npm 打包等，不在调试运行链路。\code{.dev}、target、bin、artifacts 均为忽略目录，Git 克隆不保证包含这些本地工具和证据。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{34mm}Y@{}}\toprule
+验证层 & 主要脚本/覆盖\\\midrule
+Rust 单元/集成 & 各模块内联 tests、tests/project\_tasks.rs；解析、配置、状态/组控制、UI 单元格布局和实际 shell 生命周期。\\
+模拟 GDB & tests/mock-gdb.cjs；test-gdb-environment、test-pause、test-lifecycle 等覆盖异常时序、架构边界和进程清理。\\
+真实本机 GDB & test-native-gdb、completion、watch-tree、breakpoints、logs、svd；多核脚本启动多个真实 GDB。\\
+内存路由 & test-memory-access-gdb；本机测试使用真实 GDB + 模拟 TCL，可测试协议但不是 AP 硬件验收。\\
+实板 & test-hardware、test-pause-hardware、test-step-hardware、带 --hardware 的内存/断点/SVD 测试，要求明确 ELF/profile。\\
+打包/发布 & test-npm、test-release、release-assets、package；独立 tools/package 校验工具依赖哈希。\\\bottomrule
+\end{tabularx}
+
+\subsection{源码测试与历史证据复核}
+初版编写时从当前源码执行 \code{cargo test --locked -- --test-threads=1}：137 个单元测试、1 个 CLI 集成测试通过，0 失败。本次扩充协议、CoreSight 与故障案例只修改文档，没有改动产品源码或重复计数测试；未重新运行硬件、下载、Clippy 或发布流程。下面记录来自已有本地文件，不能与源码测试数量合并。J-Link 长会话故障及其独立证据目录详见第\ref{sec:jlink-duration}节。
+
+\begin{longtable}{@{}P{40mm}P{71mm}P{50mm}@{}}\toprule
+本地证据（artifacts 下） & 历史结果 & 本次核对方式\\\midrule\endhead
+\path{dap-full-1789916855036/verification.json} & 122 请求，Build、DAP 实际下载/可加载段校验、寄存器、外设、栈、Watch、90 s 运行后恢复。 & 读取 JSON、project.toml 和总报告。\\
+\path{breakpoints-stm32-1789916988826/verification.json} & 75 请求，代码/硬件/临时/三类数据断点、启停和恢复。 & 读取 JSON，与脚本语义核对。\\
+\path{memory-stm32-1789917004955/verification.json} & 70 请求；20 次 100 ms 运行读，零新增 GDB 命令；之后暂停/单步可用。 & 读取 JSON、profile 引用及测试脚本。\\
+\path{singlecore-0.8.3-1789917013498/verification.json} & 93 请求直接单核；41 请求单核+旧 Live Watch，24 次实时事件。 & 读取 JSON，与线程路径核对。\\
+\path{dap-ui-20260920-2307/REPORT.md} & 汇总 401 个实机请求，11 个离线补全请求；记录实际 TUI 操作和下载进度缺陷。 & 阅读报告和原始 GDB/OpenOCD 日志。\\
+\path{dap-ui-20260920-2307/raw-openocd.stderr.log} & CMSIS-DAP、1 MHz、Cortex-M4、AP0、6/4 断点资源、1024 KiB Flash。 & 直接核对设备识别文本。\\
+\path{memory-stm32-1789825648786/verification.json} & 较早 OpenOCD + J-Link/F429 内存通道回归。 & 结合 TESTING.md 历史范围。\\\bottomrule
+\end{longtable}
+401=122+75+70+93+41，是请求数而非独立功能数。历史实板报告的源码 SHA 为 \path{8c74f72e4139d62cc3b3034266d22bbfe1a2a14e}，与当前文档基线不同；本次以源码确认相关实现，不能声称历史二进制就是当前重新构建的 EXE。
+
+\subsection{分发和许可证}
+package.json 的 files 目前包含 EXE、说明与许可证，\textbf{不包含 docs、resources/svd 或 tools}。本次手册放入 docs 不会自动进入 npm 包；如需发行附带手册，另更新打包清单。TUI 以 Apache-2.0 分发；GDB、OpenOCD、SEGGER 工具及 SVD 遵从各自许可证，不能用应用许可证替代第三方条款。
+
+\code{scripts/package.ps1} 核对 npm/EXE 版本并拒绝开发/工具依赖泄入 TUI 包；\code{tools/package.ps1} 验证 dependencies.lock.json 的文件 SHA-256，再生成独立 tools ZIP。当前 ZIP 文件名仍含 stm32-jlink，但内容已经包含 OpenOCD/CMSIS-DAP 配置，应以归档清单为准。
+\src{\path{Cargo.toml}、\path{Cargo.lock}、\path{package.json}；\path{scripts/}；\path{tools/package.ps1}；\path{NOTICE}、\path{THIRD_PARTY_NOTICES.md}、\path{licenses/}。}
+
+\newsection{已知问题、实现限制与维护建议}\label{sec:limits}
+环境侧另有尚未关闭的 J-Link 长会话故障，见第\ref{sec:jlink-duration}节。它与下述已确认的 UI/解析实现问题分开管理；当前手册未把“疑似 clone”作为已证实的软件定时限制，也没有以其他探针的通过记录关闭该故障。
+以下结论区分已确认缺陷、设计限制和历史资料偏差；本文只编写手册，不顺带修复产品行为。
+
+\subsection{已确认的下载进度解析缺陷}
+本地原始 GDB 报文含匿名 tuple：
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+5+download,{section=".isr_vector",section-size="428",total-size="1311248"}
+5+download,{section=".isr_vector",section-sent="428",section-size="428",total-sent="428",total-size="1311248"}
+5^done,address="0x0800604c",load-size="27396",transfer-rate="120952",write-rate="3424"
+\end{lstlisting}
+\end{minipage}\par
+当前 \code{mi::parse} 在 class 后遇逗号直接调用 result，期待 identifier=value，因此拒绝 \texttt{\{...\}} 并记录 expected identifier。Session 虽有 download 进度处理分支，但这些状态记录无法抵达它。后续 token 匹配的 \code{^done} 仍可成功，历史所有加载段 matched。修复应增加这类实际状态记录的兼容解析和回归测试，同时保持拒绝截断报文的边界。
+
+\subsection{当前代码与旧说明的差异}
+\noindent\begin{tabularx}{\linewidth}{@{}P{36mm}Y@{}}\toprule
+项目 & 本手册采用的当前结论\\\midrule
+SVD 字节序 & Device::parse 对未知/缺失 endian 使用 unwrap\_or(true)；默认小端。不能沿用“未知只展示”的旧说法。\\
+SVD 是否实现 & 已实现解析和 Peripherals，README 部分旧段落“尚未实现”已过时。\\
+环境表数量 & 当前允许八类 section，不止旧文档提到的五类。\\
+tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动寻找 tools”只适合旧版本描述。\\
+单核 Server 日志 & Session 将全部 stderr 标为 server-error；Coordinator 的新分帧器区分普通 stderr/真正错误。不能仅凭单核通道名断言发生错误。\\
+下载栏空值 & tasks.download 空仍可能回退 actions.download；应查看确认框/实际动作。\\
+多核硬件范围 & 较早无实板与后续 THA6206 说明属于不同时间；本地缺原始目录的记录仅作为文档级证据。\\\bottomrule
+\end{tabularx}
+
+\subsection{实现资源和可观测性限制}
+\begin{itemize}
+\item 停止刷新最多取栈帧 0--31、128 个局部变量；Memory 每请求最多 4096 字节。Watch、源码、MI 和 SVD 另有限制，见前文。
+\item refresh 的若干栈/locals/寄存器查询使用容错分支，个别子查询失败可能保留旧列表；错误日志和停止代次比单纯“面板有值”更可靠。
+\item 可见项轮询与旧 live\_watch 的调度不同；旧采样队列容量 64，使用 try\_send，高负载下可能丢采样，不能用作无损数据记录仪。
+\item 旧 live\_watch 的配置只要求正间隔，实际循环 clamp 到 10--60000 ms；逐项 UI 则要求 50--60000 ms，二者不能混用。
+\item 软件组控制不是硬件同步；运行时总线读取不是跨多个值的一致事务；配置持久化不是跨进程原子提交。
+\item 当前没有专门的变量/寄存器写入 UI；原始 GDB 可写，用户应理解实际目标副作用。默认面板读取不等于整个调试连接过程零修改。
+\end{itemize}
+
+优先维护方向是修复真实下载状态解析、统一两条服务日志路径、对缺省 SVD 字节序给出明确策略或提示，并同步过期 README。若扩展到异构核、线程/RTOS 视图或网络 API，应同时定义数据归属、状态代次、清理及错误契约，再扩展 UI。
+\src{\path{src/mi.rs}: parse；\path{src/svd.rs}: Device::parse；\path{src/session.rs}: refresh/start\_server；\path{src/live_watch.rs}: spawn；\path{artifacts/dap-ui-20260920-2307/REPORT.md}。}
+
+\clearpage\appendix
+\newsection{全工程源文件与职责索引}
+当前 \code{src} 共 35 个 Rust 文件，约 20477 个非空代码/注释行（包含模块内测试，按 PowerShell Measure-Object -Line 统计）；不是产品逻辑行数或第三方库规模。下表覆盖全部 35 个文件，便于从用户功能定位实现。
+
+\begin{longtable}{@{}P{55mm}P{106mm}@{}}\toprule
+文件（相对工程根） & 职责与关键入口\\\midrule\endhead
+\path{src/main.rs} & main/run、CLI 路由、run\_headless，串行 stdin/script 请求与事件输出。\\
+\path{src/lib.rs} & 库模块导出，供二进制和测试共享。\\
+\path{src/cli.rs} & Options::parse/document，参数解析、CLI 覆盖、路径绝对化。\\
+\path{src/launch.rs} & Document、Setup、编辑器、文件浏览器、保存冲突/草稿和启动动作。\\
+\path{src/config.rs} & 全配置模型、默认值、递归合并、校验、路径解析、偏好写锁。\\
+\path{src/session.rs} & Engine/Gdb/Snapshot、命令执行、异步 record、停止刷新、任务/连接/清理。\\
+\path{src/session/breakpoints.rs} & MI 断点编解码、创建/修改/恢复、失败处理及立即持久化。\\
+\path{src/session/watch.rs} & GDB variable object 树、分页、展开映射和变化标记。\\
+\path{src/session/memory.rs} & watch\_resolve、命名内存读、宽度/对齐/端序校验、TCP 缓存。\\
+\path{src/coordinator.rs} & 多 Session 工作区、共享 Server、Batch/Step 队列、核选择、派生配置。\\
+\path{src/coordinator/control.rs} & Scope、顺序 Run、共享 reset、断点联停和单步隔离。\\
+\path{src/coordinator/breakpoints.rs} & group 注解、成员路由、真实编号映射、undo 队列。\\
+\path{src/coordinator/server_log.rs} & 共享服务 UTF-8 分帧、无换行 ready、stderr 分类。\\
+\path{src/mi.rs} & Record/Value、字符串 quote/parse、嵌套与转义、语法边界测试。\\
+\path{src/process.rs} & Windows Job Object 所有权和子进程树回收；其他平台回退。\\
+\path{src/logging.rs} & Stamp 捕获时间、Trace 排他创建、逐行绝对时间与单调耗时。\\
+\path{src/live_watch.rs} & TCL 连接/RPC/回显标记，ELF 符号解析和旧式采样器。\\
+\path{src/svd.rs} & SVD 展开为紧凑模型，访问属性、位域、寄存器解码。\\
+\path{src/theme.rs} & 色板、边框、选择/焦点、核心关联色及遮罩样式。\\
+\path{src/ui.rs} & App 主状态、命令分发、键鼠、事件循环、按需数据、退出/重建协调。\\
+\path{src/ui/render.rs} & 面板布局、工具栏、Help、源码/寄存器/内存等终端绘制。\\
+\path{src/ui/breakpoints.rs} & 断点列表和编辑弹窗、开关、条件/忽略次数、批量操作。\\
+\path{src/ui/breakpoints/cores.rs} & 关联断点的核心复选 UI 和应用动作。\\
+\path{src/ui/console.rs} & Console 历史视口、跟随、新消息计数和拖动。\\
+\path{src/ui/completion.rs} & Console/Watch 补全调度、焦点和过期响应校验。\\
+\path{src/ui/cores.rs} & 核心按钮、颜色、状态和溢出导航。\\
+\path{src/ui/effects.rs} & 有界动画、值变化高亮、真实停止轨迹和绘制调度。\\
+\path{src/ui/formats.rs} & 整数进制转换、偏好键、格式弹窗和保存。\\
+\path{src/ui/highlight.rs} & C 类源码着色、跨行注释状态缓存、仅可见行生成 Span。\\
+\path{src/ui/monitor.rs} & 逐项刷新设置、可见项公平调度、LIVE 缓存、错误退避。\\
+\path{src/ui/peripherals.rs} & SVD 树、展开/滚动、寄存器读取及位域显示。\\
+\path{src/ui/source_tabs.rs} & 文件路径去重、独立浏览位置、标签溢出/搜索列表。\\
+\path{src/ui/watch.rs} & Watch 树扁平化、成员选择、展开/删除/分页、数值格式键。\\
+\path{src/ui/live_watch_tests.rs} & 实时事件在实际 Watch 渲染器中的回放与过期保护测试。\\
+\path{src/ui/visual_tests.rs} & 真实 Ratatui Buffer 布局/主题断言、按环境变量导出预览。\\\bottomrule
+\end{longtable}
+
+\subsection{其他目录的工程角色}
+\noindent\begin{tabularx}{\linewidth}{@{}P{38mm}Y@{}}\toprule
+目录/文件 & 内容及分析边界\\\midrule
+\path{tests/} & mock-gdb、SVD fixture 和实际 shell CLI 集成测试。\\
+\path{scripts/} & 构建、许可证生成、打包、发布资产及模拟/本机/硬件验证。\\
+\path{tools/} & 可选调试环境、BAT、三个 F429 profile、板级 cfg、独立打包与依赖锁。\\
+\path{tools/bin/} & 第三方 GDB、J-Link、OpenOCD 程序/依赖/脚本/许可证；未宣称分析其全部闭源实现。\\
+\path{resources/svd/stm32/} & STM32F429 原始 SVD、catalog、出处和许可。\\
+\path{licenses/} & Rust 标准库和 SVD/相关依赖许可资料。\\
+\path{artifacts/} & 本地历史测试和发布产物，Git 忽略；不是自动化测试全部成功的推定依据。\\
+\path{.dev/}、\path{target/}、\path{bin/} & 本地工具缓存、Rust 输出及分发 EXE，不是自研模块。\\
+根目录 Markdown & README/ARCHITECTURE/TESTING/PUBLISHING；需按版本和源码交叉核对。\\
+\path{docs/} & 本次 LaTeX/PDF、复现编译脚本和验证记录。\\\bottomrule
+\end{tabularx}
+
+\newsection{命令行速查与术语}
+\begin{longtable}{@{}P{45mm}P{116mm}@{}}\toprule
+CLI 参数 & 行为\\\midrule\endhead
+无参数 & 进入 Setup，不启动调试链路。\\
+--project PATH & 工程目录或配置文件；显式启动选项。\\
+--setup & 强制先检查启动表单。\\
+--gdb PATH / --gdb-arg ARG & 指定 GDB/追加参数；gdb-arg 可重复。\\
+--environment FILE & 指定工具环境 TOML。\\
+--tools-dir PATH & 简写为 PATH/debug-env.toml。\\
+--connect ENDPOINT & 指向外部服务并禁用自有 service。\\
+--target-mode MODE / --local & remote/extended-remote/local；local 禁用 service。\\
+--elf FILE / --svd FILE & 可选程序符号文件 / 外设描述。\\
+--log-dir PATH & 会话日志目录。\\
+--headless / --stdio & 使用 JSONL，任一均启用 headless。\\
+--script FILE & 串行执行 JSONL 并退出，隐含 headless。\\
+--demo / --snapshot FILE & 无 GDB 的 UI 演示 / 导出演示文本快照。\\
+--version / -V；--help / -h & 版本或帮助。未知选项报错。\\\bottomrule
+\end{longtable}
+
+\begin{longtable}{@{}P{32mm}P{129mm}@{}}\toprule
+术语 & 含义\\\midrule\endhead
+MI / MI2 & GDB Machine Interface 的行文本机器接口及本项目使用的解释器模式。\\
+RSP & GDB Remote Serial Protocol，在本例通过 TCP 承载。\\
+ELF / DWARF & 可执行/链接格式及调试信息；符号/类型/源码位置主要由 GDB 处理。\\
+SVD & CMSIS System View Description，外设寄存器元数据。\\
+DAP / DP / AP & ARM Debug Access Port 体系、Debug Port、Access Port；不要与编辑器 Debug Adapter Protocol 混淆。\\
+CoreSight / ADI & 片上调试追踪架构 / ARM 调试访问接口架构；详见第\ref{sec:coresight}节。\\
+MEM-AP & 内存映射访问端口模型；CSW/TAR/DRW 用于描述和执行访问。\\
+AHB-AP / APB-AP & 面向 AHB / APB 的 AP；APB 外设也可经 AHB-AP 和总线桥访问。\\
+AXI-AP / JTAG-AP & 面向 AXI 总线 / 芯片内部 JTAG 结构的访问端口。\\
+CMSIS-DAP / J-Link & 标准探针命令协议与固件规范 / SEGGER 探针及其软件体系。\\
+HID / bulk / WinUSB & USB 设备类 / USB 传输类型 / Windows USB 驱动机制；不是目标调试接口。\\
+SWD / JTAG & 探针到目标的调试传输；本地 F429 配置选择 SWD。\\
+CTI / CTM / ECT & 交叉触发接口 / 通道分配互连 / 嵌入式交叉触发设施统称。\\
+FPB / DWT & 指令断点等资源 / 数据观察点、计数及事件资源。\\
+ETM / ITM & 执行流追踪来源 / 插桩与事件来源；ETM-M4 为指令追踪。\\
+ATB / TPIU & 片上 Trace 数据总线 / 片外 Trace 输出接口组件。\\
+ETB / TMC & 片上 Trace 缓冲 / 可配置追踪缓冲与内存路由组件。\\
+SWO / SWV / RTT & 单线 Trace 输出 / 常见串行观察能力称呼 / 基于目标 RAM 缓冲的数据传递。\\
+generation & 用于区分停止上下文和缓存有效性的代次；不是 CPU 周期或采样计数。\\
+Scope / active core & 运行控制范围 / 当前检查数据的核心，二者独立。\\
+LIVE / cached & 来自实时采样的有效值 / 保留的历史值；标记不构成跨变量同步保证。\\
+watch / watchpoint & Watch 表达式观察 / 硬件或 GDB 数据断点，删除前者不删除后者。\\\bottomrule
+\end{longtable}
+
+\newsection{外部参考与文档复现}
+以下一手资料于 2026-09-21 核对。实现细节仍以本地源码和本地工具版本为准；网页当前版本可能新于分发工具。
+\begin{enumerate}
+\item \href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI.html}{GDB/MI Interface}：MI 的用途和接口边界。
+\item \href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI-Output-Syntax.html}{GDB/MI Output Syntax}：结果、异步、流和 token 语义。
+\item \href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/Overview.html}{GDB Remote Protocol Overview}：RSP 包框架。
+\item \href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/Connecting.html}{GDB Connecting to a Remote Target}：remote/extended-remote 连接。
+\item \href{https://openocd.org/doc/html/Tcl-Scripting-API.html}{OpenOCD Tcl Scripting API}：RPC 和 0x1a 帧边界。
+\item \href{https://openocd.org/doc/html/CPU-Configuration.html}{OpenOCD CPU Configuration}：target、mem\_ap、显式内存访问。
+\item \href{https://kb.segger.com/J-Link_GDB_Server}{SEGGER J-Link GDB Server}：服务选项与 remote monitor 命令。
+\item \href{https://www.st.com/en/microcontrollers-microprocessors/stm32f429ig.html}{ST STM32F429IG}：具体器件资料入口，含数据手册和 RM0090。
+\item \href{https://arm-software.github.io/CMSIS-DAP/latest/}{Arm CMSIS-DAP Overview} 与 \href{https://arm-software.github.io/CMSIS_5/5.7.0/DAP/html/group__DAP__ConfigUSB__gr.html}{CMSIS-DAP USB 配置}：主机探针接口、HID/bulk 和可选 SWO 端点。
+\item \href{https://openocd.org/doc/html/Debug-Adapter-Configuration.html}{OpenOCD Debug Adapter Configuration}：适配器驱动、后端和传输选择；以本地版本实际能力为准。
+\item \href{https://documentation-service.arm.com/static/5f9009d5f86e16515cdc0417}{Arm IHI 0029D，CoreSight Architecture v2.0}：组件分类、可见接口与拓扑。
+\item \href{https://documentation-service.arm.com/static/622222b2e6f58973271ebc21}{Arm IHI 0031G，ADIv5.0--ADIv5.2}：DP、MEM-AP、寄存器和访问语义。
+\item \href{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/how-to-debug-coresight-basics-part-1}{Arm CoreSight basics Part 1}、\href{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/how-to-debug-coresight-basics-part-2}{Part 2}、\href{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/how-to-debug-coresight-basics-part-3}{Part 3}：交叉触发、访问路径与 Trace 采集解释。
+\item \href{https://documentation-service.arm.com/static/5fce431be167456a35b36ade}{Arm Cortex-M4 TRM} 与 \href{https://documentation-service.arm.com/static/5e8ecc36c5ee7d4a00693f2f}{ETM-M4 TRM}：核调试、DWT/ITM、指令追踪和输出边界。
+\item \href{https://www.st.com/resource/en/reference_manual/rm0090-stm32f407-advanced-armbased-32bit-mcus-stmicroelectronics.pdf}{ST RM0090，第 38 章 Debug support}：F4 的 SWJ 引脚、AHB-AP、FPB/DWT/ITM/ETM/TPIU。引脚仍需结合具体封装和板卡核对。
+\item \href{https://kb.segger.com/J-Link_BASE_V8}{SEGGER J-Link BASE V8} 与 \href{https://kb.segger.com/UM08001_J-Link_/_J-Trace_User_Guide}{J-Link/J-Trace User Guide}：硬件代际与工具边界；本手册不据此声称存在固定 53 秒 clone 限制。
+\end{enumerate}
+
+\subsection{从 LaTeX 重建 PDF}
+本文是单一、可独立编译的 LaTeX 源文件，流程图全部使用 TikZ 矢量绘制，不依赖本地 artifacts 截图。需要 XeLaTeX、ctex、fontspec、TikZ、listings 等包，字体为 Windows 的 SimSun、SimHei、Microsoft YaHei、Times New Roman、Arial、Consolas。其他平台需替换字体设置。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+# From repository root:
+./docs/build-usermanual.ps1
+
+# Equivalent manual build, from docs:
+xelatex -interaction=nonstopmode -halt-on-error usermanual.tex
+xelatex -interaction=nonstopmode -halt-on-error usermanual.tex
+xelatex -interaction=nonstopmode -halt-on-error usermanual.tex
+\end{lstlisting}
+\end{minipage}\par
+三轮编译稳定目录、页码和交叉引用。随附脚本在 docs 下创建独立临时目录，成功后仅复制 PDF 并清理该次中间文件；失败时保留临时日志以便定位。需要图形化质量检查时，将最终 PDF 全页渲染为 PNG，检查裁切、遮挡、缺字、表格续页、箭头与标注，然后删除本次临时渲染产物。
+
+本文中的实板日志不因 PDF 编译而重新生成；复现硬件行为必须另行准备相同芯片、探针、工具、固件和 profile。测试和视觉检查结论记录在 \code{docs/usermanual-validation.md}，便于日后区分“源代码基线”“历史硬件证据”和“文档构建结果”。
+\end{document}
