@@ -22,6 +22,16 @@ F2 选择该 profile，Watch/外设右键 → Memory access / Live refresh，即
 
 OpenOCD 程序、依赖 DLL 和脚本合计约 6 MiB；来源及 GPLv2 文本在 `bin/openocd/PROVENANCE.txt`、`COPYING.txt`，校验值纳入 `dependencies.lock.json`。npm 包仍只装 TUI，不包含 tools。多核板卡可参考 [examples/multicore-access.md](examples/multicore-access.md)，不能照搬 F429 的 AP0 配置。
 
+## STM32F429 / CMSIS-DAP
+
+`debug-env-cmsis-dap.toml` 使用 CMSIS-DAP 探针、SWD 1000 kHz；CPU 与运行时 AHB 通道由 `config/stm32f429-dap.cfg` 提供，端口与上述 OpenOCD 环境相同。
+
+~~~powershell
+debugtui --project <工程目录> --environment ./tools/debug-env-cmsis-dap.toml
+~~~
+
+也可在启动页选择该 Tools / profile 并保存。换探针不需要重新编译 TUI。若工程原先配置了启动 J-Link 的 Download command，请清空它，使用此 profile 中的 GDB 下载动作；Build command 仍依赖工程自己的编译工具链。
+
 ## 手动启动外部服务
 
 ~~~powershell

@@ -9,7 +9,7 @@ let config,variable,location;
 if(hardware){
   assert(!multi,'Hardware test is for the available single-core STM32F429');
   assert(process.env.DEBUGTUI_TEST_ELF,'Set DEBUGTUI_TEST_ELF to the ELF currently on the target');
-  config=`version=2\n[tools]\nprofile=${quote(path.join(root,'tools/debug-env-openocd.toml'))}\n[program]\nelf=${quote(process.env.DEBUGTUI_TEST_ELF)}\n`;
+  config=`version=2\n[tools]\nprofile=${quote(process.env.DEBUGTUI_TEST_PROFILE || path.join(root,'tools/debug-env-openocd.toml'))}\n[program]\nelf=${quote(process.env.DEBUGTUI_TEST_ELF)}\n`;
   variable='xTickCount';location='vTaskSwitchContext';
 }else{
   fs.writeFileSync(path.join(out,'sample.c'),`volatile unsigned int counter=0; volatile unsigned int observed;\n__attribute__((noinline)) void probe_tick(void) { counter++; observed=counter; }\nint main(void) { for(;;) { probe_tick(); } }\n`);

@@ -15,7 +15,7 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
     if(hardware){
       const firmware=process.env.DEBUGTUI_TEST_ELF;
       assert(firmware,'Set DEBUGTUI_TEST_ELF to the ELF matching the board firmware');
-      config=`version=2\n[tools]\nprofile=${quote(path.join(root,'tools/debug-env-openocd.toml'))}\n[program]\nelf=${quote(firmware)}\n`;
+      config=`version=2\n[tools]\nprofile=${quote(process.env.DEBUGTUI_TEST_PROFILE || path.join(root,'tools/debug-env-openocd.toml'))}\n[program]\nelf=${quote(firmware)}\n`;
       if(!process.argv.includes('--own-service'))config+='[service]\nenabled=false\n';
     }else{
       fs.writeFileSync(path.join(out,'sample.c'),`#include <stdint.h>
