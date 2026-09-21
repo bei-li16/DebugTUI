@@ -19,7 +19,7 @@
 \definecolor{accent}{HTML}{A65028}
 \definecolor{pale}{HTML}{F2F5F7}
 \definecolor{line}{HTML}{B7C8D2}
-\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={基于本地 v0.8.3 源码与 STM32F429 验证资料}}
+\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={基于本地 v0.8.3 源码及 STM32F429、THA6206 与 Bao 调试资料}}
 \ctexset{section={format=\Large\bfseries\color{ink}},subsection={format=\large\bfseries\color{ink}}}
 \pagestyle{fancy}\fancyhf{}
 \fancyhead[L]{\small\sffamily DebugTUI / User Manual}
@@ -53,21 +53,21 @@
 {\Huge\bfseries 用户手册}\par
 \vspace{8mm}
 {\Large 实现 · 功能 · 架构 · 协议栈}\par
-{\Large 信号与数据流 · STM32F429 实际适配}\par
+{\Large STM32F429 · THA6206 · Bao 调试适配}\par
 \vspace{14mm}
 \noindent\textcolor{accent}{\rule{\linewidth}{2pt}}\par
 \vspace{8mm}
 \begin{tikzpicture}[node distance=10mm]
 \node[box,text width=36mm] (t) {DebugTUI\\Rust / TUI / JSONL};
 \node[box,text width=36mm,right=10mm of t] (g) {GDB + 调试服务器\\MI / RSP / TCL};
-\node[box,text width=36mm,right=10mm of g] (c) {探针 + STM32F429\\USB / SWD / AP0};
+\node[box,text width=36mm,right=10mm of g] (c) {探针 + MCU / SoC\\SWD / MEM-AP / 多核};
 \draw[arr] (t)--(g);\draw[arr] (g)--(c);
 \end{tikzpicture}
 \vfill
 \begin{tabular}{@{}ll}
 工程版本 & 0.8.3，配置格式 version = 2\\
-分析基线 & \code{5ab08a2e925f01f9cfaccbd098963d3c598d8d3d}\\
-基线提交 & 2026-09-20，新增 STM32F429 CMSIS-DAP profile\\
+分析基线 & \code{be2d759c74060c4b1839f6f06e77812fc7068d4d}\\
+基线说明 & v0.8.3 源码；2026-09-21 补充 THA6206 / Bao 资料\\
 编写日期 & 2026-09-21（Asia/Shanghai）\\
 适用平台 & 当前发布及本地验证：Windows x64\\
 文档文件 & \code{docs/usermanual.tex} / \code{docs/usermanual.pdf}
@@ -83,16 +83,16 @@
 证据类别 & 本手册的使用方式\\\midrule
 当前源码 & 功能、默认值、路由和约束的首要依据；与旧 README 冲突时采用代码事实。\\
 源码验证 & 初版编写时执行 137 项 Rust 单元测试和 1 项 CLI 集成测试，全部通过；本次修订不改变产品源码。\\
-本地历史实板 & 复核 2026-09-16 J-Link 长会话故障及 2026-09-20 CMSIS-DAP/F429 报告、JSON 和原始日志；不声称本次重测。\\
-仓库历史说明 & TESTING.md 中多核 THA6206 等记录用于界定历史范围；本机未找到的原始目录不视为已复核证据。\\
+本地历史实板 & 复核 J-Link/F429 记录，并补充 2026-09-20 THA6206 多核及 2026-09-21 Bao 双 VM 的配置、JSON 与日志；不声称本次重测。\\
+仓库历史说明 & 历史说明须与本机可见原始记录、产物和日期对应；具体证据见各适配章节，不把配置配方当作实板结果。\\
 外部资料 & 核对 MI/RSP、探针协议、CoreSight/ADI、Trace 和芯片接口；通用架构能力不等于本地已实现或已验证。\\\bottomrule
 \end{tabularx}
 
-工程主目录为 \path{G:/Data/GitFiles/DebugTUI}；关联测试固件位于 \path{G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project}。后者是另一个本地工程，并不随 DebugTUI 分发。文中的绝对路径用于复现本机环境；迁移到其他机器时须改为实际路径或保持相对目录关系。
+本次文档修订的工程根为 \path{D:/LiBo/Files/DATA/FreeRTOS/vscodegdb/debugtui}。STM32 历史记录来自 \path{G:/Data/GitFiles/DebugTUI} 与关联固件 \path{G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project}，这些旧路径表示当时的测试环境。THA6206/Bao 当前参考目录见第\ref{sec:tha6206}节，均不随 DebugTUI 分发。迁移时须核对实际路径、工具版本与同次构建产物。
 
 \notice{本地 J-Link 长会话曾在约 52--53 秒出现底层访问失效；用户怀疑所用探针为 clone，根因尚未确认，见第\ref{sec:jlink-duration}节。下载成功与进度显示正常也是两个独立结论；匿名 tuple 解析、SVD 默认端序和资料差异见第\ref{sec:limits}节。}
 
-建议首次使用先阅读操作与协议栈；理解探针和片上调试时接着看第\ref{sec:probe}、\ref{sec:coresight}节，再进入工具配置和第\ref{sec:f429}节的 STM32F429 实操。移植、自动化分别见第\ref{sec:porting}、\ref{sec:jsonl}节。图中箭头表达请求、数据或触发关系，具体含义由标注说明；均不是电气时序比例图。
+建议首次使用先阅读操作与协议栈；理解探针和片上调试时接着看第\ref{sec:probe}、\ref{sec:coresight}节，再进入工具配置和第\ref{sec:f429}节的 STM32F429 实操。THA6206 的 GHS 单核/多核见第\ref{sec:tha6206}节，Bao Hypervisor、Guest 符号和双 VM 调试见第\ref{sec:bao-tha6206}节。移植、自动化分别见第\ref{sec:porting}、\ref{sec:jsonl}节。图中箭头表达请求、数据或触发关系，具体含义由标注说明；均不是电气时序比例图。
 \clearpage{\small\setlength{\parskip}{0pt}\tableofcontents}
 \clearpage\pagenumbering{arabic}
 
@@ -810,6 +810,391 @@ DBGMCU.IDCODE & 0xE0042000 & 本地历史读 0x20016419；不能与 DPIDR 混淆
 SVD 文件版本 1.9，含 84 个外设描述，原文件 2118594 字节。其描述覆盖范围不等于全部寄存器均已实板读写验证。\code{xTickCount} 的地址应由当前 ELF 求得，不能固定抄录某次测试的地址。
 \src{关联固件 \path{debug.toml}、\path{Makefile}、\path{STM32F429IGTX_FLASH.ld}、\path{Core/Inc/FreeRTOSConfig.h}、\path{BSP/USER_TASK/Src/user_task.c}；\path{resources/svd/stm32/catalog.json}；第\ref{sec:evidence}节证据表。}
 
+\newsection{THA6206：GHS 单核与多核适配}\label{sec:tha6206}
+\subsection{参考工程、路径与证据边界}
+本节沿用 STM32 章节的“工具、连接、下载、执行、数据、验收”顺序，但采用 THA6206 的板级脚本。芯片为双 Cortex-R52，调试配置使用 Armv8-R、AArch32；不能直接替换 STM32 profile 的芯片名称后使用。
+
+本文用以下根目录简称，后续路径均相对对应根目录。本机实际 MCAL 目录名称为 \code{THA6XXX_MC_AS440}，用户描述的 \code{THA6XXX/_MC/_AS440} 嵌套路径未找到，应以实际存在目录为准。
+\noindent\begin{tabularx}{\linewidth}{@{}P{35mm}Y@{}}\toprule
+根目录简称 & 本机路径\\\midrule
+T：DebugTUI & \path{D:/LiBo/Files/DATA/FreeRTOS/vscodegdb/debugtui}\\
+M：GHS/MCAL 工程 & \path{D:/LiBo/Files/DATA/FreeRTOS/vscodegdb/THA6XXX_MC_AS440}\\
+B：Bao 工程 & \path{D:/LiBo/Files/DATA/FreeRTOS/BAOHyp/bao-hypervisor}\\
+S：Bao 引用的 SDK & \path{D:/LiBo/Files/DATA/FreeRTOS/BAOHyp/THA6XXX_MC_AS440}\\
+A：Bao 实板记录 & \path{D:/LiBo/Files/DATA/FreeRTOS/BAOHyp/analysis}\\\bottomrule
+\end{tabularx}
+M 和 S 是两个独立目录，不应因为名字相同就视为同一份工具或固件。B 的 profile 通过相对路径引用 S；迁移时如改用 M，需要同时核对 GDB、OpenOCD、SVD、下载器及工作目录。M 基于 \code{50ff448}，B 基于 \code{b25150e} 的 \code{dev/tha6xxx-init} 分支；两者均存在本地修改，本节分析的是 2026-09-21 可见工作树，不能只 checkout 这两个提交就假定得到全部示例。
+
+\notice{证据分三类：配置和源码静态核对；已留存的历史实板记录；本次离线 ELF/GDB 检查。本次文档修订没有连接探针、下载固件、复位或重新进行实板验收。后文的 Bao 双 GDB 配方也不等于已完成该组合的实板测试。}
+
+\subsection{与 STM32F429 适配的关键差异}
+\noindent\begin{tabularx}{\linewidth}{@{}P{25mm}P{49mm}Y@{}}\toprule
+项目 & STM32F429 参考方案 & THA6206 参考方案\\\midrule
+处理器与启动 & 单 Cortex-M4；向量表、MSP、Thumb & 双 Cortex-R52；AArch32，需理解 HYP/SVC、共享初始化及从核等待。\\
+工具链 & Arm GNU 与对应 STM32 ELF & MCAL 使用 GHS；Bao 使用 GNU。不能把 GHS 的 DWARF workaround 无条件套到 Bao。\\
+OpenOCD & STM32 target/Flash 驱动 & 厂商分发的 0.12.0+dev、\code{armv8r} target、专用复位脚本；不能假设任意上游包等价。\\
+访问路径 & CPU target 与 AHB-AP0 & CPU 调试经 AP1；独立 \code{AHB_3} 经 AP3 读总线。\\
+下载 & 可由 GDB load 配合 Flash bank & 现有 cfg 无 PFlash bank；外部 \code{jtag.exe --flash} 下载 HEX。\\
+执行与复位 & 一条 GDB 会话控制一个核 & 单核入口与共享 Server 的双 GDB 入口并存；\code{chipreset} 是整片复位。\\
+运行时观察 & 明确配置的 MEM-AP 通道 & GMU/外设用 AP3；物理地址、别名、MPU 和缓存语义需要单独核对。\\\bottomrule
+\end{tabularx}
+历史测试工具包括 GHS 2023.1.4、Arm GDB 16.3、厂商 OpenOCD 和 CMSIS-DAP，板级脚本设适配器时钟 5000 kHz。实际启动时应检查 Console 的版本、DPIDR、核识别和端口信息，而不只检查可执行文件存在。
+
+\subsection{AP、CPU target、CTI 和存储地址}
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=8mm]
+\node[box,text width=120mm] (t) {DebugTUI 会话组：GDB0 / 3333，GDB1 / 3334；共享一个 OpenOCD};
+\node[box,text width=120mm,below=of t] (d) {CMSIS-DAP / SWD → THA6206 DAP，期望 DPIDR 0x6BA02477};
+\node[box,text width=61mm,below=of d.south,xshift=-36mm] (p) {AP1：CPU 调试与 APB\\\texttt{core.0 / core.1}、各自 CTI};
+\node[box,text width=52mm,below=of d.south,xshift=36mm] (a) {AP3：总线内存访问\\\texttt{AHB\_3} / TCL 6666};
+\node[box,text width=61mm,below=of p] (c) {core0 DBG 0x80410000\\core1 DBG 0x80510000};
+\node[box,text width=52mm,below=of a] (m) {GMU、外设、Flash 别名\\不等于第三个 CPU};
+\draw[arr] (t)--(d);\draw[arr] (d.south)--(p.north);\draw[data] (d.south)--(a.north);
+\draw[arr] (p)--(c);\draw[data] (a)--(m);
+\end{tikzpicture}
+\caption{THA6206 的执行控制与后台读内存走不同 target。}
+\end{figure}
+\code{.vscode/openocd.cfg} 创建 \code{core.0}、\code{core.1} 两个 \code{armv8r} target，均绑定 AP1。CTI 基址分别为 \code{0x80420000}、\code{0x80520000}；另建 \code{APB_1} 和 \code{AHB_3} MEM-AP target。配置中 \code{DEBUGCORE} 是位掩码：1 选择 core0，2 选择 core1，3 选择两个核；未选核使用 defer-examine，并非从 target 列表删除。因此 core1 的 GDB 端口仍是 3334。
+
+CTI 对象参与 Armv8 target 的运行控制，但仅创建并绑定 CTI，并不证明已经设置跨核硬件同步路由。当前 TUI 的组控制、断点联停属于软件协调，不能据此声称两核在同一周期停止。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{32mm}P{48mm}Y@{}}\toprule
+区域/用途 & 本地工程地址 & 调试时的含义\\\midrule
+CPU PFlash0 / 1 & 0x08000000 / 0x08300000，各 3 MiB & ELF 执行/源码断点地址；当前 GDB cfg 把整个 6 MiB 区间声明为只读。\\
+AHB PFlash0 / 1 别名 & 0x90400000 / 0x90700000 & 总线侧验证镜像时使用；不可拿来作为 CPU C 函数断点地址。\\
+GMU RAM & 0x10000000，256 KiB & 普通 RAM 地址；设备别名基址为 0x82000000。\\
+Flash 控制器 & 0xC0100000 & 控制寄存器，不是固件镜像起始地址。\\\bottomrule
+\end{tabularx}
+TCM 还有核私有地址与全局别名。对 core0/core1 的私有 TCM，不能仅因表达式地址相同就默认 AP3 读到了当前核的数据。运行中 CPU cache 内的新值也不一定立即等于总线看到的值；访问通道选对不代表获得了缓存一致性快照。
+\src{M：\path{.vscode/openocd.cfg}、\path{.vscode/gdb.cfg}、\path{DemoWorkspace/CodeProject/LinkFiles/Ghs/LinkerGhsPf.ld}；OpenOCD 官方 \href{https://openocd.org/doc/html/Architecture-and-Core-Commands.html}{Armv8/CTI 命令说明}。}
+
+\subsection{工具环境、构建和下载}
+M 的三个工程配置共用 \code{.vscode/debug-env.toml}。工程 ELF 为 \path{DemoWorkspace/CodeProject/Debug/THA6206_Demo_Prj.elf}，Source root 为工程根，SVD 为 \path{.vscode/THA6206/tha6206.svd}。GDB 环境载入 \code{gdb.cfg}，设置 \code{armv8-r}、可访问存储范围和超时；\code{maintenance set dwarf unwind off} 是当前 GHS 调试兼容配置。
+
+\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
+# Run these commands from M.
+.\DemoWorkspace\CodeProject\Build.bat ghs rebuild tha6206
+.\.vscode\Load.bat tha6206
+
+debugtui --project .\debug-core0.toml
+# Alternative entries, one debug workspace at a time:
+debugtui --project .\debug-core1.toml
+debugtui --project .\debug-multi.toml
+\end{lstlisting}\end{minipage}\par
+\code{Load.bat} 使用 Debug 目录的 \code{THA6206_Demo_Prj.hex}，调用厂商下载器烧录并执行系统复位。TUI Build/Download 调用相同的外部任务，先释放已有 GDB 和其拥有的 Server，再执行任务；原来已连接的工作区在成功后重新连接。不要同时运行多个入口争用同一探针/端口，也不要把 Console 中的 \code{load} 当作这个 HEX 下载流程。
+
+工程显式列出 \code{r0}--\code{r12}、\code{sp/lr/pc/cpsr}，避免初始化早期请求不适用的 VFP 寄存器。若 DSCR/sticky abort、读寄存器或复位失败仍出现，应保留原始日志排查；减少请求范围不是忽略真实错误。SVD 能显示外设名不代表对应硬件已初始化。
+
+\subsection{单独调试 core0 与 core1}
+\noindent\begin{tabularx}{\linewidth}{@{}P{27mm}P{59mm}Y@{}}\toprule
+配置 & core0：\code{debug-core0.toml} & core1：\code{debug-core1.toml}\\\midrule
+Server 选择 & DEBUGCORE=1 & DEBUGCORE=2\\
+GDB 端口 & 127.0.0.1:3333 & 127.0.0.1:3334\\
+Run 动作 & chipreset、刷新寄存器缓存、临时断点 \code{_main}、继续 & 仅继续当前 core1\\
+Restart 动作 & chipreset、刷新寄存器缓存 & 空；不主动发整片复位\\
+前提 & 用作主核启动/初始化入口 & 已有有效固件，core0 已完成必要共享初始化并释放从核\\\bottomrule
+\end{tabularx}
+\begin{enumerate}
+\item 先确认板上 HEX 与当前 ELF 同一次构建。启动 core0 入口，检查 core0 状态和 PC；Run 应到达 \code{_main}，再验证所需 C 函数的断点、栈和单步。
+\item 测 core1 前，让固件按板级启动流程进入可运行状态。仅以 DEBUGCORE=2 连接，并不能替代 core0 的时钟、共享 RAM 和多核屏障初始化。
+\item 用 core1 入口连接 3334，在 \code{DemoApp_MainCore1} 等实际从核函数设置断点并继续。若停在等待循环，应先核对主核状态与同步变量，不应立即归因于 TUI。
+\item 单核入口只表示一个 GDB 会话。退出时 detach 不保证一个原本暂停的核自动继续；需要固件保持运行时，应先明确 Continue 并确认目标状态。
+\end{enumerate}
+\code{chipreset} 内部通过 AP3 控制复位并恢复调试访问，包含 EDECR/EDPRCR、重新 examine 和清除 DSCR sticky 状态等板级处理。不要把它替换为未经验证的通用 \code{reset halt}，也不要复制 core0 的复位动作到只想附加观察 core1 的入口。
+
+\subsection{双核会话组：启动顺序和控制语义}
+M 的 \code{debug-multi.toml} 已含两个 \code{[[cores]]}。以下节选保留启动/复位要点；其余 program、tools、tasks、GDB 配置沿用原文件，不要另建缺失工具路径的孤立片段。
+\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
+[actions]
+restart = []
+
+[multicore]
+scope = "all"
+halt_peers = true
+restart_core = "core.0"
+restart = ["monitor chipreset"]
+
+[[cores]]
+name = "core.0"
+endpoint = "127.0.0.1:3333"
+startup_order = 1
+after_connect = ["monitor chipreset"]
+run = ["tbreak _main", "-exec-continue"]
+
+[[cores]]
+name = "core.1"
+endpoint = "127.0.0.1:3334"
+startup_order = 0
+run = ["-exec-continue"]
+\end{lstlisting}\end{minipage}\par
+\code{startup_order} 数值小者先连接、先 Run。本例 core1 先继续并等待，core0 随后运行初始化，符合参考固件的 \code{MULTICORE_SYNCVAR} 握手。core0 连接动作会复位整片，协调器在全部连接完成后同步各 GDB 的真实状态。默认选中 core0 不表示 core0 必须先启动。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{34mm}Y@{}}\toprule
+操作 & 当前行为和验证方法\\\midrule
+Run & 当前界面的默认 Run 按组启动；JSONL 明确指定单核 scope 可只执行该核动作。Run 是否复位取决于动作，不能与 Continue 混用。\\
+Continue / Pause & Scope=All 时对组内各核执行；Scope=Core 时针对选中核。用实际逐核状态确认，不能只看顶部一处 RUNNING。\\
+Step / Next / Finish & 单步选中核；All 范围下先暂停其他核，使非选中核不在后台继续。\\
+断点联停 & \code{halt_peers=true} 时，某核断点停止会触发同组其他核运行状态的协调停止。存在通信延迟。\\
+Reset Chip & 在 \code{restart_core} 执行一次共享复位，然后同步所有核；即使当前 Scope=Core，整片复位也不能当作单核复位。\\\bottomrule
+\end{tabularx}
+单步跨越等待另一核应答的循环，可能因对端被暂停而无法前进。此时选择适当的 Continue 范围或临时关闭联停，不是反复单步等待协议自动完成。原始 \code{monitor resume} 改变的是 OpenOCD target，绕过会话组控制；日常组调试优先使用 TUI 控件。
+
+\subsection{断点资源与运行中 Watch}
+源码点击新建断点仍只放到当前核。要两核都在同一代码位置停下，在 Breaks 选中持久代码/硬件断点，打开 Cores（快捷键 c），勾选另一核，Ctrl+Enter 应用。当前核须保留；临时断点和数据观察点不支持这种关联。两核的 GDB 断点编号可以不同，TUI 保存的是组关系。
+
+历史 Server 日志分别报告 core0、core1 各有 8 个硬件断点、8 个硬件观察点。因此这里的容量是 \textbf{per-core}，不是全芯片共用 8 个。一个双核硬件断点通常占每核一个比较资源；Flash 上的普通断点也可能需要硬件资源，临时断点、条件实现和调试服务器保留用途会影响可用数量，不能把“8”当作始终还能添加的数量。
+
+M 的旧式 \code{[live_watch]} 使用当前 MCAL ELF、TCL 6666、\code{bus_target="AHB_3"}，间隔 200 ms，可用于 \code{uart_cnt} 这类可解析的全局原始对象。看到 Console 的 \code{[live]} 增长后，还要检查 Watch 同名项的数值、LIVE 来源和时间，不能以 Console 代替面板验收。
+
+新式逐项内存通道可用于 Watch、Memory 和外设可见项。\code{while_running=true} 只是允许在运行时请求；项目还要选择通道及非零刷新周期。\code{interval_ms=0} 表示手动刷新。局部变量、栈、寄存器或复杂表达式需要暂停后由 GDB 求值；总线读不能自动获得它们的当前上下文。
+
+\subsection{验收记录与故障定位}
+\noindent\begin{tabularx}{\linewidth}{@{}P{37mm}Y@{}}\toprule
+2026-09-20 历史实板证据（T 下） & 可支持的结论\\\midrule
+\path{artifacts/tha6206-multicore-fix-20260920/hardware-release-safe-regs/result.json} & passed=true；122 个请求、27 个检查；核入口/断点、All/Core 运行控制、单步对端 PC 不变、复位后双核 PC、重连和 Live Watch。\\
+\path{artifacts/tha6206-live-watch-20260920/hardware-final/result.json} & passed=true；17 个请求，覆盖运行中的双核 Watch 采样变化及停止代次保持。\\
+\path{artifacts/multicore-breakpoints-20260920/hardware-release/result.json} & passed=true；61 个请求；逐核实际命中、关联断点联停/删除及恢复运行。\\\bottomrule
+\end{tabularx}
+配套 events/trace 与 M 下的报告保留上下文。复现时核对选中核、endpoint、PC/停止原因、对端状态和数据来源；结果仅适用于记录中的探针、芯片及固件。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{40mm}Y@{}}\toprule
+现象 & 优先检查\\\midrule
+core1 连不上/一直等待 & DEBUGCORE=2/3、3334、主核初始化与从核释放；不要改连 APB/AHB target 的端口。\\
+复位后 PC/寄存器像旧值 & 芯片复位是否成功、其他 GDB 是否重新同步、寄存器缓存是否刷新。\\
+Flash 下载失败 & 是否误用 load；实际执行的 HEX、下载器、工作目录与退出码；是否仍有进程占探针。\\
+Console 有变化而 Watch 没变 & 是旧 Live Watch 还是逐项通道；符号是否同一对象，通道是否 ahb，间隔是否为零，采样错误是否被忽略。\\
+C 行号错位或打不开 & HEX/ELF/源码提交是否匹配；Source root 与 source\_map 是否正确，参见附录\ref{sec:ci-source}。\\\bottomrule
+\end{tabularx}
+\src{M：\path{debug-core0.toml}、\path{debug-core1.toml}、\path{debug-multi.toml}、\path{.vscode/debug-env.toml}、\path{.vscode/Load.bat}；T：\path{src/coordinator.rs}、\path{src/coordinator/control.rs}、\path{src/coordinator/breakpoints.rs}。}
+
+\newsection{THA6206 上的 Bao Hypervisor 调试}\label{sec:bao-tha6206}
+\subsection{先区分物理核、VM 与 GDB 会话}
+Bao 为静态划分资源的 Hypervisor；本地 THA6xxx 移植选择 \code{armv8-r / aarch32 / cortex_r52}、GICv3 和 MPU 路径。CPU0 为启动主核，平台描述包含两个物理核。本节针对 B 的本地移植，不代表上游 Bao 已发布相同平台支持。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{33mm}P{52mm}Y@{}}\toprule
+入口 & 固件组织 & 当前 DebugTUI 连接\\\midrule
+\code{debug.toml} & \code{tha6206-smoke}；一个单 vCPU Guest，affinity=1，位于 CPU0 & 单 GDB，core0 / 3333；启动动作主动释放物理 core1。\\
+\code{debug-dual.toml} & \code{tha6206-dual}；两个 VM，每个一 vCPU，分别 affinity=1/2 & 仍是单 GDB，core0 / 3333；文件中没有 \code{[[cores]]}。\\
+双 GDB 配方 & 沿用 dual 的固件组织 & 需要显式增加两个 \code{[[cores]]}；见第\ref{sec:bao-multigdb}节，尚未作为组合实板验证。\\\bottomrule
+\end{tabularx}
+双 VM 不是一个具有两个 vCPU 的 SMP Guest；两个物理核在运行，也不自动意味着出现两个 TUI 核标签。只观察 VM0 时，单 GDB 完全可以启动两核固件；要独立查看 VM1 的 PC、栈、C 断点，则需要 core1 的调试连接。
+
+当前启动流程依赖平台的双核同步。不要为了“只调一个 Guest”直接把 \code{platform.cpu_num} 改为 1：现有初始化调用关系中这可能绕开必需的 SoC 初始化。单 vCPU 配置与减少物理 CPU 数不是同一个改动。
+\src{B：\path{src/platform/tha6xxx/platform.mk}、\path{src/platform/tha6xxx/platform.c}、\path{src/platform/tha6xxx/tha6xxx_desc.c}、\path{configs/tha6206-smoke/config.c}、\path{configs/tha6206-dual/config.c}；\href{https://github.com/bao-project/bao-hypervisor}{Bao 上游项目}。}
+
+\subsection{EL2、XIP 与 Guest RAM 布局}
+Bao 代码在 PFlash0 的 \code{0x08000000} XIP 执行；已初始化数据的加载镜像在 Flash，运行地址在 GMU，BSS 和运行状态也在 GMU。Guest 二进制通过 \code{VM_IMAGE} 嵌入 Bao 镜像，由安装流程复制到配置指定的 RAM 执行地址。\code{.vm_images} 的 Flash 地址不是 Guest C 代码的运行地址。
+
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=8mm]
+\node[box,text width=131mm] (f) {PFlash0 / CPU 0x08000000：Bao XIP + 数据初值 + 内嵌 Guest 镜像};
+\node[box,text width=131mm,below=of f] (h) {GMU / 0x10000000 起：Bao 数据与状态；EL2 MPU 管理资源分区};
+\node[box,text width=58mm,below=of h.south,xshift=-35mm] (v0) {CPU0 → VM0 / EL1\\0x10020000--0x10027FFF\\Guest0 代码、栈、状态};
+\node[box,text width=58mm,below=of h.south,xshift=35mm] (v1) {CPU1 → VM1 / EL1\\0x10028000--0x1002FFFF\\Guest1 代码、栈、状态};
+\node[box,text width=131mm,below=of v0.south,xshift=35mm] (s) {共享 IPC：0x10030000--0x10030FFF；双向通知虚拟 IRQ 40};
+\draw[data] (f)--(h);\draw[arr] (h.south)--(v0.north);\draw[arr] (h.south)--(v1.north);
+\draw[data] (v0.south)--(s.north -| v0.south);\draw[data] (v1.south)--(s.north -| v1.south);
+\end{tikzpicture}
+\caption{dual 配置的运行地址。smoke 使用另一套布局，不能与本图叠加。}
+\end{figure}
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{35mm}P{47mm}Y@{}}\toprule
+配置/资源 & 地址/大小 & 用途\\\midrule
+smoke Guest & 0x10030000 / 64 KiB & 单 vCPU；状态块 0x1003F000，SVC 栈顶 0x1003E000。\\
+dual VM0 / VM1 & 0x10020000 / 0x10028000，各 32 KiB & 状态块分别 0x10027000 / 0x1002F000；同一份 C 源码按 VM\_ID 构建两份 ELF。\\
+dual 共享 RAM & 0x10030000 / 4 KiB & 双向序号、payload/checksum、ack/epoch 和通知。\\
+ASI0 UART & 0xD0080000 / 4 KiB & dual 中映射给 VM0；VM1 不映射。Bao 自身也使用诊断串口。\\
+GIC / Timer & GICD 0xF0000000；GICR 0xF0100000 & 平台描述的计数器频率 25 MHz；dual 验证使用物理定时器 PPI 30。\\\bottomrule
+\end{tabularx}
+这里采用 MPU 隔离与固定物理地址布局，不应照搬 MMU Guest 的虚拟地址重定位步骤。CPU 处于 Bao HYP 时 CPSR mode 低五位为 \code{0x1A}，进入 Guest SVC 时为 \code{0x13}；其他 CPSR 位随中断/条件标志改变。只比较完整 CPSR 是否恒定并不能判断切换是否正确。
+
+已有 MCAL 裸机固件可能假定从 EL2 启动并直接初始化全局时钟、RAM、其他核。将其用作 Guest 需要 EL1 启动代码、banked stacks、向量表、数据/BSS 初始化、中断/定时器适配和设备授权；不能只修改入口地址或把裸机 HEX 嵌进 Bao 就当作完成移植。
+
+\subsection{构建、烧录与源码映射}
+以下命令在 B 根目录执行。当前 PowerShell 包装脚本调用名为 \code{Ubuntu-24.04D} 的 WSL 发行版；迁移前应核对发行版名称和 GNU 工具链。构建主入口是 B 的 Makefile/src/configs，而不是旁边的 bao-demos 工作树。
+\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
+# Smoke image, then the dual-VM image (choose one pair).
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tha6206-build.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tha6206-download.ps1
+
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tha6206-build.ps1 -Config tha6206-dual
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tha6206-download.ps1 -Config tha6206-dual
+
+debugtui --project .\debug.toml
+# Or, for the dual image with the existing core0 workspace:
+debugtui --project .\debug-dual.toml
+\end{lstlisting}\end{minipage}\par
+脚本先构建 Guest ELF/BIN，再调用 make，参数为 \code{PLATFORM=tha6xxx}、所选 CONFIG、\code{CROSS_COMPILE=arm-none-eabi-} 与 \code{DEBUG=y}。输出为 \path{bin/tha6xxx/<config>/bao.elf}、\code{bao.bin}、\code{bao.hex}；Guest ELF 在 \path{build/tha6xxx/<config>/guest/}。\code{VM_IMAGE} 的 incbin 依赖不一定被构建系统自动追踪，因此包装脚本在 Guest 重建后更新配置源文件时间，使内嵌镜像重新打包。
+
+下载脚本选择同一 Config 的 HEX，记录 SHA-256，调用 S 的厂商下载器并检查退出码，再系统复位。不要混用 smoke 的 ELF 与 dual 的 HEX，也不要拿 Bao 的 BIN 直接按 Guest 的 RAM 地址整体烧写。TUI 的任务 timeout 为 300000 ms；Setup 中更换主 ELF 时也必须检查 build/download 参数是否同步。
+
+现有 profile 用 \code{set substitute-path /mnt/d/ D:/} 解决本机 WSL 路径。迁移工程或使用流水线产物时，在项目 TOML 顶层增加明确前缀映射，供 GDB 与 TUI 一起使用；Source root 只声明本地源码根，不能替代绝对前缀映射。
+\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
+# Merge into existing tables; do not duplicate [program].
+[program]
+source_root = "."
+# Keep elf and svd from the selected Bao project.
+
+[[source_map]]
+from = "/mnt/d/LiBo/Files/DATA/FreeRTOS/BAOHyp/bao-hypervisor"
+to = "."
+\end{lstlisting}\end{minipage}\par
+\code{from} 必须以该份 ELF 的 DWARF 为准。流水线另有源码根时，用真实构建前缀替换；使用同次构建的 Bao ELF、Guest ELF、HEX 和对应源码提交。完整流程见附录\ref{sec:ci-source}。
+\src{B：\path{scripts/tha6206-build.ps1}、\path{scripts/tha6206-build.sh}、\path{scripts/tha6206-download.ps1}、\path{scripts/tha6206/debug-env.toml}。}
+
+\subsection{连接与热复位：先处理启动屏障}
+现有 Bao profile 的 Server 以 DEBUGCORE=3 建立两核 target，GDB 连接 core0。Run/Restart 动作先 chipreset，选回 core0，在两核暂停时执行 \code{set {unsigned int}&_barrier = 0}，再通过 Server 释放 core1，选回 core0 并刷新 GDB 寄存器缓存。Run 还设置 \code{init} 的临时硬件断点并继续，适合从 Bao C 初始化入口观察；Restart 本身与 Continue 的停留位置不同。
+
+这样处理是因为本地 \code{chipreset} 保留 GMU。前一次启动留下的 \code{_barrier=2}，可能让 core1 在 core0 尚未初始化共享状态时越过屏障。清屏障必须在复位后、释放 core1 前完成。使用 \code{&_barrier} 由本次 Bao ELF 解析，不要抄录某次链接得到的数值地址。
+
+\begin{enumerate}
+\item 确认 Bao ELF、Server 和 core0 端口正确；连接后记录 PC/CPSR。Run 命中 \code{init}，此时主要调试对象是 Hypervisor。
+\item Continue 进入 VM。smoke 检查 Guest 入口、状态 magic 和心跳；dual 检查两个状态块以及 Timer/IPC 计数。
+\item 需要重启实验时使用完整 profile 的 Run/Restart 流程。不要在 Console 只发 \code{monitor chipreset} 后直接继续两个核；不要把清屏障动作放到 core1 已运行之后。
+\item 现有单 GDB profile 主动 \code{monitor resume} core1 是有意设计；扩展双 GDB 时改用协调器的逐核 Run，避免另一条 GDB 仍缓存旧停止状态。
+\end{enumerate}
+该办法是调试热复位的启动修正，不证明冷上电/POR 已完整覆盖。\code{on_exit="detach"} 也不保证暂停状态自动变为运行，应以退出前明确的 Continue 和板上观测为准。
+
+若仅附加调试已经运行的 core1，可复制所选 Bao 项目，覆盖 target.endpoint 为 3334、after\_connect 为 []、actions.run 为 [\code{"-exec-continue"}]、actions.restart 为 []，保留 DEBUGCORE=3 和其余工具/镜像字段。不要沿用默认 Run 中的整片复位和手动 target 切换；停止 core1 后再加载 Guest1 符号。附加入口仍可能受 Server 启动动作影响，应检查实际核状态；它不是启动完整平台的替代入口。
+
+\subsection{同时保留 Bao 与 Guest 的 C 符号}\label{sec:bao-symbols}
+主 \code{program.elf} 应保留 \code{bao.elf}，这样 \code{init}、\code{_barrier}、异常处理和 Hypervisor 栈可正常解析。单独载入 Bao ELF 不会自动得到由 incbin 嵌入的 Guest 调试信息。用 GDB \code{add-symbol-file} 增加相应 Guest ELF，而不要用 \code{symbol-file} 替换掉 Bao 符号。
+
+将项目现有 \code{[gdb]} 表增加 \code{cwd="."}，确保以下相对路径以 B 为工作目录。\code{add-symbol-file} 是一条完整命令；长行仅在排版时折行。
+\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
+# core0 session, dual image:
+add-symbol-file "build/tha6xxx/tha6206-dual/guest/guest0.elf" 0x10020000
+info address guest_main
+info line guest_main
+list guest_main
+hbreak guest_main
+
+# core1 session instead:
+add-symbol-file "build/tha6xxx/tha6206-dual/guest/guest1.elf" 0x10028000
+\end{lstlisting}\end{minipage}\par
+这只添加调试符号，不会下载 Guest 或使目标跳转。地址参数对应 Guest 的运行时 .text 基址；本例 Guest ELF 已按 RAM 地址链接，其他段沿用 ELF 中的地址。若改了链接布局，先核对 ELF section，必要时用 \code{-s} 指定其他段，不能一律填 Flash 装载地址或猜测入口。smoke 对应 \path{build/tha6xxx/tha6206-smoke/guest/guest.elf}，按其 .text/配置入口 \code{0x10030000} 加载，可观察 \code{guest_start}、\code{guest_heartbeat}。
+
+dual 的两份 ELF 都定义 \code{guest_main}、\code{irq_handler}。每条 GDB 只加载当前物理核对应的 Guest ELF，避免同名符号歧义。将命令放到该核 \code{init} 数组，可在重连时重新加载。若只在 Console 临时添加，重启 GDB 后需再执行。
+
+本次离线检查使用当前 dual Bao ELF，分别增加 Guest0/Guest1 ELF：GDB 能解析 \code{guest_main} 到 \code{configs/tha6206-dual/guest.c} 第 133 行；Guest0 地址为 \code{0x10020230}，Guest1 为 \code{0x100281B4}，并能经源码映射显示 C 文本。这说明当前文件的符号/路径可解析，不代表已验证板上每条 C 单步。Guest 使用优化编译，行与指令并非严格一一对应。
+\src{B：\path{scripts/tha6206-build.sh}、\path{configs/tha6206-dual/guest.c}、\path{configs/tha6206-dual/start.S}；GDB 官方 \href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/Files.html}{Files / add-symbol-file}。}
+
+\subsection{扩展为双 GDB 工作区的配置配方}\label{sec:bao-multigdb}
+\notice{以下配方已核对配置合并规则、逐核启动实现和 ELF 符号，并经 DebugTUI 离线加载确认识别出两个未连接的核心会话。已留存的 Bao 双 VM 板上测试采用其测试脚本/总线观测；不能据此声称以下双 GDB TUI 组合已经通过实板验收。本次也没有改动 B 的工程配置。}
+复制 B 的 \code{debug-dual.toml} 为拟用的 \code{debug-dual-multi.toml}，保留 program、tools、tasks、registers 等字段。把以下字段合并进现有表；同一 TOML 表不能重复声明。新增 \code{[[cores]]} 和 \code{[multicore]}，不要在 profile 中放工程 cores 表。
+
+\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
+[gdb]
+cwd = "."
+# Keep the existing GPR register list.
+
+[target]
+after_connect = []
+
+[actions]
+run = []
+restart = []
+
+[multicore]
+scope = "all"
+halt_peers = true
+restart_core = "core.0"
+restart = ["monitor chipreset", "set {unsigned int}&_barrier = 0"]
+\end{lstlisting}\end{minipage}\par
+顶层空数组覆盖 profile 的单 GDB 动作，去掉它主动 resume core1 的步骤；每核再显式给出 Run。当前实现中某个 core 的空 \code{run/after_connect} 数组并不清空继承值，所以不能只靠 \code{[[cores]]} 中写 [] 来禁用 profile 动作。
+
+\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
+[[cores]]
+name = "core.0"
+endpoint = "127.0.0.1:3333"
+startup_order = 1
+after_connect = ["monitor chipreset", "set {unsigned int}&_barrier = 0"]
+run = ["-break-insert -h -t init", "-exec-continue"]
+init = ['add-symbol-file "build/tha6xxx/tha6206-dual/guest/guest0.elf" 0x10020000']
+
+[[cores]]
+name = "core.1"
+endpoint = "127.0.0.1:3334"
+startup_order = 0
+run = ["-exec-continue"]
+init = ['add-symbol-file "build/tha6xxx/tha6206-dual/guest/guest1.elf" 0x10028000']
+\end{lstlisting}\end{minipage}\par
+连接时 core1 先附加，core0 最后执行一次共享复位和清屏障；全部连接后同步两个 GDB。首次 Run All 先释放 core1，再让 core0 到 \code{init}；命中时联停可能暂停 core1，随后 Continue All 才让两核继续。这里逐核 Run 不再包含复位：重做完整启动实验应先 Reset Chip，再 Run All，不能在 Guest 正运行时再次 Run 并假定自动回到 Bao 入口。
+
+\begin{enumerate}
+\item 验证只启动一个 Server、两条 GDB 分别连接 3333/3334，核心标签与真实状态一致；复位后两核 PC 应与本次固件启动入口一致。
+\item core0 加载 Guest0 符号、core1 加载 Guest1 符号；两边 \code{info line guest_main} 分别落在各自 RAM 区间。
+\item 在 core0/VM0 设置普通持久断点，确认默认只属于 core0；切到 core1/VM1 单独设置其断点，分别检查 PC、CPSR、栈和状态块。
+\item 验证 Continue All、Pause All、选核单步、共享复位后屏障初始化及重连符号恢复。需要两 VM 同一函数都停下时，再使用 Cores 关联，并确认每核解析到自己的运行地址。
+\item 做“故障核停住、对端仍运行”的隔离观测时，使用 Core 范围并关闭 \code{halt_peers}；否则软件联停本身就会使对端停止，污染实验结论。
+\end{enumerate}
+DebugTUI 当前没有 VM 列表、自动 vCPU 上下文切换或完整多镜像管理器。这里是一核固定运行一个 VM，利用 per-core init 补充符号的配置适配；若以后迁移/复用 vCPU 或改为 SMP Guest，需要重新设计会话与符号策略。
+
+\subsection{运行时观察：状态块、Timer、IPC 与 UART}
+Bao profile 已配置 \code{[[memory_access]] id="ahb"}，TCL 6666，target=\code{AHB_3}，允许运行中读取。CPU 在启用 MPU 后可能无法直接读某些 RCC/PORT 地址，而 AP3 仍可观察总线侧数据；不要为让 GDB 读寄存器方便而随意扩大 Guest 的设备权限。
+
+现有配置里的外设刷新项 \code{interval_ms=0} 均为手动刷新。要持续看状态，可在 Memory 显示对应状态块并选择 ahb、200 ms，或在 Watch 对可解析地址的标量选择相同通道。运行前先在暂停状态核对地址/宽度。Locals、调用栈和 CPU 寄存器仍按停止状态解释。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{31mm}P{33mm}Y@{}}\toprule
+smoke 地址 & 内容 & 预期解释\\\midrule
+0x1003F000 & magic & 0x42414F47，表示 Guest 已写状态。\\
+0x1003F004 & CPSR & 历史 0x1D3：SVC，IRQ/FIQ 关闭。\\
+0x1003F008 & vMPIDR & 历史 0xC0000000；不能据虚拟 MPIDR 判断物理核编号。\\
+0x1003F00C & CNTFRQ & 25000000。\\
+0x1003F010 / 14 & fault / heartbeat & fault=0，心跳在运行中递增。\\\bottomrule
+\end{tabularx}
+smoke 是启动和 EL1 执行的最小探针，不能用于证明 IRQ、调度器或 FreeRTOS 移植已完成。
+
+\noindent\begin{longtable}{@{}P{30mm}P{43mm}P{88mm}@{}}\toprule
+dual 状态块偏移 & 字段 & 读取含义（每项 32 位）\\\midrule\endhead
+0x00 / 04 / 08 & magic / vm\_id / phase & magic=0x42414F32；vm\_id=0/1；健康运行 phase=4。\\
+0x18 / 1C / 20 & heartbeat / timer / ipc & 心跳、Timer IRQ、IPC IRQ 计数；运行中应随采样变化。\\
+0x24 / 28 / 2C & sent / received / errors & IPC 往返及校验错误；健康测试 errors=0。\\
+0x30 / 34 & uart\_chars / last\_irq & VM0 可发 UART，VM1 不应借此拥有设备；last\_irq 按实际事件变化。\\
+0x38 / 3C / 40 / 44 & fault / fault\_pc / status / addr & Guest 自身异常记录；EL2 截获的非法访问未必进入 Guest handler。\\
+0x48 / 4C / 50 / 54 & command / probe\_started / returned / observed & 故障注入协议；写 command 会驱动 Guest 执行访问，不是普通观测。\\
+0x58 / 5C / 60 & period / hvc\_ret / guard & VM0/1 周期 2500000/5000000；guard=0x600DCAFE+VM\_ID。\\
+0x70 / 74 & unexpected\_irq / notify\_errors & 健康功能测试应为 0。\\\bottomrule
+\end{longtable}
+VM0 的基址为 \code{0x10027000}，VM1 为 \code{0x1002F000}。例如 VM0 timer 位于 \code{0x1002701C}，VM1 timer 位于 \code{0x1002F01C}。25 MHz 下两 VM 定时器周期分别 100/200 ms；IPC 通知使用 HVC \code{0x86000001} 和虚拟 IRQ 40。应同时检查收发计数、校验/通知错误以及对端响应，不能只凭心跳判定 IPC 正常。
+
+串口是独立观测通道。当前 ASI0 配置使用 200 MHz 时钟、115200 baud，历史分频寄存器为 IBRR=108、FBRR=8。COM3 是历史测试端口，换机器应枚举实际串口；TUI 的 GDB Console 本身不是自动接收 UART 的终端。
+
+\Needspace{14\baselineskip}
+\subsection{双 VM 实板功能与隔离测试证据}
+A 下 \path{tha6206-dual-board/verification.json} 记录 passed=true、66 项检查。配套包含功能采样、UART 原始数据、Flash 对照、逐条故障注入和构建产物哈希。当前 dual ELF/BIN/HEX 的 SHA-256 已与该目录的 \code{artifact-sha256.json} 对照一致；这限定了记录对应的产物，不自动证明整个当前工作树已经重新构建。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{40mm}Y@{}}\toprule
+记录中的检查 & 可以据此说明什么\\\midrule
+Flash 比对 & \code{flash-verify.log} 经 AHB\_3 在 0x90400000 对照 Bao BIN，记录 59064 字节 verified。这里是 PFlash0 的总线别名。\\
+健康运行 & 一次采样 VM0/1 Timer=1381/690，IPC=1372/1372；errors、fault、unexpected\_irq、notify\_errors 均为 0。计数为历史快照，不能当作新测试必须相等的常数。\\
+实际双核执行 & 两物理核 PC 分别位于 0x100204D8 / 0x1002849C，CPSR=0x60000153，落在两份 Guest 的运行区间。\\
+UART & VM0 77 字节、VM1 0 字节，原始串口记录可复核；不等于 RX IRQ/DMA 或长期串口压力测试。\\
+七项非法访问 & VM0/1 互读写对方私有区四项，VM1 读 UART 一项，VM0/1 读 Bao RAM 两项；均检查 EL2 异常与对端活动。\\\bottomrule
+\end{tabularx}
+隔离检查不是让调试器自己读受保护地址。测试通过 AHB 写目标 VM 状态块的 command，让 \textbf{Guest 的指令} 发起越权访问，再检查 HSR/HDFAR、probe 是否返回、guard 是否被改及另一核的心跳/Timer。调试 AP 可读内存是调试通路能力，不能据此判定 Guest MPU 隔离失效。
+
+上述非法访问的 HSR.EC 为 \code{0x24}，表示来自较低异常级的数据中止；写访问还检查 WnR。互访 guard 地址为 \code{0x1002F060} / \code{0x10027060}，VM1 非法 UART 地址为 \code{0xD0080010}，Bao RAM 探针为 \code{0x10000000}。HDFAR 应对应发起访问的地址。故障核停留在 EL2 错误循环；另一核仍可运行，但对故障 VM 的 IPC 请求不再得到正常回应。因此这是异常拦截及对端继续执行证据，不是自动恢复或服务可用性的证明。
+
+每项负向测试从健康状态重启，避免前一项异常污染下一项。目录中保留的 \code{pre-reset-fix} 失败记录用于解释屏障修正，不计入最终七项通过结果。smoke 的另组记录在 A 的 \path{tha6206-board-debug/}：2026-09-21 的 TOML 编译/下载、55956 字节 Flash 对照、心跳变化和 67 字节 Bao UART banner，支持最小入口的构建下载链路。
+\src{A：\path{tha6206-dual-board/verification.json}、\path{first-functional.json}、\path{final-functional.json}、\path{final-healthy-start.json}、\path{isolation-*.json}、\path{artifact-sha256.json}（后五项在同一 dual-board 目录）；\path{tha6206-board-debug/} 的 2026-09-21 记录。}
+
+\subsection{后续适配边界与故障定位}
+\noindent\begin{tabularx}{\linewidth}{@{}P{40mm}Y@{}}\toprule
+现象 & 检查顺序\\\midrule
+复位后偶发卡住/串口异常 & 保留 GMU 的旧 \code{_barrier}、清零时机、两核启动次序，再查时钟/LLPP/MPU；不要只重连 GDB 掩盖启动条件。\\
+能停 Bao，不能看 Guest C & Guest ELF 是否额外加载、对应 VM 是否正确、.text 是否用 RAM 运行地址、WSL/source\_map 是否匹配。\\
+dual 只有一个核标签 & 检查是否仍使用原始 \code{debug-dual.toml}；固件有两 VM 不会自动创建 cores 配置。\\
+RCC/PORT 读失败或值不更新 & CPU 当前 MPU 权限、ahb 通道、刷新间隔；不要把手动刷新 0 ms 当作实时轮询。\\
+互访异常却 Guest fault=0 & 检查是否由 EL2 先截获；联合 HSR/HDFAR、EL2 PC 和未返回的 probe 判断。\\
+对端不动 & TUI 是否联停、是否正在单步等待 IPC、对端是否故障；区分调试暂停与固件死锁。\\\bottomrule
+\end{tabularx}
+本地移植已能支持上述 smoke 与双 VM 功能记录，但仍有明确边界：平台时钟初始化的返回值未完整向上报告；部分等待循环缺少健壮的超时处理；GIC maintenance IRQ 25 在平台描述中仍带待确认项。应继续验证冷启动/POR、异常恢复、全部内存权限、长时间压力与实际外设组合。
+
+移植 FreeRTOS Guest 时还要验证 EL1 上下文切换、tick 中断、临界区/中断屏蔽、任务栈、设备 IRQ 路由和共享资源策略。当前两个最小 Guest 的 Timer/IPC 通过，不等于 FreeRTOS 调度器、SMP Guest、DMA 隔离或生产安全认证已完成。B 的 \path{docs/tha6206-bao-porting.tex} 可作底层移植细节参考，但其中较早的未验证项需要结合 2026-09-21 新记录判断，不能用旧快照否定后来的实板证据。
+\src{B：\path{src/arch/armv8/cpu.c}、\path{src/arch/armv8/aarch32/boot.S}、\path{src/platform/tha6xxx/platform.c}、\path{src/platform/tha6xxx/tha6xxx_desc.c}、\path{configs/tha6206-dual/guest.c}；T：\path{src/config.rs}、\path{src/session.rs}、\path{src/coordinator.rs}。}
+
+
 \newsection{项目与环境配置参考}\label{sec:config}
 \subsection{覆盖、路径和保存规则}
 配置优先级为：默认值 → tools 环境 → 项目字段 → CLI。表按字段合并，数组整体替换；项目中写空数组会清空相应环境数组。环境当前允许 \code{gdb}、\code{target}、\code{service}、\code{actions}、\code{session}、\code{sync}、\code{memory_access}、\code{multicore}，不接受 \code{program}、\code{cores}、\code{live_watch} 等工程表。大部分结构启用 deny\_unknown\_fields，字段拼错会报错。
@@ -1091,7 +1476,7 @@ Coordinator 将用户 id 与内部逐核 id 分离。一个 Batch 顺序等待�
 第\ref{sec:cti}节已说明 CTI/CTM 的硬件路径；这里对应的是其在工作区生命周期中的配置入口。
 \code{sync.open} 在共享 Server 就绪后、GDB 连接前执行，method=tcl 或兼容的 cti 都只发送明确配置的 TCL 字符串。TUI 不识别 CTI 拓扑、不配置 AP、不承诺硬件联停；CTI base、通道、核关联和 MEM-AP 路由均属板级脚本。多个通道可用不同端口，CPU target 名称也不等于固定 AP 编号。
 
-历史 TESTING.md 包含 THA6206 双 Cortex-R52 的实板说明；本地现有 artifacts 未找到其中列出的原始 THA6206 目录。本手册据此记录“仓库声称曾验证”，不把它提升为本次复核的硬件结论。较早“无多核板卡”的文字是历史范围，不能覆盖后续版本说明。
+本次已定位并复核 THA6206 双 Cortex-R52 的 2026-09-20 原始 result/events 记录，覆盖组控制、共享复位、运行中 Watch 和多核断点，见第\ref{sec:tha6206}节。Bao 双 VM 的另一组证据见第\ref{sec:bao-tha6206}节；它不能替代 Bao 双 GDB TUI 组合的实板验收。较早“无多核板卡”或“缺原始目录”的描述属于当时的资料范围。
 \src{\path{src/coordinator.rs}；\path{src/coordinator/control.rs}；\path{src/coordinator/breakpoints.rs}；\path{src/ui/breakpoints/cores.rs}；\path{tools/examples/multicore-access.md}。}
 
 \newsection{Headless JSONL 自动化接口}\label{sec:jsonl}
@@ -1317,7 +1702,7 @@ Rust 单元/集成 & 各模块内联 tests、tests/project\_tasks.rs；解析、
 \end{tabularx}
 
 \subsection{源码测试与历史证据复核}
-初版编写时从当前源码执行 \code{cargo test --locked -- --test-threads=1}：137 个单元测试、1 个 CLI 集成测试通过，0 失败。本次扩充协议、CoreSight 与故障案例只修改文档，没有改动产品源码或重复计数测试；未重新运行硬件、下载、Clippy 或发布流程。下面记录来自已有本地文件，不能与源码测试数量合并。J-Link 长会话故障及其独立证据目录详见第\ref{sec:jlink-duration}节。
+初版编写时从当时源码执行 \code{cargo test --locked -- --test-threads=1}：137 个单元测试、1 个 CLI 集成测试通过，0 失败。本次补充 THA6206/Bao 只修改文档，完成示例配置离线加载、Guest ELF 符号/源码解析与产物哈希核对；未重跑 Rust 测试、实板、下载、Clippy 或发布流程。历史实板记录不能与本次离线检查或初版源码测试数量合并。THA6206/Bao 见第\ref{sec:tha6206}、\ref{sec:bao-tha6206}节，J-Link 长会话故障见第\ref{sec:jlink-duration}节。
 
 \begin{longtable}{@{}P{40mm}P{71mm}P{50mm}@{}}\toprule
 本地证据（artifacts 下） & 历史结果 & 本次核对方式\\\midrule\endhead
@@ -1361,7 +1746,7 @@ SVD 是否实现 & 已实现解析和 Peripherals，README 部分旧段落“尚
 tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动寻找 tools”只适合旧版本描述。\\
 单核 Server 日志 & Session 将全部 stderr 标为 server-error；Coordinator 的新分帧器区分普通 stderr/真正错误。不能仅凭单核通道名断言发生错误。\\
 下载栏空值 & tasks.download 空仍可能回退 actions.download；应查看确认框/实际动作。\\
-多核硬件范围 & 较早无实板与后续 THA6206 说明属于不同时间；本地缺原始目录的记录仅作为文档级证据。\\\bottomrule
+多核硬件范围 & 现已复核 THA6206 多核原始记录及 Bao 双 VM 记录；保留历史证据、本次离线检查与待验证配置的区别，见第\ref{sec:tha6206}、\ref{sec:bao-tha6206}节。\\\bottomrule
 \end{tabularx}
 
 \subsection{实现资源和可观测性限制}
