@@ -876,7 +876,7 @@ unicode = true
 "watch:xTickCount" = "hex"
 \end{lstlisting}
 \end{minipage}\par
-源码映射先作边界匹配，再尝试原路径、source\_root 和 ELF 所在目录。映射修复的是文件定位，不能修复 ELF 与烧录镜像不一致。
+源码映射用于文件定位，不能修复 ELF 与烧录镜像不一致；流水线产物的配置、操作和排查步骤见附录\ref{sec:ci-source}。
 \src{\path{src/config.rs}: Project::from\_document/validate、各 Default；\path{src/cli.rs}: document；\path{src/launch.rs}: Document::save；\path{src/coordinator.rs}: derive\_project。}
 
 \newsection{实现架构、模块与并发关系}\label{sec:architecture}
@@ -1516,5 +1516,132 @@ xelatex -interaction=nonstopmode -halt-on-error usermanual.tex
 \end{minipage}\par
 三轮编译稳定目录、页码和交叉引用。随附脚本在 docs 下创建独立临时目录，成功后仅复制 PDF 并清理该次中间文件；失败时保留临时日志以便定位。需要图形化质量检查时，将最终 PDF 全页渲染为 PNG，检查裁切、遮挡、缺字、表格续页、箭头与标注，然后删除本次临时渲染产物。
 
-本文中的实板日志不因 PDF 编译而重新生成；复现硬件行为必须另行准备相同芯片、探针、工具、固件和 profile。测试和视觉检查结论记录在 \code{docs/usermanual-validation.md}，便于日后区分“源代码基线”“历史硬件证据”和“文档构建结果”。
+本文中的实板日志不因 PDF 编译而重新生成；复现硬件行为必须另行准备相同芯片、探针、工具、固件和 profile。文档构建结果不替代源码测试和实板验证。
+
+\clearpage
+\newsection{流水线产物的本地源码映射}\label{sec:ci-source}
+\subsection{适用场景与现有能力}
+本地提交代码后，流水线编译测试失败；下载该次构建的 HEX 和 ELF，在本地调试时却因 ELF 中的绝对源码路径指向构建机而无法打开 C 文件。DebugTUI 0.8.3 已支持通过工程 TOML 中的 \code{[[source_map]]} 解决此问题，无需修改 DebugTUI 源码或为了改路径重新编译 ELF。
+
+配置同时用于源码窗口查找和 GDB 的 \code{set substitute-path}，并由各核继承。映射只改变文件查找位置，不修改 ELF、HEX、指令地址或目标内存。当前需要手动编辑配置，没有自动导入流水线产物、自动选择 Git 提交或专门的映射编辑表单。配置步骤与示例统一在本附录维护。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{45mm}Y@{}}\toprule
+配置项 & 含义与相对路径基准\\\midrule
+\code{program.elf} & GDB 加载的 ELF；相对工程 TOML 所在目录。\\
+\code{program.source_root} & 本地源码查找基础目录、Build/Download 工作目录；相对 TOML。不能代替旧绝对路径映射。\\
+\code{source_map.from} & ELF 中实际记录的旧目录前缀；保留旧路径，不转为本地目录。\\
+\code{source_map.to} & 对应的本地源码目录；相对 TOML，而非 source\_root。\\
+\code{live_watch.elf} & 已配置旧式 Live Watch 时使用的符号文件；应同步指向该次流水线 ELF。\\\bottomrule
+\end{tabularx}
+
+\subsection{步骤一：准备同次构建的镜像、符号和源码}
+\begin{enumerate}
+\item 下载失败构建的 HEX 和包含调试信息的配套 ELF；HEX 不提供 C 行号和类型信息，被剥离的调试信息也不能靠路径映射恢复。
+\item 记录流水线实际编译的 Git SHA，包括可能的合并测试提交。准备相同的子模块、依赖、生成源码、编译器版本和构建配置；同一提交不保证未归档生成代码相同。
+\item 在独立 checkout/worktree 中准备对应源码，保留正在修改的工作区；先复现原构建，不先点击 Build 覆盖下载产物。
+\end{enumerate}
+以下命令在固件 Git 仓库执行，替换实际提交号；不在 DebugTUI 仓库执行。worktree 不自动复制当前目录的未跟踪工具、配置和生成文件，需要另行准备。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+$ciCommit = "REPLACE_WITH_CI_COMMIT_SHA"
+git worktree add --detach ../THA6206-ci-debug $ciCommit
+\end{lstlisting}
+\end{minipage}\par
+
+\subsection{步骤二：查出 ELF 中的旧路径}
+在已有会话的 Console 输入原始 GDB 命令 \code{info sources}，查看记录的源码路径；\code{info source} 显示当前源码及编译目录，没有当前源码上下文时可能无结果。也可在固件工程根目录离线读取，不连接板卡：
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+& ".\.vscode\gdb\arm-none-eabi-gdb.exe" -q -nx -batch `
+  -ex "info sources" ".\ci-artifacts\THA6206_Demo_Prj.elf"
+\end{lstlisting}
+\end{minipage}\par
+相对文件名需结合编译目录判断；必要时检查 DWARF 的 \code{DW_AT_comp_dir}、\code{DW_AT_name} 和行号表。不要把 ELF 在本地的存放目录当作旧源码根。
+
+例如旧源码根为 \path{/builds/team/THA6XXX_MC_AS440}，本地根为 \path{D:/LiBo/Files/DATA/FreeRTOS/vscodegdb/THA6XXX_MC_AS440}；两边后续均为 \path{DemoWorkspace/CodeProject/.../Demo_App.c}，则替换根目录即可，保留其下目录结构。本附录中的流水线路径都是示例，不代表已经拿到某次失败构建。
+
+\subsection{步骤三：修改工程 TOML}
+将可用的 \code{debug-core0.toml}、\code{debug-core1.toml} 或 \code{debug-multi.toml} 复制为同目录的 \code{debug-ci.toml}，保留 GDB、服务、端口、SVD、多核等设置。下面是合并片段，不是完整板级配置；已有表应修改原表，不能重复声明。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[program]
+elf = "./ci-artifacts/THA6206_Demo_Prj.elf"
+source_root = "."
+# Keep the existing svd field here, if configured.
+
+[[source_map]]
+from = "/builds/team/THA6XXX_MC_AS440"
+to = "."
+\end{lstlisting}
+\end{minipage}\par
+本例 TOML 位于本地源码根。\code{to = "."} 相对 TOML 解析，与终端启动目录无关；若 TOML 位于 \code{debug/} 子目录，源码根在上一层，则可用 \code{to = ".."}，并分别调整 ELF 与 source\_root。Windows 构建机可填写 \code{from = "C:/agent/_work/42/s/firmware"}。采用实际路径拼写和大小写，推荐正斜杠。
+
+已启用旧式 Live Watch 时，将原有 \code{[live_watch]} 表的 \code{elf} 同步改为 \path{./ci-artifacts/THA6206_Demo_Prj.elf}；保留 bus\_target、tcl\_endpoint、采样间隔等其他字段。仅更改 Program/ELF 不会自动更新这个独立字段。
+
+多个源码根可配置多条规则，嵌套前缀的具体规则放在前面：
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[[source_map]]
+from = "/builds/team/firmware/generated"
+to = "./ci-artifacts/generated"
+
+[[source_map]]
+from = "/builds/team/firmware"
+to = "."
+
+[[source_map]]
+from = "/opt/vendor/sdk"
+to = "../vendor-sdk"
+\end{lstlisting}
+\end{minipage}\par
+匹配按目录前缀与边界进行，不支持任意子串替换、通配符或按同名文件递归猜测。GDB 使用第一个匹配规则；DebugTUI 还检查结果文件是否存在，缺失时可能继续其他查找。应保证目标文件存在，不用重叠规则掩盖缺失文件，以免两层查找指向不同源码。
+
+\subsection{步骤四：烧录配套 HEX，重新启动并验收}
+\textbf{修改 program.elf 不会自动改写外部下载脚本的 HEX 路径。}当前 THA6206 工程的 \path{.vscode/Load.bat} 固定使用 \path{DemoWorkspace/CodeProject/Debug/<chip>_Demo_Prj.hex}。流水线镜像若存入 ci-artifacts，应先让脚本明确接受并使用该文件，或按项目既定流程烧录该文件。此调整属于固件工程配置，不是 DebugTUI 源码修改。
+
+保存 TOML 后，结束旧会话并重新启动，确保从磁盘重新读取配置；旧会话内 Reconnect 不保证重读外部修改。烧录时按项目流程释放调试器对探针的占用。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+# From the firmware checkout:
+debugtui --project ./debug-ci.toml
+
+# In the paused session's GDB Console:
+show substitute-path
+info source
+list DemoApp_MainCore1
+\end{lstlisting}
+\end{minipage}\par
+示例函数需替换为 ELF 中实际存在并有调试信息的函数。在 Source 中设置断点，运行命中后核对文件、函数、行号和栈，再单步。多核逐核检查规则和源码。Console 临时设置 substitute-path 只改变当前核 GDB，不替代 TOML 中供界面与各核共用的持久映射。
+
+\Needspace{25\baselineskip}
+\subsection{故障排查与验收边界}
+\begin{longtable}{@{}P{43mm}P{118mm}@{}}\toprule
+现象 & 检查与处理\\\midrule\endhead
+Source not found & 从当前帧或 info sources 获取实际旧路径；核对前缀、后缀和目标文件存在性，重启加载配置。\\
+GDB 能 list，窗口找不到 & 检查是否只在 Console 临时设置；改为共享 source\_map，并核对重叠规则。\\
+文件打开但行号不符 & 核对提交、生成代码、依赖、ELF 与烧录镜像。映射不会验证源码内容。\\
+某一核仍报旧路径 & 检查是否仅设置了当前核 GDB，以及是否启动了正确多核配置；逐核查看规则。\\
+Watch 地址或值异常 & 检查 live\_watch.elf 与 program.elf；另查内存通道、缓存一致性。\\
+没有 C 行号或符号 & 获取含调试信息的配套 ELF；分离调试信息时取得所需文件。映射无法补回已剥离的信息。\\
+跳行、变量 optimized out & 可能是原构建优化行为；调试友好重编译版本是另一份产物，不能代替原故障复现。\\
+SDK/生成文件缺失 & 取得同版本文件并映射其独立根目录；同名不代表相同源码。\\\bottomrule
+\end{longtable}
+验收至少包括正确的烧录文件和 ELF、正确的映射、对应源码与行号、断点命中和单步；多核分别检查。仅成功打开一个同名 C 文件不能证明三者匹配。本次文档修订未获取新的失败构建，也未连接板卡进行该场景实测。
+
+\subsection{流水线长期规范与参考}
+每次归档 HEX、ELF、Git SHA、编译器版本、配置、子模块/依赖版本、实际源码根和不在 Git 中的生成代码。固定 checkout 根目录或记录旧根目录，均可降低映射维护成本。GCC 可在编译阶段对相关源文件一致使用以下参数，旧根目录由流水线展开：
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+-fdebug-prefix-map=<CI_SOURCE_ROOT>=/debug-src/firmware
+
+# Local debug-ci.toml:
+[[source_map]]
+from = "/debug-src/firmware"
+to = "."
+\end{lstlisting}
+\end{minipage}\par
+THA6206 当前使用 GHS，不能直接套用 GCC 参数；编译时路径重写需查对应 GHS 版本文档。现有 source\_map 不依赖 GHS 提供同名参数，也不要求修改流水线 ELF。
+
+参考：\href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/Source-Path.html}{GDB Source Path}（前缀替换、目录边界和规则顺序）；\href{https://gcc.gnu.org/onlinedocs/gcc/Debugging-Options.html}{GCC Debugging Options}（调试信息目录重写）。
+\src{\path{src/config.rs}：Project::from\_document / source\_path；\path{src/session.rs}：加载 ELF 后设置 substitute-path；\path{src/coordinator.rs}：derive\_project；\path{src/ui/source_tabs.rs}：read\_source。}
 \end{document}
