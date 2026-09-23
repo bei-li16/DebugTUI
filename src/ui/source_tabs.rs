@@ -73,6 +73,7 @@ impl App {
         self.source_file.clear();
         self.source_line = 0;
         self.source_top = 0;
+        self.source_text.reset(0);
     }
 
     pub(super) fn load_source(&mut self, file: &str) {
@@ -138,6 +139,7 @@ impl App {
             // Cache metadata only for inactive tabs; source text is bounded to one file.
             self.source = self.read_source(&document.file);
             self.source_comments = highlight::comment_starts(&self.source);
+            self.source_text.reset(document.line);
         }
         self.source_file = document.file.clone();
         self.source_line = document.line.min(self.source.len().saturating_sub(1));
@@ -382,7 +384,7 @@ fn label(documents: &[SourceDocument], index: usize) -> String {
     }
 }
 
-fn fit(text: &str, width: usize) -> String {
+pub(super) fn fit(text: &str, width: usize) -> String {
     use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
     if text.width() <= width {
         return text.into();

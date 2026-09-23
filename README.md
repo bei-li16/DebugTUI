@@ -1,8 +1,25 @@
 # DebugTUI
 
-基于 GDB/MI 的原生终端调试工作台。当前版本 0.8.3，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
+基于 GDB/MI 的原生终端调试工作台。当前版本 0.8.6，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
 
 GitHub：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。源码使用 Apache-2.0；依赖声明见 NOTICE。
+
+## 文件和符号搜索
+
+- Symbols、Files 和 Watch 输入区使用可见边框及独立背景；聚焦时边框和底色高亮。常规窗口显示完整输入框，小终端自动使用单行边界；Watch 的 **+ Add** 保持独立按钮。Watch 输入框用于添加监视表达式，不是文件或符号筛选。
+- **Files** 页面顶部增加 **Find** 输入框：点击或在该页面按 **Ctrl+F** / `/` 输入。匹配不区分大小写，优先包含匹配，其次按字符顺序模糊匹配；`spi` 可找到 `Spi.c`、`Spi_Irq.c`、`espi_hal.c`、`espi_std.c`，也可输入路径片段。↑/↓、PageUp/PageDown 选择，Enter 或点击结果打开到 Source；Ctrl+U 清空，Esc 结束输入并保留筛选。
+- 主界面顶部增加 **Symbols** 搜索框，点击、按 **Ctrl+K** 或输入 `:symbols` 打开。检索已加载 ELF 中的函数、全局/静态变量和类型，显示类别、名称、文件和行号。Enter 或点击结果跳转到 Source 对应行，沿用 `Source root` / `[[source_map]]`，不会改变当前栈帧、PC 或断点。
+- 符号查询在 READY / STOPPED 时进行，输入停顿 200 ms 后查询，一次最多 200 项/类别；达到上限时提示继续缩小查询。运行中可使用已经返回的结果；新的查询需暂停，不会自动暂停或恢复目标。F4 重试，Ctrl+U 清空，Esc 关闭；切核、重连或更换 ELF 时丢弃过期结果。
+- Files 的范围是 GDB 提供的 ELF 源文件列表；Symbols 使用 [GDB/MI 符号查询](https://www.sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI-Symbol-Query.html)，不依赖源码文本猜测定义。未编入 ELF 的文件、预处理宏和普通函数局部变量不属于这个全局索引；缺少调试信息、文件或行号时明确提示，不跳到猜测的位置。旧版/厂商 GDB 不支持某一类别时保留其他类别的结果并提示。
+
+## Source 选择、复制与加入 Watch
+
+- 在代码区拖动选择文本，双击选择变量名；支持跨行选择、Shift+方向键扩选、Home / End、Ctrl+Home / End 和 Ctrl+A 全选。长行可用左右键横向移动，行号栏保持固定。
+- 点击顶部 **Copy**、右键菜单的 **Copy**，或在 Source 聚焦且存在选区时按 **Ctrl+C**，复制原始代码（保留 Tab 和中文，不含行号、断点符号或右侧面板）。**Esc** 清除选区。没有 Source 选区时 Ctrl+C 仍暂停调试；**F6** 始终暂停。
+- 选中变量或单行表达式后，点击 **Add to Watch**、右键选择同名操作，或按 **Ctrl+Enter**，加入**当前核心、当前栈帧**的 Watch。多核之间不会自动复制观察项；切换核心、停止位置或源码文件时清除旧选区。运行中添加的表达式在下次暂停时求值，已有 Live refresh 规则不变。表达式由 GDB 按现有 Watch 规则处理，选择文本本身不会求值。
+- 行号/断点栏点击及 **F9** 仍设置当前核心的断点；代码区点击和拖动只选择文本。Source 保持只读，编辑源码及 Build / Download 自动流程不在本阶段。
+
+Windows 使用系统 Unicode 剪贴板，无需 VS Code、PowerShell 模块、Python 或其他常驻进程；可在 PowerShell / Windows Terminal 中独立运行。若终端截获 Ctrl+Enter 或鼠标事件，请用按钮、右键菜单或键盘选择；终端自己的 Shift+鼠标选择与 TUI 选区相互独立。macOS 使用 `pbcopy`，Linux 可使用 `wl-copy` / `xclip`；缺少剪贴板工具时显示错误，Add to Watch 仍可用。
 
 ## 断点管理
 
@@ -10,7 +27,7 @@ GitHub：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。源码使�
 - **+ Code**（Insert / n）添加 `file:line`、函数或 `*address` 断点，可选择硬件断点和命中后删除的临时断点。
 - **+ Data**（d）添加变量或指针表达式，例如 `xTickCount`、`*(uint32_t *)0x20000000`，可选择 **Write / Read / Read/write**。Write 使用 GDB 的值变化语义；读、读写需要目标支持硬件 watchpoint。数量、宽度、对齐限制由 GDB/调试服务器决定，失败时显示其错误。
 - **Edit**（e / 右键）设置启用状态、条件和忽略次数；忽略 N 次表示跳过接下来的 N 次命中。行下方显示当前核 GDB 的实际命中总数与剩余忽略次数。**Enable all / Disable all** 处理当前核列表，并包含列表中多核断点关联的其他核。
-- 点击源码或 **+ Code** 默认只在当前核创建。选中已有代码断点后，点击 **Cores** 或按 **c**，勾选目标核心，**Ctrl+Enter / Apply** 应用；**a** 全选，**s** 只保留当前核。多核断点显示 `[N cores]`，底部列出核心名称。启停、条件/忽略次数修改和删除会应用到该断点关联的所有核；回到单核会移除其他核上的关联副本。当前核必须保留，可先切核再更改所属范围。
+- 点击源码行号栏或 **+ Code** 默认只在当前核创建。选中已有代码断点后，点击 **Cores** 或按 **c**，勾选目标核心，**Ctrl+Enter / Apply** 应用；**a** 全选，**s** 只保留当前核。多核断点显示 `[N cores]`，底部列出核心名称。启停、条件/忽略次数修改和删除会应用到该断点关联的所有核；回到单核会移除其他核上的关联副本。当前核必须保留，可先切核再更改所属范围。
 - 核心选择支持持久代码/硬件断点；临时断点和数据观察点仍按核管理。操作前受影响核心都必须连接并暂停；不会为了修改断点隐式暂停目标。跨核失败会尝试回滚此前的修改，回滚失败同样明确报告。相同位置的独立断点不会自动合并。
 - 断点修改立即保存至工程；禁用状态、数据类型、条件与剩余忽略次数跨重连及进程重启恢复。临时断点不持久化。恢复失败的记录标为 `[!]`，仍保留，可重试启用或明确删除。
 - 编辑器支持鼠标、Tab / ↑ ↓、Ctrl+U 清空、Ctrl+Enter 应用、Esc 取消。修改断点前先暂停目标；窄终端仍可用快捷键打开编辑器。
@@ -182,22 +199,29 @@ npm install -g --prefer-online "https://github.com/bei-li16/DebugTUI/releases/la
 debugtui
 ~~~
 
-无需记忆启动参数。在页面中选择工程目录或 debug.toml，选择 tools 目录或环境 TOML、GDB、ELF/本机程序、源码目录，并设置目标模式、地址、服务启动、超时和退出策略。
+无需记忆启动参数。在页面中选择工程目录或 debug.toml、工具环境 TOML、ELF/本机程序和源码目录，配置构建/下载命令及退出策略。GDB、目标连接、服务启动和工具超时在所引用的 debug-env.toml 中维护；Setup 只编辑工程配置。
 
 | 配置页操作 | 按键 |
 |---|---|
 | 选择字段 | 鼠标点击 / Tab / Shift+Tab / ↑ ↓ |
 | 编辑路径或参数 | Enter；Ctrl+U 清空；Enter 应用，Esc 取消 |
 | 浏览文件/目录 | F2；Enter 进入目录或选择文件；Space 选择当前目录；Backspace 返回上层 |
+| 选择已有工程 TOML | 顶部 Projects / F3；选择后立即刷新配置页各字段。Project 的 F2 浏览保留，文件列表只显示目录和 TOML |
+| 套用示例配置 | 顶部 Examples / F4；预览后按 Enter 或点击套用，再修改路径和连接参数 |
 | 切换枚举/开关 | ← → / Enter |
 | 保存配置 | 顶部 Save / Ctrl+S |
 | 开始调试 | 顶部 Start debugging 默认选中，Enter 即可启动；也支持鼠标、Ctrl+R、Ctrl+Enter、F5。默认保存到工程的 debug.toml，可关闭 Save to project 仅连接一次 |
 | 从调试页面返回配置 | 主界面 Project 栏的 ← Setup / F2 / :setup |
 | 回到原调试页面 | 配置页顶部 ← Workspace / Esc；编辑字段或浏览文件时 Esc 先取消当前操作 |
+| 退出应用 | 配置页顶部 Exit / Ctrl+Q；配置未完成、编辑值无效或正在浏览时也可退出，不保存草稿 |
 
 无参数启动始终先显示配置页，即使当前目录已有 debug.toml；不会直接占用探针。选择工程后优先读取其配置；没有显式 tools/GDB 配置时，会发现该工程内的 tools/debug-env.toml。保存路径尽量相对于工程，保留构建、源码映射、监视与断点等原有配置，不展开并复制整份 tools 配置。
 
-配置页顶部固定显示启动、保存和返回工作区按钮，不随字段滚动。打开配置页时当前调试会话仍然有效；返回工作区会保留未保存的配置草稿。点击 Start debugging 时先校验并应用正在编辑的字段，再清理原会话、启动新配置；旧会话清理失败会在界面报错并停止切换。连接失败可以通过 ← Setup 修正配置并重试。Exit / Ctrl+Q 仍用于退出整个应用。
+Project 默认显示 `./debug.toml`，相对路径的输入和显示均以启动 DebugTUI 的目录为基准；ELF、Source root、SVD 等资源路径仍以所选工程 TOML 的目录为基准。跨盘无法表达相对路径时保留绝对路径。没有默认文件但发现其他工程 TOML 时，先显示选择列表；没有工程 TOML 时保留未保存的默认草稿。Projects 排除 Cargo 等无关配置及 debug-env 工具配置；其他文件仍可通过 F2 手动浏览。
+
+Examples 提供单核、本机程序和双核工程模板；工程存在 `debug-env.toml`、`.vscode/debug-env.toml` 或 `tools/debug-env.toml` 时，还可选择引用已有工具配置。模板只填入 ELF、源码目录、日志、退出策略及可选核心映射，不再生成 GDB、target、service 或工具超时配置。应用模板会替换工程草稿，但保留已选择的工具 profile 和旧工程内嵌的 gdb/target/service/timeout 覆盖项；选择另一个 profile 示例时更新引用。请核对工程路径，并通过 Tools / profile 选择适用的工具环境；本机程序需要环境配置 `target.mode='local'`。示例不会自动烧录、复位、启动工具或写文件；只有显式保存，或在 Save to project = Yes 时启动，才写入 Project。双核示例的逐核地址在 `[[cores]]` 中编辑，板级复位动作由实际环境提供。
+
+配置页顶部固定显示 Start、Save、Projects、Examples、Workspace 和 Exit 按钮，不随字段滚动，窄终端会换行。字段下方说明包含用途、路径基准、示例、是否可留空及相关限制。打开配置页时当前调试会话仍然有效；返回工作区会保留未保存的配置草稿。点击 Start debugging 时先校验并应用正在编辑的字段，再清理原会话、启动新配置；旧会话清理失败会在界面报错并停止切换。连接失败可以通过 ← Setup 修正配置并重试。Exit / Ctrl+Q 通过原有退出流程关闭会话和自有服务。
 
 原有参数仍可使用：配置完整时直接准备调试环境；参数不足时进入已填好参数的配置页。添加 --setup 可强制先查看配置。--project 同时接受工程目录和配置文件。
 
@@ -236,7 +260,7 @@ debugtui --environment ./tools/debug-env.toml --connect localhost:3333 --elf ./b
 
 --connect 只禁用配置中的服务启动，保留该环境声明的 GDB 参数和连接动作。完全通用的连接不要加载芯片配置，只传 --gdb 和 --connect。未指定 --gdb 或环境时，从继承的 PATH 查找 gdb；不会自动搜索包内 tools。
 
---target-mode 支持 remote、extended-remote、local。--gdb-arg 可以重复使用。符号文件可省略；缺少符号时，源码和变量功能受 GDB 提供的信息限制。未配置连接目标时，在配置页选择环境，或使用 F2 / :setup 补齐参数。GDB 参数数组使用 JSON 格式；环境变量、Server 参数和特殊动作等高级配置继续放在环境 TOML 中。
+--target-mode 支持 remote、extended-remote、local。--gdb-arg 可以重复使用。符号文件可省略；缺少符号时，源码和变量功能受 GDB 提供的信息限制。未配置连接目标时，在配置页的 Tools / profile 选择环境；GDB 参数、连接方式、端口、服务和工具超时在 debug-env.toml 中编辑。GDB 参数使用 TOML 字符串数组；工程专用启动动作继续放在工程 TOML 中。
 
 ~~~powershell
 debugtui --demo
@@ -245,12 +269,12 @@ debugtui --snapshot ./preview.txt
 
 ## 环境与项目分层
 
-TUI 只处理通用的 GDB/MI 请求、事件、界面和进程生命周期。可选环境文件描述如何准备 GDB；芯片、探针、下载和复位策略全部位于 tools。
+`debug.toml` 描述当前工程调试哪个程序、如何构建/下载，以及该工程的调试偏好；`debug-env.toml` 描述使用哪些调试工具、如何启动它们和建立连接。按字段的实际职责分层，便于多个工程复用同一套 GDB / OpenOCD 配置。
 
 | 配置 | 职责 |
 |---|---|
-| 项目 debug.toml | 程序/源码路径、监视、断点、环境引用、构建命令 |
-| tools/debug-env.toml | GDB 路径/参数、服务启动、连接、芯片相关动作 |
+| 项目 debug.toml | ELF、源码根目录/映射、SVD、构建/固件下载命令、Watch/断点、使用哪些核心、组控制策略、退出策略、日志目录、UI 偏好、环境引用 |
+| tools/debug-env.toml | GDB/OpenOCD 路径、启动参数、工作目录/环境变量、服务就绪条件、连接方式/端口、工具通信超时、通用探针/芯片初始化命令 |
 | tools/examples/ | 外部 OpenOCD、RISC-V 环境模板；需按实际工具链配置 |
 
 项目配置示例：
@@ -266,11 +290,54 @@ profile = "./tools/debug-env.toml"
 [program]
 elf = "./build/app.elf"
 source_root = "."
+
+[session]
+on_exit = "detach"
+log_dir = "./debug_log"
 ~~~
 
 也可以完全不用 tools，使用 debug.toml.example 的独立 GDB 配置。
 
-环境中允许 gdb、target、service、actions、session 五个表。先加载环境，项目配置按字段覆盖环境，最后应用 CLI 参数；数组整体替换，空数组可以清除环境动作。相对可执行路径（含 / 或 \）和 cwd 相对定义它们的 TOML 文件，裸命令名通过 PATH 查找。环境文件中的 ${profile_dir} 展开为该环境文件所在目录，可用于资源路径参数。
+原 Setup 中的七项配置按职责归属如下；前六项已从页面移除，On exit 保留：
+
+| 配置项 | 配置键 | 归属文件 |
+| --- | --- | --- |
+| GDB executable | `[gdb].executable` | debug-env.toml |
+| GDB arguments | `[gdb].args` | debug-env.toml |
+| Target mode | `[target].mode` | debug-env.toml |
+| Endpoint | `[target].endpoint` | debug-env.toml |
+| Start service | `[service].enabled` | debug-env.toml；同处配置 command/args 等 |
+| Timeout (ms) | `[session].timeout_ms` | debug-env.toml；这是 GDB 命令超时 |
+| On exit | `[session].on_exit` | debug.toml；这是当前工程退出后的运行策略 |
+
+现有格式把 GDB 命令超时命名为 `[session].timeout_ms`，仍按工具通信参数归属环境文件；不要自行改成当前解析器不支持的 `[gdb].timeout_ms`。它与 `[service].timeout_ms` 的服务启动超时各自独立。多核项目的 `[[cores]].endpoint` 用于把所选核心对应到工具开放的 GDB 端口，保留在工程配置中。
+
+命令数组也按内容区分：通用 OpenOCD/探针初始化或芯片复位可放环境文件；包含工程入口、链接符号、启动同步变量或固件路径的动作放项目文件。例如 Bao 的 `_barrier` 清零、停在 `init`，以及 MCAL 的 `_main` 启动断点属于相应工程；构建和烧录哪个 ELF/HEX 的命令同样属于工程。
+
+兼容性：环境解析器仍接受 `gdb`、`target`、`service`、`actions`、`session`、`sync`、`memory_access`、`multicore` 配置节，旧环境中的退出策略仍可继承。加载顺序为环境 → 项目字段覆盖 → CLI 参数；数组整体替换，空数组可以清除继承动作。相对可执行路径（含 / 或 \）和 cwd 相对定义它们的 TOML 文件，裸命令名通过 PATH 查找。环境文件中的 `${profile_dir}` 展开为该环境文件所在目录，可用于资源路径参数。
+
+**Setup 只编辑工程配置**：页面保留 Project、Tools / profile、Program / ELF、Source root、Build command、Download command、On exit、Log directory、SVD file 和 Save to project。Tools / profile 只修改工程的环境引用，不编辑工具文件。顶部提示当前单核或配置的核心名称；逐核 endpoint、init、after_connect、run、startup_order、Watch/断点及 multicore 策略仍在工程 TOML 中维护。
+
+保存时仅修改工程草稿中的对应字段，不把合并后的工具默认值展开写入工程，也不改写共享 profile。兼容无 `[[cores]]` 的普通单核、仅列出 core0/core1 的单核，以及多核配置。旧工程内嵌的 gdb/target/service/timeout 等覆盖项继续有效且原样保留其值；要完成文件分层，应手动迁移到 debug-env.toml，再删除工程对应的覆盖键。Setup 不自动迁移，以免改变既有连接行为。调试会话在后台保存的逐核 Watch/断点也会合并保留。
+
+`On exit` 对应工程文件中的 `[session].on_exit`，默认值为 `detach`：
+
+~~~toml
+[session]
+on_exit = "resume"  # detach / resume / disconnect
+~~~
+
+| 值 | DebugTUI 的实际退出动作 |
+| --- | --- |
+| `detach`（默认） | 向 GDB 发送 `-target-detach`，然后退出 GDB；不额外发送 continue。目标是否自动恢复取决于调试后端的 detach 语义。 |
+| `resume` | 远程调试先发送 `-exec-continue`，再 `-target-disconnect` 并退出 GDB；本机调试使用暂停状态下的 `-target-detach`，由本机 GDB 的 detach 恢复程序。 |
+| `disconnect` | 发送 `-target-disconnect`，然后退出 GDB；DebugTUI 不主动恢复目标。 |
+
+已有运行中的目标在清理前会先尝试暂停；进入 STOPPED 后删除本次调试断点并执行 `[actions].before_disconnect`，随后执行上述策略。Watch/断点配置会保存供下次使用，删除目标断点不等于删除工程里的断点列表。最终状态还受 before_disconnect、GDB、OpenOCD/探针和板级事件影响，因此 `detach` 不能等同于“保证停核”，`resume` 也不是芯片复位或重新烧录。
+
+策略适用于 Exit / Ctrl+Q、`:disconnect`、Reconnect，以及 Setup Start 替换旧会话、外部 Build/Download 任务释放旧连接的阶段。只打开 Setup、保存草稿或返回 Workspace 不会触发断开。Setup 新改的策略用于新会话；替换时旧会话仍按它原先加载的策略清理。
+
+多核时同一策略应用于所有配置的核心，与当前活动核心及 Scope Core/All 无关；仅配置 core1 的工程只管理 core1。各核顺序执行，不能理解为硬件同步释放。结束后 DebugTUI 关闭自己的 GDB 和自己启动的服务；外部启动的 OpenOCD 不由它终止。清理失败会报告错误，需结合日志判断目标最终状态。
 
 ~~~toml
 [gdb]
@@ -284,7 +351,7 @@ endpoint = "localhost:3333"
 after_connect = []
 
 [session]
-on_exit = "detach"
+timeout_ms = 8000 # Existing schema name for GDB command timeout.
 ~~~
 
 GDB 和 service 均可配置 args、cwd、env、unset_env。TUI 默认继承环境，仅设置 LC_ALL=C；具体工具所需的环境变量调整由配置声明。
@@ -293,7 +360,7 @@ GDB 和 service 均可配置 args、cwd、env、unset_env。TUI 默认继承环�
 
 actions 支持 restart、run、download、before_disconnect；target.after_connect 和 gdb.init 也是命令数组。以 - 开头的命令按 MI 发送，其余按 GDB 控制台命令发送。不执行 shell 拼接。restart/download 未配置时不可用；run 未配置时使用标准 -exec-run。任一动作失败立即停止后续动作。
 
-退出策略：detach 使用 -target-detach；resume 先继续再 detach；disconnect 使用 -target-disconnect。关闭 GDB、停止自有服务后目标是否继续运行取决于服务端，TUI 不承诺硬件停机状态。STM32/J-Link 配置声明 monitor go 后 detach；原有服务退出恢复运行的特性由该环境负责说明。
+退出策略：detach 使用 -target-detach；resume 对远程目标先继续，再用 -target-disconnect 释放连接，避免 GDB 拒绝运行中 detach；对本地进程直接在暂停状态 detach，由 GDB 恢复进程运行。disconnect 使用 -target-disconnect，不主动恢复目标。各策略都会先暂停并清理调试断点，再执行 before_disconnect。关闭 GDB、停止自有服务后目标是否继续运行取决于服务端，TUI 不承诺硬件停机状态。STM32/J-Link 配置声明 monitor go 后 detach；原有服务退出恢复运行的特性由该环境负责说明。
 
 ## 操作
 

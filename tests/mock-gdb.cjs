@@ -6,6 +6,7 @@ const transcript = process.env.DEBUGTUI_TEST_TRANSCRIPT;
 let state = 'ready';
 let line = 10;
 const pauseMode = process.env.DEBUGTUI_TEST_PAUSE;
+const exitFailure = process.env.DEBUGTUI_TEST_EXIT_FAILURE;
 let interrupts = 0;
 const frame = () => `frame={level="0",addr="0x100000008",func="main",file="sample.c",line="${line}"}`;
 const send = value => process.stdout.write(value + '\n');
@@ -34,6 +35,8 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   }
   if (cmd === '-break-list') return done('BreakpointTable={body=[]}');
   if (cmd === '-interpreter-exec console "delete breakpoints"') return done();
+  // The coordinator refreshes each core after connecting; the fixture has no register cache.
+  if (cmd === '-interpreter-exec console "maintenance flush register-cache"') return done();
   if (cmd === '-exec-interrupt --all' && pauseMode) {
     interrupts++;
     if (pauseMode === 'running' || (pauseMode === 'retry' && interrupts === 1)) return done();
@@ -46,9 +49,24 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
     if (pauseMode === 'already-stopped') return send(`${token}^error,msg="Inferior not executing."`);
     return done(); // Deliberately omit *stopped to exercise state reconciliation.
   }
-  if (cmd === '-target-detach' || cmd === '-target-disconnect') { state = 'ready'; return done(); }
-  if (cmd === '-gdb-exit') { send(`${token}^exit`); process.exit(0); }
+  if (cmd === '-target-detach' && state === 'running') return send(`${token}^error,msg="Cannot execute this command while the target is running."`);
+  if (cmd === '-target-detach' || cmd === '-target-disconnect') {
+    if (exitFailure === 'release') return send(`${token}^error,msg="Fixture release failed"`);
+    state = 'ready'; return done();
+  }
+  if (cmd === '-gdb-exit') {
+    if (exitFailure === 'exit') return send(`${token}^error,msg="Fixture exit failed"`);
+    if (exitFailure === 'hang') { send(`${token}^exit`); return; }
+    if (exitFailure === 'crash') { send(`${token}^exit`); process.exit(7); }
+    if (process.env.DEBUGTUI_TEST_EXIT_MARKER) {
+      send(`${token}^exit`);
+      setTimeout(() => { fs.writeFileSync(process.env.DEBUGTUI_TEST_EXIT_MARKER, 'clean exit'); process.exit(0); }, 100);
+      return;
+    }
+    send(`${token}^exit`); process.exit(0);
+  }
   if (/^-exec-(run|continue|step|next|step-instruction|finish)$/.test(cmd)) {
+    if (cmd === '-exec-continue' && exitFailure === 'continue') return send(`${token}^error,msg="Fixture continue failed"`);
     state = 'running'; send(`${token}^running`); send('*running,thread-id="all"');
     if (pauseMode) return;
     setTimeout(() => { state = 'stopped'; line++; send(`*stopped,reason="end-stepping-range",${frame()}`); }, 10);

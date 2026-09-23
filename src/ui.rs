@@ -58,11 +58,12 @@ mod live_watch_tests;
 mod monitor;
 mod peripherals;
 mod render;
+mod search;
 mod source_tabs;
+mod source_text;
 #[cfg(test)]
 mod visual_tests;
 mod watch;
-use highlight::syntax;
 pub use render::draw;
 use source_tabs::SourceTabs;
 use theme::section;
@@ -70,7 +71,7 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 43] = [
+const COMMANDS: [&str; 44] = [
     "cores",
     "core NAME_OR_INDEX",
     "scope all|core",
@@ -105,6 +106,7 @@ const COMMANDS: [&str; 43] = [
     "memory ADDRESS [COUNT]",
     "disasm [ADDRESS]",
     "files",
+    "symbols",
     "open PATH",
     "frame NUMBER",
     "find TEXT",
@@ -154,6 +156,15 @@ Narrow terminals show the focused group; Tab reaches all views.
 Source files stay open in tabs; click a name or × to close.
 < / > and the tab-strip wheel browse hidden tabs; [Files N] lists all.
 Ctrl+PgUp / Ctrl+PgDn switches files; Ctrl+W closes; Ctrl+O lists.
+Files: click Find / Ctrl+F filters filenames (case-insensitive fuzzy search).
+Ctrl+K / Symbols searches ELF functions, global/static variables and types.
+Enter / click opens the result in Source, using the project's source mappings.
+Source: drag text or double-click a word; Shift+arrows extends the selection.
+Copy / Ctrl+C copies selected source only; without a selection Ctrl+C still pauses.
+Add to Watch / Ctrl+Enter adds the selected expression to the current core.
+Right-click source opens Copy / Add to Watch. Esc clears the selection.
+Home / End moves within the line; Ctrl+Home / Ctrl+End reaches file boundaries.
+Source remains read-only. Copy preserves tabs and excludes line numbers / breakpoints.
 
 Toolbar buttons: Run, Continue, Pause, Reset, Reconnect,
 Step In, Step Over, Step Out, Exit, Help. Unavailable actions are dimmed.
@@ -222,6 +233,9 @@ pub struct App {
     source_line: usize,
     source_top: usize,
     sources: SourceTabs,
+    source_text: source_text::SourceText,
+    file_search: search::FileSearch,
+    symbol_search: search::SymbolSearch,
     logs: VecDeque<String>,
     console: VecDeque<String>,
     console_view: console::ConsoleView,
@@ -295,6 +309,9 @@ impl App {
             source_line: 0,
             source_top: 0,
             sources: SourceTabs::default(),
+            source_text: source_text::SourceText::default(),
+            file_search: search::FileSearch::default(),
+            symbol_search: search::SymbolSearch::default(),
             logs: VecDeque::new(),
             console: VecDeque::new(),
             input: String::new(),
@@ -452,6 +469,18 @@ impl App {
             Event::Snapshot { snapshot } => {
                 let core_changed = snapshot.core.as_ref().map(|c| c.index)
                     != self.snapshot.core.as_ref().map(|c| c.index);
+                if core_changed {
+                    self.source_text.reset(self.source_line);
+                    self.symbol_search.invalidate();
+                }
+                if snapshot.state != self.snapshot.state
+                    && matches!(
+                        snapshot.state.as_str(),
+                        "DISCONNECTED" | "STARTING GDB" | "FAULT"
+                    )
+                {
+                    self.symbol_search.invalidate();
+                }
                 self.core_info = snapshot
                     .core
                     .as_ref()
@@ -482,6 +511,7 @@ impl App {
                     self.load_source(&snapshot.frame.file);
                     self.source_line = snapshot.frame.line.saturating_sub(1) as usize;
                     self.source_top = self.source_line.saturating_sub(8);
+                    self.source_text.reset(self.source_line);
                 } else if moved && (snapshot.state == "STOPPED" || core_changed) {
                     // Preserve open tabs, but never present the old source as the
                     // current stop when the new PC has no source information.
@@ -517,6 +547,9 @@ impl App {
                 result,
                 error,
             } => {
+                if self.symbol_response(id, &result, error.as_deref()) {
+                    return false;
+                }
                 self.break_response(id, ok, error.as_deref());
                 if self.monitor_response(id, &result, error.as_deref()) {
                     return false;
@@ -636,6 +669,12 @@ impl App {
     }
     fn send(&mut self, engine: Option<&EngineHandle>, request: Request) {
         self.completion.invalidate();
+        if matches!(
+            request.method.as_str(),
+            "connect" | "reconnect" | "disconnect" | "set_elf" | "build" | "download"
+        ) {
+            self.symbol_search.invalidate();
+        }
         self.fx.request(request.id, &request.method);
         if matches!(request.method.as_str(), "build" | "download") {
             self.pending_task = Some(request.id);
@@ -759,6 +798,7 @@ impl App {
                 self.view_stamps[5] = Some(self.view_stamp());
                 self.submit(engine, "disassemble", json!({"address":arg}));
             }
+            "symbols" => self.open_symbol_search(),
             "files" => {
                 self.select_pane(7);
                 self.view_stamps[7] = Some("files".into());
@@ -778,6 +818,7 @@ impl App {
                     {
                         self.source_line = index;
                         self.source_top = index.saturating_sub(4);
+                        self.source_text.reset(index);
                         self.select_pane(0);
                         self.notice = format!("Found {arg} at line {}", index + 1);
                     } else {
@@ -873,7 +914,10 @@ impl App {
         }
         if let Some(setup) = &mut self.setup {
             self.launch = setup.key(key);
-            if setup.workspace_requested {
+            if setup.quit_requested {
+                self.launch = None;
+                self.submit(engine, "quit", json!({}));
+            } else if setup.workspace_requested {
                 self.document = setup.document.clone();
                 self.setup = None;
             }
@@ -913,6 +957,9 @@ impl App {
             self.source_list_key(key);
             return false;
         }
+        if self.symbol_search_key(key, engine) {
+            return false;
+        }
         if self.palette {
             match key.code {
                 KeyCode::Esc => self.palette = false,
@@ -928,7 +975,17 @@ impl App {
             }
             return false;
         }
+        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('k') {
+            self.open_symbol_search();
+            return false;
+        }
+        if self.file_search_key(key) {
+            return false;
+        }
         if self.console_key(key) {
+            return false;
+        }
+        if self.source_text_key(key, engine) {
             return false;
         }
         if !self.input_active() && key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -1048,7 +1105,12 @@ impl App {
                     self.toggle_peripheral(None);
                 } else if self.pane == 1 && self.toggle_watch(None, engine) {
                 } else if self.pane == 7 {
-                    if let Some(file) = self.snapshot.files.get(self.selection).cloned() {
+                    if let Some(file) = self
+                        .filtered_files()
+                        .get(self.selection)
+                        .and_then(|&index| self.snapshot.files.get(index))
+                        .cloned()
+                    {
                         self.load_source(&file);
                         self.select_pane(0);
                     }
@@ -1080,6 +1142,9 @@ impl App {
         false
     }
     fn select_pane(&mut self, pane: usize) {
+        if pane != 7 {
+            self.file_search.editing = false;
+        }
         self.console_view.focused = false;
         self.selections[self.pane] = self.selection;
         self.pane = pane;
@@ -1122,12 +1187,14 @@ impl App {
             || self.pending_view.is_some()
             || self.monitor.busy()
             || self.completion.busy()
+            || self.symbol_search.busy()
             || !self.pending_commands.is_empty()
-            || self.snapshot.state != "STOPPED"
+            || (self.snapshot.state != "STOPPED"
+                && !(self.snapshot.state == "READY" && self.main_pane == 7))
         {
             return false;
         }
-        if self.ensure_peripherals(engine) {
+        if self.snapshot.state == "STOPPED" && self.ensure_peripherals(engine) {
             return true;
         }
         let mut panes = vec![];
@@ -1138,6 +1205,9 @@ impl App {
             panes.push(self.side_pane);
         }
         for pane in panes {
+            if self.snapshot.state != "STOPPED" && pane != 7 {
+                continue;
+            }
             let (method, params) = match pane {
                 5 => ("disassemble", json!({"address":"$pc"})),
                 4 => ("memory", json!({"address":"$sp","count":256})),
@@ -1275,7 +1345,7 @@ impl App {
             4 => self.memory_bytes().len().div_ceil(self.memory_columns()),
             5 => self.snapshot.assembly.len(),
             6 => self.snapshot.breakpoints.len(),
-            7 => self.snapshot.files.len(),
+            7 => self.filtered_files().len(),
             8 => self.logs.len(),
             10 => self.peripherals.len(),
             _ => self.snapshot.locals.len() * 2,
@@ -1341,7 +1411,10 @@ impl App {
         }
         if let Some(setup) = &mut self.setup {
             self.launch = setup.mouse(mouse);
-            if setup.workspace_requested {
+            if setup.quit_requested {
+                self.launch = None;
+                self.submit(engine, "quit", json!({}));
+            } else if setup.workspace_requested {
                 self.document = setup.document.clone();
                 self.setup = None;
             }
@@ -1382,6 +1455,9 @@ impl App {
                 return;
             }
         }
+        if !self.help && !self.palette && !self.sources.list_open && self.search_mouse(mouse) {
+            return;
+        }
         if !self.help && !self.palette && self.completion.area.contains(point) {
             match mouse.kind {
                 MouseEventKind::Down(event::MouseButton::Left) => {
@@ -1407,6 +1483,9 @@ impl App {
             return;
         }
         if !self.help && !self.palette && !self.sources.list_open {
+            if self.source_text_mouse(mouse, engine) {
+                return;
+            }
             if self.break_panel_mouse(mouse, engine) {
                 return;
             }
@@ -1543,7 +1622,10 @@ impl App {
                         self.source_line = (self.source_top
                             + mouse.row.saturating_sub(self.source_rect.y) as usize)
                             .min(self.source.len().saturating_sub(1));
-                        if mouse.column < self.source_rect.x + 7 {
+                        if mouse.column
+                            < self.source_rect.x
+                                + source_text::gutter(self.source.len()).saturating_sub(2)
+                        {
                             self.toggle_break(engine);
                         }
                     } else if matches!(pane, 1 | 2 | 3 | 4 | 6 | 7 | 9 | 10) {
@@ -1739,8 +1821,11 @@ pub fn run(
                     app.source_comments.clear();
                     app.source_file.clear();
                     app.source_line = 0;
+                    app.source_text.reset(0);
                     app.source_top = 0;
                     app.sources = SourceTabs::default();
+                    app.file_search = search::FileSearch::default();
+                    app.symbol_search = search::SymbolSearch::default();
                     app.selection = 0;
                     app.pane = 0;
                     app.main_pane = 0;
@@ -1790,6 +1875,9 @@ pub fn run(
                 setup.pending = false;
                 setup.message = "DEMO: restart without --demo to connect a debugger.".into();
             }
+        }
+        if app.ensure_symbol_search(engine.as_ref()) {
+            dirty = true;
         }
         if app.ensure_completion(engine.as_ref()) {
             dirty = true;
@@ -1846,6 +1934,8 @@ pub fn run(
                     } else if app.breaks.modal() {
                         app.break_paste(&text);
                         dirty = true;
+                    } else if app.search_paste(&text) {
+                        dirty = true;
                     } else if app.sources.list_open {
                         app.sources
                             .query
@@ -1889,6 +1979,34 @@ pub fn snapshot(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn setup_exit_button_uses_normal_quit_without_starting_a_session() {
+        for state in ["DISCONNECTED", "RUNNING"] {
+            let (engine, requests) = session::test_channel();
+            let mut app = App::new(Project::default(), false);
+            app.snapshot.state = state.into();
+            app.open_setup();
+            let text = render(&mut app, 80, 24);
+            let (row, line) = text
+                .lines()
+                .enumerate()
+                .find(|(_, line)| line.contains(" Exit "))
+                .unwrap();
+            let column = line.find("Exit").unwrap();
+            let column = unicode_width::UnicodeWidthStr::width(&line[..column]) as u16;
+            mouse_at(
+                &mut app,
+                MouseEventKind::Down(event::MouseButton::Left),
+                column,
+                row as u16,
+                Some(&engine),
+            );
+            assert_eq!(requests.try_recv().unwrap().method, "quit");
+            assert!(requests.try_recv().is_err());
+            assert!(app.quitting);
+            assert!(app.launch.is_none());
+        }
+    }
     #[test]
     fn visible_setup_button_returns_without_quitting_and_keeps_the_draft() {
         let (engine, requests) = session::test_channel();

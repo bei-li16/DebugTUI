@@ -1,11 +1,36 @@
 //! Small C-like lexer: only visible lines allocate spans; no syntax database.
 use super::*;
 
-pub(super) fn syntax(line: &str, in_comment: &mut bool) -> Vec<Span<'static>> {
-    let line = line.replace('\t', "    ");
+pub(super) fn selected_syntax(
+    line: &str,
+    in_comment: &mut bool,
+    selection: Option<(usize, usize)>,
+) -> Vec<Span<'static>> {
     let mut result = Vec::new();
-    scan(&line, in_comment, |text, color| {
-        result.push(Span::styled(text.to_owned(), Style::default().fg(color)))
+    let mut offset = 0;
+    scan(line, in_comment, |text, color| {
+        let end = offset + text.len();
+        let (a, b) = selection.unwrap_or((0, 0));
+        let mut cuts = vec![offset, end];
+        if a > offset && a < end {
+            cuts.push(a);
+        }
+        if b > offset && b < end {
+            cuts.push(b);
+        }
+        cuts.sort_unstable();
+        for pair in cuts.windows(2) {
+            let style = if pair[0] >= a && pair[0] < b {
+                Style::default().fg(theme::CANVAS).bg(theme::ACCENT)
+            } else {
+                Style::default().fg(color)
+            };
+            result.push(Span::styled(
+                line[pair[0]..pair[1]].replace('\t', "    "),
+                style,
+            ));
+        }
+        offset = end;
     });
     result
 }
@@ -129,13 +154,13 @@ mod tests {
         let starts = comment_starts(&lines);
         assert_eq!(starts, [false, true, false, false]);
         for (line, mut state) in lines.iter().zip(starts) {
-            let spans = syntax(line, &mut state);
+            let spans = selected_syntax(line, &mut state, None);
             assert_eq!(
                 spans.iter().map(|s| s.content.as_ref()).collect::<String>(),
                 *line
             );
         }
-        let spans = syntax(&lines[1], &mut true);
+        let spans = selected_syntax(&lines[1], &mut true, None);
         assert_eq!(spans[0].style.fg, Some(theme::DIM));
         assert!(
             spans

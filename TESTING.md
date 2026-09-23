@@ -1,5 +1,133 @@
 # DebugTUI 验证记录
 
+## 0.8.6 发布前验证（2026-09-23）
+
+- 168 项 Rust 单元测试和 1 项 CLI 集成测试通过，2 项显式外部环境测试默认忽略；严格 Clippy `--locked --all-targets -- -D warnings`、Release 构建和 `git diff --check` 通过。
+- 新 Release EXE SHA256 为 `A3C9F1609B19C5081D3118FD68F1542027730B9F500098C414BABAA15FB488E9`，与下述单核/多核实板回归使用的已安装 0.8.6 完全相同，无需将其他构建的实板结果冒用为本次结果。
+- `test-exit-policy.cjs` 的 26 个场景通过，覆盖 remote/extended-remote/local、各退出策略、运行/暂停/READY，以及 continue/release/exit 失败、GDB hang/crash。`test-search-gdb.cjs` 的真实本机 GDB 和 MCAL ARM ELF 两组测试通过，确认符号位置、有界查询、不改变目标执行状态。
+- README 和用户手册同步为 0.8.6，更新工程专用 Setup、当前 Examples、Files/Symbols 搜索、工具/工程配置职责以及本轮 MCAL 实板结果和残留限制。XeLaTeX 三轮编译无缺字和未解析引用；PDF 共 83 页。
+- 日志：`artifacts/release-0.8.6/`。全仓 `cargo fmt --check` 仍报告 HEAD 已有的 `src/svd.rs` 排版差异；该文件未被本次修改，不计为格式检查通过。
+
+## 0.8.6：THA6206 单核/多核实板回归（2026-09-23）
+
+- 直接测试已全局安装的 0.8.6，EXE SHA256：`A3C9F1609B19C5081D3118FD68F1542027730B9F500098C414BABAA15FB488E9`。工程为 `D:/LiBo/Files/DATA/FreeRTOS/vscodegdb/THA6XXX_MC_AS440`，使用实际 GHS ELF、ARM GDB、OpenOCD 和 THA6206；UI 通过真实 Windows ConPTY 输入/读取验证。
+- **16 个功能组通过**，包括 core0/core1 独立调试、默认单 GDB 模式、双核 Scope/联停/复位、条件和多核断点、逐核 8 个硬件代码断点及第 9 个拒绝后恢复、运行中 Live Watch、Files/Symbols 跳转、源码映射、偏好保存、任务失败恢复和外部附加。退出/重连另有 **21 个实板组合场景**全部通过。两核联停由软件协调，不是 CTI 同时停机；本轮 peer STOPPED 日志延迟样本为 124–266 ms。
+- 初始板上 Flash 与本地 ELF 不匹配，已通过工程 Load.bat 下载现有配套 MCAL HEX，随后及最终分别校验向量/代码段匹配。本次实际烧写了固件，但没有重新编译应用、修改用户源码或替换已安装软件；构建成功生命周期使用 echo，另行验证真实下载流程及非零返回码恢复。
+- 修正两类工程工具配置问题并复测：默认环境补充板级 Run 动作，避免 `-exec-run` 触发不支持的通用 reset；默认和外部 core1 环境补充 17 个通用寄存器白名单，避免复位入口自动读 VFP 引发 DSCR.ERR。只改工程 `.vscode/debug-env.toml` 和 `.vscode/debug-env-core1.toml`，附原因注释；19 个受监测文件中的其余 17 个哈希未变，四份工程 TOML 保持原样。
+- **残留问题保留记录**：首次调试复位仍可报 `Failed to write memory at 0x00000000`，后续 examine/Run/Flash 校验成功但不证明复位写入确认；GHS 深层栈存在 `pc 0x80`、未知帧及栈回溯时的调试访问错误。当前帧/断点/单步测试通过，不将其解释为完整调用栈可靠或日志零错误。
+- 最终两核暂停在 `0x08000000`，按 detach 结束，自有 DebugTUI/GDB/OpenOCD 和 3333/3334/6666/4444 监听清理。未覆盖物理断电/拔插、多小时压力、浮点调试和其他固件；未提交、push、升版或安装。
+
+详细结果、配置修正、原始失败分类及验证边界：[`artifacts/regression-0.8.6-20260923/report.md`](artifacts/regression-0.8.6-20260923/report.md)。机器可读汇总：[`report.json`](artifacts/regression-0.8.6-20260923/report.json)。
+
+## 0.8.5 工作区：Setup 仅编辑工程配置（2026-09-23）
+
+- 移除 GDB executable、GDB arguments、Target mode、Endpoint、Start service、Timeout 六个工具编辑项。Tools / profile 仅选择环境引用；On exit、ELF、源码、任务、SVD、日志及保存开关保留。标题提示当前核心名称。F4 模板不再生成内嵌工具参数；旧配置覆盖值继续兼容。
+- 168 项单元测试、1 项 CLI 集成测试通过，2 项外部环境测试仍忽略；严格 Clippy 和 Release 构建通过。新增覆盖普通单核、core0 单核、core1 单核、双核编辑/保存、切换 profile、逐核运行时偏好合并、工具文件不改写、遗留工具值保留和工具字段从界面移除。
+- 新 EXE 的真实 Windows ConPTY 验证：MCAL debug-core0/debug-core1/debug-multi，以及 Bao debug/debug-dual 共 5 份工程副本，点击 On exit 后 Ctrl+S 保存，只改变工程退出策略，其余配置完全一致。原始工程、工具 profile、已安装 EXE 的哈希均未变化。 Bao 的 debug-dual.toml 当前没有 [[cores]]，属于双核固件、单个 GDB 会话的配置；此次保持该连接模式，TUI 多会话覆盖由 MCAL debug-multi 和独立双 GDB 用例验证。截图和结果：`artifacts/project-setup-20260923/setup-*.png`、`native-setup-results.json`。
+- `node scripts/test-exit-policy.cjs target/release/debugtui.exe` 的 26 组退出流程回归通过。另用隔离 profile 验证普通单核、core0、core1、双核 × detach/resume/disconnect，共 12 组 MI 回归通过；Scope=core 时退出仍释放所有配置核心。证据：同目录 `profile-core-exit-results.json`、`*.mi.txt`。最初测试暴露严格 fixture 缺少多核连接后的 register-cache flush 响应，已补充该精确命令；终端脚本也改为等待完整表单绘制，避免读到半帧。这些是测试驱动问题，没有修改实际退出执行逻辑。
+- 本轮未连接板卡，未安装、未升版。本地 Release SHA256：`EDC7A875ABDF09DCB8DDB5957E410CBFE1390F432C73B1B0DCFB77AD61ED5515`；已安装 0.8.5 仍为 `0DB5B82AEFBD1FE1A242CDC7EAA045346D518AAA075F1153953D7CE6550B3E5C`。详细日志位于 `artifacts/project-setup-20260923/`。
+
+## 0.8.5 工作区：工程与工具配置职责说明（2026-09-23）
+
+- 修正 README 和 Setup 帮助：工程配置保存程序、构建/下载、源码映射、Watch/断点、核心选择及退出策略；工具环境保存 GDB/OpenOCD、服务启动、连接默认值及通信超时。现有 `[session].timeout_ms` 是工具通信超时；`on_exit` 属于工程退出策略。明确区分解析器的继承兼容能力与建议的字段归属。
+- 本轮只修改说明，未更改解析、优先级或保存行为，未迁移 MCAL/Bao 配置。Setup 修改工具项仍会写项目覆盖；README 已明确此限制。
+- 15 项启动配置测试通过，Release 构建通过，未安装。日志：`artifacts/config-layering-20260923-{tests,build}.txt`。构建产物 SHA256：`F862820B93A1E40B967A7A41C3500499D9BE7AEB94B8379CDC559D957FDA120C`。
+
+## 0.8.5 工作区：输入区可见性与配置说明（2026-09-23）
+
+- Symbols、Files 和 Watch 使用独立背景及完整边框，聚焦时强化边框/底色，Watch 的 Add 按钮有独立边界；高度不足时保留紧凑单行。Watch 面板为边框预留空间，保留原有可见变量容量。Setup 的 profile 说明明确继承值与项目覆盖，并修正远程 resume 的过时 detach 描述。
+- 165 项单元测试、1 项 CLI 集成测试和严格 Clippy 通过，2 项外部环境测试仍忽略；Release 编译通过。既有布局、点击区域、Watch 删除/添加及自动补全测试覆盖 45×12 至 180×50。日志和实际 Ratatui 颜色预览：`artifacts/input-visibility-20260923/`。
+- 新 Release EXE 在真实 ConPTY 中加载 Bao 的 `bin/tha6xxx/tha6206-smoke/bao.elf`：点击 Symbols 边框，输入 `uartclock` 并跳到 `tha6xxx_uart.c:12`；点击 Files 边框输入 `boot` 并打开 `boot.S`；点击 Watch 边框输入表达式、核对光标位于框内、清空并点击 Add。三组通过。使用隔离 TOML 和 local 模式，仅加载 ELF；没有连接探针或运行目标。验证时仅对测试子进程移除工具环境中的 `NO_COLOR=1`，以核对正常彩色终端效果。
+- 本轮**未安装、未升版**。新 `target/release/debugtui.exe` 的 SHA256 为 `0D482825B17D0636871C817F681F929E27B2A6286DD76D2636F8E5A43FF8B54C`；已安装 0.8.5 保持 `0DB5B82AEFBD1FE1A242CDC7EAA045346D518AAA075F1153953D7CE6550B3E5C`。完整终端结果和画面：`terminal-result.json`、`files-focused.png`、`symbols-focused.png`、`watch-focused.png`。
+
+## 0.8.5：已安装版本 Files / Symbols 搜索验收（2026-09-23）
+
+确认全局 `debugtui --version` 为 **0.8.5**，实际 EXE 为 `C:/Users/01766/AppData/Roaming/npm/node_modules/@debugtui/cli/bin/debugtui.exe`，SHA256 与本地 Release 一致：`0DB5B82AEFBD1FE1A242CDC7EAA045346D518AAA075F1153953D7CE6550B3E5C`。本轮直接运行该已安装 EXE，没有重新编译或安装。
+
+- **16 个功能组通过**。基于 `D:/LiBo/Files/DATA/FreeRTOS/vscodegdb/THA6XXX_MC_AS440` 的实际 GHS ELF、工程 ARM GDB 16.3，通过 Windows ConPTY 输入真实鼠标/键盘事件并读取终端显示；双核部分实际连接 THA6206 和工程 OpenOCD，非 mock / demo，也不是人工 VS Code 鼠标验收。
+- **Files**：从 ELF 读取 563 个源文件；输入 `sPi` 同时显示 `Spi.c`、`Spi_Irq.c`、`espi_hal.c`、`espi_std.c`。筛选后键盘分别打开三个文件、鼠标打开 `espi_hal.c`，核对 Source 标签；无匹配时 Enter 不误打开，Ctrl+U 恢复 563/563 列表。
+- **Symbols**：键盘查询 `Spi_Init` 并定位 `Spi.c:4073`；鼠标查询 `uartcnt` 模糊匹配 `uart_cnt` 并定位 `Uart_Demo.c:1519`；类型 `Spi_ConfigType` 定位 `Spi_GeneralTypes.h:591`；静态变量 `SpiExternalDevice_ConfigParamCore0` 定位 `Spi_PBcfg.c:481`。逐项核对真实源码定义及 Source 选中行。无匹配、正则字符按字面处理、200 项/类别上限提示通过。
+- **映射与布局**：使用隔离源码副本及 `source_map`，跳转后实际显示映射副本标记且仍为第 1519 行。80×24、45×12 的独立终端均显示结果文件/行号并正确跳转。
+- **双核实板**：Core0 / Core1 分别查询并跳转 `Spi_Init`，各核日志均记录实际符号查询；跳转前后两核 PC、当前栈帧标题保持不变。两核运行时新查询显示等待提示，OpenOCD 同时确认 `running running`；显式 F6 后查询完成并跳转第 1519 行，两核为 `halted halted`。已有查询结果可在两核继续运行时用于源码跳转，不隐式停核。
+- 测试使用隔离 TOML；已安装 EXE、ELF/HEX、四份工程 TOML、profile 和 OpenOCD 配置共 9 个文件前后哈希一致，没有编译/烧写固件。结束后核对调试进程和 3333/3334/6666 监听清理。早期测试驱动的路径分隔符、空结果提示文案和连接完成等待条件已纠正；原始失败记录保留，最终双核结果以 `hardware-results.json` 为准，未发现此次搜索功能缺陷。
+
+汇总及证据索引：[`artifacts/search-installed-0.8.5-20260923/report.json`](artifacts/search-installed-0.8.5-20260923/report.json)。终端画面、输入序列和 GDB 日志位于同目录；独立 ELF 元数据验证为 `artifacts/search-arm-elf-1790135230928/result.json`。
+
+## 0.8.5：THA6206 退出修复与实板复测（2026-09-23）
+
+修复 0.8.4 的 `session.on_exit="resume"`：远程 all-stop 会话改为清理断点后 `-exec-continue` → `-target-disconnect`，不再对运行中的目标发送被 GDB 拒绝的 detach。本地进程仍在暂停状态下 detach。`-gdb-exit` 的错误、非零退出码和退出超时会报告失败；收到 `^exit` 后最多等待 3 秒，让 GDB 正常清理，再使用强制回收作为兜底。
+
+- **已安装 0.8.5 并验证全局命令**；全局 EXE 与被测 Release EXE 的 SHA256 均为 `0DB5B82AEFBD1FE1A242CDC7EAA045346D518AAA075F1153953D7CE6550B3E5C`。已有工作区内的 Source 文本操作、启动配置及 Files/Symbols 搜索改动也包含在本地构建中；本轮未提交、push 或发布远端 Release。
+- **安装后 21/21 实板退出与重连场景通过**：Core0、Core1、双核 × detach/resume/disconnect × STOPPED/RUNNING 的 18 项，以及三种核心配置的 `remote` 模式 resume 3 项。用独立 OpenOCD 在断开后观察实际核状态、AHB 计数器，再重连验证源码行、Watch 和禁用断点恢复。单核 resume 仅对应核运行，双核 resume 两核运行；detach/disconnect 在此工程保持暂停。双核 resume 的计数器示例为 1270→1372、1952→2054。不能将这些目标状态推定到其他 Server。
+- **常规实板回归通过**：Core0 的源码/寄存器/栈、单步、条件/忽略次数/临时硬件断点、Watch 结构体/数组/指针、三类硬件数据断点、内存和外设读数、运行时 AHB、重连/复位；Core1 独立调试时 Core0 计数器仍增长；双核控制 27 项检查、跨核断点 61 次请求、两核运行时 Live Watch 5 组采样。Flash 向量与代码段再次 `compare-sections` matched。旧回归脚本的 `number="all"` 和 `mode` 参数错误已在隔离测试副本中改为 `all=true`、`access`，断点专项复测通过，不能把该脚本错误计为产品缺陷。
+- **真实 ConPTY 界面 4/4 组通过**：源码双击选择 `uart_cnt`、Ctrl+C 系统剪贴板复制、Add to Watch；两核运行时右侧 Watch 实际显示 LIVE 且数值 1165→1246→1407→1488→1650；Pause/F2/Esc 保留会话；运行中 Ctrl+Q 按 resume 正常结束自有调试进程。测试等待复制完成的界面提示后读取剪贴板，结束后恢复原剪贴板。
+- **自动化与构建**：165 项单元测试、1 项 CLI 集成测试通过，2 项依赖外部环境的单元测试保持忽略；严格 Clippy、Release 构建通过。新增 `node scripts/test-exit-policy.cjs` 的 26 项生命周期测试通过，覆盖本地/远程、未 Run、停止/运行状态、真实错误传播、延迟退出、退出挂起/异常码；严格 fixture 在旧 0.8.4 上复现原来的运行中 detach 错误。Pause 的 6 种事件/超时场景、本机多核 GDB 13 组、Files/Symbols 的本机与 THA ELF 离线查询也通过。完整 `cargo fmt --check` 仍指出原有 `src/svd.rs` 格式差异，本轮未改动该文件。
+- **本地安装包**：生成 0.8.5 EXE/ZIP/TGZ，验证校验和、无捆绑工具、隔离 npm 升级/卸载/重装、PowerShell/CMD 入口和渲染。TeX 用户手册已同步退出说明并成功重新生成 PDF。
+
+记录集中于 [`artifacts/exit-policy-fix-20260923/`](artifacts/exit-policy-fix-20260923/)；安装后矩阵为 `installed/matrix.json`，常规回归为 `functional/`，最终终端记录为 `terminal-hardware-1790133832/`。本轮使用 `D:/LiBo/Files/DATA/FreeRTOS/vscodegdb/THA6XXX_MC_AS440` 的既有 GHS ELF/HEX，没有重新烧写固件；Build/Download 的新增复测只验证连接生命周期，使用输出标记的测试命令，真实编译/烧写结果见下方 0.8.4 完整回归记录。未在本轮重测 STM32 或 Bao 实板。
+
+额外发现的范围外限制：本机 MinGW GDB 16.2 对 Windows 测试进程执行 detach 后再退出 GDB，进程的文件心跳停止；直接运行同一 GDB/MI、完全绕过 DebugTUI 也复现（`native_direct.py` / `native/direct-mi.log`）。因此这里只确认本地 detach 命令被接受，不宣称该后端的进程在 GDB 退出后持续运行；没有用假通过掩盖此现象。该本机进程问题不影响上述 ARM GDB 16.3 + OpenOCD 的 THA6206 实板结果。
+
+## 0.8.4：Files 与 Symbols 模糊搜索（2026-09-22 验证，09-23 收尾）
+
+- 最终代码通过 **165 项单元测试、1 项 CLI 集成测试**；2 项依赖实板或系统剪贴板的测试保持忽略。严格 Clippy 与 Release 编译通过。日志：`artifacts/search-ux-20260922/{unit-tests,clippy,build}.txt`。本次只编译，未安装或替换全局 EXE。
+- UI 回归覆盖 `spi` 对四类文件名的大小写及模糊匹配、筛选后键盘/鼠标打开正确文件、空结果、清空与粘贴焦点隔离；符号查询的防抖、单个在途请求、输入变化/切核后的旧响应丢弃、运行状态门控、错误重试，以及 CI 路径映射后跳转行号且保持当前栈帧不变。45×12、80×24、120×36 的实际 Ratatui 文本预览位于同一目录，长路径保留文件名和行号。
+- 真实本机 GDB 离线查询通过：函数、全局/静态变量、类型、模糊字符顺序、正则特殊字符按字面输入、无匹配和结果上限。`Spi_Init` 与 `SpiCounter` 分别返回测试源码第 6、3 行；25 条查询命令均为符号/文件元数据。记录：`artifacts/search-native-1790070992527/result.json`。
+- 工程内 ARM GDB 加载 GHS 生成的 `THA6206_Demo_Prj.elf` 离线查询通过：`Spi_AsyncCheckJobLinkStatus` 定位到 `Spi.c:1882`，`SpiExternalDevice_ConfigParamCore0` 定位到 `Spi_PBcfg.c:481`，已核对本地定义行。12 条查询命令均为元数据查询。记录：`artifacts/search-arm-elf-1790070991205/result.json`。两组测试始终为 READY，没有连接探针或执行目标程序；这不是 THA6206 单核/多核实板运行验证。
+- 可用 `node scripts/test-search-gdb.cjs target/release/debugtui.exe` 重跑本机验证；设置 `DEBUGTUI_TEST_GDB` 为工程 GDB 路径，并在 EXE 参数后追加 ELF 路径，可重跑对应 ELF 的离线验证。上述真实 GDB 验证后仅修改搜索 UI 的长路径显示及粘贴焦点保护，最终代码已重新执行全部单元测试、Clippy 和构建。
+- 最终产物：`target/release/debugtui.exe`，版本 `0.8.4`，3,658,240 字节，SHA256：`97BF95AA283355A381229C4016BFD8D4A782A06F757389AE21BC9E7A42CA413B`。
+
+## 0.8.4：未通过项的专项复测与原因（2026-09-22）
+
+上轮的唯一失败功能组是 **`session.on_exit="resume"`：结束调试前恢复目标运行**。针对同一个已安装 0.8.4 EXE 重新执行了 16 个专项场景：9 个对照/恢复场景通过，7 个 resume 场景稳定复现失败。这里的场景数是对一个失败功能组的展开，不是新增 7 类缺陷。记录：[`artifacts/exit-policy-retest-20260922/report.json`](artifacts/exit-policy-retest-20260922/report.json)。
+
+| 策略与场景 | 本轮复测 | 退出后的实际观测 |
+| --- | --- | --- |
+| `detach`：Core0 / Core1 / 双核，各自从 STOPPED 和 RUNNING 退出 | 6/6 通过 | DISCONNECTED；被调试核暂停。本适配中默认退出不会自动保持运行。 |
+| `resume`：Core0 / Core1 / 双核，各自从 STOPPED 和 RUNNING 退出 | 6/6 失败 | 返回 FAULT，但相应核实际仍在运行；Core0 或双核运行时 AHB 计数器持续增长。 |
+| `disconnect`：Core0 / 双核，从 RUNNING 退出 | 2/2 通过 | DISCONNECTED；退出前暂停。 |
+| DebugTUI 自己启动 OpenOCD 的原始使用方式，Core0 `resume` | 再次失败 | 同一 GDB 错误，排除独立观察用 OpenOCD 的服务归属差异。 |
+| 失败后重新连接，读取 Watch，再用默认 `detach` 退出 | 通过 | 能恢复连接和读取变量，正常清理退出。 |
+
+原因定位到 `src/session.rs` 的 `Engine::disconnect`：它先完成暂停/断点清理，再在 resume 分支发送 `-exec-continue`，收到 GDB `^running` 后仍发送 `-target-detach`。当前 GDB 16.3 在这个运行状态拒绝 detach：`Cannot execute this command while the target is running`。随后 `-gdb-exit` 关闭 GDB，DebugTUI 把前述错误汇总为 FAULT。应用内的 DISCONNECTING 标签不会改变 GDB/硬件的实际运行状态。
+
+本轮保留一个由测试持有的独立 OpenOCD，在每次断开后检查两个核的真实状态及 AHB 数据：单核 resume 只留下相应核运行，双核 resume 留下两个核运行。例如双核暂停状态退出后，`uart_cnt` 为 872→977；从运行状态退出后为 1223→1325。故此次失败是退出顺序和结果处理错误，Continue 本身已成功。不能仅凭 FAULT 标签判断板卡已停止。
+
+当前工程三个用户配置均从 `.vscode/debug-env.toml` 继承 `on_exit="detach"`，失败策略只在隔离测试副本中启用。后续修复需要为后端实现合适的脱离/恢复顺序，并验证退出后硬件状态；不能通过忽略 detach 错误伪造通过。现有 `tests/mock-gdb.cjs` 对 detach/disconnect 不区分运行状态而直接返回 done，缺少此次实板拒绝条件，应补相应回归。
+
+本轮没有修改退出实现或升版；没有重新编译/烧录固件。已安装 EXE、ELF/HEX、三个用户配置的前后哈希一致；测试结束无调试进程和 3333/3334/6666 监听残留。
+
+## 0.8.4：已安装版本 THA6206 实板功能回归（2026-09-22）
+
+**结论：27 个功能组通过，1 个退出策略缺陷复现，不能判定为全部通过。** 本次运行的是 npm 全局安装的 `debugtui.exe`，版本 0.8.4，SHA256 为 `D879688D0112AA554E765A6C987903618F3DA0410E2AE47BD753F3380C47FBBD`。完整矩阵、产物哈希和证据索引：[`artifacts/regression-0.8.4-20260922/report.json`](artifacts/regression-0.8.4-20260922/report.json)。测试期间工作区其他未构建改动不属于此固定 EXE 的回归范围。
+
+实际工程目录为 `D:/LiBo/Files/DATA/FreeRTOS/vscodegdb/THA6XXX_MC_AS440`；GHS 2023.1.4、GDB 16.3、工程定制 OpenOCD、CMSIS-DAP SWD 5 MHz、THA6206 双 Cortex-R52。使用三个工程配置的隔离副本，用户 TOML 配置哈希保持不变。
+
+| 范围 | 实板结果与证据 |
+| --- | --- |
+| Build / Download / 符号 | 实际 GHS Build、厂商 HEX 烧录及系统复位通过；DebugTUI 下载后自动重连两核，Run 命中 `_main`。`ROM.INT_VECTOR_TABLE` 和 `EX_CODE` 的 GDB `compare-sections` 均 matched。连接状态下 Build 也恢复双核符号、Watch 和禁用断点。 |
+| Core0 / Core1 单独调试 | Core0 启动、Step/Next/Finish/StepI、断点及变量读取通过。Core1 在 Core0 初始化并运行后，重复命中 `DemoApp_MainCore1`，完成各类单步；Core1 暂停期间 Core0 的 AHB 计数器继续递增。未 examine 的 Core0 状态不能直接当作 STOPPED，验证使用计数器实际进展。 |
+| 多核 | 27 项组控制核对通过：All/Core 的 Continue/Pause、断点联停、命中核自动切换、单步保持另一核 PC、重复 Run、共享复位和重连。源码断点默认当前核；升级/降级多核、条件/忽略次数同步、删除隔离和重连恢复通过。 |
+| 断点 / 数据观察点 | 条件、忽略次数、批量启停、临时和硬件断点通过。Write、Read、Read-write 三类硬件观察点分别核对 GDB 类型和实际停止原因，不把三次 Write 当作三类覆盖。 |
+| 数据和视图 | Watch 表达式、结构体、指针、32→64 项数组分页、错误行和移除通过；源码列表、栈帧、Locals、17 个系统寄存器、反汇编、Memory、GDB/AHB 读取及运行状态门控通过。SVD 的 BASETIMER0 展开显示实际 LOAD/VALUE/CTRL 等值。 |
+| 运行中 Watch | 旧 `live_watch` 的五个双核采样窗口通过；切核、删除再添加、停止刷新和复位后采样正常。已安装 EXE 的可见 Watch 数值连续变化；界面设置 AHB 100 ms 后，十六进制 LIVE 样本为 52079、52347、52618、52953、53212（此处转为十进制列示），采样时两核均保持运行。 |
+| 新增 Source 文本操作 | Windows ConPTY 驱动已安装 EXE，验证双击/拖选、键盘整行复制、右键 Copy、实际 Windows Unicode 剪贴板读回、Add to Watch、拒绝跨行表达式、F9 当前核断点命中。Core0/Core1 分别添加 `uart_cnt`，退出保存后各核恰有一项。原剪贴板已恢复。 |
+| 配置和终端交互 | Setup 修改 timeout 为 9000、Ctrl+S 保存、F5 启动并命中 `_main`、F2/Esc 保持会话；Files/Asm/Memory 实际内容、Help、Appearance 保存、文件列表、80×24 / 45×12 / 180×50 布局及终端 F5/F6 通过。属于伪终端自动化，不是人工 VS Code 鼠标验收。 |
+| 源码映射 | ELF 中的绝对编译目录映射到另一个含空格的本地目录，`main.c:105` 实际断点命中；ELF、profile、source_root 和映射目标的相对配置解析通过。连接时拒绝直接换 ELF，断开后重载通过。 |
+| 负例和清理 | Build 返回 17、Download 返回 23 时不自动重连，可手动恢复；构建中 Quit 取消并正常退出。测试结束无 DebugTUI/GDB/OpenOCD/jtag 残留进程，3333/3334/6666 无监听。 |
+| **未通过：退出后运行** | **`session.on_exit="resume"` 两次复现错误。** 当前实现先 `-exec-continue`，随后 `-target-detach` 被 GDB 拒绝：`Cannot execute this command while the target is running`；断开响应失败、状态为 FAULT。默认 `detach` 路径通过。证据：`exit-resume-repro/result.json` 和 `core1-prepare-core0/requests.json`；本次没有修改该实现。 |
+
+初始实板存在 Flash 读取/启动失败，通过本次实际 Build、厂商 Download 和系统复位恢复。下载前 Flash 不可读，不能据此断言旧固件不匹配；下载后代码段校验通过。17:21 左右的 IDR/APB-AP 故障，用户确认同期有拔插、断电或复位操作；通过 Reconnect 恢复后继续测试通过，将其记录为中断恢复场景。
+
+本轮使用 GHS MCAL 固件，未覆盖 Bao 固件、其他平台实板、冷上电时序、长时压力、CTI 硬件同时暂停和断点资源耗尽。Source 内编辑及外部编辑器自动构建下载链尚非本阶段实现内容。旧测试驱动的参数、坐标/时序和返回结构断言错误已纠正；原失败尝试及后续证据保留在回归目录，最终取值规则写入 `report.json`。
+
+## 0.8.4：Source 选择、复制和加入 Watch（2026-09-22）
+
+- 147 项单元测试、1 项任务集成测试与严格 Clippy 检查通过。覆盖拖选、双击选词、跨行/反向选择、Tab/中文、键盘扩选、右键菜单、窄终端、横向滚动、快捷键冲突和核心切换清理选区；行号栏及 F9 保留断点行为。
+- Windows 原生剪贴板测试通过，实际读回中文、Tab 和 CRLF；测试后恢复原剪贴板。普通 UI 测试使用内存剪贴板，不修改用户剪贴板。
+- 基于本机 `THA6XXX_MC_AS440` 工程的 `debug-core0.toml`、`debug-core1.toml` 和 `debug-multi.toml`，使用实际 Source/UI 事件处理与 Ratatui TestBackend，连接工程内的 GDB / OpenOCD 和 THA6206 实板：从实际 `Uart_Demo.c` 选择 `uart_cnt`，复制并加入当前核 Watch，通过值读取和每核列表隔离断言。测试禁用配置持久化，核对源码与 ELF 字节未改变，没有烧录固件。这是自动化 UI 到实板测试，不是终端鼠标手工验收。
+- 额外 Reset/Run 验证未在 8 秒内命中 `_main`；OpenOCD 有 `DSCR.ERR`，GDB 校验 `EX_CODE` 时出现 target memory fault。完整固件启动流程未验证通过，不能将 Source 功能测试结果视为全部调试场景正常。证据与测试范围：`artifacts/source-selection-20260922/result.json`。
+
 ## 0.8.3：正式发布验证（2026-09-20）
 
 - 正式版本重新执行 `cargo test --locked -- --test-threads=1`：137 个单元测试和 1 个 CLI 集成测试通过；`cargo clippy --locked --all-targets -- -D warnings` 与 release 构建通过。记录：`artifacts/release-0.8.3/`。

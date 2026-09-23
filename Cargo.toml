@@ -1,6 +1,6 @@
 [package]
 name = "debugtui"
-version = "0.8.3"
+version = "0.8.6"
 edition = "2024"
 description = "Native terminal debugger using a configurable GDB/MI environment"
 license = "Apache-2.0"

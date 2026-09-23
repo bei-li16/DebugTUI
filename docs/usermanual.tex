@@ -19,11 +19,11 @@
 \definecolor{accent}{HTML}{A65028}
 \definecolor{pale}{HTML}{F2F5F7}
 \definecolor{line}{HTML}{B7C8D2}
-\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={基于本地 v0.8.3 源码及 STM32F429、THA6206 与 Bao 调试资料}}
+\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={基于 v0.8.6 源码及 STM32F429、THA6206 与 Bao 调试资料}}
 \ctexset{section={format=\Large\bfseries\color{ink}},subsection={format=\large\bfseries\color{ink}}}
 \pagestyle{fancy}\fancyhf{}
 \fancyhead[L]{\small\sffamily DebugTUI / User Manual}
-\fancyhead[R]{\small v0.8.3 · 2026-09-21}
+\fancyhead[R]{\small v0.8.6 · 2026-09-23}
 \fancyfoot[L]{\footnotesize 本地源码与测试证据版}
 \fancyfoot[R]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
@@ -65,10 +65,10 @@
 \end{tikzpicture}
 \vfill
 \begin{tabular}{@{}ll}
-工程版本 & 0.8.3，配置格式 version = 2\\
-分析基线 & \code{be2d759c74060c4b1839f6f06e77812fc7068d4d}\\
-基线说明 & v0.8.3 源码；2026-09-21 补充 THA6206 / Bao 资料\\
-编写日期 & 2026-09-21（Asia/Shanghai）\\
+工程版本 & 0.8.6，配置格式 version = 2\\
+分析基线 & v0.8.6 源码与 2026-09-23 本地验证\\
+修订范围 & v0.8.3（\code{8c74f72}）至 v0.8.6 的变更\\
+编写日期 & 2026-09-23（Asia/Shanghai）\\
 适用平台 & 当前发布及本地验证：Windows x64\\
 文档文件 & \code{docs/usermanual.tex} / \code{docs/usermanual.pdf}
 \end{tabular}
@@ -82,8 +82,8 @@
 \noindent\begin{tabularx}{\linewidth}{@{}P{27mm}Y@{}}\toprule
 证据类别 & 本手册的使用方式\\\midrule
 当前源码 & 功能、默认值、路由和约束的首要依据；与旧 README 冲突时采用代码事实。\\
-源码验证 & 初版编写时执行 137 项 Rust 单元测试和 1 项 CLI 集成测试，全部通过；本次修订不改变产品源码。\\
-本地历史实板 & 复核 J-Link/F429 记录，并补充 2026-09-20 THA6206 多核及 2026-09-21 Bao 双 VM 的配置、JSON 与日志；不声称本次重测。\\
+源码验证 & 保留 v0.8.3/0.8.4 历史记录，并补充 v0.8.6 的工程配置页、搜索及退出回归；当前验证清单见 TESTING.md。\\
+本地实板 & 补充 2026-09-23 已安装 v0.8.6 的 THA6206 单核/多核 16 个功能组及 21 个退出场景；J-Link/F429、Bao 双 VM 与较早测试保留原日期，不声称本次重测。\\
 仓库历史说明 & 历史说明须与本机可见原始记录、产物和日期对应；具体证据见各适配章节，不把配置配方当作实板结果。\\
 外部资料 & 核对 MI/RSP、探针协议、CoreSight/ADI、Trace 和芯片接口；通用架构能力不等于本地已实现或已验证。\\\bottomrule
 \end{tabularx}
@@ -102,12 +102,12 @@ DebugTUI 是基于 GDB/MI2 的原生终端调试工作台。Ratatui 绘制字符
 \noindent\begin{tabularx}{\linewidth}{@{}P{28mm}Y@{}}\toprule
 能力 & 用户可获得的行为\\\midrule
 执行控制 & Connect/Reconnect/Disconnect、Run、Continue、Pause、Reset、Step In/Over/Out、指令单步。Reset/Download 由环境动作决定。\\
-代码定位 & 源文件列表、源码标签、搜索、PC 定位、栈帧选择、按需反汇编、源码路径映射。源码是只读浏览。\\
+代码定位 & 源文件列表、标签、搜索、PC 定位、栈帧选择、反汇编、路径映射；源码选区、复制和加入当前核 Watch。源码是只读浏览。\\
 数据检查 & 系统寄存器、Watch、Locals、Memory、CMSIS-SVD 外设/寄存器/位域、独立进制设置。\\
 断点 & 普通/硬件/临时代码断点，写/读/读写数据观察点，启停、条件、忽略次数、命中数、跨重连恢复。\\
 实时观察 & 可见项选择显式内存通道；OpenOCD TCL 能力允许时在运行中读内存；另有旧式 ELF 原始全局量 Live Watch。\\
 多核 & 每核独立 GDB，会话组控制、断点联停、单步隔离、共享复位、显式多核断点关联。\\
-工程操作 & Setup 配置表单、Build/Download 外部命令、环境引用、偏好保存、日志、退出清理。\\
+工程操作 & Setup 项目选择、示例模板、字段帮助与直接退出；Build/Download 外部命令、环境引用、偏好保存、日志和清理。\\
 自动化 & 标准输入/输出 JSONL、脚本串行执行、结构化快照、响应、日志与实时采样事件。\\\bottomrule
 \end{tabularx}
 
@@ -119,6 +119,21 @@ SVD 是寄存器描述，不是 Flash 算法，也不建立探针连接。旧式
 \subsection{未提供或不能泛化的能力}
 当前没有专用 FreeRTOS 任务浏览器、RTT/SWO/ETM 跟踪面板、内置源码编辑器、DAP（Debug Adapter Protocol）服务或多人共享调试会话。能调试 FreeRTOS 固件，不等于能枚举和切换全部 RTOS 任务。软件多核协调不保证硬件同时停止或周期级同步；各核目前共享 GDB 程序、ELF、Source root 和 SVD。
 \src{\path{Cargo.toml}；\path{src/main.rs}；\path{src/session.rs}；\path{src/coordinator.rs}；\path{src/ui.rs}。}
+
+\subsection{v0.8.3 至 v0.8.6 的修订}
+\label{sec:local-084}
+本手册以 v0.8.3 标签为比较起点，覆盖 0.8.4 至 0.8.6 源码和资料。配置格式仍为 version = 2。安装包版本通过 EXE 的 --version 核对；实际发布附件和 Latest 状态以 GitHub Release 为准。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{31mm}Y@{}}\toprule
+变更范围 & 本手册的对应内容与边界\\\midrule
+STM32 工具配置 & 补充 CMSIS-DAP/OpenOCD 配方；硬件脚本可用环境变量选择 profile，不能把换 profile 等同于完成实板验收。\\
+CI 与芯片适配资料 & 保留并整合流水线 ELF 源码映射、THA6206 GHS 单核/多核、Bao Hypervisor/Guest 调试步骤；这些资料已在此前提交中加入。\\
+0.8.4 启动配置 & 首页 Exit、相对 Project 路径、Projects 选择、Examples 示例、加载后刷新配置、按字段显示多行帮助及窄屏布局。\\
+0.8.4 源码操作 & 鼠标/键盘选区、系统剪贴板复制、加入当前核 Watch、长行横向滚动；保留只读源码及断点栏操作。\\
+0.8.5 搜索与退出 & Files 文件模糊筛选、Symbols 函数/变量/类型索引；远程 resume 采用 Continue 后 Disconnect，并核对 GDB 正常退出。\\
+0.8.6 工程配置 & Setup 只编辑工程字段及工具环境引用；兼容旧内嵌覆盖和单核/多核配置。三个输入区使用显著边框与聚焦提示。\\
+本地 THA6206 板级修正 & 说明外部参考工程 OpenOCD 的 DBGRESET、复位顺序和 EDRCR.CSE 位修正，单列验证范围；该脚本不包含在 DebugTUI 程序包中。\\\bottomrule
+\end{tabularx}
 
 \newsection{安装、首次启动与日常工作流}
 \subsection{准备材料}
@@ -134,14 +149,14 @@ SVD 是寄存器描述，不是 Flash 算法，也不建立探针连接。旧式
 
 # Existing portable executable: run directly.
 # Existing npm archive: substitute its actual filename.
-npm install -g ./artifacts/debugtui-cli-0.8.3.tgz
+npm install -g ./artifacts/debugtui-cli-0.8.6.tgz
 debugtui
 \end{lstlisting}
 \end{minipage}\par
 仓库 PUBLISHING.md 描述了 GitHub Release URL 安装流程；本文不将本地包版本等同于远端 Latest。主程序包不包含 tools 和 SVD，交付时须分别准备。
 
 \subsection{首次启动}
-无参数执行 \code{debugtui} 进入 Setup，不启动 GDB 或占用探针。依次检查 Project、Tools/profile、GDB、Program/ELF、Source root、SVD、目标模式/端口、Build/Download 和退出策略。顶部 Start debugging 默认聚焦；Enter、Ctrl+R、Ctrl+Enter、F5 或鼠标均可启动。Save 只保存；Workspace/Esc 回到原工作区并保留草稿。
+无参数执行 \code{debugtui} 进入 Setup，不启动 GDB 或占用探针。依次检查 Project、Tools/profile、Program/ELF、Source root、SVD、Build/Download 和退出策略。GDB、目标连接、服务启动及工具超时在引用的 debug-env.toml 中维护。顶部 Start debugging 默认聚焦；在该按钮上按 Enter，或使用 Ctrl+R、Ctrl+Enter、F5 启动。Save 只保存；Workspace/Esc 回到原工作区并保留草稿。\textbf{首页可直接点击 Exit 或按 Ctrl+Q 退出，无需先启动调试}；已有会话仍按正常退出流程清理。
 
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
@@ -154,6 +169,68 @@ debugtui --gdb C:/tools/arm-none-eabi-gdb.exe `
 \end{minipage}\par
 \code{--connect} 和 \code{--local} 禁用自有 service 启动，但不会清除已选 profile 的其他连接动作。若只想建立通用连接，使用明确的 GDB/目标参数且不加载芯片 profile。只有工程中的 \code{tools/debug-env.toml} 在适当条件下会被发现，TUI 安装目录不作为隐式工具搜索根。
 
+\subsection{项目发现、选择与相对路径}
+\label{sec:setup-projects}
+没有指定项目时，默认路径是启动目录下的 \code{./debug.toml}。\textbf{进入 Setup 不会自动创建这个文件}：没有现成配置时只是建立内存草稿，显式 Save/Ctrl+S，或以 Save to project = Yes 启动时才保存。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{45mm}Y@{}}\toprule
+启动目录情况 & 默认行为及可执行操作\\\midrule
+存在 \code{debug.toml} & 载入默认项目并显示其配置；用 Projects/F3 换到其他调试项目。\\
+没有默认文件，但有项目 TOML & 首次空草稿启动时打开候选列表，选择后重新解析并刷新 Setup 各项。返回已编辑的草稿时不强制再次选择。\\
+没有项目 TOML & 显示 \code{./debug.toml} 草稿；可直接填写，也可先用 Examples/F4 套用示例。\\
+配置在其他目录 & 在 Project 字段按 F2 浏览目录及 TOML 文件，或直接编辑路径；加载失败显示错误并保留此前的有效草稿。\\\bottomrule
+\end{tabularx}
+
+Projects 列表筛选调试项目配置，排除 \code{Cargo.toml} 和 \code{debug-env*.toml} 等工具配置；并非所有 TOML 都是可启动项目。\code{debug-*.toml} 即使损坏也可出现在列表，选择时会报告解析错误。F2 是文件浏览，F3 是项目选择，两者用途不同。
+
+Project 字段以\textbf{启动工作目录}为相对路径基准。例如 \path{./debug.toml} 或 \path{./examples/debug.toml}；跨 Windows 盘符等无法相对表示的路径仍保留绝对路径。选择项目后，ELF、tools/profile、Source root、SVD、日志等项目资源的相对路径则按\textbf{所选 TOML 所在目录}解析。不能因为 Project 显示相对路径，就把全部字段都理解为相对启动目录。
+
+\subsection{Examples：从示例建立可修改的配置}
+\label{sec:setup-examples}
+在 Setup 点击 Examples 或按 F4，选中示例后按 Enter 应用。该操作替换当前配置草稿并立即刷新字段，\textbf{不会写文件、连接探针或执行 Build/Download}；检查并修改后再保存或启动。需要保留尚未保存的自定义内容时，应先保存再切换示例。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{40mm}Y@{}}\toprule
+示例 & 填入的主要配置及需要自行补充的内容\\\midrule
+单核工程 & \code{./build/firmware.elf}；自行选择 ARM、RISC-V 或其他目标的工具 profile，示例不内嵌工具参数。\\
+本地程序 & Windows 程序示例为 \code{./build/app.exe}；选择声明 \code{target.mode='local'} 的工具 profile。\\
+双核工程 & core0/core1 分别连接 3333/3334，默认 Scope All 和联停；共享 ELF，需选用兼容的工具环境并核对逐核配置。\\
+本地工具配置 & 若项目下有 \code{debug-env.toml}、\code{.vscode/debug-env.toml} 或 \code{tools/debug-env.toml}，提供引用选项，不改写 profile。\\\bottomrule
+\end{tabularx}
+
+通用示例使用 \code{./build/firmware.elf}、Source root = \code{.}、detach 退出策略和 \code{debug_log} 日志目录。示例不生成 GDB、target、service 或工具超时字段；保留已选 profile 和旧工程覆盖值。SVD 与构建/下载命令按工程补齐。双核示例只有在 Server 确实暴露两个对应核心端口时才能使用。
+
+\subsection{Setup 字段说明与操作入口}
+选中字段后，表单下方显示对应的用途、填写格式、路径基准和空值影响；长说明随宽度换行。窄屏下顶部按钮换行，字段列表可滚动。45×12 是布局回归用例，实际配置建议至少 80×24，完整工作台建议 120×36。
+
+{\small
+\begin{longtable}{@{}P{30mm}P{38mm}P{93mm}@{}}
+\toprule 字段 & 示例或入口 & 用途与填写规则\\\midrule\endfirsthead
+\toprule 字段 & 示例或入口 & 用途与填写规则\\\midrule\endhead
+Project & \code{./debug.toml}；F2/F3 & 项目配置的读写目标，按启动目录解析。选择已有文件会更新整张配置表；新路径在保存前只是草稿。\\
+Tools / profile & \code{tools/debug-env.toml}；F2 & 引用工具/服务/动作配置，相对项目目录。留空使用独立 GDB 配置，不自动获得芯片复位和下载能力。\\
+Program / ELF & \code{build/firmware.elf}；F2 & 与目标固件匹配的符号文件，相对项目目录；不是自动烧录命令。无有效调试信息时无法完整进行 C 源码调试。\\
+Source root & \code{.}；F2 & 本地源码定位根及 Build/Download 工作目录；相对项目目录。CI 绝对路径前缀仍需另配路径映射。\\
+Build command & \code{.\build.bat} & 可选构建命令；在 Source root 执行。保存、应用示例或单纯启动 Setup 不会执行它。\\
+Download command & \code{.\flash.bat} & 可选下载命令；在 Source root 执行，使用工程自己的烧录脚本或工具。先核对输入产物和目标。\\
+On exit & detach / resume / disconnect & detach 脱离；resume 对远程目标先 Continue 再 Disconnect，对本地进程暂停后 Detach；disconnect 只关闭连接。最终运行状态仍受 Server 和板级配置影响。\\
+Log directory & \code{debug_log}；F2 & 可选会话日志目录，相对项目目录；建议排查多核问题时保留各核 MI 与 Server 日志。\\
+SVD file & \code{device.svd}；F2 & 可选外设寄存器描述，相对项目目录；留空仍能使用基本调试，不提供相应外设树。\\
+Save to project & Yes / No & 控制启动时是否保存草稿；Ctrl+S/Save 始终是显式保存。保存不改写所引用的工具 profile。\\\bottomrule
+\end{longtable}}
+
+\textbf{配置职责：}debug.toml 保存程序、源码映射、任务、SVD、Watch/断点、逐核映射、组策略和 \code{session.on_exit}；debug-env.toml 保存 GDB、OpenOCD/服务、连接默认值、板级动作和 \code{session.timeout_ms}。后者默认 8000 ms 是单条工具命令等待时间，不是工程退出策略。Setup 已移除六个工具编辑项，Tools/profile 只选择引用，On exit 仍是工程字段。旧工程内嵌工具覆盖继续有效；保存不展开环境值、不改共享 profile，并保留单核/多核的后台偏好。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{42mm}Y@{}}\toprule
+Setup 中的按键/按钮 & 行为\\\midrule
+Projects / F3；Examples / F4 & 打开项目列表；打开示例列表。选择后回到 Setup 查看更新的字段。\\
+F2；Enter & 在支持的路径字段浏览；激活当前按钮、字段或列表项。\\
+Save / Ctrl+S & 保存当前项目配置；遇到外部修改冲突时报告错误，避免覆盖新内容。\\
+Start / Ctrl+R / F5 & 校验配置，按 Save to project 决定保存，再结束旧会话并启动新会话。\\
+Workspace / Esc & 从表单返回工作区并保留草稿；在编辑器或选择弹窗中先退出当前编辑/弹窗。\\
+Exit / Ctrl+Q & 直接结束程序并执行正常清理；无需先进入调试工作区。\\\bottomrule
+\end{tabularx}
+\src{\path{src/launch.rs}: Document、Setup、字段提示及相对路径；\path{src/launch/choices.rs}: 项目发现与示例；\path{src/ui.rs}: 启动和退出路由。}
+
 \subsection{一次调试的操作顺序}
 \begin{enumerate}
 \item 连接，检查 STOPPED/READY 状态及日志，确认固件和 ELF 匹配。
@@ -161,7 +238,7 @@ debugtui --gdb C:/tools/arm-none-eabi-gdb.exe `
 \item F5 继续，等待真实停止事件；F6 暂停，F10/F11/Shift+F11 单步。
 \item 需要运行时观察时，暂停解析地址，再显式启用允许的内存通道。
 \item Build/Download 前核对工程目录和动作；下载在 TUI 中需要确认。
-\item 使用 Ctrl+Q 结束，核对断开日志；退出后的板上运行策略来自 profile。
+\item 使用 Ctrl+Q 结束，核对断开日志；退出策略优先来自工程 session.on\_exit，板上最终状态还取决于服务端行为。
 \end{enumerate}
 \src{\path{src/cli.rs}: Options；\path{src/launch.rs}: Document/Setup；\path{src/ui.rs}: run；\path{scripts/build.ps1}。}
 
@@ -186,7 +263,8 @@ debugtui --gdb C:/tools/arm-none-eabi-gdb.exe `
 \noindent\begin{tabularx}{\linewidth}{@{}P{47mm}Y@{}}\toprule
 按键 & 操作\\\midrule
 F2 / Ctrl+P / Ctrl+Q & Setup / Help 命令面板 / 清理并退出\\
-F5 / F6（或 Ctrl+C） & 继续或从 READY 启动 / 暂停\\
+F5 / F6 & 继续或从 READY 启动 / 暂停；F6 不受源码选区影响\\
+Ctrl+C / Ctrl+Enter & Source 聚焦且有选区时复制 / 加入当前核 Watch；无源码选区时 Ctrl+C 保留暂停用途\\
 F9 / F10 / F11 / Shift+F11 & 源码断点 / 越过 / 进入 / 跳出\\
 Tab / Shift+Tab & 切换视图与键盘焦点；弹窗内切字段\\
 Ctrl+F / Ctrl+O & 源码搜索 / 搜索已打开的文件\\
@@ -219,6 +297,37 @@ compare-sections .text
 Console 与 Watch 各有输入缓冲和历史/补全状态。输入停顿约 150 ms 后最多发送一个补全请求，最多返回 64 项；运行中不查询符号。裸变量前缀走 \code{-symbol-info-variables}，成员或 GDB 命令走 \code{-complete}；选中补全不执行表达式。
 
 Source 标签按映射后规范路径去重，每个文件记住滚动和光标。手动打开或关闭源码不切 GDB 栈帧；选择 Stack 行才切上下文。新停止会定位真正的文件和 PC，无源码的停止清空当前源码视图，避免误认旧位置。单文件读取限制为 2 MiB / 30000 行。
+
+\subsection{Files 与 Symbols 模糊搜索}
+Files 页的 Find 框支持点击、Ctrl+F 或 / 开始输入，不区分大小写；先按包含匹配，再按字符顺序模糊匹配。输入 spi 可找到 Spi.c、Spi\_Irq.c、espi\_hal.c 和 espi\_std.c，也可输入路径片段。上下键选择，Enter 或点击结果打开 Source，Ctrl+U 清空；范围为 GDB 提供的 ELF 源文件列表。
+
+顶部 Symbols 框通过点击、Ctrl+K 或 \code{:symbols} 打开，检索 ELF 中的函数、全局/静态变量和类型。结果显示类别、文件和行号，选中后跳到映射后的本地源码；不切换 GDB 栈帧、PC 或断点。输入停顿 200 ms 后查询，每类最多 200 项；遇到上限需缩小查询，F4 可重试。
+
+新符号查询要求 READY/STOPPED，运行时只可使用已返回的结果，不会隐式暂停目标；切核、重连或换 ELF 时丢弃过期结果。缺少调试信息、位置或对应文件时显示原因，不猜测跳转位置。宏、未编入 ELF 的文件和普通函数局部变量不属于全局索引。Symbols、Files 和 Watch 输入区均显示边框和聚焦状态；Watch 输入框用于添加表达式。
+\src{\path{src/search.rs}、\path{src/session/symbols.rs}、\path{src/ui/search.rs}；实板终端结果见 \path{artifacts/regression-0.8.6-20260923/hardware-results.json}。}
+
+\subsection{源码选区、复制与加入 Watch}
+\label{sec:source-selection}
+0.8.4 本地版本在只读 Source 视图中加入文本选区。\textbf{行号/断点栏点击仍切换断点，代码正文点击用于定位和选择文本}；F9 仍对当前源码行操作。源码选区不会修改文件、重新编译或下载固件。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{44mm}Y@{}}\toprule
+操作 & 行为与范围\\\midrule
+鼠标拖动、Shift+点击 & 建立或扩展选区，支持反向拖动和跨行选择；拖动到边缘可滚动。\\
+双击单词；右键 & 双击选择标识符；在已有选区内右键保留选区，否则定位单词后打开 Copy / Add to Watch 菜单。\\
+Shift+方向键/Home/End & 扩展选区；Ctrl+Home/End 到文件首尾，配合 Shift 扩选。Ctrl+A 选择整份已载入源码，Esc 清除选区。\\
+Copy / Ctrl+C & 把选区的源码文本写入系统剪贴板，不含行号、断点标记和语法高亮；支持中文、Tab 与多行。\\
+Add to Watch / Ctrl+Enter & 把去除首尾空白后的单行表达式加入当前检查核的 Watch。多行或含无效控制字符的文本会被拒绝并提示。\\
+左右移动与横向滚动 & 长行可随光标/选区横向滚动；行号栏固定，文字位置按显示宽度换算，不把中文或 Tab 当作单字节字符。\\\bottomrule
+\end{tabularx}
+
+Copy 和 Add to Watch 按钮在 Source 顶部空间足够时显示；窄窗口可使用右键菜单或快捷键。快捷键依赖 Source 获得焦点；若终端拦截 Ctrl+Enter 或鼠标事件，可改用可用的按钮/菜单。终端自己的文本选择与 DebugTUI 源码选区是两种不同操作。
+
+加入 Watch 复用已有的表达式求值和错误显示：它使用\textbf{当前核心、当前栈帧}，不会把表达式自动加入其他核心。运行中加入不会为求值而自动暂停，显示和更新仍取决于普通 Watch 或显式实时内存通道；表达式不合法时保留错误供修改。单纯移动或复制选区不向 GDB 求值；主动加入 Watch 后则按常规 GDB 表达式规则处理。
+
+\notice{当 Source 聚焦且有选区时，Ctrl+C 优先复制，不再表示暂停。需要确定暂停目标时使用 F6 或 Pause。切换核心、切换源码或处理新的停止上下文时会清理选区/菜单，避免把旧选区误用于新上下文。}
+
+Windows 使用原生 Unicode 剪贴板接口，不依赖 VS Code、PowerShell 或 Python 剪贴板脚本；复制失败会显示错误。其他平台实现使用系统剪贴板工具，但当前交付验证仍以 Windows x64 为准。这项功能不是源码编辑器。
+\src{\path{src/ui/source_text.rs}；\path{src/ui/highlight.rs}；\path{src/ui/render.rs}；\path{src/clipboard.rs}；\path{src/ui/source_text/tests.rs}。}
 
 \notice{F5 Continue 与工具栏 Run 不应混用：本地 READY 的 Continue 会启动程序；STM32 profile 的 Run 明确包含 reset halt，可能重启应用。普通 STOPPED 下 F5 仅继续执行。}
 
@@ -825,7 +934,7 @@ A：Bao 实板记录 & \path{D:/LiBo/Files/DATA/FreeRTOS/BAOHyp/analysis}\\\bott
 \end{tabularx}
 M 和 S 是两个独立目录，不应因为名字相同就视为同一份工具或固件。B 的 profile 通过相对路径引用 S；迁移时如改用 M，需要同时核对 GDB、OpenOCD、SVD、下载器及工作目录。M 基于 \code{50ff448}，B 基于 \code{b25150e} 的 \code{dev/tha6xxx-init} 分支；两者均存在本地修改，本节分析的是 2026-09-21 可见工作树，不能只 checkout 这两个提交就假定得到全部示例。
 
-\notice{证据分三类：配置和源码静态核对；已留存的历史实板记录；本次离线 ELF/GDB 检查。本次文档修订没有连接探针、下载固件、复位或重新进行实板验收。后文的 Bao 双 GDB 配方也不等于已完成该组合的实板测试。}
+\notice{此前章节资料包含配置静态核对、历史实板和离线 ELF/GDB 检查；本版另补 2026-09-23 的 MCAL 实板回归，见第\ref{sec:tha-086-validation}节。它实际下载了配套 HEX，不覆盖 Bao 固件。后文 Bao 双 GDB 配方不等于该组合已完成实板测试。}
 
 \subsection{与 STM32F429 适配的关键差异}
 \noindent\begin{tabularx}{\linewidth}{@{}P{25mm}P{49mm}Y@{}}\toprule
@@ -869,7 +978,7 @@ TCM 还有核私有地址与全局别名。对 core0/core1 的私有 TCM，不�
 \src{M：\path{.vscode/openocd.cfg}、\path{.vscode/gdb.cfg}、\path{DemoWorkspace/CodeProject/LinkFiles/Ghs/LinkerGhsPf.ld}；OpenOCD 官方 \href{https://openocd.org/doc/html/Architecture-and-Core-Commands.html}{Armv8/CTI 命令说明}。}
 
 \subsection{工具环境、构建和下载}
-M 的三个工程配置共用 \code{.vscode/debug-env.toml}。工程 ELF 为 \path{DemoWorkspace/CodeProject/Debug/THA6206_Demo_Prj.elf}，Source root 为工程根，SVD 为 \path{.vscode/THA6206/tha6206.svd}。GDB 环境载入 \code{gdb.cfg}，设置 \code{armv8-r}、可访问存储范围和超时；\code{maintenance set dwarf unwind off} 是当前 GHS 调试兼容配置。
+M 的四个工程入口分别引用工具环境：debug.toml 对应 debug-env.toml，debug-core0.toml 对应 debug-env-core0.toml，debug-core1.toml 对应 debug-env-core1-standalone.toml，debug-multi.toml 对应 debug-env-multi.toml；这些 profile 都在 .vscode 下。另保留 debug-env-core1.toml 用于附加外部服务。工程 ELF 为 \path{DemoWorkspace/CodeProject/Debug/THA6206_Demo_Prj.elf}，Source root 为工程根，SVD 为 \path{.vscode/THA6206/tha6206.svd}。GDB 环境载入 \code{gdb.cfg}，设置 \code{armv8-r}、可访问存储范围和超时；\code{maintenance set dwarf unwind off} 是当前 GHS 调试兼容配置。
 
 \par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
 # Run these commands from M.
@@ -883,7 +992,7 @@ debugtui --project .\debug-multi.toml
 \end{lstlisting}\end{minipage}\par
 \code{Load.bat} 使用 Debug 目录的 \code{THA6206_Demo_Prj.hex}，调用厂商下载器烧录并执行系统复位。TUI Build/Download 调用相同的外部任务，先释放已有 GDB 和其拥有的 Server，再执行任务；原来已连接的工作区在成功后重新连接。不要同时运行多个入口争用同一探针/端口，也不要把 Console 中的 \code{load} 当作这个 HEX 下载流程。
 
-工程显式列出 \code{r0}--\code{r12}、\code{sp/lr/pc/cpsr}，避免初始化早期请求不适用的 VFP 寄存器。若 DSCR/sticky abort、读寄存器或复位失败仍出现，应保留原始日志排查；减少请求范围不是忽略真实错误。SVD 能显示外设名不代表对应硬件已初始化。
+工具 profile 显式列出 \code{r0}--\code{r12}、\code{sp/lr/pc/cpsr}，避免初始化早期请求不适用的 VFP 寄存器。若 DSCR/sticky abort、读寄存器或复位失败仍出现，应保留原始日志排查；减少请求范围不是忽略真实错误。SVD 能显示外设名不代表对应硬件已初始化。
 
 \subsection{单独调试 core0 与 core1}
 \noindent\begin{tabularx}{\linewidth}{@{}P{27mm}P{59mm}Y@{}}\toprule
@@ -900,7 +1009,52 @@ Restart 动作 & chipreset、刷新寄存器缓存 & 空；不主动发整片复
 \item 用 core1 入口连接 3334，在 \code{DemoApp_MainCore1} 等实际从核函数设置断点并继续。若停在等待循环，应先核对主核状态与同步变量，不应立即归因于 TUI。
 \item 单核入口只表示一个 GDB 会话。退出时 detach 不保证一个原本暂停的核自动继续；需要固件保持运行时，应先明确 Continue 并确认目标状态。
 \end{enumerate}
-\code{chipreset} 内部通过 AP3 控制复位并恢复调试访问，包含 EDECR/EDPRCR、重新 examine 和清除 DSCR sticky 状态等板级处理。不要把它替换为未经验证的通用 \code{reset halt}，也不要复制 core0 的复位动作到只想附加观察 core1 的入口。
+\code{chipreset} 通过 AP3 发调试模块复位请求，通过 AP1 访问 EDECR/EDPRCR 发应用复位请求，并包含重新 examine 和累计调试错误清理。不要把它替换为未经验证的通用 \code{reset halt}，也不要复制 core0 的复位动作到只想附加观察 core1 的入口。
+
+\subsection{本地板级复位恢复与 CSE 位修正}
+\label{sec:tha-reset-cse}
+2026-09-22 核对的 M 下 \code{.vscode/openocd.cfg} 包含以下适配及中文注释。它是\textbf{外部参考工程的板级修改}，不是 DebugTUI Rust 代码或主程序包的内置复位实现；复制 TUI EXE 不会自动更新该文件。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{34mm}Y@{}}\toprule
+步骤/修改 & 作用与实际范围\\\midrule
+增加 \code{dbgreset} & 经 AHB\_3 向 \code{0xC00008A0} 写 \code{0x1}。本地 SVD 对应 MAINRESET.DBGRSTCON.DBGRST（bit0），写 1 触发并自清零；该请求不受 DEBUGCORE 单核选择限制。\\
+首次执行标志 & 每次加载 cfg 初始化 \code{_dbgreset_done=0}，首次 chipreset 执行 dbgreset 并等待 300 ms，再按 DEBUGCORE 掩码 arp\_examine。只重连 GDB 不清除此标志。\\
+删除复位前 resume & 不再要求先成功恢复所有 halted 核，避免调试状态异常时 resume 报错阻断后续恢复。\\
+保留应用复位序列 & APB\_1 写 core0 EDECR/RCE、EDPRCR，再关闭 RCE；增加 100 ms 等待后，遍历全部核，对 running 核执行 halt。\\
+修正 EDRCR.CSE & 每核 DBGBASE + \code{0x090} 写 \code{0x4}，对应 CSE bit2；旧 \code{0x1} 写入的是保留位。此循环遍历全部核，不按 DEBUGCORE 掩码过滤。\\
+恢复 target 选择 & 正常结束后恢复调用方原先选中的 OpenOCD target；不代表恢复各核原运行状态或刷新每个 GDB 的缓存。\\\bottomrule
+\end{tabularx}
+
+\textbf{两个寄存器的写入值不能混淆}：DBGRSTCON 的 \code{0x1} 仍正确；应改为 \code{0x4} 的是 EDRCR.CSE。Cortex-R52 TRM（100026\_0104\_00\_en，11.6.2 / Table 11-8）规定 CSE 为 bit2，EDRCR[1:0] 为 RES0。CSE 清除 EDSCR 的 TXU、RXO、ERR，在 Debug 状态还清除 ITO；它不是清空 DTR 接收缓冲区的命令，不能据此保证消除 DTR\_RX\_FULL。
+
+\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
+# Debug reset: MAINRESET.DBGRSTCON.DBGRST is bit 0.
+catch {AHB_3 mww 0xC00008A0 0x1}
+
+# Clear sticky debug errors: EDRCR.CSE is bit 2.
+# core0: 0x80410090; core1: 0x80510090.
+for {set _core 0} {$_core < $_cores} {incr _core} {
+    set _dbgbase [lindex $DBGBASE $_core]
+    catch {APB_1 mww [expr {$_dbgbase + 0x090}] 0x4}
+}
+\end{lstlisting}\end{minipage}\par
+上面仅摘录两个不同用途的写操作，不能替代完整 cfg。当前脚本仍以固定延时等待，没有显式轮询 EDPRSR.SR/HALTED 完成状态；catch 允许流程继续，但不证明写入成功，也不消除 Server 已输出的错误。应用复位和调试复位的影响应按芯片定义判断，不能由 DEBUGCORE=1/2 推导为单核隔离复位。
+
+本地离线 Tcl 检查覆盖 DEBUGCORE=1/2/3、首次与再次 chipreset、掩码 examine、CSE 写值和 target 恢复。2026-09-23 使用修正后脚本完成单核/多核实板回归，见第\ref{sec:tha-086-validation}节；未做 CSE 新旧值的硬件 A/B 试验，不能仅据功能通过证明复位过程中每次写入都被确认。
+\src{M：\path{.vscode/openocd.cfg}、\path{.vscode/THA6206/tha6206.svd}；Arm Cortex-R52 TRM 100026\_0104\_00\_en，11.6.2；\href{https://github.com/ARM-software/CSAL/blob/master/include/csregisters.h}{Arm CSAL 寄存器定义}。}
+
+\subsection{0.8.6 单核与多核实板结果}
+\label{sec:tha-086-validation}
+2026-09-23 使用已安装的 v0.8.6、工程 GDB/OpenOCD 和实际 THA6206，完成 16 个功能组及其中 21 个退出/重连场景。先发现板上 Flash 与 ELF 不匹配，再通过 Load.bat 下载现有配套 HEX；下载后及测试结束时，向量表和代码段都与 ELF 匹配。没有重新编译当前应用或修改源码。
+
+core0/core1 独立调试、双核 All/Core 范围、按序启动、断点联停、单核/多核断点转换、单步、Watch 树、运行中 Live Watch、内存与外设、Files/Symbols 跳转及 CI 源码映射均有通过记录。core1 独立调试期间 core0 计数器持续增长。硬件代码断点实测两核同时各插入 8 个，各自第 9 个被拒绝，清理后恢复正常；OpenOCD 报告每核另有 8 个数据观察点，但本轮未做数据观察点耗尽试验。
+
+退出矩阵覆盖 core0/core1/multi、detach/resume/disconnect、暂停/运行，以及 remote 模式的 resume。对外部 OpenOCD 的附加会话退出不会关闭原服务。原工程 Watch/断点分别加载正确，构建/下载失败保持断开且可手动重连；成功构建生命周期使用 echo 任务，实际固件下载另做实测。
+
+修正了两类外部工程工具配置：默认 Run 显式使用 chipreset、先放行 core1 再继续 core0，避免 GDB exec-run 走不支持的通用 reset；默认和外部 core1 环境统一自动读取 17 个通用寄存器，避免复位入口 VFP 未启用时的 DSCR.ERR。配置内有原因注释，这些工程 profile 不随 TUI 包分发。
+
+\textbf{残留限制：}首次 dbgreset 仍可打印写内存失败，后续 examine 和执行恢复通过不代表该写入确认；GHS 深层栈存在 pc 0x80、未知帧及栈读取调试错误，不保证完整调用栈可靠。多核联停为软件协调，本轮 peer STOPPED 日志样本延迟为 124--266 ms，不是 CTI 同步停机。测试结束时两核暂停在复位入口，调试进程与端口清理；未做物理拔插、断电和多小时压力测试。
+\src{\path{TESTING.md}；\path{artifacts/regression-0.8.6-20260923/report.json}、\path{manifest-after.json}、\path{log-observations.json} 及各功能组 result.json。artifacts 为本地证据目录，不进入源码或安装包。}
 
 \subsection{双核会话组：启动顺序和控制语义}
 M 的 \code{debug-multi.toml} 已含两个 \code{[[cores]]}。以下节选保留启动/复位要点；其余 program、tools、tasks、GDB 配置沿用原文件，不要另建缺失工具路径的孤立片段。
@@ -940,7 +1094,7 @@ Reset Chip & 在 \code{restart_core} 执行一次共享复位，然后同步所�
 单步跨越等待另一核应答的循环，可能因对端被暂停而无法前进。此时选择适当的 Continue 范围或临时关闭联停，不是反复单步等待协议自动完成。原始 \code{monitor resume} 改变的是 OpenOCD target，绕过会话组控制；日常组调试优先使用 TUI 控件。
 
 \subsection{断点资源与运行中 Watch}
-源码点击新建断点仍只放到当前核。要两核都在同一代码位置停下，在 Breaks 选中持久代码/硬件断点，打开 Cores（快捷键 c），勾选另一核，Ctrl+Enter 应用。当前核须保留；临时断点和数据观察点不支持这种关联。两核的 GDB 断点编号可以不同，TUI 保存的是组关系。
+源码行号/断点栏点击新建断点仍只放到当前核；0.8.4 的代码正文点击用于选区。要两核都在同一代码位置停下，在 Breaks 选中持久代码/硬件断点，打开 Cores（快捷键 c），勾选另一核，Ctrl+Enter 应用。当前核须保留；临时断点和数据观察点不支持这种关联。两核的 GDB 断点编号可以不同，TUI 保存的是组关系。
 
 历史 Server 日志分别报告 core0、core1 各有 8 个硬件断点、8 个硬件观察点。因此这里的容量是 \textbf{per-core}，不是全芯片共用 8 个。一个双核硬件断点通常占每核一个比较资源；Flash 上的普通断点也可能需要硬件资源，临时断点、条件实现和调试服务器保留用途会影响可用数量，不能把“8”当作始终还能添加的数量。
 
@@ -956,6 +1110,10 @@ M 的旧式 \code{[live_watch]} 使用当前 MCAL ELF、TCL 6666、\code{bus_tar
 \path{artifacts/multicore-breakpoints-20260920/hardware-release/result.json} & passed=true；61 个请求；逐核实际命中、关联断点联停/删除及恢复运行。\\\bottomrule
 \end{tabularx}
 配套 events/trace 与 M 下的报告保留上下文。复现时核对选中核、endpoint、PC/停止原因、对端状态和数据来源；结果仅适用于记录中的探针、芯片及固件。
+
+2026-09-22 的 \path{artifacts/source-selection-20260922/result.json} 另记录了 core0、core1、多核三种入口的源码选区、复制动作路由、真实 GDB 加入 Watch 及逐核 Watch 隔离检查通过。测试使用真实源码和 GDB，会话绘制由 Ratatui TestBackend 驱动；不是人工在终端逐项点击的记录。原生 Windows 剪贴板读回另外验证，测试后恢复原剪贴板。
+
+\notice{同组附加 Reset/Run 检查未在 8 秒内到达 \code{_main}，出现等待组停止超时和 DSCR.ERR；另行 compare-sections EX\_CODE 返回 target memory fault。因此只能确认上述源码操作用例通过，不能声称当前固件完整启动链路通过。此次没有下载固件，也未以这些记录完成新 CSE 写值的实板验收。}
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{40mm}Y@{}}\toprule
 现象 & 优先检查\\\midrule
@@ -1201,7 +1359,11 @@ RCC/PORT 读失败或值不更新 & CPU 当前 MPU 权限、ahb 通道、刷新�
 
 含斜杠的 gdb.executable、service.command 和 cwd 相对定义它们的 TOML 文件；裸命令从 PATH 查找。\code{${profile_dir}} 只在环境文件展开。program、source\_map.to、live\_watch.elf、session.log\_dir 等最终相对项目目录解析；不要认为环境文件中的所有路径字段都会自动相对 profile。CLI 路径相对启动时 cwd 处理。
 
+0.8.4 的 Setup 将 Project 字段优先显示为相对启动目录的路径，但内部仍解析为确定的项目位置。资源路径遵守上述原规则；尤其 \code{gdb.args} 中 \code{-x} 后的相对文件名由 GDB 工作目录解释，未设置 \code{gdb.cwd} 时继承 DebugTUI 启动目录。完整操作见第\ref{sec:setup-projects}节。
+
 保存 Setup 时保留环境引用和工程显式配置，不把整个展开环境写回项目。运行时偏好写入使用全局互斥锁，将相关列表/UI 表合并到最新文档。检测到外部启动配置冲突时拒绝盲写并要求重新加载；跨进程修改及崩溃期间并非数据库式原子事务。
+
+Examples 是主动替换启动草稿的操作，不能理解为只填补空字段；它不立即写文件。Projects 则载入所选项目并重新派生所有显示字段，错误时保留此前有效草稿。保存始终写所选 Project，不改写引用的 profile；没有 TOML 的目录也必须经过显式保存或启用保存的 Start 才产生文件。
 
 \subsection{核心字段}
 \begin{longtable}{@{}P{42mm}P{32mm}P{87mm}@{}}\toprule
@@ -1269,7 +1431,7 @@ unicode = true
 \begin{figure}[H]\centering
 \begin{tikzpicture}[node distance=9mm]
 \node[box,text width=48mm] (main) {main / cli\\TUI 或 JSONL 入口};
-\node[box,text width=48mm,right=13mm of main] (conf) {launch / config\\工程文档、参数、环境合并};
+\node[box,text width=48mm,right=13mm of main] (conf) {launch / choices / config\\工程文档、示例、环境合并};
 \node[box,text width=109mm] (ui) at ($(main.south)!0.5!(conf.south)+(0,-1.15)$) {ui + 子模块：输入、布局、缓存、补全、刷新、外观};
 \node[box,text width=109mm,below=of ui] (co) {可选 Coordinator：多核路由、共享服务、组控制、回滚};
 \node[box,text width=48mm,below=9mm of co.south,xshift=-31mm] (s0) {Session 0 / Engine\\状态机 + MI 队列};
@@ -1302,6 +1464,10 @@ EngineHandle & 命令发送端、事件接收端和共享取消标志 Arc<Atomic
 Asm/Memory 根据停止代次、栈帧地址及层级失效，等待前台命令结束才读取；失败后等待显式 refresh 或下次停止，不高频重试。Source 只保留当前文件文本，各标签保存路径/滚动状态。SVD 有独立寄存器缓存，不写 Memory 面板快照；实时采样有独立缓存，不回写普通 GDB Snapshot。
 
 外观模块消费已有事件，不访问 GDB：短动画最高约 25 FPS，运行/忙碌提示约 2.5 Hz，空闲或失焦暂停装饰绘制。效果上限包括 256 个短脉冲、2048 个值历史、3 个实际停止落点；数值变化直接显示最终值，动画不伪造运行进度。
+
+0.8.4 的 \code{ui/source_text.rs} 保存选区 anchor/caret、横向视口及菜单状态，以 UTF-8 字节位置截取原文，以字符显示宽度换算屏幕坐标。highlight 提供对应文本范围，render 在着色结果上叠加选区并固定行号栏；切换文件、核心及停止上下文时清理相关状态。\code{clipboard.rs} 只在显式复制动作中写宿主剪贴板，Add to Watch 则沿用现有请求路径，不新增另一套 GDB 求值或多核路由。
+
+\code{launch/choices.rs} 负责项目筛选和示例生成，应用选择时经原 Document 解析与校验后替换草稿；浏览和选择阶段不创建调试进程。Setup 的直接 Exit 汇入既有退出/清理流程。这些界面功能没有引入新的调试工作线程或第三方运行时依赖。
 \src{\path{src/session.rs}: Engine、spawn、run；\path{src/coordinator.rs}: spawn；\path{src/ui.rs}: ensure\_visible\_data；\path{src/ui/effects.rs}；\path{src/ui/source_tabs.rs}。}
 
 \newsection{MI、RSP、TCL 的报文与流转}\label{sec:protocol}
@@ -1702,7 +1868,20 @@ Rust 单元/集成 & 各模块内联 tests、tests/project\_tasks.rs；解析、
 \end{tabularx}
 
 \subsection{源码测试与历史证据复核}
-初版编写时从当时源码执行 \code{cargo test --locked -- --test-threads=1}：137 个单元测试、1 个 CLI 集成测试通过，0 失败。本次补充 THA6206/Bao 只修改文档，完成示例配置离线加载、Guest ELF 符号/源码解析与产物哈希核对；未重跑 Rust 测试、实板、下载、Clippy 或发布流程。历史实板记录不能与本次离线检查或初版源码测试数量合并。THA6206/Bao 见第\ref{sec:tha6206}、\ref{sec:bao-tha6206}节，J-Link 长会话故障见第\ref{sec:jlink-duration}节。
+以下按执行阶段记录结果，不把不同时点的测试数量相加。初版的 137 项记录属于 v0.8.3；9 月 21 日的 THA6206/Bao 文档补充曾做配置离线加载、Guest ELF 解析和产物哈希核对。9 月 23 日补充了已安装 v0.8.6 的 MCAL 实板回归和发布前源码检查；其他板卡和 Bao 保留其原始测试日期。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{38mm}Y@{}}\toprule
+阶段 & 已记录的结果及边界\\\midrule
+v0.8.3 初版源码 & 137 项单元测试、1 项 CLI 集成测试通过，0 失败；保留为历史基线。\\
+9 月 22 日源码选区 & 147 项单元测试、1 项 CLI 集成测试通过，2 项需显式环境的测试默认忽略；严格 Clippy、release 构建通过。Windows 原生剪贴板读回另测通过。\\
+9 月 22 日 Setup 整合 & \code{cargo test --all-targets}：154 项单元测试、1 项 CLI 集成测试通过，0 失败，2 项忽略；严格 Clippy 与 release 构建通过。包含项目切换、示例、相对路径、直接退出及布局回归。\\
+9 月 22 日 THA6206 & 三种入口的源码操作/Watch 用例通过；附加 Reset/Run 与代码段比较有失败，保留为历史记录。\\
+9 月 23 日 v0.8.6 & 168 项单元测试、1 项 CLI 集成测试通过，2 项外部环境测试默认忽略；MCAL 实板 16 个功能组通过，包含 21 个退出/重连场景，残留复位和深层栈问题见第\ref{sec:tha-086-validation}节。\\\bottomrule
+\end{tabularx}
+
+源码选区阶段的详细记录在 \path{artifacts/source-selection-20260922/result.json} 及各入口事件文件中；其中 EXE 哈希只代表该阶段的构建，不代表之后加入 Setup 修改的二进制。\path{artifacts/setup-ux-20260922/} 的 12 份文本快照覆盖空配置、示例列表、应用示例和字段帮助在 45×12、80×24、120×36 下的布局，属于 Ratatui 单元格输出，不是实板连接记录。
+
+硬件测试可通过环境变量 \code{DEBUGTUI_TEST_PROFILE} 选择工具配置，未设置时沿用 OpenOCD 默认 profile。此覆盖入口适用于 \path{test-breakpoints-gdb.cjs} 和 \path{test-memory-access-gdb.cjs}。源码选区实板用例在 \path{src/ui/source_text/hardware_tests.rs} 中显式忽略，需专门配置项目及日志环境后调用；普通测试通过不等于这类用例已执行。THA6206/Bao 历史结果见第\ref{sec:tha6206}、\ref{sec:bao-tha6206}节，J-Link 长会话故障见第\ref{sec:jlink-duration}节。
 
 \begin{longtable}{@{}P{40mm}P{71mm}P{50mm}@{}}\toprule
 本地证据（artifacts 下） & 历史结果 & 本次核对方式\\\midrule\endhead
@@ -1757,6 +1936,8 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \item 旧 live\_watch 的配置只要求正间隔，实际循环 clamp 到 10--60000 ms；逐项 UI 则要求 50--60000 ms，二者不能混用。
 \item 软件组控制不是硬件同步；运行时总线读取不是跨多个值的一致事务；配置持久化不是跨进程原子提交。
 \item 当前没有专门的变量/寄存器写入 UI；原始 GDB 可写，用户应理解实际目标副作用。默认面板读取不等于整个调试连接过程零修改。
+\item Source 选区改变 Ctrl+C 的优先级：聚焦源码且有选区时复制，确定暂停使用 F6。加入 Watch 仍受当前核、当前帧和运行时读取通道限制，不自动启用实时采样。
+\item 本地 THA6206 新 CSE 写值尚需专门实板回归；9 月 22 日附加启动超时与 DSCR.ERR/代码段读取故障仍须排查，不能由离线脚本检查或源码操作用例代替验收。
 \end{itemize}
 
 优先维护方向是修复真实下载状态解析、统一两条服务日志路径、对缺省 SVD 字节序给出明确策略或提示，并同步过期 README。若扩展到异构核、线程/RTOS 视图或网络 API，应同时定义数据归属、状态代次、清理及错误契约，再扩展 UI。
@@ -1764,14 +1945,16 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 
 \clearpage\appendix
 \newsection{全工程源文件与职责索引}
-当前 \code{src} 共 35 个 Rust 文件，约 20477 个非空代码/注释行（包含模块内测试，按 PowerShell Measure-Object -Line 统计）；不是产品逻辑行数或第三方库规模。下表覆盖全部 35 个文件，便于从用户功能定位实现。
+当前 0.8.4 本地工作树的 \code{src} 共 40 个 Rust 文件（含模块测试），下表覆盖全部文件。相对 v0.8.3 新增的模块集中于项目/示例选择、源码文本交互、剪贴板及对应测试。
 
 \begin{longtable}{@{}P{55mm}P{106mm}@{}}\toprule
 文件（相对工程根） & 职责与关键入口\\\midrule\endhead
 \path{src/main.rs} & main/run、CLI 路由、run\_headless，串行 stdin/script 请求与事件输出。\\
 \path{src/lib.rs} & 库模块导出，供二进制和测试共享。\\
 \path{src/cli.rs} & Options::parse/document，参数解析、CLI 覆盖、路径绝对化。\\
-\path{src/launch.rs} & Document、Setup、编辑器、文件浏览器、保存冲突/草稿和启动动作。\\
+\path{src/launch.rs} & Document、Setup、相对路径、字段帮助、文件浏览器、保存冲突/草稿、直接退出和启动动作。\\
+\path{src/launch/choices.rs} & 调试项目 TOML 筛选、Projects 列表和可选 Examples；不保存或启动进程。\\
+\path{src/clipboard.rs} & Windows 原生 Unicode 剪贴板、失败清理与其他平台工具回退。\\
 \path{src/config.rs} & 全配置模型、默认值、递归合并、校验、路径解析、偏好写锁。\\
 \path{src/session.rs} & Engine/Gdb/Snapshot、命令执行、异步 record、停止刷新、任务/连接/清理。\\
 \path{src/session/breakpoints.rs} & MI 断点编解码、创建/修改/恢复、失败处理及立即持久化。\\
@@ -1788,7 +1971,7 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{src/svd.rs} & SVD 展开为紧凑模型，访问属性、位域、寄存器解码。\\
 \path{src/theme.rs} & 色板、边框、选择/焦点、核心关联色及遮罩样式。\\
 \path{src/ui.rs} & App 主状态、命令分发、键鼠、事件循环、按需数据、退出/重建协调。\\
-\path{src/ui/render.rs} & 面板布局、工具栏、Help、源码/寄存器/内存等终端绘制。\\
+\path{src/ui/render.rs} & 面板布局、工具栏、Help、源码选区/横向裁剪与固定断点栏、寄存器/内存绘制。\\
 \path{src/ui/breakpoints.rs} & 断点列表和编辑弹窗、开关、条件/忽略次数、批量操作。\\
 \path{src/ui/breakpoints/cores.rs} & 关联断点的核心复选 UI 和应用动作。\\
 \path{src/ui/console.rs} & Console 历史视口、跟随、新消息计数和拖动。\\
@@ -1796,10 +1979,13 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{src/ui/cores.rs} & 核心按钮、颜色、状态和溢出导航。\\
 \path{src/ui/effects.rs} & 有界动画、值变化高亮、真实停止轨迹和绘制调度。\\
 \path{src/ui/formats.rs} & 整数进制转换、偏好键、格式弹窗和保存。\\
-\path{src/ui/highlight.rs} & C 类源码着色、跨行注释状态缓存、仅可见行生成 Span。\\
+\path{src/ui/highlight.rs} & C 类源码着色、跨行注释状态缓存、可见行 Span 及选区所需的文本范围。\\
 \path{src/ui/monitor.rs} & 逐项刷新设置、可见项公平调度、LIVE 缓存、错误退避。\\
 \path{src/ui/peripherals.rs} & SVD 树、展开/滚动、寄存器读取及位域显示。\\
-\path{src/ui/source_tabs.rs} & 文件路径去重、独立浏览位置、标签溢出/搜索列表。\\
+\path{src/ui/source_tabs.rs} & 文件路径去重、独立浏览位置、标签溢出/搜索列表、源码切换时清理选区。\\
+\path{src/ui/source_text.rs} & UTF-8 选区、显示坐标、键鼠移动、横向滚动、Copy 与当前核 Add to Watch。\\
+\path{src/ui/source_text/tests.rs} & 选区、中文/Tab、复制、Watch 路由、焦点/代次、横向视口和渲染回归。\\
+\path{src/ui/source_text/hardware_tests.rs} & 显式启用的真实 GDB/THA6206 源码操作测试，普通测试默认忽略。\\
 \path{src/ui/watch.rs} & Watch 树扁平化、成员选择、展开/删除/分页、数值格式键。\\
 \path{src/ui/live_watch_tests.rs} & 实时事件在实际 Watch 渲染器中的回放与过期保护测试。\\
 \path{src/ui/visual_tests.rs} & 真实 Ratatui Buffer 布局/主题断言、按环境变量导出预览。\\\bottomrule
@@ -1866,7 +2052,7 @@ watch / watchpoint & Watch 表达式观察 / 硬件或 GDB 数据断点，删除
 \end{longtable}
 
 \newsection{外部参考与文档复现}
-以下一手资料于 2026-09-21 核对。实现细节仍以本地源码和本地工具版本为准；网页当前版本可能新于分发工具。
+主要架构资料于 2026-09-21 核对；2026-09-22 补充 Cortex-R52 EDRCR.CSE 与本地复位脚本核对。实现细节仍以本地源码和本地工具版本为准；网页当前版本可能新于分发工具。
 \begin{enumerate}
 \item \href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI.html}{GDB/MI Interface}：MI 的用途和接口边界。
 \item \href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI-Output-Syntax.html}{GDB/MI Output Syntax}：结果、异步、流和 token 语义。

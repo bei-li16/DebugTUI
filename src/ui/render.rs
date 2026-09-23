@@ -1,4 +1,5 @@
 use super::*;
+use ratatui::widgets::Borders;
 
 const ACTIONS: [(&str, &str); 10] = [
     ("▶ Run", "run"),
@@ -183,6 +184,10 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                 "Select a stopped frame to inspect its variables.",
             ),
             6 => ("No breakpoints", "+ Code / + Data above, or F9 in Source"),
+            7 if !a.snapshot.files.is_empty() => (
+                "No matching files",
+                "Edit Find above; Ctrl+U clears the filter.",
+            ),
             7 => (
                 "Source files",
                 "Connect to GDB to load the source file list.",
@@ -275,15 +280,21 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
         }
         6 => breakpoints::rows(a, start, rect.height as usize),
         7 => a
-            .snapshot
-            .files
-            .iter()
+            .filtered_files()
+            .into_iter()
             .enumerate()
             .skip(start)
             .take(rect.height as usize)
-            .map(|(i, s)| {
+            .map(|(i, index)| {
                 Line::styled(
-                    format!("{} {s}", if i == selection { "›" } else { " " }),
+                    format!(
+                        "{} {}",
+                        if i == selection { "›" } else { " " },
+                        source_tabs::fit(
+                            &a.snapshot.files[index],
+                            rect.width.saturating_sub(2) as usize
+                        )
+                    ),
                     theme::selected(i == selection),
                 )
             })
@@ -350,62 +361,96 @@ fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
         .filter(|b| !b.enabled && a.source_key(&b.file) == source_key)
         .map(|b| b.line as usize)
         .collect();
-    let lines = a
+    let gutter = source_text::gutter(a.source.len()).min(a.source_rect.width);
+    a.source_text.area = Rect::new(
+        a.source_rect.x + gutter,
+        a.source_rect.y,
+        a.source_rect.width.saturating_sub(gutter),
+        a.source_rect.height,
+    );
+    let range = a.source_text.range();
+    for (row, (i, line)) in a
         .source
         .iter()
         .enumerate()
         .skip(a.source_top)
         .take(rect.height as usize)
-        .map(|(i, line)| {
-            let pc = i + 1 == a.snapshot.frame.line as usize && current_file;
-            let selected = i == a.source_line;
-            let bp = breakpoint_lines.contains(&(i + 1));
-            let mut spans = vec![Span::styled(
-                format!(
-                    "{}{}{:>4} ",
-                    if pc {
-                        "▶"
-                    } else if selected {
-                        "›"
-                    } else {
-                        " "
-                    },
-                    if bp {
-                        "●"
-                    } else if disabled_lines.contains(&(i + 1)) {
-                        "○"
-                    } else {
-                        " "
-                    },
-                    i + 1
-                ),
-                Style::default().fg(if pc {
-                    theme::GREEN
-                } else if bp {
-                    theme::RED
-                } else if selected {
-                    theme::ACCENT
-                } else {
-                    theme::DIM
-                }),
-            )];
-            spans[0].style = spans[0].style.bg(theme::CANVAS);
-            spans.push(Span::styled(
-                "│ ",
-                Style::default().fg(theme::BORDER).bg(theme::PANEL),
-            ));
-            let mut in_comment = a.source_comments.get(i).copied().unwrap_or(false);
-            spans.extend(syntax(line, &mut in_comment));
-            Line::from(spans).style(Style::default().bg(if pc {
-                theme::PC
+        .enumerate()
+    {
+        let pc = i + 1 == a.snapshot.frame.line as usize && current_file;
+        let selected = i == a.source_line;
+        let bp = breakpoint_lines.contains(&(i + 1));
+        let bg = if pc {
+            theme::PC
+        } else if selected {
+            theme::SELECTED
+        } else {
+            theme::PANEL
+        };
+        let y = a.source_rect.y + row as u16;
+        let prefix = format!(
+            "{}{}{:>digits$} │ ",
+            if pc {
+                "▶"
             } else if selected {
-                theme::SELECTED
+                "›"
             } else {
-                theme::PANEL
-            }))
-        })
-        .collect::<Vec<_>>();
-    theme::lines(f, lines, a.source_rect);
+                " "
+            },
+            if bp {
+                "●"
+            } else if disabled_lines.contains(&(i + 1)) {
+                "○"
+            } else {
+                " "
+            },
+            i + 1,
+            digits = source_text::gutter(a.source.len()).saturating_sub(5) as usize
+        );
+        f.render_widget(
+            Paragraph::new(prefix).style(Style::default().bg(theme::CANVAS).fg(if pc {
+                theme::GREEN
+            } else if bp {
+                theme::RED
+            } else if selected {
+                theme::ACCENT
+            } else {
+                theme::DIM
+            })),
+            Rect::new(a.source_rect.x, y, gutter, 1),
+        );
+        let mut comment = a.source_comments.get(i).copied().unwrap_or(false);
+        let selection = range.and_then(|(start, end)| {
+            (i >= start.row && i <= end.row).then_some((
+                if i == start.row { start.byte } else { 0 },
+                if i == end.row { end.byte } else { line.len() },
+            ))
+        });
+        let text_rect = Rect::new(a.source_text.area.x, y, a.source_text.area.width, 1);
+        f.buffer_mut().set_style(text_rect, Style::default().bg(bg));
+        f.render_widget(
+            Paragraph::new(Line::from(highlight::selected_syntax(
+                line,
+                &mut comment,
+                selection,
+            )))
+            .style(Style::default().bg(bg))
+            .scroll((0, a.source_text.left.min(u16::MAX as usize) as u16)),
+            text_rect,
+        );
+        if a.pane == 0
+            && !a.input_active()
+            && !a.console_view.focused
+            && range.is_none()
+            && a.source_text.caret.row == i
+        {
+            let col = source_text::column(line, a.source_text.caret.byte);
+            if col >= a.source_text.left && col - a.source_text.left < text_rect.width as usize {
+                f.buffer_mut()[(text_rect.x + (col - a.source_text.left) as u16, y)]
+                    .set_style(Style::default().add_modifier(Modifier::UNDERLINED));
+            }
+        }
+    }
     scrollbar(f, a, 0);
 }
 
@@ -462,10 +507,15 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     .split(rect);
     tabs(f, a, rows[0], &MAIN_PANES, a.main_pane);
     toolbar(f, a, rows[1], &actions);
+    source_text::buttons(f, a, rows[0]);
     let title = match a.main_pane {
         0 => String::new(),
         5 => " Assembly · follows $pc · :disasm ADDRESS ".into(),
-        7 => " Files · click / Enter opens ".into(),
+        7 => format!(
+            " Files · {} / {} · Enter opens ",
+            a.filtered_files().len(),
+            a.snapshot.files.len()
+        ),
         _ => if a.log_follow {
             " Log · following output "
         } else {
@@ -492,6 +542,12 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
             },
         );
         source(f, a, inner);
+    } else if a.main_pane == 7 {
+        let height = if inner.height >= 10 { 3 } else { 1 };
+        let rows = Layout::vertical([Constraint::Length(height), Constraint::Min(0)]).split(inner);
+        search::file_bar(f, a, rows[0]);
+        view(f, a, 7, rows[1]);
+        a.source_rect = a.view_rects[7];
     } else {
         view(f, a, a.main_pane, inner);
         a.source_rect = a.view_rects[a.main_pane];
@@ -507,7 +563,9 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
     let labels = SIDE_PANES.map(|i| PANES[i]);
     let tab_height = wrapped_height(&labels, rect.width);
     let local_height = if !compact && rect.height > 12 {
-        (rect.height / 3).clamp(5, 12)
+        let height = (rect.height / 3).clamp(5, 12);
+        // Reserve the input frame's two border rows without hiding Watch values.
+        height + if height >= 8 { 2 } else { 0 }
     } else {
         0
     };
@@ -585,7 +643,13 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     let rows = Layout::vertical([
         Constraint::Length(1),
         Constraint::Min(0),
-        Constraint::Length(if watch { 1 } else { 0 }),
+        Constraint::Length(if !watch {
+            0
+        } else if inner.height >= 9 {
+            3
+        } else {
+            1
+        }),
     ])
     .split(inner);
     let remove_width = if watch && rows[0].width >= 30 { 12 } else { 0 };
@@ -619,18 +683,18 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     }
     view(f, a, a.variable_pane, rows[1]);
     if watch {
-        let add_width = 7.min(rows[2].width);
+        let add_width = 9.min(rows[2].width);
         a.watch_input_rect = Rect {
             width: rows[2].width.saturating_sub(add_width),
             ..rows[2]
         };
-        input_line(
+        input_box(
             f,
             a.watch_input_rect,
-            " + ",
+            "Watch expression",
             &a.watch_input,
             a.watch_editing,
-            "Variable / expression…",
+            "Variable / expression...",
             "Tab complete · Enter add",
         );
         let hit = Rect::new(
@@ -641,6 +705,25 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
         );
         a.watch.add_rect = hit;
         let enabled = a.pending_watch.is_none() && a.pending_task.is_none();
+        let button = Block::bordered()
+            .border_type(ratatui::widgets::BorderType::Rounded)
+            .borders(if hit.height >= 3 {
+                Borders::ALL
+            } else {
+                Borders::LEFT | Borders::RIGHT
+            })
+            .border_style(Style::default().fg(if enabled {
+                theme::ACCENT
+            } else {
+                theme::BORDER
+            }))
+            .style(Style::default().bg(if enabled && hovered(a, hit) {
+                theme::HOVER
+            } else {
+                theme::RAISED
+            }));
+        let button_inner = button.inner(hit);
+        f.render_widget(button, hit);
         f.render_widget(
             Paragraph::new(" + Add ").style(
                 Style::default()
@@ -652,12 +735,65 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
                     })
                     .add_modifier(Modifier::BOLD),
             ),
-            hit,
+            button_inner,
         );
     }
 }
 
-fn input_line(
+/// Give editable fields a visible boundary even before they receive focus.
+/// A one-row version keeps all controls usable in small terminals.
+pub(super) fn input_box(
+    f: &mut UiFrame,
+    area: Rect,
+    label: &str,
+    text: &str,
+    focused: bool,
+    placeholder: &str,
+    hint: &str,
+) {
+    let full = area.height >= 3;
+    let background = if focused {
+        theme::SELECTED
+    } else {
+        theme::RAISED
+    };
+    let mut border = Block::bordered()
+        .border_type(ratatui::widgets::BorderType::Rounded)
+        .borders(if full {
+            Borders::ALL
+        } else {
+            Borders::LEFT | Borders::RIGHT
+        })
+        .border_style(Style::default().fg(if focused { theme::ACCENT } else { theme::MUTED }))
+        .style(Style::default().bg(background));
+    if full {
+        border = border.title(format!(" {label} ")).title_style(
+            Style::default()
+                .fg(theme::ACCENT)
+                .add_modifier(Modifier::BOLD),
+        );
+    }
+    let inner = border.inner(area);
+    f.render_widget(border, area);
+    let prefix = if full {
+        " ".into()
+    } else {
+        format!(" {label}{} ", if label.contains(':') { "" } else { ":" })
+    };
+    input_line(f, inner, &prefix, text, focused, placeholder, hint);
+    // Keep hints legible and distinguish the input surface from the surrounding panel.
+    for y in inner.y..inner.bottom() {
+        for x in inner.x..inner.right() {
+            let cell = &mut f.buffer_mut()[(x, y)];
+            cell.bg = background;
+            if cell.fg == theme::DIM {
+                cell.fg = theme::MUTED;
+            }
+        }
+    }
+}
+
+pub(super) fn input_line(
     f: &mut UiFrame,
     area: Rect,
     prefix: &str,
@@ -974,6 +1110,7 @@ fn hint(command: &str) -> &str {
         "memory" => "Read memory bytes",
         "disasm" => "Disassemble at address (default $pc)",
         "files" => "List source files",
+        "symbols" => "Search functions, variables and types; open source location",
         "open" => "Open local source",
         "frame" => "Select a stack frame",
         "find" => "Find text in source",
@@ -1121,7 +1258,11 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
 }
 
 pub fn draw(f: &mut UiFrame, a: &mut App) {
+    a.file_search.area = Rect::default();
+    a.symbol_search.bar = Rect::default();
     source_tabs::reset_hits(a);
+    a.source_text.area = Rect::default();
+    a.source_text.buttons.clear();
     a.formats.hits.clear();
     a.formats.refresh_rect = Rect::default();
     a.pane_hits.clear();
@@ -1158,9 +1299,12 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         );
         return;
     }
+    let search_height = if area.height >= 30 { 3 } else { 1 };
     let rows = Layout::vertical([
         Constraint::Length(
-            (if area.height >= 24 { 3 } else { 2 }) + u16::from(a.snapshot.core.is_some()),
+            (if area.height >= 24 { 3 } else { 2 })
+                + search_height
+                + u16::from(a.snapshot.core.is_some()),
         ),
         Constraint::Min(5),
         Constraint::Length(1),
@@ -1168,6 +1312,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     ])
     .split(area);
     let mut header_rect = rows[0];
+    header_rect.height = header_rect.height.saturating_sub(search_height);
     if a.snapshot.core.is_some() {
         header_rect.height = header_rect.height.saturating_sub(1);
     }
@@ -1186,11 +1331,29 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         cores::draw(
             f,
             a,
-            Rect::new(rows[0].x, rows[0].bottom() - 1, rows[0].width, 1),
+            Rect::new(
+                rows[0].x,
+                rows[0].bottom() - search_height - 1,
+                rows[0].width,
+                1,
+            ),
         );
     }
+    search::symbol_bar(
+        f,
+        a,
+        Rect::new(
+            rows[0].x,
+            rows[0].bottom() - search_height,
+            rows[0].width.min(118),
+            search_height,
+        ),
+    );
 
-    let console_height = (rows[1].height / 4 + 1).clamp(3, 10);
+    // Fund the search field from Console height to preserve source/inspector space.
+    // Tiny terminals retain the one-row field and the existing minimum layout.
+    let console_height =
+        (((rows[1].height + search_height) / 4 + 1).clamp(3, 10) - search_height).max(2);
     let body =
         Layout::vertical([Constraint::Min(3), Constraint::Length(console_height)]).split(rows[1]);
     if area.width >= 100 {
@@ -1352,6 +1515,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         }
     }
     source_tabs::draw_list(f, a);
+    search::draw_symbols(f, a);
     if a.confirm.is_some() {
         let r = center(area, 90, 10);
         theme::overlay(f, r);
@@ -1379,6 +1543,9 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
             ),
             r,
         );
+    }
+    if !a.help && !a.palette && !a.sources.list_open && a.confirm.is_none() {
+        source_text::popup(f, a);
     }
     formats::popup(f, a);
     monitor::draw(f, a);

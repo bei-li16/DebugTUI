@@ -20,7 +20,9 @@ use std::{
 
 mod breakpoints;
 mod memory;
+mod symbols;
 mod watch;
+pub(crate) use symbols::Symbol;
 
 pub(crate) fn execution_alias(command: &str) -> Option<&'static str> {
     Some(match command {
@@ -343,6 +345,27 @@ struct Gdb {
     records: Receiver<Incoming>,
     token: u64,
 }
+impl Gdb {
+    fn wait_for_exit(&mut self) -> Result<(), String> {
+        // MI ^exit acknowledges the command before GDB finishes its cleanup.
+        // Let the process exit normally; Drop remains the bounded fallback.
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            match self
+                .child
+                .try_wait()
+                .map_err(|e| format!("Wait for GDB exit: {e}"))?
+            {
+                Some(status) if status.success() => return Ok(()),
+                Some(status) => return Err(format!("GDB exited unsuccessfully: {status}")),
+                None if Instant::now() >= deadline => {
+                    return Err("GDB did not exit after ^exit".into());
+                }
+                None => thread::sleep(Duration::from_millis(10)),
+            }
+        }
+    }
+}
 impl Drop for Gdb {
     fn drop(&mut self) {
         if self.child.try_wait().ok().flatten().is_none() {
@@ -594,7 +617,7 @@ impl Engine {
                 Ok(request) => {
                     let result = self.execute(&request.method, &request.params);
                     if let Err(error) = &result
-                        && request.method != "complete"
+                        && !matches!(request.method.as_str(), "complete" | "symbols")
                     {
                         self.log(
                             if matches!(request.method.as_str(), "watch_resolve" | "memory_read") {
@@ -1331,6 +1354,11 @@ impl Engine {
     fn disconnect(&mut self) -> Result<Json, String> {
         self.memory_connections.clear();
         self.rpc_echo = Default::default();
+        // Remote all-stop GDB refuses detach after continue. Release that
+        // connection with disconnect instead. Native detach itself resumes the
+        // inferior, so it must be issued while the inferior is still stopped.
+        let resume_remote =
+            self.project.session.on_exit == "resume" && self.project.target.mode != "local";
         let mut failure = None;
         if self.gdb.is_some() {
             if self.snapshot.state == "RUNNING"
@@ -1357,16 +1385,14 @@ impl Engine {
                 ) {
                     failure = Some(e);
                 }
-                if self.project.session.on_exit == "resume"
-                    && let Err(e) = self.mi("-exec-continue")
-                {
+                if resume_remote && let Err(e) = self.mi("-exec-continue") {
                     failure = Some(e);
                 }
             }
             let attached = matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
                 || self.project.target.mode != "local";
             self.state("DISCONNECTING");
-            let command = if self.project.session.on_exit == "disconnect" {
+            let command = if self.project.session.on_exit == "disconnect" || resume_remote {
                 "-target-disconnect"
             } else {
                 "-target-detach"
@@ -1374,7 +1400,13 @@ impl Engine {
             if attached && let Err(e) = self.mi(command) {
                 failure = Some(e);
             }
-            let _ = self.mi("-gdb-exit");
+            if let Err(e) = self.mi("-gdb-exit") {
+                failure = Some(e);
+            } else if let Some(gdb) = self.gdb.as_mut()
+                && let Err(e) = gdb.wait_for_exit()
+            {
+                failure = Some(e);
+            }
             self.gdb.take();
         }
         if let Some(server) = &mut self.server {
@@ -1737,6 +1769,7 @@ impl Engine {
                 self.publish();
                 Ok(json!({"assembly":self.snapshot.assembly}))
             }
+            "symbols" => self.symbols(&text("query")),
             "files" => {
                 let r = self.mi("-file-list-exec-source-files")?;
                 self.snapshot.files = r

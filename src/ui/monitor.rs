@@ -450,6 +450,7 @@ impl App {
             || !self.pending_commands.is_empty()
             || self.pending_view.is_some()
             || self.completion.busy()
+            || self.symbol_search.busy()
         {
             return false;
         }

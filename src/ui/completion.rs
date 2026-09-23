@@ -97,6 +97,8 @@ impl App {
             || self.palette
             || self.confirm.is_some()
             || self.sources.list_open
+            || self.symbol_search.open
+            || self.file_search.editing
             || self.quitting
             || self.monitor.modal()
             || self.breaks.modal()
@@ -168,6 +170,7 @@ impl App {
         let changed = self.sync_completion();
         if self.demo
             || self.completion.pending.is_some()
+            || self.symbol_search.busy()
             || self.completion.requested
             || self.completion.changed.elapsed() < Duration::from_millis(150)
             || !self.pending_commands.is_empty()
@@ -256,6 +259,7 @@ impl App {
     }
 
     pub(super) fn focus_input(&mut self, watch: bool) {
+        self.file_search.editing = false;
         self.console_view.focused = false;
         self.fx.trigger("input-focus", 180);
         self.editing = !watch;

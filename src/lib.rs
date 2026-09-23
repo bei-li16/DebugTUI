@@ -1,4 +1,5 @@
 pub mod cli;
+pub(crate) mod clipboard;
 pub mod config;
 pub mod coordinator;
 pub mod launch;
@@ -6,6 +7,7 @@ pub mod live_watch;
 pub(crate) mod logging;
 pub mod mi;
 pub mod process;
+pub(crate) mod search;
 pub mod session;
 pub mod svd;
 pub(crate) mod theme;
