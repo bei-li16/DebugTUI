@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "meaning": "Feature groups and observable acceptance evidence; not line/branch coverage or exhaustive combinations.",
+  "features": [
+    {"id":"F01","name":"CLI 与 JSONL 协议","required_suites":["unit","cli"],"unit_pattern":"cli::tests::","sources":["src/cli.rs"],"limits":[]},
+    {"id":"F02","name":"工程/工具配置、路径和旧版兼容","required_suites":["unit","cli","environment"],"unit_pattern":"config::tests::","sources":["src/config.rs","src/launch.rs"],"limits":["需另行验证其他宿主操作系统"]},
+    {"id":"F03","name":"Setup、Projects、Examples 和配置保存","required_suites":["unit","terminal"],"unit_pattern":"launch::tests::","unit_patterns":["setup_browses_project_selects_profile_and_returns_launch","discovered_projects_load_all_settings_without_writing_or_losing_a_valid_draft","examples_are_opt_in_refresh_fields_and_persist_only_on_save","start_commits_edited_field_and_invalid_settings_keep_configuration_open","project_local_profile_stays_relative_and_preserves_project_settings"],"sources":["src/launch.rs","src/launch/choices.rs"],"limits":["ConPTY 用例使用隔离 demo 工程；真实 profile 保存由单元测试覆盖"]},
+    {"id":"F04","name":"服务启动、就绪、连接和重连","required_suites":["unit","environment","native","multicore"],"unit_pattern":"coordinator::server_log::tests::","sources":["src/session.rs","src/coordinator.rs"],"optional_suites":["hardware"],"limits":["其他探针/板卡需要对应实板配置"]},
+    {"id":"F05","name":"运行、暂停、单步、复位和执行别名","required_suites":["unit","native","pause","multicore"],"unit_pattern":"coordinator::control::tests::","sources":["src/session.rs","src/coordinator/control.rs"],"optional_suites":["hardware"],"limits":["真实板级复位需 --allow-reset；软件组控制不等于硬件同步"]},
+    {"id":"F06","name":"代码/条件/临时断点、启停和持久化","required_suites":["unit","breakpoints","linked"],"unit_pattern":"session::breakpoints::tests::","sources":["src/session/breakpoints.rs","src/ui/breakpoints.rs"],"optional_suites":["hardware"],"limits":["硬件断点容量依赖目标"]},
+    {"id":"F07","name":"数据观察点和错误回滚","required_suites":["unit","breakpoints"],"unit_pattern":"ui::breakpoints::tests::","sources":["src/session/breakpoints.rs"],"optional_suites":["hardware-breakpoints"],"limits":["Read/Access 硬件命中需实板；本机测试主要验证 Write"]},
+    {"id":"F08","name":"Watch 增删、求值与逐项显示进制","required_suites":["unit","completion","watch-tree"],"unit_pattern":"ui::watch::tests::","unit_patterns":["per_item_menu_defaults_scope_and_keyboard_do_not_send_debug_commands","exact_integers_and_annotations","watch_delete_serializes_requests_and_recovers_from_failure"],"sources":["src/ui/watch.rs","src/ui/formats.rs"],"optional_suites":["hardware"],"limits":[]},
+    {"id":"F09","name":"结构体/数组/指针树、分页和资源边界","required_suites":["unit","watch-tree"],"unit_pattern":"ui::watch::tests::watch_tree_","sources":["src/session/watch.rs","src/ui/watch.rs"],"optional_suites":["hardware"],"limits":[]},
+    {"id":"F10","name":"Console/Watch 补全和历史焦点","required_suites":["unit","completion"],"unit_pattern":"ui::completion::tests::","sources":["src/ui/completion.rs","src/ui/console.rs"],"limits":[]},
+    {"id":"F11","name":"源码选择、复制、加入 Watch 和标签","required_suites":["unit"],"unit_pattern":"ui::source_text::tests::","unit_patterns":["copy_requires_source_focus_and_selection_and_f6_always_pauses","double_click_unicode_word_reverse_multiline_and_shift_navigation","watch_button_reuses_normal_request_and_preserves_failed_expression","stop_files_and_open_share_tabs_restore_positions_and_deduplicate_paths","many_tabs_resize_page_filter_switch_and_close_without_hiding_active_file"],"sources":["src/ui/source_text.rs","src/ui/source_tabs.rs","src/clipboard.rs"],"limits":["系统剪贴板测试默认忽略；需备份剪贴板后显式运行","demo 终端不替代实板 Source-to-Watch 验收"]},
+    {"id":"F12","name":"Files/Symbols 搜索、源码映射和运行状态门控","required_suites":["unit","search","terminal"],"unit_pattern":"ui::search::tests::","sources":["src/search.rs","src/session/symbols.rs","src/ui/search.rs"],"optional_suites":["hardware"],"limits":["厂商旧 GDB 的全部兼容组合未穷举"]},
+    {"id":"F13","name":"栈帧、Locals 和架构寄存器","required_suites":["unit","native","environment"],"unit_pattern":"session::register_selection_tests::","sources":["src/session.rs","src/ui/render.rs"],"optional_suites":["hardware"],"limits":["ARM/RISC-V 动态寄存器模拟不等于对应实板验证"]},
+    {"id":"F14","name":"反汇编、内存和读取错误","required_suites":["unit","native","memory","svd"],"unit_pattern":"ui::tests::assembly_","sources":["src/session.rs","src/session/memory.rs"],"optional_suites":["hardware"],"limits":[]},
+    {"id":"F15","name":"SVD 继承、位域、字节序和安全读取","required_suites":["unit","svd"],"unit_pattern":"svd::tests::","unit_patterns":["running_bus_refresh_reads_only_visible_safe_registers_and_manual_field_reads_parent","collapsed_hidden_and_running_views_never_read_and_manual_refresh_is_one_register","register_and_field_formats_are_independent_and_changes_are_per_field","peripheral_tree_fields_mouse_button_and_scrollbar_have_real_hit_regions"],"sources":["src/svd.rs","src/ui/peripherals.rs"],"optional_suites":["hardware"],"limits":["描述文件无法声明的硬件读取副作用不在自动验证范围"]},
+    {"id":"F16","name":"运行时读取、刷新策略、隐藏项和断线恢复","required_suites":["unit","memory"],"unit_pattern":"ui::monitor::tests::","sources":["src/ui/monitor.rs","src/live_watch.rs"],"optional_suites":["hardware","hardware-memory"],"limits":["缓存一致性/原子性依赖目标；需另做长时和物理断线验收"]},
+    {"id":"F17","name":"多核独立状态、All/Core、共享复位和关联断点","required_suites":["unit","multicore","linked"],"unit_pattern":"coordinator::control::tests::","sources":["src/coordinator.rs","src/coordinator/control.rs","src/coordinator/breakpoints.rs","src/ui/cores.rs"],"limits":["本套件以多个真实本机 GDB 验证协调；STM32F429 是单核，不能代替多核实板验收"]},
+    {"id":"F18","name":"Build/Download 任务、超时、取消和会话恢复","required_suites":["unit","multicore"],"unit_pattern":"shell_tasks_use_source_root_stream_both_pipes_and_report_failure_timeout_and_cancel","sources":["tests/project_tasks.rs","src/coordinator.rs"],"optional_suites":["hardware"],"limits":["真实固件编译由工程工具链决定；实际烧录需 --allow-reset --allow-download"]},
+    {"id":"F19","name":"日志、时间戳、滚动、过滤和轮转","required_suites":["unit","logs"],"unit_pattern":"ui::console::tests::","sources":["src/logging.rs","src/ui/console.rs"],"limits":[]},
+    {"id":"F20","name":"外观、动效、输入可见性、键鼠和窄窗口","required_suites":["unit","terminal"],"unit_pattern":"ui::visual_tests::theme_preserves_hit_areas_focus_and_execution_context","unit_patterns":["bounded_changes_and_real_stop_feedback","connection_steps_traces_and_tasks_follow_actual_events","scheduler_sleeps_and_cancels_on_blur_or_off","appearance_owns_focus_and_does_not_send_debug_commands","renders_narrow_and_wide_layouts"],"sources":["src/theme.rs","src/ui/effects.rs","src/ui/render.rs"],"limits":["ConPTY 保存文本屏幕与 VT；颜色/字体需要人工视觉复核"]},
+    {"id":"F21","name":"退出策略、失败传播和进程清理","required_suites":["unit","exit","cli","terminal"],"unit_pattern":"ui::tests::exit_button_","sources":["src/session.rs","src/main.rs"],"optional_suites":["hardware"],"limits":["不同 GDB Server 的退出后目标状态不能相互推定"]},
+    {"id":"F22","name":"安装、升级、卸载、重装和独立分发","required_suites":["distribution"],"sources":["package.json","scripts/test-distribution.ps1"],"limits":["本套件验证本地包；公共 Release/CDN 下载另用 test-release.ps1"]}
+  ],
+  "manual_acceptance": [
+    "物理拔插、断电和探针驱动恢复",
+    "多小时运行、资源增长和大 ELF 性能",
+    "多核/异构硬件、其他探针与操作系统",
+    "系统剪贴板原生格式及终端快捷键冲突",
+    "颜色/字体视觉 QA 和全部输入组合",
+    "公共 GitHub Release 下载与历史正式版升级"
+  ]
+}

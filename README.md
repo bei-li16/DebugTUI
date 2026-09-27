@@ -503,6 +503,7 @@ npm uninstall -g @debugtui/cli
 ~~~powershell
 ./scripts/build.ps1 -Test
 ./scripts/build.ps1 -Release
+node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --gdb C:/MinGW/bin/gdb.exe --cc C:/MinGW/bin/gcc.exe
 ./scripts/test-gdb-environment.ps1
 ./scripts/test-native-gdb.ps1 -Gdb C:/MinGW/bin/gdb.exe -Compiler C:/MinGW/bin/gcc.exe
 ./scripts/release-assets.ps1 -SkipBuild
@@ -513,3 +514,5 @@ npm uninstall -g @debugtui/cli
 ~~~
 
 硬件测试针对 tools 中的 STM32F429IG/J-Link 环境和既有 FreeRTOS 固件；RISC-V 模拟验证不代表已经通过 RISC-V 实板测试。现阶段只验证 Windows 宿主；目标架构独立不等于已验证所有宿主操作系统。详见 TESTING.md。
+
+功能验收统一入口、22 个功能组的覆盖矩阵、CLI/终端/隔离安装及 CMSIS-DAP 实板用例见 [tests/README.md](tests/README.md)。完整套件需要 PowerShell 7；未执行项和硬件验证限制会写入报告。

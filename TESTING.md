@@ -1,5 +1,17 @@
 # DebugTUI 验证记录
 
+## 功能验收扩展（2026-09-27）
+
+- 新增 45 项带稳定 ID 的用例：CLI 12、真实 Windows ConPTY 终端 8、隔离 npm 安装/升级/卸载/重装 7、STM32F429 FreeRTOS 工程实板 18。用例保存在本仓库 `scripts/` 和 `tests/`，运行产物保存到被忽略的 `artifacts/`。
+- 新增 `scripts/test-functional.cjs` 统一入口，默认 17 个套件，开启 STM32 实板时 20 个；`tests/functional-coverage.json` 将实现和验收证据映射到 22 个功能组。运行条件、命令、用例范围和限制见 [tests/README.md](tests/README.md)。
+- 直接对本机已安装的 **0.8.6 release** 验收：EXE SHA256 为 `A3C9F1609B19C5081D3118FD68F1542027730B9F500098C414BABAA15FB488E9`。最终 **20 个套件通过，0 失败**，22 个功能组均取得所列自动化证据；新增用例 **44 通过，0 失败，1 跳过**。跳过的是真正烧录 HW-16；复位/Run HW-15 已在匹配固件上执行。
+- 当前源码的 Rust 测试仍为 **168 个单元测试 + 1 个集成测试通过，2 个忽略**（Windows 原生剪贴板、THA6206 Source-to-Watch 实板）；新增用例属于进程/终端/安装/实板验收，不冒充新增 Rust 单元测试。退出策略的既有 26 个场景及全部本机 GDB 专项也由统一入口复跑通过。
+- 使用 `G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project` 的既有 ELF、CMSIS-DAP 和 OpenOCD。只读段与 ELF 一致，源码/指令单步、Watch 树、GDB/AHB/暂停核心读取一致、运行时零 MI 轮询、复位至 main、重连/进程重启、Write/Read/Access 数据观察点均通过。原工程 `debug.toml`、profile、SVD、ELF 的保护哈希不变；自有 DebugTUI/GDB/OpenOCD 退出检查通过。没有重新编译或烧录用户固件。
+- 终端夹具补齐 ConPTY 输出的擦除字符指令，并将 Files 用例限定为实际验证的输入/清空行为，避免把旧 Source 文字当作筛选结果。PowerShell 7 避免 Windows PowerShell 5 将预期 stderr 负例转换为终止错误；清理检查使用进程列表，避免将已退出 PID 的 ObjectNotFound 错误码误判为进程残留。前期驱动失败日志保留，最终结果以本节链接为准。
+- 这不是代码行/分支覆盖率或全硬件认证。系统剪贴板、物理拔插/断电、多小时稳定性、其他宿主/探针、多核实板及公共 Release 下载/历史正式版升级仍单独验收；本轮多核是多个真实本机 GDB，安装升级使用隔离旧版本号夹具，不替代上述验证。
+
+最终汇总：[report.md](artifacts/functional-1790516421615-820f090c/report.md)、[report.json](artifacts/functional-1790516421615-820f090c/report.json)。实板逐项结果：[report.json](artifacts/project-hardware-1790516539340-6c5ac2ff/report.json)。本轮只增加测试和说明，没有修改 DebugTUI 的产品实现、版本号或全局安装。
+
 ## 0.8.6 发布前验证（2026-09-23）
 
 - 168 项 Rust 单元测试和 1 项 CLI 集成测试通过，2 项显式外部环境测试默认忽略；严格 Clippy `--locked --all-targets -- -D warnings`、Release 构建和 `git diff --check` 通过。
