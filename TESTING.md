@@ -1,5 +1,101 @@
 # DebugTUI 验证记录
 
+## 0.9.3 本地升版与安装（2026-10-03）
+
+- Cargo、Cargo.lock 工程条目和 npm 包版本同步为 **0.9.3**，README 当前版本更新；包含下述配色、宽屏布局、圆角填色及 Setup 默认 Project / 字段箭头循环修改。
+- 新版本 Release 编译通过；**185 项单元测试、1 项集成测试通过，2 项外部环境测试忽略**。CLI 进程验证 **12/12**：[报告](artifacts/cli-1791016093959-46e43a5c/report.json)；隔离 npm 包生命周期 **7/7**：[报告](artifacts/distribution-20261003-162818-7a2dc171/report.json)，覆盖升级、重复安装、CMD/PowerShell 入口、渲染、配置保留、卸载和重装。
+- 已打包 `artifacts/debugtui-cli-0.9.3.tgz` 并全局安装 `@debugtui/cli@0.9.3`；EXE、CMD 和 PowerShell 入口均显示 `debugtui 0.9.3`。安装 EXE 与 Release 构建 SHA256 相同：`03e7ab0f2d78df9becc16b7cda2e92fc67b5518eaf880842b942af7ef9f47950`；15 份工程与芯片目录文件校验值保持不变：[安装报告](artifacts/install-0.9.3-20261003/report.json)。
+- 实际安装版本的 Bao 隔离项目 Setup 验证 core0 / core1 / 双核选择、保存和退出通过：[界面报告](artifacts/bao-setup-95387f79e56b473cb6051fa2f09076f5/report.json)。该次安装验证未连接、复位或下载板卡；提交和远端发布在随后单独执行。
+- 发布前同步现有 LaTeX 手册到 0.9.3，覆盖新配色、圆角填色、宽屏工具栏和 Project 默认焦点。内置编译器报缺少标准目录；使用已有 XeLaTeX 脚本三轮编译，最终 **93 页**，无 Overfull、缺字或未解析引用。全篇联系图及重点页面已检查，修正操作步骤跨页和旧 TERM-03 说明，自动检查无越出页面的文本。PDF SHA256：`8cb4b9ce5790cd7e86971977bd5442f4e8779ff1d2777e3b74430e8669532a3e`；证据保留在 `artifacts/release-0.9.3-doc-qa/`。
+
+## 布局、配色与 Setup 焦点优化（2026-10-03，本地构建）
+
+- 深蓝灰分层面板、蓝色焦点、柔和语义色与低强度核心背景色；宽屏横排工程操作、核心选择和 Symbols，共用一行调试操作栏，源码和 Inspector 页签对齐。右侧窄面板缩短 Regs / Periph 标签；保留短窗口、换行、鼠标区域和快捷键。
+- 按钮及搜索框仅填充圆角边框内部；悬停、按下和输入反馈也限制在内部。覆盖普通、选中、悬停、禁用和核心身份色的边界检查，以及动画过程中外围背景不变的回归检查。
+- Setup 默认聚焦 Project；上下箭头只循环可用配置项，跳过未启用的 Debug cores / ELF path prefix 和全部顶部按钮；从鼠标选中的顶部按钮按箭头回到 Project。Tab / Shift+Tab 仍可访问字段与按钮，鼠标和启动、保存、退出快捷键保留。同步 README 操作说明。
+- **185 项单元测试、1 项集成测试通过，2 项外部环境测试忽略**；严格 Clippy、Release 编译和差异空白检查通过。实际 Ratatui 单元格导出的 [工作区](artifacts/ui-refined-controls-20261003/workspace.png)、[多核](artifacts/ui-refined-controls-20261003/multicore.png)、[Setup](artifacts/ui-refined-controls-20261003/setup.png) 和紧凑窗口已检查。
+- Release 原生 ConPTY 回归 **8/8 通过**：[终端报告](artifacts/terminal-20261003-130030-9643da21/report.json)。[芯片选择报告](artifacts/devices-tui-f3edc5d3d91a41a384108182a75eb688/report.json) 验证 Project 默认焦点、字段箭头循环、core1 / 双核选择、保存重载及自定义芯片；[Bao Setup 报告](artifacts/bao-setup-e03bc3edb36c4bb8b5ae17dda59caffe/report.json) 验证真实工程隔离副本的 core0 / core1 / 双核选择、保存和退出。
+- 首次终端回归的 Files 点击用例失败；独立 crossterm 事件探针确认该 ConPTY 宿主未交付注入的 SGR 鼠标事件。原生用例改用 Tab 切换后通过，鼠标命中与交互保留 App 测试覆盖；首次失败报告仍保留。此限制不等于真实终端中的鼠标功能已由该宿主验收。
+- 构建仍为 **0.9.2**，产物为 `target/release/debugtui.exe`；本轮未升版或替换全局安装，也未连接、复位或下载板卡。
+
+## 0.9.2 本地升版与安装（2026-10-03）
+
+- Cargo、Cargo.lock 工程条目和 npm 包版本同步为 **0.9.2**；构建并打包圆角按钮修改，最终 181 项单元测试、1 项集成测试通过，2 项外部环境测试忽略。CLI 进程验证 12/12 通过。
+- 隔离 npm 包生命周期最终 **7/7 通过**，覆盖升级、重复安装、CMD/PowerShell 入口、渲染、配置保留、卸载和重装：[分发报告](artifacts/distribution-20261003-114126-dac7d5fd/report.json)。首次验证中 Windows PowerShell 将 npm 的 stderr 警告误判为终止错误，已修正驱动为保留诊断并按真实退出码判断，保留首次失败报告。
+- 已全局安装 `@debugtui/cli@0.9.2`；EXE、CMD 和 PowerShell 命令均显示 `debugtui 0.9.2`。安装目录 EXE 与 Release 构建 SHA256 一致：`a7948dc3ae81cf779958cda57c2fc3f04140d22a47eb1200b6d4757683dc637f`。安装前后 15 份 MCAL/Bao 工程 TOML 及用户芯片目录的校验值一致：[安装报告](artifacts/install-0.9.2-20261003/report.json)。
+- 已安装版本的实际渲染包含新圆角按钮；原生 ConPTY 在 Bao 工程隔离副本中验证 core0/core1/双核选择、保存和退出通过：[界面报告](artifacts/bao-setup-978073d8ea0e4b40921371bc0b1c6129/report.json)。本次未连接、复位或下载芯片，未执行提交、push 或远端发布。
+
+## 圆角按钮边框（2026-10-03）
+
+- 将按钮的文字 `[ ]` 边界替换为与 Watch `+ Add` 共用的 Ratatui 圆角边框；覆盖工作区页签、调试操作、工程操作、核心切换、Setup 和 Watch 操作。普通窗口使用完整三行边框，短窗口使用真实左右边界；选中、悬停、禁用状态保留，点击区域包含完整边框。
+- 调整换行行高和 Watch 空间分配；源码 Copy / Add to Watch 预留独立区域，文件名左对齐并为关闭按钮留出空间。更新相关布局、退出入口及边框渲染检查。
+- 最终 **181 个单元测试 + 1 个集成测试通过，2 个外部环境测试忽略**；改动文件格式检查、严格 Clippy、Release 编译及差异空白检查通过。检查实际渲染单元格导出的 [工作区预览](artifacts/ui-rounded-controls-20261003/workspace.png)、[核心预览](artifacts/ui-rounded-controls-20261003/core0.png)、[Setup 预览](artifacts/ui-rounded-controls-20261003/setup.png) 及紧凑布局。
+- Release 原生 ConPTY 验证芯片/核心选择、保存/重载和退出：[芯片选择报告](artifacts/devices-tui-ef3a8729bd5c4a0f99caa4aea9160ded/report.json)；Bao 工程隔离副本的 core0/core1/双核选择与保存通过，并在 Windows PowerShell 中复测了新版边框的匹配规则：[Bao Setup 报告](artifacts/bao-setup-de43b9836903427e8cb967729e2760a8/report.json)。本轮验证未连接、复位或下载芯片。
+- 本地构建仍为 0.9.1，产物为 `target/release/debugtui.exe`；未安装或替换全局命令。
+
+## 手册核对与 PDF 视觉检查（2026-10-02）
+
+- 以本地 0.9.1 工作树、近期修改、现有测试报告及 THA6206/Bao 参考工程为依据，更新原有 `docs/usermanual.tex`，未新增重复说明文档。补齐芯片目录与核心选择、格式 3 配置与迁移、源码重映射扫描设计、Save config 与按钮状态、Bao 构建产物校验和连接/复位顺序；源文件索引核对为全部 48 个 Rust 文件。
+- 历史测试保留日期、版本、固件及适用范围；明确区分 smoke 的双 GDB 调试、双 VM 调试与 core1-only 验证，保留 ConPTY Files 鼠标项 7/8 的未通过记录。本次是文档审查，未重跑实板测试、Build 或 Download。
+- 内置 LaTeX 编译器仍报 `Unable to find standard directories for platform`；使用仓库现有 `docs/build-usermanual.ps1` 和本机 XeLaTeX 三轮编译，最终 PDF 为 **92 页**。最终日志无 Overfull、缺字、字体警告或未解析引用；12 条 Underfull 间距提示已结合页面图像检查。
+- 全文栅格化并检查全部 92 页，修复短配置示例及测试命令跨页；最终变更页重新检查，其余页面像素哈希与已检查版本一致。重点放大复核 Setup 表格、按钮/保存语义、芯片目录和启动流程图、Bao 构建/连接步骤、源码扫描架构及测试结果表；未发现裁切、重叠或缺字。自动检查无越出页面的字符、重复标签或失效交叉引用。
+- 最终 PDF SHA-256：`f8921acbebf7ee42ac0c72c8d3fbd55dbc717aa594a4e0b2bce1f1a75eb2b599`。本地证据保存在被忽略的 `artifacts/docs-review-20261002/`：`visual-review.json`、`pdf-check.json`、`source-check.json`、全页图像和编译日志；克隆仓库后可用现有构建脚本重新生成 PDF。
+
+## 0.9.1 保存入口和按钮对比度（2026-09-29）
+
+- Setup 删除 `Save to project` 开关，只保留顶部 `Save config / Ctrl+S`。手动保存不启动或重连调试；Start 固定在启动前保存工程配置，Exit 可放弃尚未保存的草稿。同步现有 README、LaTeX 手册与 PDF。
+- Setup、项目/调试工具栏、核心切换、源码文件页签、右侧检查页签、Watch/Locals 及源码操作统一增强底色和 `[ ]` 边界。选中项使用亮底深字，保留悬停、禁用和核心身份颜色；不增加按钮行高或改变原点击区域。
+- **181 个 Rust 单元测试 + 1 个集成测试通过，2 个外部环境测试忽略**；严格 Clippy、Release 构建、差异空白检查通过。现有键鼠命中测试和 45/80/120/160 列布局检查通过；实际渲染单元格的颜色/文本预览：[Setup](artifacts/ui-controls-20260929/setup.png)、[双核工作区](artifacts/ui-controls-20260929/core0.png)、[80 列 Setup](artifacts/ui-controls-20260929/setup-narrow.png)。
+- 最终 Release 使用 Bao 工程隔离副本完成无参数启动、core0/core1/双核选择、Ctrl+S 保存及正常退出，验证新按钮存在、旧开关消失：[报告](artifacts/bao-setup-e289d136233f44bd8fbb88def01064ad/report.json)。夹具独立设定初始 core0，兼容用户原项目已选择双核；没有改动原项目或连接/复位/烧录板卡。
+- 原生 ConPTY 通用套件 **7/8 通过**，TERM-03 的鼠标注入没有激活 Files：[新版结果](artifacts/terminal-20260929-203508-1db44c3a/report.json)。用同一夹具复测已安装旧版 0.9.0 同样为 7/8：[旧版基线](artifacts/terminal-20260929-203913-b0abe7d5/report.json)。不能将该鼠标端到端项计为通过；当前未证明是产品或夹具问题。应用内按钮/页签鼠标命中由 Rust 测试覆盖。
+- 0.9.1 Release EXE SHA256：`58FA493F0AA7611509B50395E9A28361750D4CA57B365E08B298D33B6E1D175C`。内置 LaTeX 编译器无法找到标准目录；仓库已有 XeLaTeX 流程三轮编译成功，无 Overfull、缺字或未解析引用，保留少量 Underfull 排版提示。
+
+## Bao Build/Download 故障修复（2026-09-29）
+
+- `session-20260929-134940-542.log` 在 WSL 路径转换阶段失败，尚未启动编译器或 Download。独立 `/bin/true` 同样返回 `Wsl/Service/E_UNEXPECTED`；Windows 在 13:40、13:45、13:53 记录虚拟内存不足。确认发行版停止后执行 `wsl --shutdown`，重新启动后工具链恢复。未修改全局 WSL 内存配置或关闭用户应用。
+- Bao Build 改用 `wsl --cd`，原始输出不再被 `$wslScript` 吞掉，WSL/PowerShell 使用 UTF-8；默认 `-Jobs 2`，支持选择发行版。成功时生成 ELF/BIN/HEX 校验清单，开始下一次 Build 即撤销旧清单；Download 校验三份产物并保留烧录器退出码与完整日志。`.gitattributes` 固定 WSL 构建脚本的 LF。
+- 新增 `scripts/test-bao-tasks.cjs`：6 项隔离测试通过，覆盖缺失清单、空格/中文路径、ELF 不匹配、WSL 原始错误及旧清单失效、带 stderr 的原生程序成功、原生程序失败后不复位。[脚本报告](artifacts/bao-tasks-1790663763716-5b7a1cdd/report.json)。复测曾发现本次新增检查的 PowerShell 局部 `$LASTEXITCODE` 遮蔽问题，已改成明确读取原生命令写入的全局退出码，并增加成功/失败回归。
+- 已安装的 DebugTUI 0.9.0 完成双核连接 → Build → Download → 自动重连 → Flash 回读 → C 源码断点/单步 → Continue/Pause，5 项通过。读回 56,596 字节逐字节一致，SHA256 为 `3f61771288e0889d461f4fa965bf1e42393942cdf84d12135aec47618c55ec72`，Guest 标记和心跳正确。[双核报告](artifacts/bao-workflow-1790663333421-4fde5892/report.json)。本轮已按用户要求切换为 Bao smoke 固件，取代下面早先“板上仍为 MCAL”的状态。
+- core0 单核配置按同样流程复测，最终 5 项全部通过，包含修正退出码读取后的真实下载和系统复位。[单核最终报告](artifacts/bao-workflow-1790663775392-2c3ae114/report.json)。本轮使用 smoke 固件，未把这些结果等同于双 VM 固件或 core1-only 构建/下载验证。
+- 本轮修改的是 Bao 工程脚本和验证驱动；使用现有已安装 EXE，无需更换 DebugTUI 二进制。原始项目、profile、Watch、断点由测试前后哈希保护；测试只保存隔离配置。
+
+## Bao 工程 Chip 选择报错修复（2026-09-29）
+
+- 错误发生于启动前配置解析：Bao 的旧 `scripts/tha6206/debug-env.toml` 没有 `backend="tha6"`。该工程未随 MCAL 一起迁移，新 Chip 选择无法匹配工具后端。此次仅修复 Bao 配置和验证驱动，DebugTUI EXE 仍使用已安装的 0.9.0。
+- 工具环境补充 backend 和 core0/1 的端口/就绪信息；两个 Bao 项目改用格式 3 和每核模板。连接包含 core0 时，其他选中核先连接，再由 core0 复位一次并清 `_barrier`，只恢复未选辅助核；Run 不再逐核执行 chipreset。共享 Reset 仅由 core0 执行，core1-only 为附加模式。保留原 ELF、构建/下载命令、Watch 和断点，并复制原 AHB 策略到显式核心名称。
+- 启动校验：smoke / dual 各 core0、core1、双核，共 6 种通过；不支持的 core2 和不匹配的 STM32 后端正确拒绝。ConPTY 使用真实 Bao 配置的隔离副本验证无参数启动、三种选择和保存，原报错消失：[界面报告](artifacts/bao-setup-b3da01da5aec4d5c84f70bcf72d6a104/report.json)、[配置校验](artifacts/bao-profile-fix-20260929-124227/config-validation.json)。
+- 实板前置检查发现 Flash 与本地 Bao smoke/dual 不匹配，读回前 56,596 字节与 vscodegdb/THA6XXX_MC_AS440 的 MCAL HEX 对应地址全部匹配。未据 Bao 符号执行复位、写 `_barrier` 或下载，后续运行验证需用户确认切换固件。[Flash 检查](artifacts/bao-devices-1790656955274-0079b5a0/report.json)。第二次整块读取出现 TCL 超时，验证驱动已改成 4096 字节分块读取，避免单条大请求长时间无响应。
+- Bao 四个修改文件的原始内容备份在 `artifacts/bao-profile-fix-20260929-124227/`；两个项目原有未提交改动已保留。新增 `test-bao-setup.ps1` / `test-bao-devices.cjs` 可重跑界面及有固件匹配门槛的实板验证。
+
+## 0.9.0 本地芯片目录和核心选择（2026-09-29）
+
+- 安装/首次启动初始化用户 `profiles/devices.toml`，升级不覆盖；TUI 选择芯片、勾选核心、新增客户芯片。项目格式 3 存 `[debug]`，偏好按芯片和物理核心保存；格式 1/2 的原单核、多核入口保持兼容。新增 THA 通用工程/环境模板。
+- Rust：**181 个单元测试 + 1 个集成测试通过，2 个外部环境测试忽略**。包含所有指定 THA 组合、稀疏核心、非法选择、后端匹配、端口检查、并发追加不丢条目、模板筛选、偏好隔离和 TUI 键鼠命中。
+- 开发版 ConPTY 新增流程通过；真实原生 GDB 覆盖 10 种组合（THA6104/6206/6412、STM32F429、客户 s32k144），检查物理核心名称、Run/Continue/Pause、Watch 持久化。此处芯片均为会话配置测试，不是这些芯片的实板验证。证据：[新增套件](artifacts/functional-1790652838798-c9b44074/report.json)。
+- **THA6206 实板 core0、core1、core0+1 三种模式通过**：使用参考工程新增的 `debug-chip.toml` / `.vscode/debug-env-chip.toml`，验证 connect/run/pause/continue、每核寄存器和 Watch；允许 chipreset，无 Build/Download，原配置哈希不变。开发版和最终 Release 各完成一轮，证据：[最终 EXE 实板报告](artifacts/devices-tha6206-1790653885250-7b45250a/report.json)。core1-only 是附加模式，需要 core0 已初始化。没有 THA6104/6412、STM32 或 S32K 实板结果。
+- 扩展回归：CLI、源码重映射、npm 分发、环境、旧多核、关联断点六套件通过；旧终端套件 7/8，TERM-03 仍因 ConPTY 鼠标注入未切换 Files 而失败。与 0.8.7 已记录的旧版基线现象相同，未计为通过。证据：[扩展回归](artifacts/functional-1790653230069-97470785/report.json)。
+- 最终 Release EXE SHA256：`6DF9BB74EDD41EA509E5A532A1762F747C75BCC7218C707950217ADEC3E28A89`。严格 Clippy、修改文件 rustfmt、差异空白检查通过。对该 EXE 运行 CLI、新增 TUI、10 种真实 GDB 组合、npm 生命周期四套件全部通过：[最终发布版验收](artifacts/functional-1790653767481-7b669b3b/report.json)。
+- 内置 LaTeX 编译器缺少标准目录；已有 XeLaTeX 脚本三轮编译成功，无 Overfull、缺字或未解析引用。更新原有 README / 手册 / PDF，未新增重复说明文档。
+
+## 0.8.8 Setup 重映射布局与禁用状态（2026-09-28）
+
+- Source remap、ELF path prefix 移到 SVD file 后面。No 时 prefix 整行灰显，方向键与 Tab 跳过，鼠标及旧选择状态不能打开或编辑；切回 Yes 恢复操作，已有规则保留。占位提示改为 `(Enter: choose ELF directory to map to Source root)`。
+- **175 个 Rust 单元测试 + 1 个集成测试通过，2 个外部环境测试忽略**。新增回归覆盖字段顺序、灰显颜色、双向键盘导航、鼠标禁用及启用恢复。严格 Clippy、launch.rs 格式检查、Release 构建及差异空白检查通过。
+- 对最终 Release 使用 Bao 真实 ELF 运行 ConPTY 流程：扫描、预览、选择、保存、重新打开、关闭和开启均通过。使用隔离配置，未启动板级服务或连接、复位、烧录板卡。证据：[报告](artifacts/source-remap-20260928-192306-272b899d/report.json)、[关闭时界面](artifacts/source-remap-20260928-192306-272b899d/project-elf/setup-disabled.screen.txt)、[启用后界面](artifacts/source-remap-20260928-192306-272b899d/project-elf/setup-enabled.screen.txt)。
+- Release EXE SHA256：`E174C795D597BC564104A342A38554DB7FC79FB3FD8F46E04E284B702D6F478B`。同步 README、现有 LaTeX 手册及 PDF；内置编译器仍报告缺少标准目录，仓库现有 XeLaTeX 三轮构建成功，无缺字、未解析引用或 Overfull。
+
+## 0.8.7 Setup 源码重映射（2026-09-28）
+
+- 增加 Source remap 开关、ELF path prefix 目录选择、父/子层级导航及本地文件匹配预览。后台复用配置的 GDB 读取元数据，不执行 profile 参数、初始化、服务或目标动作。关闭保留规则，重新启动调试后 GDB 和 Source 同步停用；各核共享映射。
+- 最终 Release EXE SHA256：`2985D8D821DBB5B84FED281D6399CC4F9E446013BED73E06A1659BE6A2DAEB32`。**174 个 Rust 单元测试 + 1 个集成测试通过，2 个外部环境测试忽略**；严格 Clippy、修改文件的 rustfmt、Release 构建及 `git diff --check` 通过。没有将已有 `src/svd.rs` 的全仓格式差异算作通过。
+- 对此 Release 执行 CLI 12 项，以及 `source-remap` 专项：4 种构建机路径（POSIX、Windows 反斜杠、混用、空格）的真实 ConPTY 配置流程、本地 GDB 源码读取与 file:line 断点解析；POSIX 样例同时验证 core.0/core.1 的映射继承。取消、超时、无源码记录、GDB 错误、扫描中退出 5 个场景均回收扫描进程。两套件通过，其余 16 个功能套件本次未运行；不表述为全部功能或实板回归。
+- THA6206 GHS ELF：识别 563 个源码条目，工程根下 **559/559** 文件匹配。Bao ELF：排除编译器虚拟文件后识别 104 个条目，`/mnt/d/.../bao-hypervisor` 映射至本地根后 **101/101** 文件匹配。两者均验证扫描、预览、保存、重新打开、关闭和开启；使用隔离配置，没有连接板卡、改动原工程配置、编译或烧录固件。
+- 终端通用测试为 7/8；TERM-03 的鼠标注入未激活 Files。对已安装旧版 0.8.6 使用同一夹具复测亦为 7/8，因此没有将其计为新功能验收通过。新目录列表、Apply/Cancel 按钮的鼠标命中和父/子操作由 Rust 测试覆盖，ConPTY 专项使用键盘。修正夹具按块读取 UTF-8 输出，避免 StreamReader 等待填满字符缓冲而漏掉静止界面尾部。
+- UNC 路径结构及别名由单元测试覆盖；不可达网络主机会使部分 GDB 的路径解析超时，即便关闭源码读取也可能发生。此时显示错误并回收 GDB，可用原有手工 source_map 绕过扫描；没有将该网络情况记为端到端通过。
+- README、现有 LaTeX 手册及 PDF 已更新。内置编译器报告缺少标准目录；使用仓库现有 XeLaTeX 流程三轮构建成功，无缺字、未解析引用或 Overfull。Windows 一次临时 PDF 占用失败日志保留在 `artifacts/release-0.8.7/document-build-retry/`，重新构建成功后清理了 docs 中该次临时目录。
+
+证据：[最终套件汇总](artifacts/functional-1790593099227-bd938aaf/report.json)、[源码映射专项](artifacts/source-remap-20260928-185832-fc7b30da/report.json)、[双核映射](artifacts/source-remap-20260928-185832-fc7b30da/posix/multicore-result.json)、[THA6206 GHS](artifacts/source-remap-20260928-185818-5ad1d7ee/report.json)、[Bao](artifacts/source-remap-20260928-185819-c190171a/report.json)、[旧版终端基线](artifacts/terminal-20260928-185050-ab1b4222/report.json)。产物保存在本地被忽略的 artifacts，克隆仓库后可用 scripts 中的驱动重跑。
+
 ## 功能验收扩展（2026-09-27）
 
 - 新增 45 项带稳定 ID 的用例：CLI 12、真实 Windows ConPTY 终端 8、隔离 npm 安装/升级/卸载/重装 7、STM32F429 FreeRTOS 工程实板 18。用例保存在本仓库 `scripts/` 和 `tests/`，运行产物保存到被忽略的 `artifacts/`。

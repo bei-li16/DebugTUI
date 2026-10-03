@@ -483,13 +483,28 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
         let selected = a.sources.active == Some(index);
         let hover = a.pointer.is_some_and(|p| hit.contains(p));
         let style = theme::chip(selected, hover);
-        f.render_widget(Paragraph::new(text).style(style), hit);
+        // Preserve the final spacer between tabs and keep the close hit unchanged.
+        theme::button(
+            f,
+            Rect {
+                width: hit.width.saturating_sub(1),
+                ..hit
+            },
+            "",
+            style,
+        );
+        // File names stay left-aligned with room for the independent close hit.
+        // Centering the label would put its trailing characters under the ×.
+        f.render_widget(
+            Paragraph::new(text).style(style),
+            Rect::new(hit.x + 1, hit.y, hit.width.saturating_sub(4), 1),
+        );
         let close = Rect::new(hit.right().saturating_sub(3), rect.y, 1, 1);
         f.render_widget(
             Paragraph::new("×").style(style.fg(if a.pointer.is_some_and(|p| close.contains(p)) {
                 theme::RED
             } else {
-                theme::MUTED
+                style.fg.unwrap_or(theme::TEXT)
             })),
             close,
         );
@@ -513,15 +528,16 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
             (a.sources.next, " › ", a.sources.end < count),
             (a.sources.list_button, list.as_str(), true),
         ] {
-            f.render_widget(
-                Paragraph::new(text).style(
-                    theme::chip(false, a.pointer.is_some_and(|p| hit.contains(p))).fg(if enabled {
-                        theme::ACCENT
-                    } else {
-                        theme::DIM
-                    }),
-                ),
+            theme::button(
+                f,
                 hit,
+                text.trim(),
+                theme::control(
+                    enabled,
+                    false,
+                    a.pointer.is_some_and(|p| hit.contains(p)),
+                    theme::TEXT,
+                ),
             );
         }
     }

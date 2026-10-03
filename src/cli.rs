@@ -8,6 +8,7 @@ use std::{
 pub struct Options {
     pub help: bool,
     pub version: bool,
+    pub init_profiles: bool,
     pub headless: bool,
     pub script: Option<String>,
     pub demo: bool,
@@ -25,6 +26,7 @@ impl Options {
             match arg.as_str() {
                 "--help" | "-h" => options.help = true,
                 "--version" | "-V" => options.version = true,
+                "--init-profiles" => options.init_profiles = true,
                 "--headless" | "--stdio" => options.headless = true,
                 "--demo" => options.demo = true,
                 "--setup" => options.setup = true,
@@ -34,7 +36,7 @@ impl Options {
                 }
                 "--project" | "--tools-dir" | "--environment" | "--elf" | "--gdb" | "--gdb-arg"
                 | "--connect" | "--target-mode" | "--log-dir" | "--script" | "--snapshot"
-                | "--svd" => {
+                | "--svd" | "--chip" | "--cores" => {
                     let value = args
                         .next()
                         .ok_or_else(|| format!("{arg} requires a value"))?;
@@ -109,6 +111,19 @@ impl Options {
         let mut extra_args = vec![];
         for (key, value) in &self.values {
             match key.as_str() {
+                "--chip" => {
+                    doc.enable_device_selection();
+                    doc.set("debug", "chip", value.clone().into());
+                }
+                "--cores" => {
+                    doc.enable_device_selection();
+                    doc.set(
+                        "debug",
+                        "cores",
+                        toml::Value::try_from(crate::devices::parse_ids(value)?)
+                            .map_err(|e| e.to_string())?,
+                    );
+                }
                 "--elf" => doc.set_path("program", "elf", &absolute(value)),
                 "--svd" => doc.set_path("program", "svd", &absolute(value)),
                 "--gdb" if value.contains(['/', '\\']) => {

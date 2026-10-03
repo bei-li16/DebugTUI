@@ -1,6 +1,6 @@
 {
   "name": "@debugtui/cli",
-  "version": "0.8.6",
+  "version": "0.9.3",
   "description": "Lightweight native terminal debugger powered by a configurable GDB/MI environment",
   "repository": { "type": "git", "url": "git+https://github.com/bei-li16/debugtui.git" },
   "homepage": "https://github.com/bei-li16/debugtui#readme",
@@ -10,8 +10,9 @@
   "cpu": ["x64"],
   "license": "SEE LICENSE IN LICENSE",
   "bin": { "debugtui": "bin/debugtui.exe" },
-  "files": ["bin/", "licenses/", "THIRD_PARTY_NOTICES.md", "README.md", "ARCHITECTURE.md", "TESTING.md", "PUBLISHING.md", "LICENSE", "NOTICE", "debug.toml.example"],
+  "files": ["bin/", "profiles/", "licenses/", "THIRD_PARTY_NOTICES.md", "README.md", "ARCHITECTURE.md", "TESTING.md", "PUBLISHING.md", "LICENSE", "NOTICE", "debug.toml.example"],
   "scripts": {
+    "postinstall": "node profiles/install.cjs",
     "build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Release",
     "test": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Test",
     "package": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/package.ps1"

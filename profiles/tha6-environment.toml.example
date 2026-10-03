@@ -1,0 +1,37 @@
+# Copy into the MCAL project's .vscode directory as debug-env-chip.toml.
+backend = "tha6"
+[gdb]
+executable = "./gdb/arm-none-eabi-gdb.exe"
+args = ["-x", "${profile_dir}/gdb.cfg"]
+init = ["maintenance set dwarf unwind off", "set remotetimeout 10"]
+registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc", "cpsr"]
+[service]
+enabled = true
+command = "./openocd/bin/openocd.exe"
+# MCAL bootstrap may need unselected helper cores, so examine all supported cores.
+# For a board that needs only selected cores, use ${core_mask} instead.
+args = ["-c", "set CHIPNAME ${chip}", "-c", "set DEBUGCORE ${available_core_mask}", "-f", "${profile_dir}/openocd.cfg"]
+cwd = "."
+timeout_ms = 20000
+[target]
+mode = "extended-remote"
+after_connect = []
+[actions]
+run = ["-exec-continue"]
+restart = []
+[multicore]
+restart = ["monitor chipreset", "monitor foreach _core {${unselected_core_ids}} {targets core.$_core; resume}; targets core.0"]
+[session]
+timeout_ms = 8000
+[core_targets."0"]
+endpoint = "127.0.0.1:3333"
+ready = "Listening on port 3333 for gdb connections"
+[core_targets."1"]
+endpoint = "127.0.0.1:3334"
+ready = "Listening on port 3334 for gdb connections"
+[core_targets."2"]
+endpoint = "127.0.0.1:3335"
+ready = "Listening on port 3335 for gdb connections"
+[core_targets."3"]
+endpoint = "127.0.0.1:3336"
+ready = "Listening on port 3336 for gdb connections"

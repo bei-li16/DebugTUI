@@ -29,7 +29,7 @@ impl Choice {
                 path.file_name().unwrap_or_default().to_string_lossy()
             ),
             Self::Example { description, .. } => format!(
-                "{description}\nEnter / click applies this example to the draft; review project paths and Tools / profile.\nReplaces project draft settings; retains current tools unless another profile is selected. The file is written on Save / Start with Save to project = Yes."
+                "{description}\nEnter / click applies this example to the draft; review project paths and Tools / profile.\nReplaces project draft settings; retains current tools unless another profile is selected. Save config or Start writes the file."
             ),
         }
     }

@@ -7,4 +7,19 @@
 *.tgz
 *.log
 *.pdb
+# Compiled executables, firmware and archives are distributed as Release assets.
+*.exe
+*.dll
+*.elf
+*.hex
+*.bin
+*.zip
+*.msi
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.wasm
 /.cargo/

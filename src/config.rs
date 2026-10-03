@@ -100,6 +100,8 @@ mod breakpoint_tests {
 #[serde(default, deny_unknown_fields)]
 pub struct Project {
     pub version: u32,
+    pub debug: crate::devices::Selection,
+    pub core_preferences: BTreeMap<String, BTreeMap<String, crate::devices::Preferences>>,
     pub tools: Tools,
     pub gdb: Gdb,
     pub target: Target,
@@ -110,6 +112,7 @@ pub struct Project {
     pub watch: Vec<String>,
     pub breakpoints: Vec<BreakpointSpec>,
     pub source_map: Vec<SourceMap>,
+    pub source_remap: SourceRemap,
     pub build: Option<Build>,
     pub tasks: Tasks,
     pub ui: Ui,
@@ -315,6 +318,15 @@ pub struct SourceMap {
     pub from: String,
     pub to: PathBuf,
 }
+/// Setup's selected ELF directory always maps to the current Source root.
+/// None preserves the behavior of existing projects containing source_map.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SourceRemap {
+    pub enabled: Option<bool>,
+    pub from: String,
+    pub aliases: Vec<String>,
+}
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Core {
@@ -384,7 +396,7 @@ fn read_toml(path: &Path) -> Result<toml::Value, String> {
     toml::from_str(text.trim_start_matches('\u{feff}'))
         .map_err(|e| format!("{}: {e}", path.display()))
 }
-fn merge(base: &mut toml::Value, overlay: toml::Value) {
+pub(crate) fn merge(base: &mut toml::Value, overlay: toml::Value) {
     if let (Some(dst), Some(src)) = (base.as_table_mut(), overlay.as_table()) {
         for (key, value) in src {
             if let Some(old) = dst.get_mut(key) {
@@ -440,9 +452,17 @@ impl Project {
     }
     /// Resolve an in-memory project without creating a file or starting processes.
     pub fn from_document(
+        raw: toml::Value,
+        path: Option<PathBuf>,
+        profile: Option<&Path>,
+    ) -> Result<Self, String> {
+        Self::from_document_with_catalogue(raw, path, profile, None)
+    }
+    pub(crate) fn from_document_with_catalogue(
         mut raw: toml::Value,
         path: Option<PathBuf>,
         profile: Option<&Path>,
+        catalogue: Option<&crate::devices::Catalogue>,
     ) -> Result<Self, String> {
         let base = path
             .as_ref()
@@ -489,22 +509,34 @@ impl Project {
                         | "sync"
                         | "memory_access"
                         | "multicore"
+                        | "backend"
+                        | "backends"
+                        | "core_targets"
                 ) {
                     return Err(format!("Unsupported environment section: {key}"));
                 }
             }
+            selected_path = Some(p);
+        }
+        let plan = crate::devices::resolve(&mut environment, &mut raw, catalogue)?;
+        if let Some(p) = &selected_path {
             let directory = p.parent().unwrap();
             expand(&mut environment, &portable_path(directory));
             resolve_launch_paths(&mut environment, directory);
-            selected_path = Some(p);
         }
         resolve_launch_paths(&mut raw, &base);
         merge(&mut environment, raw);
         let mut p: Self = environment
             .try_into()
             .map_err(|e| format!("Project: {e}"))?;
-        if p.version > 2 {
+        if p.version > 3 {
             return Err(format!("Unsupported project format {}", p.version));
+        }
+        if !p.debug.chip.is_empty() && p.version < 3 {
+            return Err("Chip/core selection requires project version = 3".into());
+        }
+        if let Some(plan) = plan {
+            plan.apply(&mut p)?;
         }
         if let Some(profile) = selected_path {
             p.tools.root = profile.parent().unwrap().to_owned();
@@ -534,6 +566,13 @@ impl Project {
         Ok(p)
     }
     pub fn validate(&self) -> Result<(), String> {
+        if std::iter::once(&self.source_remap.from)
+            .chain(&self.source_remap.aliases)
+            .chain(self.source_map.iter().map(|map| &map.from))
+            .any(|s| s.chars().any(char::is_control))
+        {
+            return Err("Source mapping prefixes must not contain control characters".into());
+        }
         if !matches!(
             self.target.mode.as_str(),
             "remote" | "extended-remote" | "local"
@@ -732,27 +771,59 @@ impl Project {
     pub fn has_download(&self) -> bool {
         !self.tasks.download.trim().is_empty() || !self.actions.download.is_empty()
     }
+    pub fn source_mapping_enabled(&self) -> bool {
+        self.source_remap
+            .enabled
+            .unwrap_or(!self.source_remap.from.is_empty() || !self.source_map.is_empty())
+    }
+    pub fn effective_source_maps(&self) -> Vec<SourceMap> {
+        if !self.source_mapping_enabled() {
+            return vec![];
+        }
+        let from = crate::source::normalized(&self.source_remap.from);
+        let mut maps = self
+            .source_map
+            .iter()
+            .filter(|m| {
+                from.is_empty()
+                    || crate::source::normalized(&m.from).trim_end_matches('/')
+                        != from.trim_end_matches('/')
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if !from.is_empty() {
+            maps.extend(
+                std::iter::once(&self.source_remap.from)
+                    .chain(&self.source_remap.aliases)
+                    .map(|from| SourceMap {
+                        from: from.clone(),
+                        to: self.program.source_root.clone(),
+                    }),
+            );
+        }
+        maps
+    }
     pub fn source_path(&self, file: &str) -> Option<PathBuf> {
-        let normalized = file.replace('\\', "/");
-        for map in &self.source_map {
-            let from = map.from.replace('\\', "/").trim_end_matches('/').to_owned();
-            if normalized == from || normalized.starts_with(&(from.clone() + "/")) {
-                let result = map
-                    .to
-                    .join(normalized[from.len()..].trim_start_matches('/'));
+        let normalized = crate::source::normalized(file);
+        for map in self.effective_source_maps() {
+            let from = crate::source::normalized(&map.from);
+            if !from.is_empty()
+                && let Some(tail) = crate::source::suffix(&normalized, &from)
+            {
+                let result = map.to.join(tail);
                 if result.is_file() {
                     return Some(result);
                 }
             }
         }
         [
-            PathBuf::from(file),
-            self.program.source_root.join(file),
+            PathBuf::from(&normalized),
+            self.program.source_root.join(&normalized),
             self.program
                 .elf
                 .parent()
                 .unwrap_or(Path::new("."))
-                .join(file),
+                .join(&normalized),
         ]
         .into_iter()
         .find(|p| p.is_file())
@@ -768,7 +839,19 @@ impl Project {
         let _guard = PREFERENCE_WRITE.lock().map_err(|e| e.to_string())?;
         let mut raw = read_toml(path)?;
         let root = raw.as_table_mut().ok_or("Project must be a TOML table")?;
-        let table = if let Some(name) = &self.preference_core {
+        let table = if let Some(name) = &self.preference_core
+            && !self.debug.chip.is_empty()
+        {
+            let mut table = root;
+            for key in ["core_preferences", &self.debug.chip, name] {
+                table = table
+                    .entry(key)
+                    .or_insert_with(|| toml::Value::Table(Default::default()))
+                    .as_table_mut()
+                    .ok_or("Invalid chip/core preferences table")?;
+            }
+            table
+        } else if let Some(name) = &self.preference_core {
             if !root.contains_key("cores") {
                 root.insert(
                     "cores".into(),
@@ -844,6 +927,22 @@ mod tests {
             portable_path(Path::new(r"\\?\G:\a b\工程.elf")),
             "G:/a b/工程.elf"
         );
+    }
+    #[test]
+    fn setup_source_mapping_overrides_the_same_legacy_prefix_with_a_trailing_separator() {
+        let mut project = Project::default();
+        project.program.source_root = "local".into();
+        project.source_map.push(SourceMap {
+            from: r"C:\ci\app\".into(),
+            to: "old".into(),
+        });
+        project.source_remap.from = "C:/ci/app".into();
+        let maps = project.effective_source_maps();
+        assert_eq!(maps.len(), 1);
+        assert_eq!(maps[0].to, PathBuf::from("local"));
+        project.source_remap.enabled = Some(false);
+        assert!(project.effective_source_maps().is_empty());
+        assert_eq!(project.source_map.len(), 1);
     }
     #[test]
     fn standalone_needs_no_tools_or_symbols() {

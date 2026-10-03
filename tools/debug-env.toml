@@ -1,3 +1,5 @@
+backend = "stm32f4"
+
 # Optional STM32/J-Link environment. All paths are relative to this file.
 [gdb]
 executable = "./bin/gdb/bin/arm-none-eabi-gdb.exe"

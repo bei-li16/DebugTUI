@@ -1,3 +1,6 @@
+# 0.9.0: For Chip / Debug cores selection use version=3 plus [debug].
+# See profiles/tha6-project.toml.example and profiles/tha6-environment.toml.example.
+# This default keeps the legacy single-core configuration.
 version = 2
 watch = []
 [gdb]
@@ -5,6 +8,12 @@ executable = "gdb"
 [program]
 elf = "./build/app.elf"
 source_root = "."
+
+# Setup: Source remap -> choose an ELF directory that corresponds to Source root.
+# No extra tool: metadata-only scan uses your configured GDB, without connecting.
+# [source_remap]
+# enabled = true
+# from = "/ci/build/firmware"
 # Optional CMSIS-SVD, resolved relative to this project configuration.
 # svd = "./resources/svd/stm32/STM32F429.svd"
 [target]

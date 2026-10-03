@@ -68,11 +68,15 @@ public sealed class DebugTuiTerminal : IDisposable {
     }
     void ReadOutput() {
         try {
-            using (StreamReader stream=new StreamReader(output,new UTF8Encoding(false),false,4096,true)) {
-                char[] buffer=new char[4096]; int count;
-                while ((count=stream.Read(buffer,0,buffer.Length))>0) lock(gate) {
-                    transcript.Append(buffer,0,count);
-                    for(int i=0;i<count;i++) Feed(buffer[i]);
+            // StreamReader.Read may wait to fill its requested character count,
+            // hiding the end of an otherwise complete, idle Setup frame.
+            Decoder decoder=new UTF8Encoding(false).GetDecoder();
+            byte[] bytes=new byte[4096]; char[] buffer=new char[4096]; int count;
+            while ((count=output.Read(bytes,0,bytes.Length))>0) {
+                int chars=decoder.GetChars(bytes,0,count,buffer,0,false);
+                lock(gate) {
+                    transcript.Append(buffer,0,chars);
+                    for(int i=0;i<chars;i++) Feed(buffer[i]);
                 }
             }
         } catch (IOException) { } catch (ObjectDisposedException) { }

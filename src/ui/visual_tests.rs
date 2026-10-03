@@ -36,6 +36,18 @@ fn theme_preserves_hit_areas_focus_and_execution_context() {
             .find(|(_, cmd)| *cmd == "continue")
             .unwrap()
             .0;
+        let buffer = t.backend().buffer();
+        if h >= 36 {
+            assert_eq!(hit.height, 3);
+            assert_eq!(buffer[(hit.x, hit.y)].symbol(), "╭");
+            assert_eq!(buffer[(hit.right() - 1, hit.y)].symbol(), "╮");
+            assert_eq!(buffer[(hit.x, hit.bottom() - 1)].symbol(), "╰");
+            assert_eq!(buffer[(hit.right() - 1, hit.bottom() - 1)].symbol(), "╯");
+        } else {
+            assert_eq!(hit.height, 1);
+            assert_eq!(buffer[(hit.x, hit.y)].symbol(), "│");
+            assert_eq!(buffer[(hit.right() - 1, hit.y)].symbol(), "│");
+        }
         a.mouse(
             MouseEvent {
                 kind: MouseEventKind::Moved,
@@ -46,7 +58,14 @@ fn theme_preserves_hit_areas_focus_and_execution_context() {
             Some(&engine),
         );
         let hover = terminal(&mut a, w, h);
-        assert_eq!(hover.backend().buffer()[(hit.x, hit.y)].bg, theme::HOVER);
+        assert_eq!(
+            hover.backend().buffer()[(hit.x + 1, hit.y + hit.height / 2)].bg,
+            theme::BUTTON_HOVER
+        );
+        assert_eq!(
+            hover.backend().buffer()[(hit.x, hit.y)].bg,
+            buffer[(hit.x, hit.y)].bg
+        );
         assert!(requests.try_recv().is_err()); // Hover feedback never sends a debug command.
         a.pointer = None;
     }
@@ -64,6 +83,82 @@ fn theme_preserves_hit_areas_focus_and_execution_context() {
     let right = row.right() - 2;
     assert_eq!(t.backend().buffer()[(right, row.y + 1)].symbol(), " ");
     assert_eq!(t.backend().buffer()[(right, row.y + 1)].bg, theme::PANEL);
+}
+
+#[test]
+fn rounded_controls_keep_parent_background_during_hover_and_press_animation() {
+    let mut a = App::new(Project::default(), true);
+    a.fx.mode = crate::config::Motion::Full;
+    let before = terminal(&mut a, 180, 50);
+    let hit = a
+        .action_hits
+        .iter()
+        .find(|(_, cmd)| *cmd == "continue")
+        .unwrap()
+        .0;
+    a.pointer = Some(ratatui::layout::Position::new(hit.x, hit.y));
+    a.fx.hover = Some((hit, Instant::now() - Duration::from_millis(80)));
+    a.fx.pressed = Some(hit);
+    a.fx.trigger("hover", 250);
+    a.fx.trigger("press", 180);
+    let animated = terminal(&mut a, 180, 50);
+    for y in hit.y..hit.bottom() {
+        for x in hit.x..hit.right() {
+            if y == hit.y || y == hit.bottom() - 1 || x == hit.x || x == hit.right() - 1 {
+                assert_eq!(
+                    animated.backend().buffer()[(x, y)].bg,
+                    before.backend().buffer()[(x, y)].bg
+                );
+            }
+        }
+    }
+    assert_ne!(
+        animated.backend().buffer()[(hit.x + 1, hit.y + 1)].bg,
+        before.backend().buffer()[(hit.x + 1, hit.y + 1)].bg
+    );
+}
+
+#[test]
+fn wide_workspace_aligns_project_core_search_and_shared_execution_toolbar() {
+    let mut a = App::new(Project::default(), true);
+    a.snapshot.cores = (0..2)
+        .map(|index| session::CoreStatus {
+            index,
+            name: format!("core.{index}"),
+            endpoint: format!("localhost:{}", 3333 + index),
+            state: "STOPPED".into(),
+        })
+        .collect();
+    a.snapshot.core = Some(a.snapshot.cores[0].clone());
+    a.project.cores = vec![crate::config::Core::default(); 2];
+    for width in [150, 180, 240] {
+        let _ = terminal(&mut a, width, 50);
+        let project = a
+            .action_hits
+            .iter()
+            .find(|(_, cmd)| *cmd == "setup")
+            .unwrap()
+            .0;
+        assert_eq!(project.y, a.symbol_search.bar.y);
+        assert!(a.core_hits.iter().all(|(hit, _)| hit.y == project.y));
+        assert!(
+            a.core_hits
+                .iter()
+                .all(|(hit, _)| hit.x >= project.right() && hit.right() <= a.symbol_search.bar.x)
+        );
+        assert!(
+            a.action_hits
+                .iter()
+                .all(|(hit, _)| hit.bottom() <= a.source_rect.y)
+        );
+        let source_tab = a.pane_hits.iter().find(|(_, pane)| *pane == 0).unwrap().0;
+        let register_tab = a.pane_hits.iter().find(|(_, pane)| *pane == 3).unwrap().0;
+        assert_eq!(source_tab.y, register_tab.y);
+        assert!(a.source_rect.height >= 20);
+    }
+    if let Ok(root) = std::env::var("DEBUGTUI_RENDER_DIR") {
+        capture(Path::new(&root), "multicore", &mut a, 180, 50);
+    }
 }
 
 // Optional color-preserving output for visual QA. Not included in runtime packages.

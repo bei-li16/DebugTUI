@@ -473,22 +473,33 @@ impl App {
     }
 }
 
+pub(super) fn button_width(a: &App, rect: Rect) -> u16 {
+    if a.main_pane == 0 && rect.width >= 62 {
+        27
+    } else {
+        0
+    }
+}
+
 pub(super) fn buttons(f: &mut UiFrame, a: &mut App, rect: Rect) {
-    if a.main_pane != 0 || rect.width < 62 {
+    let width = button_width(a, rect);
+    if width == 0 {
         return;
     }
-    let width = 27;
     let mut x = rect.right() - width;
     for (label, watch) in [(" Copy ", false), (" Add to Watch ", true)] {
-        let hit = Rect::new(x, rect.y, label.len() as u16, 1);
+        let hit = Rect::new(x, rect.y, label.len() as u16, rect.height);
         let active = a.source_text.range().is_some();
-        f.render_widget(
-            Paragraph::new(label).style(
-                Style::default()
-                    .fg(if active { theme::ACCENT } else { theme::DIM })
-                    .bg(theme::PANEL),
-            ),
+        theme::button(
+            f,
             hit,
+            label.trim(),
+            theme::control(
+                active,
+                false,
+                a.pointer.is_some_and(|p| hit.contains(p)),
+                theme::TEXT,
+            ),
         );
         a.source_text.buttons.push((hit, watch));
         x += hit.width + 1;

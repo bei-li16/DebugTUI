@@ -1046,7 +1046,7 @@ impl Engine {
                 mi::quote(&portable_path(&self.project.program.elf))
             ))?;
         }
-        for map in self.project.source_map.clone() {
+        for map in crate::source::gdb_maps(self.project.effective_source_maps()) {
             self.console(&format!(
                 "set substitute-path {} {}",
                 mi::quote(&map.from),

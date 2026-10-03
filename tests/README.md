@@ -14,7 +14,7 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe `
 
 可以把 `--binary` 指向已安装的 release EXE，核对实际交付程序。Rust 测试仍针对当前源码运行；报告记录被测 EXE 的路径和 SHA256，不能将两个来源混为一谈。CLI 和 npm 测试要求 EXE 版本与仓库 `package.json` 版本一致。
 
-默认顺序运行 **17 个套件**：Rust 单元/集成测试、CLI、真实终端、隔离 npm 分发、退出、Pause、环境配置、本机 GDB、补全、变量树、搜索、断点、内存、SVD、日志、多核协调、关联断点。`--gdb` / `--cc` 也可通过 `DEBUGTUI_TEST_GDB` / `DEBUGTUI_TEST_CC` 指定。缺少必需工具、未通过断言或超时会保留原因，完整验收不会把未执行项计为通过。
+默认顺序运行 **20 个套件**：Rust 单元/集成测试、CLI、真实终端、芯片选择 TUI、芯片选择原生 GDB、源码重映射、隔离 npm 分发、退出、Pause、环境配置、本机 GDB、补全、变量树、搜索、断点、内存、SVD、日志、多核协调、关联断点。`--gdb` / `--cc` 也可通过 `DEBUGTUI_TEST_GDB` / `DEBUGTUI_TEST_CC` 指定。缺少必需工具、未通过断言或超时会保留原因，完整验收不会把未执行项计为通过。
 
 ```powershell
 # 局部复测；不表示其余功能通过
@@ -38,7 +38,20 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --only c
 
 `automated-passed` 表示该组所列套件和单元测试证据通过，**不是代码行/分支覆盖率，也不是全部硬件和输入组合都已验收**。多核套件使用多个真实本机 GDB，不能替代多核实板；demo 终端验证实际输入和渲染，不能替代目标执行。物理拔插/断电、多小时稳定性、其他宿主/探针、系统剪贴板、颜色/字体及公共 Release 下载另行验收。具体限制保存在矩阵和每次报告中。
 
-## 本轮新增用例：45 项
+## Setup 源码映射专项（0.8.7）
+
+`scripts/test-source-remap.ps1` 覆盖 POSIX、Windows 反斜杠、混用、空格四种服务器路径，实际运行 ConPTY Setup 的扫描、预览、选择、保存、重启和开关操作；随后由 GDB 验证本地源码读取及绝对 file:line 断点解析，POSIX 样例再检查双核各自的映射继承。另有取消、超时、无调试信息、GDB 错误和扫描中退出五个清理场景。鼠标列表/Apply/Cancel 命中与层级操作由 Rust `launch::remap::tests` 覆盖。
+
+```powershell
+./scripts/test-source-remap.ps1 -Binary ./target/release/debugtui.exe
+# 使用真实工程 ELF，但不连接板卡；不修改该工程配置
+./scripts/test-source-remap.ps1 -Binary ./target/release/debugtui.exe `
+  -Gdb /path/to/arm-none-eabi-gdb.exe -Elf /path/to/firmware.elf -SourceRoot /path/to/local/source
+```
+
+UNC 目录边界及别名由 Rust 测试覆盖；GDB 对不可达网络主机的路径解析可能超时，不将其声称为已通过的端到端场景。用例使用隔离副本；不执行 profile 的参数或初始化、不启动服务、不烧录或运行目标。
+
+## 2026-09-27 新增用例：45 项
 
 以下计数是带稳定 ID 的验收场景数，不是 JSONL 请求数；其中硬件 18 项包含两个默认不执行的选项。既有 Rust 和 GDB 专项测试继续由统一入口调用，不重复计入新增数。
 
@@ -83,3 +96,16 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --hardwa
 ## 测试实现边界
 
 `tests/conpty.cs` 只用于测试，解析本轮 Ratatui/ConPTY 输出所需的光标和清除指令，保留完整 VT 输出供复核；它不是完整终端模拟器，不对颜色/字体做断言。测试使用自身启动的终端，避免操作用户正在使用的窗口或系统剪贴板。npm 测试使用 `artifacts/` 下的私有前缀，不替换全局已安装软件。新增脚本只清理自己启动的调试进程。
+
+## 芯片目录与核心选择
+
+- `scripts/test-devices.ps1`：ConPTY 验证 core1 选择/保存/重开、双核、新增 s32k144、升级保留自定义目录。隔离 `DEBUGTUI_CONFIG_DIR`，不改用户目录。
+- `node scripts/test-devices-gdb.cjs target/release/debugtui.exe`：真实本机 GDB，10 种芯片/核心组合，逐核身份、Run/Continue/Pause、偏好保存恢复。不是目标芯片实板测试。
+- `node scripts/test-devices-tha6206.cjs target/release/debugtui.exe <MCAL工程根> --allow-reset`：THA6206 实板 core0/core1/双核，使用 `debug-chip.toml` 和 `.vscode/debug-env-chip.toml`。会 chipreset，不 Build/Download；先检查端口空闲，生成隔离项目，原配置哈希保持不变。
+- 安装套件启用真实 postinstall，验证用户目录初始化和客户条目在升级时保留。
+
+Bao 配置适配回归：`pwsh -NoProfile -File scripts/test-bao-setup.ps1 -ProjectRoot <Bao工程根>` 验证真实项目的 Setup；`node scripts/test-bao-devices.cjs <EXE> <Bao工程根> --verify-only` 只检查板上 Flash 与 Bao smoke 镜像一致性，`--allow-reset` 才在一致性通过后运行 core0/core1/双核。驱动不会下载固件，测试均使用隔离项目文件。
+
+Bao Build/Download 回归：`node scripts/test-bao-tasks.cjs <Bao工程根>` 使用隔离副本测试缺失清单、ELF 被更换、WSL 失败后的旧产物失效、原始错误编码及下载器非零退出码，不访问实板。
+
+`node scripts/test-bao-workflow.cjs <EXE> <Bao工程根> --flash 0` 验证 core0；末尾改为 `0,1` 验证双核。该驱动会重新构建并烧录 Bao smoke，要求开始时板上已是匹配的 smoke 固件；覆盖连接状态下 Build/Download、释放探针、重连和符号加载、全镜像 Flash 回读、C 断点/单步、Guest 心跳。它使用隔离 TOML 并检查原始项目/profile 哈希不变。

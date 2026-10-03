@@ -1,4 +1,6 @@
 # STM32F429 / CMSIS-DAP. Paths are relative to this tools profile.
+backend = "stm32f4"
+
 [gdb]
 executable = "./bin/gdb/bin/arm-none-eabi-gdb.exe"
 args = [

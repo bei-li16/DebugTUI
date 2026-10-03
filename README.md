@@ -1,8 +1,61 @@
 # DebugTUI
 
-基于 GDB/MI 的原生终端调试工作台。当前版本 0.8.6，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
+基于 GDB/MI 的原生终端调试工作台。当前版本 0.9.3，发布构建支持 Windows x64；TUI 不绑定芯片、探针或 GDB Server，不需要 Python 或 Node 常驻进程。
 
 GitHub：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。源码使用 Apache-2.0；依赖声明见 NOTICE。
+
+## 选择芯片和调试核心（0.9.0）
+
+安装 npm 包时创建 `%LOCALAPPDATA%/debugtui/profiles/devices.toml`；直接运行 EXE/ZIP 时首次启动创建。已有文件原样保留，升级、卸载不会删除客户条目。可用 `debugtui --init-profiles` 检查/补建；`DEBUGTUI_CONFIG_DIR` 可指定配置根目录（最终路径为其下的 `profiles/devices.toml`）。不依赖 VS Code，PowerShell 中同样可用。
+
+默认目录包含 tha6104 `[0]`、tha6206 `[0,1]`、tha6412 `[0,1,2,3]`、stm32f429 `[0]`。它是用户维护的能力声明，不自动探测板卡。
+
+1. Setup 的 **Chip**（Tools / profile 后）按 Enter，选择芯片。
+2. 在 **Debug cores** 中用 Space / 鼠标勾选一个或多个核心，**A** 全选、**N** 清空、**Enter / Apply** 确认；至少选择一个。单独选 `[1]` 会连接物理 core1 的端口。
+3. **Ctrl+S** 保存项目选择；**Start debugging** 才关闭上一会话并按新选择连接。多核使用现有 Scope All / Core、组运行/暂停、逐核单步和断点机制；软件组控制不等于硬件同步锁步。
+4. 新芯片：Chip → **N / Add chip**，填写名称、核心 ID 列表、backend，**Ctrl+S / Save** 追加到用户目录。例：`s32k144` / `0` / `generic`，再选择并应用。重复名称、无效或重复 ID 会提示错误；取消不会写入。
+
+项目只记录当前选择；未选芯片的旧项目继续使用原单核或 `[[cores]]`，可在芯片选择器按 **L / Legacy** 返回旧模式：
+
+```toml
+version = 3
+[tools]
+profile = ".vscode/debug-env-chip.toml"
+[debug]
+chip = "tha6206"
+cores = [0, 1] # 可改为 [0] 或 [1]，也可直接在 Setup 勾选
+```
+
+芯片目录的 `backend` 用于匹配工具环境，**不内置烧录算法或芯片驱动**。`debug-env.toml` 用根字段 `backend = "tha6"` 声明适用后端，并提供 `[core_targets."0"]`、`[core_targets."1"]` 等的 `endpoint` 与可选 `ready`。不同后端可共用一份文件，通过 `[backends.tha6.gdb]`、`[backends.stm32f4.service]` 等分组覆盖公共字段（支持 gdb/target/service/actions/session/sync/memory_access/multicore/core_targets）。没有匹配后端、缺端口或重复端口时，在启动前报错。`generic` 可复用无 backend 标记的传统工具环境，但仍需用户提供支持目标芯片的 GDB Server、探针配置与下载命令。
+
+一核对应一个 GDB 会话，所有会话共享一项服务。端口由 profile 明确指定，不假定每种服务器都从 3333 连续编号。项目 `[[cores]]` 可作为按 `core.0` 等物理名称匹配的可选模板，保留每核初始化和启动顺序（当前各核共享项目 ELF）；只实例化所选核心。Watch/断点按 `core_preferences.<chip>."core.N"` 保存，切换芯片或只调 core1 不会改写其他核的偏好。未选中的共享 Reset 所属核不会被悄悄替换，相关组 Reset 被停用。
+
+THA MCAL 可复制发行包中的 `profiles/tha6-project.toml.example` 到工程根 `debug-chip.toml`，以及 `profiles/tha6-environment.toml.example` 到 `.vscode/debug-env-chip.toml`。这**一对文件**随选择切换 THA6104/6206/6412；无需再为 core0、core1、双核和四核复制文件。参考工程已放置对应入口，用 `debugtui --project debug-chip.toml --setup` 打开。
+
+模板字段支持 `${chip}`、`${chip_upper}`、`${core_mask}`（所选核心位掩码）、`${available_core_mask}`（芯片全部声明核心的位掩码）、`${unselected_core_ids}`（未选核心、空格分隔）。用于工具启动参数、工程产物路径和任务/启动命令；不替换 Watch、断点表达式和源码映射。`${profile_dir}` 仍按工具环境目录展开。必须使用同芯片的 ELF/HEX/SVD；切换 Chip 不会自动 Build 或 Download。
+
+THA 示例为 MCAL 启动屏障保留辅助核：OpenOCD examine 全部物理核，但只为勾选核心创建 GDB；包含 core0 时先连接其他所选核，再由 core0 做一次 chipreset 并恢复未选辅助核。**仅 core1 等不含 core0 的组合是附加调试，要求 core0 已完成必要初始化**。这项策略属于参考工程，可按板卡软件修改；Bao 项目不应直接照搬 MCAL 的复位/入口策略。
+
+## 在 Setup 映射服务器 ELF 的源码路径
+
+1. 将 **Program / ELF** 指向服务器产物，**Source root** 指向与该次构建一致的本地源码根。
+2. 将 SVD file 后面的 **Source remap** 切换为 **Yes**，自动用已配置的 GDB 离线读取 ELF 的源文件目录。为 No 时，**ELF path prefix** 灰显，键盘跳过、鼠标不可选择或编辑；已保存的前缀保留。该扫描不启动服务、不连接板卡、不执行 profile 的 GDB 参数或初始化命令；无需新增工具。
+3. 在 **ELF directories → Source root** 中用上下键或鼠标选择目录，左右键切换父/子层级。选择与 Source root 对应的层级，例如 `/ci/job/firmware` → `D:/work/firmware`，其后的 `src/main.c` 保持不变。预览显示本地找到数 / 该前缀覆盖数及文件示例；存在不等于版本一致。
+4. 按 **Enter / Apply** 确认，**Ctrl+S** 保存；点击 **Start debugging** 以新配置重新启动调试。后续可在 **ELF path prefix** 重新扫描选择；**R** 重扫，**Esc** 取消选择或正在进行的扫描。
+
+```toml
+[program]
+elf = "ci-artifacts/firmware.elf"
+source_root = "."
+
+[source_remap]
+enabled = true
+from = "/ci/job/firmware"
+```
+
+选择保存在项目 TOML，目标始终跟随 `program.source_root`；相对路径仍基于 TOML 所在目录。目录匹配兼容 `/`、`\` 及混用、盘符、UNC 和空格；扫描发现的其他分隔符拼写会保存在 `aliases`，供 GDB 使用。没有调试信息或无目录记录时显示原因，可取消后修正 ELF / Tools profile 再试。部分 GDB 仍会解析旧网络路径，遇到不可达的 UNC 主机可能超时；可用已有的手工 `[[source_map]]` 配置绕过目录扫描。
+
+关闭 **Source remap** 会保留但停用该选择和已有 `[[source_map]]` 规则；旧工程未配置开关时，原规则仍默认生效。额外手工规则先应用，Setup 所选同名前缀会覆盖原规则。此开关不管理用户在 `gdb.init` 或 Console 自行执行的 `set substitute-path` 命令；建议统一移入项目映射配置。各核共享映射。修改 ELF 不会自动改变 Download 脚本使用的 HEX，也不会同步独立的 `live_watch.elf`。
 
 ## 文件和符号搜索
 
@@ -203,14 +256,14 @@ debugtui
 
 | 配置页操作 | 按键 |
 |---|---|
-| 选择字段 | 鼠标点击 / Tab / Shift+Tab / ↑ ↓ |
+| 选择字段 | 默认选中 Project；↑ ↓ 只在可用配置项之间循环，跳过禁用项和顶部按钮。鼠标可直接选择；Tab / Shift+Tab 可遍历字段及按钮 |
 | 编辑路径或参数 | Enter；Ctrl+U 清空；Enter 应用，Esc 取消 |
 | 浏览文件/目录 | F2；Enter 进入目录或选择文件；Space 选择当前目录；Backspace 返回上层 |
 | 选择已有工程 TOML | 顶部 Projects / F3；选择后立即刷新配置页各字段。Project 的 F2 浏览保留，文件列表只显示目录和 TOML |
 | 套用示例配置 | 顶部 Examples / F4；预览后按 Enter 或点击套用，再修改路径和连接参数 |
 | 切换枚举/开关 | ← → / Enter |
 | 保存配置 | 顶部 Save / Ctrl+S |
-| 开始调试 | 顶部 Start debugging 默认选中，Enter 即可启动；也支持鼠标、Ctrl+R、Ctrl+Enter、F5。默认保存到工程的 debug.toml，可关闭 Save to project 仅连接一次 |
+| 开始调试 | 点击顶部 Start debugging，或使用 Ctrl+R、Ctrl+Enter、F5；Tab 选中该按钮后也可按 Enter 启动。启动前保存到工程的 debug.toml；Save config / Ctrl+S 可单独保存而不启动调试 |
 | 从调试页面返回配置 | 主界面 Project 栏的 ← Setup / F2 / :setup |
 | 回到原调试页面 | 配置页顶部 ← Workspace / Esc；编辑字段或浏览文件时 Esc 先取消当前操作 |
 | 退出应用 | 配置页顶部 Exit / Ctrl+Q；配置未完成、编辑值无效或正在浏览时也可退出，不保存草稿 |
@@ -219,9 +272,11 @@ debugtui
 
 Project 默认显示 `./debug.toml`，相对路径的输入和显示均以启动 DebugTUI 的目录为基准；ELF、Source root、SVD 等资源路径仍以所选工程 TOML 的目录为基准。跨盘无法表达相对路径时保留绝对路径。没有默认文件但发现其他工程 TOML 时，先显示选择列表；没有工程 TOML 时保留未保存的默认草稿。Projects 排除 Cargo 等无关配置及 debug-env 工具配置；其他文件仍可通过 F2 手动浏览。
 
-Examples 提供单核、本机程序和双核工程模板；工程存在 `debug-env.toml`、`.vscode/debug-env.toml` 或 `tools/debug-env.toml` 时，还可选择引用已有工具配置。模板只填入 ELF、源码目录、日志、退出策略及可选核心映射，不再生成 GDB、target、service 或工具超时配置。应用模板会替换工程草稿，但保留已选择的工具 profile 和旧工程内嵌的 gdb/target/service/timeout 覆盖项；选择另一个 profile 示例时更新引用。请核对工程路径，并通过 Tools / profile 选择适用的工具环境；本机程序需要环境配置 `target.mode='local'`。示例不会自动烧录、复位、启动工具或写文件；只有显式保存，或在 Save to project = Yes 时启动，才写入 Project。双核示例的逐核地址在 `[[cores]]` 中编辑，板级复位动作由实际环境提供。
+Examples 提供单核、本机程序和双核工程模板；工程存在 `debug-env.toml`、`.vscode/debug-env.toml` 或 `tools/debug-env.toml` 时，还可选择引用已有工具配置。模板只填入 ELF、源码目录、日志、退出策略及可选核心映射，不再生成 GDB、target、service 或工具超时配置。应用模板会替换工程草稿，但保留已选择的工具 profile 和旧工程内嵌的 gdb/target/service/timeout 覆盖项；选择另一个 profile 示例时更新引用。请核对工程路径，并通过 Tools / profile 选择适用的工具环境；本机程序需要环境配置 `target.mode='local'`。示例不会自动烧录、复位、启动工具或写文件；只有点击 Save config / Ctrl+S 或启动调试时，才写入 Project。双核示例的逐核地址在 `[[cores]]` 中编辑，板级复位动作由实际环境提供。
 
 配置页顶部固定显示 Start、Save、Projects、Examples、Workspace 和 Exit 按钮，不随字段滚动，窄终端会换行。字段下方说明包含用途、路径基准、示例、是否可留空及相关限制。打开配置页时当前调试会话仍然有效；返回工作区会保留未保存的配置草稿。点击 Start debugging 时先校验并应用正在编辑的字段，再清理原会话、启动新配置；旧会话清理失败会在界面报错并停止切换。连接失败可以通过 ← Setup 修正配置并重试。Exit / Ctrl+Q 通过原有退出流程关闭会话和自有服务。
+
+界面采用深蓝灰面板与蓝色焦点，按钮仅在圆角边框内填色，悬停和按下动画也遵守该边界。宽屏将工程操作、核心选择和 Symbols 搜索横向排列，并在源码与检查面板上方共用调试操作栏；窄屏保留换行和紧凑布局。各核仍使用独立身份色，但只对工作区施加轻微色调，避免大面积背景盖过源码。
 
 原有参数仍可使用：配置完整时直接准备调试环境；参数不足时进入已填好参数的配置页。添加 --setup 可强制先查看配置。--project 同时接受工程目录和配置文件。
 
@@ -316,7 +371,7 @@ log_dir = "./debug_log"
 
 兼容性：环境解析器仍接受 `gdb`、`target`、`service`、`actions`、`session`、`sync`、`memory_access`、`multicore` 配置节，旧环境中的退出策略仍可继承。加载顺序为环境 → 项目字段覆盖 → CLI 参数；数组整体替换，空数组可以清除继承动作。相对可执行路径（含 / 或 \）和 cwd 相对定义它们的 TOML 文件，裸命令名通过 PATH 查找。环境文件中的 `${profile_dir}` 展开为该环境文件所在目录，可用于资源路径参数。
 
-**Setup 只编辑工程配置**：页面保留 Project、Tools / profile、Program / ELF、Source root、Build command、Download command、On exit、Log directory、SVD file 和 Save to project。Tools / profile 只修改工程的环境引用，不编辑工具文件。顶部提示当前单核或配置的核心名称；逐核 endpoint、init、after_connect、run、startup_order、Watch/断点及 multicore 策略仍在工程 TOML 中维护。
+**Setup 只编辑工程配置**：页面保留 Project、Tools / profile、Chip、Debug cores、Program / ELF、Source root、Build command、Download command、On exit、Log directory、SVD file、Source remap 和 ELF path prefix。Tools / profile 只修改工程的环境引用，不编辑工具文件。Chip / Debug cores 用于选择芯片和核心，Legacy 模式仍兼容旧配置；顶部提示当前单核或配置的核心名称。Chip 模式的逐核端口由工具 profile 提供，工程可用 `[[cores]]` 模板维护 init、after_connect、run、startup_order、Watch/断点及 multicore 策略；旧项目中的逐核 endpoint 仍保留兼容。
 
 保存时仅修改工程草稿中的对应字段，不把合并后的工具默认值展开写入工程，也不改写共享 profile。兼容无 `[[cores]]` 的普通单核、仅列出 core0/core1 的单核，以及多核配置。旧工程内嵌的 gdb/target/service/timeout 等覆盖项继续有效且原样保留其值；要完成文件分层，应手动迁移到 debug-env.toml，再删除工程对应的覆盖键。Setup 不自动迁移，以免改变既有连接行为。调试会话在后台保存的逐核 Watch/断点也会合并保留。
 

@@ -1,4 +1,4 @@
-//! Project selection and launch configuration. No debugger processes are started here.
+//! Project selection and launch configuration. ELF inspection uses an offline GDB.
 use crate::{
     config::{Project, portable_path},
     theme,
@@ -19,11 +19,15 @@ use std::{
 };
 
 mod choices;
+mod devices;
+mod remap;
 use choices::{Choice, Picker};
 
-const LABELS: [&str; 12] = [
+const LABELS: [&str; 15] = [
     "Project",
     "Tools / profile",
+    "Chip",
+    "Debug cores",
     "Program / ELF",
     "Source root",
     "Build command",
@@ -31,36 +35,47 @@ const LABELS: [&str; 12] = [
     "On exit",
     "Log directory",
     "SVD file",
-    "Save to project",
+    "Source remap",
+    "ELF path prefix",
     "Start debugging",
-    "Save configuration",
+    "Save config",
 ];
-const HINTS: [&str; 12] = [
+const HINTS: [&str; 15] = [
     "Project TOML stores launch settings, Watch and breakpoints. Selecting a file reloads all fields.\nRelative to the startup directory; default: ./debug.toml. F3: project list. F2: browse.\nEnter: type a file or directory. A directory uses its debug.toml; a missing file stays a draft until saved.",
     "Profile stores tool defaults (GDB/OpenOCD); project fields override it.\nProject owns ELF/build/Watch/exit policy. Profiles are loaded, never rewritten.\nEdit shared tools in debug-env.toml. Tool parameters are edited in that file, outside Setup. F2: select profile.",
+    "Enter: choose a chip from the local device catalogue, or add a new chip.\nThe catalogue declares available core IDs and a backend; Tools / profile provides its tools.\nLegacy keeps existing single-core / [[cores]] settings. No hardware action until Start.",
+    "Enter: select one or more core IDs supported by the chip.\nOne core creates one GDB session; multiple cores share the workspace coordinator.\nEndpoints and startup actions must be provided by the matching Tools / profile and project.",
     "ELF / executable provides symbols for C source, variables and breakpoints. A HEX file has no debug symbols.\nExample: ./build/firmware.elf, relative to Project. F2: browse. Use the ELF matching the flashed firmware.\nOptional for remote attachment; needed for source debugging. Selecting it does not flash the device.",
-    "Local source lookup root and working directory for Build / Download commands.\nExample: . or ./firmware, relative to Project; blank uses the project directory. F2: browse.\nCI absolute source paths may also need [[source_map]] in the project TOML.",
+    "Local source lookup root and working directory for Build / Download commands.\nExample: . or ./firmware, relative to Project; blank uses the project directory. F2: browse.\nEnable Source remap to map a directory recorded in the ELF to this root.",
     "Shell command used by the workspace Build action; runs in Source root, not the tools directory.\nExamples: .\\build.bat or cmake --build build. Quote paths containing spaces.\nOptional: blank uses legacy [build] if present. Starting debugging does not run this command.",
     "Shell command used by Download; runs in Source root. Example: .\\flash.bat or .\\scripts\\flash.ps1.\nOptional: blank uses the profile's actions.download; without either, Download is unavailable.\nBuild/Download release debug connections and owned services before running the command.",
     "Project policy: [session].on_exit; applies to every configured core on session cleanup.\ndetach: detach GDB. resume: resume and release GDB (remote disconnect / local detach).\ndisconnect: release the connection without resuming. Final target state depends on the server/board.",
     "Directory for GDB/MI and server diagnostic logs. Example: ./debug_log, relative to Project.\nBlank disables session file logging. Enable logs when reporting connection or multicore problems.\nLogs are written during a debug session; saving Setup only stores this path.",
     "Optional CMSIS-SVD XML file describing peripheral registers and fields; it is not an ELF or source file.\nExample: ./.vscode/THA6206/tha6206.svd, relative to Project. F2: browse.\nChoose the device's matching SVD. Blank disables peripheral descriptions, not CPU debugging.",
-    "Yes (default): save the selected Project TOML before starting. No: use a temporary session.\nCtrl+S explicitly saves even when this option is No. Opening Setup alone creates no file.\nRelative resource paths are based on the selected Project TOML directory.",
-    "Start with the reviewed settings: Enter, F5 or Ctrl+R. The previous session is closed first.\nSave to project controls whether this draft is written before starting.\nFor a new project, choose Examples to fill a starting configuration, then adjust project paths and select Tools / profile.",
-    "Ctrl+S saves the draft to Project without starting GDB or connecting to hardware.\nA missing Project TOML is created; the referenced tools profile is never rewritten.\nUse Exit to leave without saving draft edits.",
+    "Enter / Left / Right: enable or disable source path remapping for all cores.\nEnabling opens an offline ELF directory scan using the selected GDB; no board connection.\nNo disables ELF path prefix selection and editing; saved mapping rules are retained.",
+    "Enter: choose an ELF directory to map to Source root. Available when Source remap is Yes.\nThe suffix below that directory is preserved. Preview shows covered files and local matches.\nSaved selection follows Source root changes. Manual [[source_map]] rules for other prefixes still apply first.",
+    "Start with the reviewed settings: Enter, F5 or Ctrl+R. The previous session is closed first.\nThe configuration is saved to Project before the new session starts.\nFor a new project, choose Examples to fill a starting configuration, then adjust project paths and select Tools / profile.",
+    "Save config / Ctrl+S writes the draft to Project without starting GDB or connecting to hardware.\nA missing Project TOML is created; the referenced tools profile is never rewritten.\nStart also saves the configuration. Use Exit to leave without saving draft edits.",
 ];
 // Only project fields are editable. Tool defaults remain in the selected profile;
 // legacy project tool overrides are still loaded and preserved by Document.
-const ON_EXIT: usize = 6;
-const LOG_DIR: usize = 7;
-const SVD: usize = 8;
-const SAVE_TO_PROJECT: usize = 9;
-const START: usize = 10;
-const SAVE: usize = 11;
-const WORKSPACE: usize = 12;
-const PROJECTS: usize = 13;
-const EXAMPLES: usize = 14;
-const EXIT: usize = 15;
+const CHIP: usize = 2;
+const CORES: usize = 3;
+const ELF: usize = 4;
+const SOURCE: usize = 5;
+const BUILD: usize = 6;
+const DOWNLOAD: usize = 7;
+const ON_EXIT: usize = 8;
+const LOG_DIR: usize = 9;
+const SVD: usize = 10;
+const SOURCE_REMAP: usize = 11;
+const ELF_PREFIX: usize = 12;
+const START: usize = 13;
+const SAVE: usize = 14;
+const WORKSPACE: usize = 15;
+const PROJECTS: usize = 16;
+const EXAMPLES: usize = 17;
+const EXIT: usize = 18;
 
 fn displayed_path(base: &Path, path: &Path) -> String {
     let value = relative_path(base, path);
@@ -207,6 +222,12 @@ impl Document {
     pub fn project(&self) -> Result<Project, String> {
         Project::from_document(self.raw.clone(), Some(self.path.clone()), None)
     }
+    pub(crate) fn enable_device_selection(&mut self) {
+        self.raw
+            .as_table_mut()
+            .unwrap()
+            .insert("version".into(), 3.into());
+    }
     pub fn set(&mut self, section: &str, name: &str, value: toml::Value) {
         let table = self.raw.as_table_mut().unwrap();
         let target = table
@@ -255,7 +276,7 @@ impl Document {
                 .clone()
                 .ok_or("Project file appeared on disk; reload it before saving")?;
             // Runtime display preferences can change while the setup form is open.
-            for key in ["watch", "breakpoints", "ui"] {
+            for key in ["watch", "breakpoints", "ui", "core_preferences"] {
                 current_settings
                     .as_table_mut()
                     .ok_or("Project must be a table")?
@@ -320,7 +341,6 @@ impl Document {
 
 pub struct Launch {
     pub document: Document,
-    pub save: bool,
 }
 
 struct Editor {
@@ -432,7 +452,6 @@ impl Browser {
 pub struct Setup {
     pub document: Document,
     pub message: String,
-    pub save: bool,
     pub pending: bool,
     pub workspace_requested: bool,
     pub quit_requested: bool,
@@ -441,6 +460,8 @@ pub struct Setup {
     editor: Option<Editor>,
     browser: Option<Browser>,
     picker: Option<Picker>,
+    mapping: Option<remap::Mapping>,
+    devices: Option<devices::Devices>,
     action_hits: Vec<(Rect, usize)>,
     row_hits: Vec<(Rect, usize)>,
 }
@@ -472,21 +493,74 @@ impl Setup {
         Self {
             document,
             message,
-            save: true,
             pending: false,
-            selected: START,
+            selected: 0,
             workspace_requested: false,
             quit_requested: false,
             working_directory,
             editor: None,
             browser: None,
             picker,
+            mapping: None,
+            devices: None,
             action_hits: vec![],
             row_hits: vec![],
         }
     }
+    fn selection(&self) -> crate::devices::Selection {
+        self.document
+            .raw
+            .get("debug")
+            .cloned()
+            .and_then(|v| v.try_into().ok())
+            .unwrap_or_default()
+    }
+    fn device_action(&mut self, action: devices::Action) {
+        match action {
+            devices::Action::None => return,
+            devices::Action::Cancel => {}
+            devices::Action::Legacy => {
+                self.document.raw.as_table_mut().unwrap().remove("debug");
+            }
+            devices::Action::Select(selection) => {
+                self.document
+                    .raw
+                    .as_table_mut()
+                    .unwrap()
+                    .insert("version".into(), 3.into());
+                self.document
+                    .raw
+                    .as_table_mut()
+                    .unwrap()
+                    .insert("debug".into(), toml::Value::try_from(selection).unwrap());
+                self.selected = CORES;
+            }
+        }
+        self.devices = None;
+        self.message = match self.document.project() {
+            Ok(_) => "Chip/core selection updated. Start applies it; Ctrl+S saves.".into(),
+            Err(e) => format!("Selection saved in draft. Check Tools / profile: {e}"),
+        };
+    }
     fn values(&self) -> Vec<String> {
-        let p = self.document.project().unwrap_or_default();
+        let p = self.document.project().unwrap_or_else(|_| {
+            // Keep project fields visible while the user changes chip and then
+            // chooses a matching backend profile. Launch validation stays strict.
+            let mut preview: Project = self.document.raw.clone().try_into().unwrap_or_default();
+            for path in [
+                &mut preview.program.elf,
+                &mut preview.program.source_root,
+                &mut preview.program.svd,
+            ] {
+                if !path.as_os_str().is_empty() {
+                    *path = absolute(self.document.base(), path);
+                }
+            }
+            if let Some(path) = &mut preview.session.log_dir {
+                *path = absolute(self.document.base(), path);
+            }
+            preview
+        });
         let path = |p: &Path| {
             if p.as_os_str().is_empty() {
                 String::new()
@@ -502,9 +576,16 @@ impl Setup {
             .and_then(toml::Value::as_str)
             .unwrap_or_default()
             .to_owned();
+        let remap_enabled = p.source_mapping_enabled();
         vec![
             displayed_path(&self.working_directory, &self.document.path),
             profile,
+            self.selection().chip.clone(),
+            if self.selection().chip.is_empty() {
+                "(select Chip first)".into()
+            } else {
+                format!("{:?}", self.selection().cores)
+            },
             path(&p.program.elf),
             path(&p.program.source_root),
             p.tasks.build,
@@ -512,19 +593,26 @@ impl Setup {
             p.session.on_exit,
             p.session.log_dir.as_deref().map(path).unwrap_or_default(),
             path(&p.program.svd),
-            if self.save {
-                "Yes"
+            if remap_enabled { "Yes" } else { "No" }.into(),
+            if p.source_remap.from.is_empty() {
+                if p.source_map.is_empty() {
+                    "(Enter: choose ELF directory to map to Source root)".into()
+                } else {
+                    format!(
+                        "{} manual rule(s); Enter: map ELF directory to Source root",
+                        p.source_map.len()
+                    )
+                }
             } else {
-                "No (connect once)"
-            }
-            .into(),
+                format!("{} -> Source root", p.source_remap.from)
+            },
             "F5 / Enter".into(),
             "Ctrl+S / Enter".into(),
         ]
     }
     fn set_value(&mut self, value: &str) -> Result<(), String> {
         // Shell commands must retain their executable/argument quotes verbatim.
-        let value = if matches!(self.selected, 4 | 5) {
+        let value = if matches!(self.selected, BUILD | DOWNLOAD) {
             value.trim()
         } else {
             value.trim().trim_matches('"')
@@ -540,8 +628,8 @@ impl Setup {
         let mut doc = self.document.clone();
         match self.selected {
             1 => doc.environment(value),
-            2 | 3 => {
-                let key = if self.selected == 2 {
+            ELF | SOURCE => {
+                let key = if self.selected == ELF {
                     "elf"
                 } else {
                     "source_root"
@@ -553,9 +641,9 @@ impl Setup {
                     doc.set_path("program", key, &path);
                 }
             }
-            4 | 5 => doc.set(
+            BUILD | DOWNLOAD => doc.set(
                 "tasks",
-                if self.selected == 4 {
+                if self.selected == BUILD {
                     "build"
                 } else {
                     "download"
@@ -597,9 +685,41 @@ impl Setup {
         }
         Ok(())
     }
+    fn field_enabled(&self, index: usize) -> bool {
+        if index == CORES {
+            return !self.selection().chip.is_empty();
+        }
+        index != ELF_PREFIX
+            || self
+                .document
+                .project()
+                .is_ok_and(|p| p.source_mapping_enabled())
+    }
+    fn move_selection(&mut self, backwards: bool, fields_only: bool) {
+        let count = if fields_only { START } else { EXIT + 1 };
+        if self.selected >= count {
+            // Arrow navigation from a clicked action returns to Project.
+            self.selected = 0;
+            return;
+        }
+        loop {
+            self.selected = (self.selected + if backwards { count - 1 } else { 1 }) % count;
+            if self.field_enabled(self.selected) {
+                break;
+            }
+        }
+    }
     fn cycle(&mut self, backwards: bool) -> Result<(), String> {
-        if self.selected == SAVE_TO_PROJECT {
-            self.save = !self.save;
+        if self.selected == SOURCE_REMAP {
+            let enabled = !self.document.project()?.source_mapping_enabled();
+            self.document.set("source_remap", "enabled", enabled.into());
+            if enabled {
+                self.open_mapping()?;
+            } else {
+                self.message =
+                    "Source remapping disabled; saved rules retained. Start applies this change."
+                        .into();
+            }
             return Ok(());
         }
         let values: &[&str] = match self.selected {
@@ -614,6 +734,10 @@ impl Setup {
         self.set_value(values[(n + if backwards { values.len() - 1 } else { 1 }) % values.len()])
     }
     pub fn paste(&mut self, text: &str) {
+        if let Some(devices) = &mut self.devices {
+            devices.paste(text);
+            return;
+        }
         if let Some(e) = &mut self.editor {
             e.insert(text);
         }
@@ -639,6 +763,16 @@ impl Setup {
         }
     }
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<Launch>, String> {
+        if let Some(devices) = &mut self.devices {
+            let action = devices.key(key);
+            self.device_action(action);
+            return Ok(None);
+        }
+        if let Some(mapping) = &mut self.mapping {
+            let action = mapping.key(key.code);
+            self.mapping_action(action);
+            return Ok(None);
+        }
         if key.code == KeyCode::F(3) || key.code == KeyCode::F(4) {
             self.commit_editor()?;
             self.browser = None;
@@ -711,7 +845,7 @@ impl Setup {
                         }
                     }
                 }
-                KeyCode::Char(' ') if matches!(self.selected, 0 | 1 | 3 | LOG_DIR) => {
+                KeyCode::Char(' ') if matches!(self.selected, 0 | 1 | SOURCE | LOG_DIR) => {
                     let path = browser.directory.clone();
                     self.choose_path(&path)?;
                 }
@@ -733,16 +867,31 @@ impl Setup {
             return Ok(None);
         }
         match key.code {
-            KeyCode::Up | KeyCode::BackTab => self.selected = (self.selected + EXIT) % (EXIT + 1),
-            KeyCode::Down | KeyCode::Tab => self.selected = (self.selected + 1) % (EXIT + 1),
-            KeyCode::F(2) if matches!(self.selected, 0..=3 | LOG_DIR | SVD) => {
+            KeyCode::Up => self.move_selection(true, true),
+            KeyCode::Down => self.move_selection(false, true),
+            KeyCode::BackTab => self.move_selection(true, false),
+            KeyCode::Tab => self.move_selection(false, false),
+            KeyCode::F(2) if matches!(self.selected, 0 | 1 | ELF | SOURCE | LOG_DIR | SVD) => {
                 self.open_browser()?;
             }
             KeyCode::Left | KeyCode::Right => self.cycle(key.code == KeyCode::Left)?,
-            KeyCode::Enter if matches!(self.selected, ON_EXIT | SAVE_TO_PROJECT) => {
+            KeyCode::Enter
+                if self.selected == CHIP
+                    || (self.selected == CORES && !self.selection().chip.is_empty()) =>
+            {
+                self.devices = Some(devices::Devices::new(
+                    self.selection(),
+                    self.selected == CORES,
+                )?);
+            }
+            KeyCode::Enter if self.selected == CORES => {}
+            KeyCode::Enter if matches!(self.selected, SOURCE_REMAP | ON_EXIT) => {
                 self.cycle(false)?
             }
-            KeyCode::Enter if self.selected < START => {
+            KeyCode::Enter if self.selected == ELF_PREFIX && self.field_enabled(ELF_PREFIX) => {
+                self.open_mapping()?
+            }
+            KeyCode::Enter if self.selected < START && self.field_enabled(self.selected) => {
                 self.editor = Some(Editor::new(self.values()[self.selected].clone()))
             }
             KeyCode::Enter if self.selected == START => return self.start(),
@@ -775,6 +924,47 @@ impl Setup {
             matches!(self.selected, 0 | 1),
         )?);
         Ok(())
+    }
+    fn open_mapping(&mut self) -> Result<(), String> {
+        let project = self.document.project()?;
+        if !project.source_mapping_enabled() {
+            return Err("Enable Source remap before selecting an ELF path prefix.".into());
+        }
+        self.mapping = Some(remap::Mapping::new(project));
+        self.message = "Choose the ELF directory that corresponds to Source root. Enter applies; Esc keeps current settings.".into();
+        Ok(())
+    }
+    fn mapping_action(&mut self, action: remap::Action) {
+        match action {
+            remap::Action::None => {}
+            remap::Action::Cancel => {
+                self.mapping = None;
+            }
+            remap::Action::Apply(candidate) => {
+                self.document
+                    .set("source_remap", "from", candidate.from.clone().into());
+                self.document.set(
+                    "source_remap",
+                    "aliases",
+                    toml::Value::Array(
+                        candidate
+                            .aliases
+                            .into_iter()
+                            .map(toml::Value::String)
+                            .collect(),
+                    ),
+                );
+                self.mapping = None;
+                self.selected = ELF_PREFIX;
+                self.message = format!(
+                    "Selected {} -> Source root; {}/{} files found. Ctrl+S saves; Start applies.",
+                    candidate.from, candidate.matched, candidate.files
+                );
+            }
+        }
+    }
+    pub fn tick(&mut self) -> bool {
+        self.mapping.as_mut().is_some_and(remap::Mapping::tick)
     }
     fn open_projects(&mut self) -> Result<(), String> {
         let picker = Picker::projects(self.document.base())?;
@@ -846,6 +1036,11 @@ impl Setup {
     fn start(&mut self) -> Result<Option<Launch>, String> {
         self.commit_editor()?;
         let mut project = self.document.project()?;
+        if project.source_mapping_enabled() && project.effective_source_maps().is_empty() {
+            return Err(
+                "Choose an ELF path prefix or disable Source remap before starting.".into(),
+            );
+        }
         project.prepare_workspace().map_err(|error| {
             if project.target.mode != "local"
                 && project.target.endpoint.is_empty()
@@ -863,7 +1058,6 @@ impl Setup {
         self.message = "Closing the previous session and preparing the selected project...".into();
         Ok(Some(Launch {
             document: self.document.clone(),
-            save: self.save,
         }))
     }
     pub fn mouse(&mut self, mouse: MouseEvent) -> Option<Launch> {
@@ -878,6 +1072,16 @@ impl Setup {
             return None;
         }
         if self.pending {
+            return None;
+        }
+        if let Some(devices) = &mut self.devices {
+            let action = devices.mouse(mouse);
+            self.device_action(action);
+            return None;
+        }
+        if let Some(mapping) = &mut self.mapping {
+            let action = mapping.mouse(mouse);
+            self.mapping_action(action);
             return None;
         }
         let point = (mouse.column, mouse.row).into();
@@ -929,6 +1133,9 @@ impl Setup {
             } else if let Some(browser) = &mut self.browser {
                 browser.selected = index;
             } else {
+                if !self.field_enabled(index) {
+                    return None;
+                }
                 if let Err(error) = self.commit_editor() {
                     self.message = format!("Error: {error}");
                     return None;
@@ -971,6 +1178,12 @@ impl Setup {
         }
     }
     fn help_text(&self) -> String {
+        if let Some(devices) = &self.devices {
+            return devices.help();
+        }
+        if let Some(mapping) = &self.mapping {
+            return mapping.help();
+        }
         if let Some(picker) = &self.picker {
             return picker
                 .choices
@@ -992,7 +1205,7 @@ impl Setup {
         let screen = f.area();
         f.render_widget(Block::default().style(theme::base()), screen);
         let width = screen.width.min(122);
-        let height = screen.height.min(38);
+        let height = screen.height.min(30);
         let area = Rect::new(
             screen.x + (screen.width - width) / 2,
             screen.y + (screen.height - height) / 2,
@@ -1019,7 +1232,14 @@ impl Setup {
                 },
                 START,
             ),
-            (if compact { "Save" } else { "Save · Ctrl+S" }, SAVE),
+            (
+                if compact {
+                    "Save config"
+                } else {
+                    "Save config · Ctrl+S"
+                },
+                SAVE,
+            ),
             (
                 if compact {
                     "Projects"
@@ -1039,6 +1259,7 @@ impl Setup {
             (if compact { "Back" } else { "← Workspace" }, WORKSPACE),
             (if compact { "Exit" } else { "Exit · Ctrl+Q" }, EXIT),
         ];
+        let button_height = if area.height >= 30 { 3 } else { 1 };
         let mut action_rows = 1;
         let mut used = 1;
         for (label, _) in actions {
@@ -1056,7 +1277,7 @@ impl Setup {
             // field description to wrap on ordinary 80-column terminals.
             let limit = area
                 .height
-                .saturating_sub(3 + action_rows + 6 + 2 + 2)
+                .saturating_sub(3 + action_rows * button_height + 6 + 2 + 2)
                 .clamp(2, 8);
             help_line_count(&self.help_text(), area.width).clamp(2, limit)
         };
@@ -1064,7 +1285,7 @@ impl Setup {
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(if area.height < 20 { 2 } else { 3 }),
-                Constraint::Length(action_rows),
+                Constraint::Length(action_rows * button_height),
                 Constraint::Min(3),
                 Constraint::Length(help_height),
                 Constraint::Length(if area.height < 20 { 1 } else { 2 }),
@@ -1096,34 +1317,49 @@ impl Setup {
             let width = unicode_width::UnicodeWidthStr::width(text.as_str()) as u16;
             if x + width > rows[1].right() {
                 x = rows[1].x + 1;
-                y += 1;
+                y += button_height;
             }
-            let hit = Rect::new(x, y, width.min(rows[1].right().saturating_sub(x)), 1);
+            let hit = Rect::new(
+                x,
+                y,
+                width.min(rows[1].right().saturating_sub(x)),
+                button_height,
+            );
             let enabled = action == EXIT
                 || (!self.pending
+                    && self.mapping.is_none()
+                    && self.devices.is_none()
                     && ((self.browser.is_none() && self.picker.is_none())
                         || matches!(action, PROJECTS | EXAMPLES)));
-            let style = if !enabled {
-                Style::default().fg(theme::DIM)
-            } else if self.selected == action {
-                theme::selected(true)
-                    .fg(theme::ACCENT)
-                    .add_modifier(Modifier::BOLD)
-            } else if action == START {
-                Style::default()
-                    .fg(theme::GREEN)
-                    .bg(theme::PC)
-                    .add_modifier(Modifier::BOLD)
+            let tone = if action == START {
+                theme::GREEN
             } else if action == EXIT {
-                Style::default().fg(theme::RED).bg(theme::RAISED)
+                theme::RED
             } else {
-                Style::default().fg(theme::TEXT).bg(theme::RAISED)
+                theme::TEXT
             };
-            f.render_widget(Paragraph::new(text).style(style), hit);
+            let style = theme::control(enabled, self.selected == action, false, tone);
+            theme::button(f, hit, label, style);
             self.action_hits.push((hit, action));
             x += width + 1;
         }
-        if let Some(picker) = &self.picker {
+        if let Some(devices) = &mut self.devices {
+            devices.draw(f, rows[2]);
+            f.render_widget(
+                Paragraph::new(devices.help())
+                    .wrap(Wrap { trim: false })
+                    .style(Style::default().fg(theme::MUTED)),
+                rows[3],
+            );
+        } else if let Some(mapping) = &mut self.mapping {
+            mapping.draw(f, rows[2]);
+            f.render_widget(
+                Paragraph::new(mapping.help())
+                    .wrap(Wrap { trim: false })
+                    .style(Style::default().fg(theme::MUTED)),
+                rows[3],
+            );
+        } else if let Some(picker) = &self.picker {
             let block = theme::card(format!("  {}  ", picker.title), true);
             let inner = block.inner(rows[2]);
             f.render_widget(block, rows[2]);
@@ -1219,12 +1455,17 @@ impl Setup {
                 0
             };
             let values = self.values();
+            let prefix_enabled = self.field_enabled(ELF_PREFIX);
+            let cores_enabled = self.field_enabled(CORES);
             let lines = LABELS
                 .iter()
                 .enumerate()
                 .take(START)
                 .skip(start)
                 .map(|(i, label)| {
+                    let enabled =
+                        (i != ELF_PREFIX || prefix_enabled) && (i != CORES || cores_enabled);
+                    let selected = enabled && i == self.selected;
                     let value = if i == self.selected {
                         self.editor
                             .as_ref()
@@ -1236,9 +1477,10 @@ impl Setup {
                     let shown = if value.is_empty() {
                         match i {
                             1 => "(select debug-env.toml; legacy tools supported)",
-                            2 => "(select ELF for source debugging)",
-                            4 => "(optional; no build command)",
-                            5 => "(optional; uses profile download)",
+                            CHIP => "(Legacy; Enter: choose / add chip)",
+                            ELF => "(select ELF for source debugging)",
+                            BUILD => "(optional; no build command)",
+                            DOWNLOAD => "(optional; uses profile download)",
                             LOG_DIR => "(optional; logging disabled)",
                             SVD => "(optional; no peripheral descriptions)",
                             _ => "(not set)",
@@ -1246,10 +1488,7 @@ impl Setup {
                     } else {
                         value
                     };
-                    let prefix = format!(
-                        "{} {label:<18} ",
-                        if i == self.selected { "›" } else { " " }
-                    );
+                    let prefix = format!("{} {label:<18} ", if selected { "›" } else { " " });
                     let available = rows[2].width.saturating_sub(
                         unicode_width::UnicodeWidthStr::width(prefix.as_str()) as u16 + 2,
                     ) as usize;
@@ -1269,14 +1508,31 @@ impl Setup {
                     } else {
                         visible_tail(shown, available)
                     };
-                    Line::styled(
-                        format!("{prefix}{shown}"),
-                        theme::selected(i == self.selected).fg(if i == self.selected {
-                            theme::ACCENT
-                        } else {
-                            theme::TEXT
-                        }),
-                    )
+                    // Separate muted field labels from bright values; reserve
+                    // the accent and stronger weight for keyboard focus.
+                    Line::from(vec![
+                        Span::styled(
+                            prefix,
+                            Style::default()
+                                .fg(if !enabled {
+                                    theme::DIM
+                                } else if selected {
+                                    theme::ACCENT
+                                } else {
+                                    theme::MUTED
+                                })
+                                .add_modifier(if selected {
+                                    Modifier::BOLD
+                                } else {
+                                    Modifier::empty()
+                                }),
+                        ),
+                        Span::styled(
+                            shown,
+                            Style::default().fg(if enabled { theme::TEXT } else { theme::DIM }),
+                        ),
+                    ])
+                    .style(theme::selected(selected))
                 })
                 .collect::<Vec<_>>();
             let block = theme::card(
@@ -1290,15 +1546,21 @@ impl Setup {
             let inner = block.inner(rows[2]);
             f.render_widget(block, rows[2]);
             theme::lines(f, lines, inner);
-            self.row_hits
-                .extend((start..START).take(inner.height as usize).enumerate().map(
-                    |(row, index)| {
+            self.row_hits.extend(
+                (start..START)
+                    .take(inner.height as usize)
+                    .enumerate()
+                    .filter(|(_, index)| {
+                        (*index != ELF_PREFIX || prefix_enabled)
+                            && (*index != CORES || cores_enabled)
+                    })
+                    .map(|(row, index)| {
                         (
                             Rect::new(inner.x, inner.y + row as u16, inner.width, 1),
                             index,
                         )
-                    },
-                ));
+                    }),
+            );
             f.render_widget(
                 Paragraph::new(self.help_text())
                     .wrap(Wrap { trim: false })
@@ -1316,12 +1578,16 @@ impl Setup {
                 })),
             rows[4],
         );
-        f.render_widget(Paragraph::new(if self.picker.is_some() {
+        f.render_widget(Paragraph::new(if self.mapping.is_some() {
+            " Up/Down / click: select  Left/Right: parent/child\n Enter: apply  R: rescan  Esc: cancel  Ctrl+Q: exit"
+        } else if self.picker.is_some() {
             " Up/Down: select  Enter / click: apply  Esc: cancel\n F2: browse files  F3: projects  F4: examples  Ctrl+Q: exit"
         } else if self.editor.is_some() {
             " Enter: apply  Esc: cancel  Ctrl+U: clear\n Ctrl+R / F5: apply and start  Ctrl+S: apply and save"
+        } else if area.width < 70 {
+            " Up/Down: fields  Tab: all  Enter: edit\n F5: start  Ctrl+S: save  Ctrl+Q: exit"
         } else {
-            " Enter: edit  F2: browse  F3: projects  F4: examples\n F5: start  Ctrl+S: save  Esc: workspace  Ctrl+Q: exit"
+            " ↑↓: fields  Tab: all  Enter: edit  F2: browse  F3: projects  F4: examples\n F5: start  Ctrl+S: save  Esc: workspace  Ctrl+Q: exit"
         }).style(Style::default().fg(theme::MUTED)), rows[5]);
     }
 }
@@ -1351,6 +1617,181 @@ mod tests {
     }
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn source_remap_toggle_selection_round_trip_and_source_root_changes() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.0.join("local/src")).unwrap();
+        fs::write(
+            fixture.0.join("local/src/main.c"),
+            "int main(void) { return 0; }",
+        )
+        .unwrap();
+        let mut document = Document::open(&fixture.0).unwrap();
+        document.raw = toml::from_str("version=2\nwatch=['counter']\n[[source_map]]\nfrom='/legacy'\nto='local'\n[program]\nsource_root='local'\n[target]\nmode='local'\n").unwrap();
+        let mut setup = Setup::new(document);
+        assert!(setup.document.project().unwrap().source_mapping_enabled());
+        setup.selected = SOURCE_REMAP;
+        setup.key(key(KeyCode::Enter));
+        assert!(!setup.document.project().unwrap().source_mapping_enabled());
+        assert!(
+            setup
+                .document
+                .project()
+                .unwrap()
+                .source_path("/legacy/src/main.c")
+                .is_none()
+        );
+        setup.key(key(KeyCode::Enter));
+        assert!(setup.mapping.is_some()); // Missing ELF is an actionable scan error, not a crash.
+        setup.key(key(KeyCode::F(5))); // A modal cannot accidentally start hardware.
+        assert!(!setup.pending);
+        setup.key(key(KeyCode::Esc));
+        setup.mapping_action(remap::Action::Apply(crate::source::Candidate {
+            from: "C:/ci/project".into(),
+            aliases: vec![r"C:\ci/project".into()],
+            files: 1,
+            matched: 1,
+            samples: vec![],
+        }));
+        setup.save_document().unwrap();
+        let project = Project::load(&setup.document.path).unwrap();
+        assert_eq!(project.watch, ["counter"]);
+        assert_eq!(project.source_map.len(), 1);
+        for name in [
+            "C:/ci/project/src/main.c",
+            r"C:\ci\project\src\main.c",
+            r"C:\ci/project\src/main.c",
+        ] {
+            assert_eq!(
+                project.source_path(name).unwrap(),
+                fs::canonicalize(fixture.0.join("local/src/main.c")).unwrap()
+            );
+        }
+        assert!(
+            project
+                .source_path("C:/ci/project-other/src/main.c")
+                .is_none()
+        );
+        fs::create_dir_all(fixture.0.join("relocated/src")).unwrap();
+        fs::copy(
+            fixture.0.join("local/src/main.c"),
+            fixture.0.join("relocated/src/main.c"),
+        )
+        .unwrap();
+        setup.selected = SOURCE;
+        setup.set_value("relocated").unwrap();
+        let project = setup.document.project().unwrap();
+        assert_eq!(
+            project.source_path("C:/ci/project/src/main.c").unwrap(),
+            fs::canonicalize(fixture.0.join("relocated/src/main.c")).unwrap()
+        );
+        assert_eq!(
+            project.source_path("/legacy/src/main.c").unwrap(),
+            fs::canonicalize(fixture.0.join("local/src/main.c")).unwrap()
+        );
+        setup.selected = SOURCE_REMAP;
+        setup.key(key(KeyCode::Enter));
+        setup.save_document().unwrap();
+        let project = Project::load(&setup.document.path).unwrap();
+        assert!(project.effective_source_maps().is_empty());
+        assert_eq!(project.source_remap.from, "C:/ci/project");
+        assert_eq!(project.source_map.len(), 1);
+    }
+
+    #[test]
+    fn disabled_elf_prefix_is_dimmed_and_ignored_by_keyboard_and_mouse() {
+        let fixture = Fixture::new();
+        let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+        let mut terminal = Terminal::new(TestBackend::new(120, 36)).unwrap();
+        terminal.draw(|f| setup.draw(f)).unwrap();
+        let buffer = terminal.backend().buffer();
+        let lines: Vec<String> = buffer
+            .content
+            .chunks(120)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect())
+            .collect();
+        let row = |label: &str| lines.iter().position(|line| line.contains(label)).unwrap();
+        assert!(row("SVD file") < row("Source remap"));
+        assert_eq!(row("Source remap") + 1, row("ELF path prefix"));
+        assert!(!lines.iter().any(|line| line.contains("Save to project")));
+        assert!(lines.iter().any(|line| line.contains("Save config")));
+        let y = row("ELF path prefix");
+        assert!(lines[y].contains("(Enter: choose ELF directory to map to Source root)"));
+        let x = lines[y].find("ELF path prefix").unwrap();
+        assert_eq!(buffer.content[y * 120 + x].fg, theme::DIM);
+        assert!(setup.row_hits.iter().all(|(_, id)| *id != ELF_PREFIX));
+        let click = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: x as u16,
+            row: y as u16,
+            modifiers: KeyModifiers::NONE,
+        };
+        let before = setup.document.raw.clone();
+        let message = setup.message.clone();
+        assert!(setup.mouse(click).is_none());
+        assert_eq!(setup.selected, 0);
+        setup.selected = SOURCE_REMAP;
+        setup.key(key(KeyCode::Down));
+        assert_eq!(setup.selected, 0);
+        setup.selected = SOURCE_REMAP;
+        setup.key(key(KeyCode::Tab));
+        assert_eq!(setup.selected, START);
+        setup.key(key(KeyCode::Up));
+        assert_eq!(setup.selected, 0);
+        setup.selected = START;
+        setup.key(key(KeyCode::BackTab));
+        assert_eq!(setup.selected, SOURCE_REMAP);
+        // Even a stale selection or mouse hit cannot open or edit a disabled field.
+        setup
+            .row_hits
+            .push((Rect::new(x as u16, y as u16, 1, 1), ELF_PREFIX));
+        setup.mouse(click);
+        assert_eq!(setup.selected, SOURCE_REMAP);
+        setup.selected = ELF_PREFIX;
+        for code in [KeyCode::Enter, KeyCode::F(2), KeyCode::Left, KeyCode::Right] {
+            setup.key(key(code));
+        }
+        assert!(setup.editor.is_none() && setup.mapping.is_none() && setup.browser.is_none());
+        assert_eq!(setup.message, message);
+        assert_eq!(setup.document.raw, before);
+
+        setup.selected = SOURCE_REMAP;
+        setup.key(key(KeyCode::Enter));
+        setup.key(key(KeyCode::Esc));
+        setup.key(key(KeyCode::Down));
+        assert_eq!(setup.selected, ELF_PREFIX);
+        terminal.draw(|f| setup.draw(f)).unwrap();
+        assert!(setup.row_hits.iter().any(|(_, id)| *id == ELF_PREFIX));
+        assert_ne!(
+            terminal.backend().buffer().content[y * 120 + x].fg,
+            theme::DIM
+        );
+        setup.mouse(click);
+        assert!(setup.mapping.is_some());
+    }
+
+    #[test]
+    fn source_remap_error_modal_renders_cancels_and_never_launches() {
+        let fixture = Fixture::new();
+        for (width, height) in [(45, 12), (80, 24), (120, 36)] {
+            let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+            setup.selected = SOURCE_REMAP;
+            setup.key(key(KeyCode::Enter));
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            assert!(setup.mapping.is_some());
+            setup.key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+            assert!(!setup.document.path.exists());
+            setup.key(key(KeyCode::F(3)));
+            assert!(setup.mapping.is_some());
+            setup.key(key(KeyCode::Esc));
+            assert!(setup.mapping.is_none());
+            assert!(setup.key(key(KeyCode::F(5))).is_none());
+            assert!(setup.message.contains("Choose an ELF path prefix"));
+            assert!(!setup.pending);
+        }
     }
 
     #[test]
@@ -1408,10 +1849,7 @@ mod tests {
         setup.key(key(KeyCode::Enter));
         setup.paste("debug-env.toml");
         setup.key(key(KeyCode::Enter));
-        setup.selected = SAVE_TO_PROJECT;
-        setup.key(key(KeyCode::Enter));
         let launch = setup.key(key(KeyCode::F(5))).unwrap();
-        assert!(!launch.save);
         assert_eq!(
             launch.document.project().unwrap().target.endpoint,
             "localhost:3333"
@@ -1498,12 +1936,12 @@ mod tests {
         )
         .unwrap();
         let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
-        setup.selected = 3;
+        setup.selected = SOURCE;
         setup.set_value("source root").unwrap();
-        setup.selected = 4;
+        setup.selected = BUILD;
         let command = r#""scripts/build app.bat" "argument with spaces""#;
         setup.set_value(command).unwrap();
-        setup.selected = 5;
+        setup.selected = DOWNLOAD;
         setup.set_value("flash.bat && echo done").unwrap();
         setup.document.save().unwrap();
         let project = Document::open(&setup.document.path)
@@ -1519,7 +1957,7 @@ mod tests {
         assert_eq!(project.actions.download, ["load"]);
         setup.set_value("").unwrap();
         assert!(setup.document.project().unwrap().has_download());
-        setup.selected = 2;
+        setup.selected = ELF;
         setup.set_value("not-built.elf").unwrap();
         assert!(setup.key(key(KeyCode::F(5))).is_some());
         assert!(
@@ -1560,14 +1998,51 @@ mod tests {
     }
 
     #[test]
+    fn setup_starts_on_project_and_arrows_visit_only_enabled_fields() {
+        let fixture = Fixture::new();
+        for remap in [false, true] {
+            let mut document = Document::open(&fixture.0).unwrap();
+            document.set("source_remap", "enabled", remap.into());
+            let mut setup = Setup::new(document);
+            assert_eq!(setup.selected, 0);
+            let last = if remap { ELF_PREFIX } else { SOURCE_REMAP };
+            setup.key(key(KeyCode::Up));
+            assert_eq!(setup.selected, last);
+            setup.key(key(KeyCode::Down));
+            assert_eq!(setup.selected, 0);
+            for direction in [KeyCode::Down, KeyCode::Up] {
+                for _ in 0..START * 2 {
+                    setup.key(key(direction));
+                    assert!(setup.selected < START);
+                    assert!(setup.field_enabled(setup.selected));
+                }
+            }
+            for action in START..=EXIT {
+                for direction in [KeyCode::Down, KeyCode::Up] {
+                    setup.selected = action;
+                    setup.key(key(direction));
+                    assert_eq!(setup.selected, 0);
+                }
+            }
+            // Tab still provides keyboard access to the action buttons.
+            setup.selected = last;
+            setup.key(key(KeyCode::Tab));
+            assert_eq!(setup.selected, START);
+            setup.selected = 0;
+            setup.key(key(KeyCode::BackTab));
+            assert_eq!(setup.selected, EXIT);
+        }
+    }
+
+    #[test]
     fn setup_actions_stay_at_top_and_start_by_click_from_any_field() {
         let fixture = Fixture::new();
         for (width, height) in [(45, 12), (80, 24), (120, 36)] {
             let mut doc = Document::open(&fixture.0).unwrap();
             doc.set("target", "endpoint", "localhost:3333".into());
             let mut setup = Setup::new(doc);
-            assert_eq!(setup.selected, START);
-            setup.selected = SAVE_TO_PROJECT;
+            assert_eq!(setup.selected, 0);
+            setup.selected = SOURCE_REMAP;
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
             terminal.draw(|f| setup.draw(f)).unwrap();
             let button = setup
@@ -1599,7 +2074,7 @@ mod tests {
     fn start_commits_edited_field_and_invalid_settings_keep_configuration_open() {
         let fixture = Fixture::new();
         let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
-        assert!(setup.key(key(KeyCode::Enter)).is_none());
+        assert!(setup.key(key(KeyCode::F(5))).is_none());
         assert!(!setup.pending);
         assert!(setup.message.starts_with("Error"));
         fs::write(
@@ -1757,8 +2232,8 @@ mod tests {
             assert_eq!(setup.document.path.file_name().unwrap(), name);
         }
         let values = setup.values();
-        assert_eq!(values[2], "second.elf");
-        assert_eq!(values[3], "src");
+        assert_eq!(values[ELF], "second.elf");
+        assert_eq!(values[SOURCE], "src");
         let project = setup.document.project().unwrap();
         assert_eq!(project.gdb.executable, PathBuf::from("second-gdb"));
         assert!(project.gdb.args.is_empty());
@@ -1788,10 +2263,10 @@ mod tests {
         let doc = Document::open(&fixture.0).unwrap();
         let mut setup = Setup::new(doc);
         assert!(setup.picker.is_none());
-        assert!(setup.values()[2].is_empty());
+        assert!(setup.values()[ELF].is_empty());
         setup.key(key(KeyCode::F(4)));
         setup.key(key(KeyCode::Esc));
-        assert!(setup.values()[2].is_empty());
+        assert!(setup.values()[ELF].is_empty());
         let count = Picker::examples(setup.document.base()).choices.len();
         for i in 0..count {
             setup.key(key(KeyCode::F(4)));
@@ -1915,7 +2390,7 @@ mod tests {
             setup.selected = ON_EXIT;
             setup.key(key(KeyCode::Enter)); // Writes only the project policy.
             assert_eq!(setup.values()[ON_EXIT], "detach");
-            setup.selected = 2;
+            setup.selected = ELF;
             setup.set_value("new.elf").unwrap();
             // A live core may save Watch/breakpoints while Setup is open.
             let mut expected_cores = before.get("cores").cloned();

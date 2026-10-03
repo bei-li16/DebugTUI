@@ -1793,14 +1793,9 @@ pub fn run(
                 if let Some(e) = switch_error.take() {
                     return Err(e);
                 }
-                if launch.save {
-                    launch.document.save()?;
-                }
+                launch.document.save()?;
                 let mut project = launch.document.project()?;
                 project.prepare_workspace()?;
-                if !launch.save {
-                    project.path = None;
-                }
                 Ok(project)
             })();
             match prepared {
@@ -1877,6 +1872,9 @@ pub fn run(
             }
         }
         if app.ensure_symbol_search(engine.as_ref()) {
+            dirty = true;
+        }
+        if app.setup.as_mut().is_some_and(Setup::tick) {
             dirty = true;
         }
         if app.ensure_completion(engine.as_ref()) {
@@ -1990,7 +1988,7 @@ mod tests {
             let (row, line) = text
                 .lines()
                 .enumerate()
-                .find(|(_, line)| line.contains(" Exit "))
+                .find(|(_, line)| line.contains("│Exit│"))
                 .unwrap();
             let column = line.find("Exit").unwrap();
             let column = unicode_width::UnicodeWidthStr::width(&line[..column]) as u16;
@@ -2205,6 +2203,8 @@ mod tests {
         a.snapshot.assembly = (0..200).map(|i| format!("instruction-{i:03}")).collect();
         a.snapshot.files = (0..200).map(|i| format!("file-{i:03}.c")).collect();
         a.logs = (0..200).map(|i| format!("log-{i:03}")).collect();
+        render(&mut a, 140, 40);
+        let source_top = a.source_top;
         for (pane, first, last) in [
             (5, "instruction-000", "instruction-199"),
             (7, "file-000.c", "file-199.c"),
@@ -2255,7 +2255,7 @@ mod tests {
             a.select_pane(pane);
             render(&mut a, 140, 40);
             assert_eq!(a.view_tops[pane], top - 3);
-            assert_eq!(a.source_top, 0); // browsing other views never moves source
+            assert_eq!(a.source_top, source_top); // browsing other views never moves source
         }
         a.select_pane(7);
         let text = render(&mut a, 140, 40);

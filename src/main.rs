@@ -12,7 +12,7 @@ use std::{
     time::Duration,
 };
 
-const HELP: &str = "DebugTUI - native GDB/MI terminal debugger\n\nUsage: debugtui [--project DIR|debug.toml] [options]\n\n  No arguments         Open launch setup; choose project and tools inside TUI\n  --setup              Review startup settings inside TUI before connecting\n  --project PATH       Project directory or configuration file\n  --gdb PATH            GDB executable (default: gdb on PATH)\n  --gdb-arg ARG         Additional GDB argument; may be repeated\n  --environment FILE    Optional tools environment profile\n  --tools-dir PATH      Shorthand for PATH/debug-env.toml\n  --connect ENDPOINT    Connect to an external GDB target; skip service launch\n  --target-mode MODE    remote, extended-remote or local\n  --local               Debug a local inferior; skip service launch\n  --elf FILE            Optional executable/symbol file\n  --svd FILE            Optional CMSIS-SVD peripheral description\n  --log-dir PATH        Write session logs\n  --headless --stdio    JSON Lines automation\n  --script FILE         Execute JSON Lines and disconnect\n  --demo                Preview without GDB\n  --snapshot FILE       Render demo to a text file\n  --version             Print version\n  --help                Print help\n\nKeys: F2 launch setup, F5 continue/run, F6 pause, F9 breakpoint, F10 step over, F11 step in,\n      Shift+F11 step out, Ctrl+P help, Ctrl+Q exit.\n";
+const HELP: &str = "DebugTUI - native GDB/MI terminal debugger\n\nUsage: debugtui [--project DIR|debug.toml] [options]\n\n  No arguments         Open launch setup; choose project and tools inside TUI\n  --setup              Review startup settings inside TUI before connecting\n  --project PATH       Project directory or configuration file\n  --gdb PATH            GDB executable (default: gdb on PATH)\n  --gdb-arg ARG         Additional GDB argument; may be repeated\n  --environment FILE    Optional tools environment profile\n  --tools-dir PATH      Shorthand for PATH/debug-env.toml\n  --connect ENDPOINT    Connect to an external GDB target; skip service launch\n  --target-mode MODE    remote, extended-remote or local\n  --local               Debug a local inferior; skip service launch\n  --chip NAME           Select a chip from the local device catalogue\n  --cores IDS           Comma-separated physical core IDs (e.g. 0,1)\n  --init-profiles       Create the user catalogue without replacing existing entries\n  --elf FILE            Optional executable/symbol file\n  --svd FILE            Optional CMSIS-SVD peripheral description\n  --log-dir PATH        Write session logs\n  --headless --stdio    JSON Lines automation\n  --script FILE         Execute JSON Lines and disconnect\n  --demo                Preview without GDB\n  --snapshot FILE       Render demo to a text file\n  --version             Print version\n  --help                Print help\n\nKeys: F2 launch setup, F5 continue/run, F6 pause, F9 breakpoint, F10 step over, F11 step in,\n      Shift+F11 step out, Ctrl+P help, Ctrl+Q exit.\n";
 fn main() {
     if let Err(e) = run() {
         eprintln!("debugtui: {e}");
@@ -29,9 +29,14 @@ fn run() -> Result<(), String> {
         println!("debugtui {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
+    if options.init_profiles {
+        println!("{}", debugtui::devices::ensure_user_catalogue()?.display());
+        return Ok(());
+    }
     if let Some(path) = &options.snapshot {
         return ui::snapshot(&PathBuf::from(path));
     }
+    let catalogue_error = debugtui::devices::ensure_user_catalogue().err();
     let (document, initial_error) = match options.document() {
         Ok(document) => (document, None),
         Err(e) if !options.headless => (
@@ -51,7 +56,7 @@ fn run() -> Result<(), String> {
         document,
         options.demo,
         options.explicit_launch && !options.setup,
-        initial_error,
+        initial_error.or(catalogue_error),
     )
 }
 fn run_headless(project: Project, script: Option<String>) -> Result<(), String> {

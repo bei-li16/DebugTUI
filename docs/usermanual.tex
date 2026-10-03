@@ -6,7 +6,7 @@
 \setmainfont{Times New Roman}
 \setsansfont{Arial}
 \setmonofont{Consolas}[Scale=0.88]
-\setCJKmainfont{SimSun}[BoldFont=SimHei]
+\setCJKmainfont{SimSun}[BoldFont=SimHei,ItalicFont=SimSun]
 \setCJKsansfont{Microsoft YaHei}
 \setCJKmonofont{SimSun}
 \usepackage{graphicx,xcolor,booktabs,tabularx,longtable,array}
@@ -19,11 +19,11 @@
 \definecolor{accent}{HTML}{A65028}
 \definecolor{pale}{HTML}{F2F5F7}
 \definecolor{line}{HTML}{B7C8D2}
-\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={基于 v0.8.6 源码及 STM32F429、THA6206 与 Bao 调试资料}}
+\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={基于 v0.9.3 源码及 STM32F429、THA6206 与 Bao 调试资料}}
 \ctexset{section={format=\Large\bfseries\color{ink}},subsection={format=\large\bfseries\color{ink}}}
 \pagestyle{fancy}\fancyhf{}
 \fancyhead[L]{\small\sffamily DebugTUI / User Manual}
-\fancyhead[R]{\small v0.8.6 · 2026-09-23}
+\fancyhead[R]{\small v0.9.3 · 2026-10-03}
 \fancyfoot[L]{\footnotesize 本地源码与测试证据版}
 \fancyfoot[R]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
@@ -65,10 +65,10 @@
 \end{tikzpicture}
 \vfill
 \begin{tabular}{@{}ll}
-工程版本 & 0.8.6，配置格式 version = 2\\
-分析基线 & v0.8.6 源码与 2026-09-23 本地验证\\
-修订范围 & v0.8.3（\code{8c74f72}）至 v0.8.6 的变更\\
-编写日期 & 2026-09-23（Asia/Shanghai）\\
+工程版本 & 0.9.3，兼容旧配置；芯片选择使用 version = 3\\
+分析基线 & v0.9.3 发布前工作树；历史测试保留原日期\\
+修订范围 & v0.8.3（\code{8c74f72}）至 v0.9.3 的变更\\
+修订日期 & 2026-10-03（Asia/Shanghai）\\
 适用平台 & 当前发布及本地验证：Windows x64\\
 文档文件 & \code{docs/usermanual.tex} / \code{docs/usermanual.pdf}
 \end{tabular}
@@ -79,11 +79,13 @@
 \addcontentsline{toc}{section}{阅读说明与证据范围}
 本手册面向使用者、芯片适配人员和维护者。内容以本地工程的 Rust 实现、TOML 配置、板级脚本、测试脚本和实际日志为依据，覆盖从终端操作到探针、芯片的完整链路。第三方 OpenOCD/GDB 二进制按可见版本、配置及接口分析，不将二进制分发目录误当作 DebugTUI 自研代码。
 
+本次以 2026-10-03 的 v0.9.3 发布前工作树核对，以 \code{438a730} 为上一个已提交基线，包含其上的 0.8.7 至 0.9.3 改动。版本号不表示远端 Release 已更新。工程行为以当前代码为准，实板结论以报告中记录的 EXE 哈希、固件和日期为准。
+
 \noindent\begin{tabularx}{\linewidth}{@{}P{27mm}Y@{}}\toprule
 证据类别 & 本手册的使用方式\\\midrule
 当前源码 & 功能、默认值、路由和约束的首要依据；与旧 README 冲突时采用代码事实。\\
-源码验证 & 保留 v0.8.3/0.8.4 历史记录，并补充 v0.8.6 的工程配置页、搜索及退出回归；当前验证清单见 TESTING.md。\\
-本地实板 & 补充 2026-09-23 已安装 v0.8.6 的 THA6206 单核/多核 16 个功能组及 21 个退出场景；J-Link/F429、Bao 双 VM 与较早测试保留原日期，不声称本次重测。\\
+源码验证 & 覆盖至 2026-10-03 的 0.9.3；补充重映射、芯片目录、统一核心选择、圆角填色与配置页焦点。测试数量、二进制与限制分开列明，见第\ref{sec:evidence}节。\\
+本地实板 & 保留 STM32、THA6206 与 Bao 的各阶段证据；新增 2026-09-29 的 THA6206 三种核心选择及 Bao smoke 单/双 GDB 编译下载回归。本文修订未重新操作板卡。\\
 仓库历史说明 & 历史说明须与本机可见原始记录、产物和日期对应；具体证据见各适配章节，不把配置配方当作实板结果。\\
 外部资料 & 核对 MI/RSP、探针协议、CoreSight/ADI、Trace 和芯片接口；通用架构能力不等于本地已实现或已验证。\\\bottomrule
 \end{tabularx}
@@ -107,7 +109,7 @@ DebugTUI 是基于 GDB/MI2 的原生终端调试工作台。Ratatui 绘制字符
 断点 & 普通/硬件/临时代码断点，写/读/读写数据观察点，启停、条件、忽略次数、命中数、跨重连恢复。\\
 实时观察 & 可见项选择显式内存通道；OpenOCD TCL 能力允许时在运行中读内存；另有旧式 ELF 原始全局量 Live Watch。\\
 多核 & 每核独立 GDB，会话组控制、断点联停、单步隔离、共享复位、显式多核断点关联。\\
-工程操作 & Setup 项目选择、示例模板、字段帮助与直接退出；Build/Download 外部命令、环境引用、偏好保存、日志和清理。\\
+工程操作 & Setup 项目/芯片/核心选择、示例、ELF 路径映射、字段帮助；Build/Download 外部命令、环境引用、偏好保存、日志和清理。\\
 自动化 & 标准输入/输出 JSONL、脚本串行执行、结构化快照、响应、日志与实时采样事件。\\\bottomrule
 \end{tabularx}
 
@@ -120,9 +122,9 @@ SVD 是寄存器描述，不是 Flash 算法，也不建立探针连接。旧式
 当前没有专用 FreeRTOS 任务浏览器、RTT/SWO/ETM 跟踪面板、内置源码编辑器、DAP（Debug Adapter Protocol）服务或多人共享调试会话。能调试 FreeRTOS 固件，不等于能枚举和切换全部 RTOS 任务。软件多核协调不保证硬件同时停止或周期级同步；各核目前共享 GDB 程序、ELF、Source root 和 SVD。
 \src{\path{Cargo.toml}；\path{src/main.rs}；\path{src/session.rs}；\path{src/coordinator.rs}；\path{src/ui.rs}。}
 
-\subsection{v0.8.3 至 v0.8.6 的修订}
+\subsection{v0.8.3 至 v0.9.3 的修订}
 \label{sec:local-084}
-本手册以 v0.8.3 标签为比较起点，覆盖 0.8.4 至 0.8.6 源码和资料。配置格式仍为 version = 2。安装包版本通过 EXE 的 --version 核对；实际发布附件和 Latest 状态以 GitHub Release 为准。
+本手册以 v0.8.3 标签为比较起点，覆盖至 0.9.3 本地源码和资料。旧的直接单核/显式 cores 配置继续兼容；启用 Chip/Core 选择时使用 version = 3。安装版本通过 EXE 的 --version 核对；实际发布附件和 Latest 状态以 GitHub Release 为准。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{31mm}Y@{}}\toprule
 变更范围 & 本手册的对应内容与边界\\\midrule
@@ -132,6 +134,11 @@ CI 与芯片适配资料 & 保留并整合流水线 ELF 源码映射、THA6206 G
 0.8.4 源码操作 & 鼠标/键盘选区、系统剪贴板复制、加入当前核 Watch、长行横向滚动；保留只读源码及断点栏操作。\\
 0.8.5 搜索与退出 & Files 文件模糊筛选、Symbols 函数/变量/类型索引；远程 resume 采用 Continue 后 Disconnect，并核对 GDB 正常退出。\\
 0.8.6 工程配置 & Setup 只编辑工程字段及工具环境引用；兼容旧内嵌覆盖和单核/多核配置。三个输入区使用显著边框与聚焦提示。\\
+0.8.7/0.8.8 源码重映射 & Setup 离线读取 ELF 源文件目录，选择旧路径前缀映射至 Source root；关闭时保留规则并禁用目录选择，兼容正反斜杠。\\
+0.9.0 芯片与核心 & 用户本地芯片目录、TUI 新增芯片、核心子集选择、后端匹配、逐核端口和启动模板、按芯片/核心保存 Watch 与断点。\\
+0.9.1 保存与可读性 & 删除 Save to project 开关，统一 Save config；Start 自动保存。工具栏与标签页增加边界、底色和选中高亮。\\
+0.9.2/0.9.3 界面 & 真实圆角边框及内部填色、深蓝灰配色、宽屏共享调试操作栏；Setup 默认聚焦 Project，上下箭头只在可用配置项之间循环。\\
+Bao 外部适配更新 & 迁移至芯片/核心选择，Run 与整片复位分离；WSL 构建、产物校验清单、烧录退出码和日志修正，见第\ref{sec:bao-build-current}节。\\
 本地 THA6206 板级修正 & 说明外部参考工程 OpenOCD 的 DBGRESET、复位顺序和 EDRCR.CSE 位修正，单列验证范围；该脚本不包含在 DebugTUI 程序包中。\\\bottomrule
 \end{tabularx}
 
@@ -149,14 +156,14 @@ CI 与芯片适配资料 & 保留并整合流水线 ELF 源码映射、THA6206 G
 
 # Existing portable executable: run directly.
 # Existing npm archive: substitute its actual filename.
-npm install -g ./artifacts/debugtui-cli-0.8.6.tgz
+npm install -g ./artifacts/debugtui-cli-0.9.3.tgz
 debugtui
 \end{lstlisting}
 \end{minipage}\par
-仓库 PUBLISHING.md 描述了 GitHub Release URL 安装流程；本文不将本地包版本等同于远端 Latest。主程序包不包含 tools 和 SVD，交付时须分别准备。
+仓库 PUBLISHING.md 描述了 GitHub Release URL 安装流程；本文不将本地包版本等同于远端 Latest。主程序包不包含 tools 和 SVD，交付时须分别准备。安装后用户芯片目录独立保存在用户配置区；若 npm 未执行 postinstall，可运行 \code{debugtui --init-profiles} 完成初始化，不必修改全局 npm 策略。已有目录会校验但不会覆盖，详见第\ref{sec:device-catalogue}节。
 
 \subsection{首次启动}
-无参数执行 \code{debugtui} 进入 Setup，不启动 GDB 或占用探针。依次检查 Project、Tools/profile、Program/ELF、Source root、SVD、Build/Download 和退出策略。GDB、目标连接、服务启动及工具超时在引用的 debug-env.toml 中维护。顶部 Start debugging 默认聚焦；在该按钮上按 Enter，或使用 Ctrl+R、Ctrl+Enter、F5 启动。Save 只保存；Workspace/Esc 回到原工作区并保留草稿。\textbf{首页可直接点击 Exit 或按 Ctrl+Q 退出，无需先启动调试}；已有会话仍按正常退出流程清理。
+无参数执行 \code{debugtui} 进入 Setup，不启动 GDB 或占用探针。依次检查 Project、Tools/profile、Program/ELF、Source root、SVD、Build/Download 和退出策略。GDB、目标连接、服务启动及工具超时在引用的 debug-env.toml 中维护。默认聚焦 Project；上下箭头只在可用配置项之间循环，跳过禁用项和顶部按钮。Tab、Shift+Tab 或鼠标可选择顶部按钮；点击 Start debugging，或使用 Ctrl+R、Ctrl+Enter、F5 启动。Save 只保存；Workspace/Esc 回到原工作区并保留草稿。\textbf{首页可直接点击 Exit 或按 Ctrl+Q 退出，无需先启动调试}；已有会话仍按正常退出流程清理。
 
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
@@ -171,7 +178,7 @@ debugtui --gdb C:/tools/arm-none-eabi-gdb.exe `
 
 \subsection{项目发现、选择与相对路径}
 \label{sec:setup-projects}
-没有指定项目时，默认路径是启动目录下的 \code{./debug.toml}。\textbf{进入 Setup 不会自动创建这个文件}：没有现成配置时只是建立内存草稿，显式 Save/Ctrl+S，或以 Save to project = Yes 启动时才保存。
+没有指定项目时，默认路径是启动目录下的 \code{./debug.toml}。\textbf{进入 Setup 不会自动创建这个文件}：没有现成配置时只是建立内存草稿，点击 Save config/Ctrl+S 或启动调试时才保存。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{45mm}Y@{}}\toprule
 启动目录情况 & 默认行为及可执行操作\\\midrule
@@ -208,14 +215,18 @@ Project 字段以\textbf{启动工作目录}为相对路径基准。例如 \path
 \toprule 字段 & 示例或入口 & 用途与填写规则\\\midrule\endhead
 Project & \code{./debug.toml}；F2/F3 & 项目配置的读写目标，按启动目录解析。选择已有文件会更新整张配置表；新路径在保存前只是草稿。\\
 Tools / profile & \code{tools/debug-env.toml}；F2 & 引用工具/服务/动作配置，相对项目目录。留空使用独立 GDB 配置，不自动获得芯片复位和下载能力。\\
+Chip & Enter；目录选择 & 本地芯片能力声明；选择型号或新增客户型号。Legacy 保留原配置模式。\\
+Debug cores & Enter；核心复选 & 选择该芯片支持的物理核心子集；至少一个。未选择 Chip 时灰显。配置示例见第\ref{sec:device-catalogue}节。\\
 Program / ELF & \code{build/firmware.elf}；F2 & 与目标固件匹配的符号文件，相对项目目录；不是自动烧录命令。无有效调试信息时无法完整进行 C 源码调试。\\
-Source root & \code{.}；F2 & 本地源码定位根及 Build/Download 工作目录；相对项目目录。CI 绝对路径前缀仍需另配路径映射。\\
+Source root & \code{.}；F2 & 本地源码定位根及 Build/Download 工作目录；相对项目目录。\\
 Build command & \code{.\build.bat} & 可选构建命令；在 Source root 执行。保存、应用示例或单纯启动 Setup 不会执行它。\\
 Download command & \code{.\flash.bat} & 可选下载命令；在 Source root 执行，使用工程自己的烧录脚本或工具。先核对输入产物和目标。\\
 On exit & detach / resume / disconnect & detach 脱离；resume 对远程目标先 Continue 再 Disconnect，对本地进程暂停后 Detach；disconnect 只关闭连接。最终运行状态仍受 Server 和板级配置影响。\\
 Log directory & \code{debug_log}；F2 & 可选会话日志目录，相对项目目录；建议排查多核问题时保留各核 MI 与 Server 日志。\\
 SVD file & \code{device.svd}；F2 & 可选外设寄存器描述，相对项目目录；留空仍能使用基本调试，不提供相应外设树。\\
-Save to project & Yes / No & 控制启动时是否保存草稿；Ctrl+S/Save 始终是显式保存。保存不改写所引用的工具 profile。\\\bottomrule
+Source remap & Yes / No；Enter & 开关源码重映射；启用后离线扫描 ELF，关闭保留规则。\\
+ELF path prefix & Enter & 选择 ELF 中与 Source root 对应的目录层级；显示本地匹配预览。Source remap 为 No 时灰显，键盘跳过、鼠标不可选择或修改。详见附录~\ref{sec:ci-source}。\\
+\bottomrule
 \end{longtable}}
 
 \textbf{配置职责：}debug.toml 保存程序、源码映射、任务、SVD、Watch/断点、逐核映射、组策略和 \code{session.on_exit}；debug-env.toml 保存 GDB、OpenOCD/服务、连接默认值、板级动作和 \code{session.timeout_ms}。后者默认 8000 ms 是单条工具命令等待时间，不是工程退出策略。Setup 已移除六个工具编辑项，Tools/profile 只选择引用，On exit 仍是工程字段。旧工程内嵌工具覆盖继续有效；保存不展开环境值、不改共享 profile，并保留单核/多核的后台偏好。
@@ -224,13 +235,22 @@ Save to project & Yes / No & 控制启动时是否保存草稿；Ctrl+S/Save 始
 Setup 中的按键/按钮 & 行为\\\midrule
 Projects / F3；Examples / F4 & 打开项目列表；打开示例列表。选择后回到 Setup 查看更新的字段。\\
 F2；Enter & 在支持的路径字段浏览；激活当前按钮、字段或列表项。\\
-Save / Ctrl+S & 保存当前项目配置；遇到外部修改冲突时报告错误，避免覆盖新内容。\\
-Start / Ctrl+R / F5 & 校验配置，按 Save to project 决定保存，再结束旧会话并启动新会话。\\
+Save config / Ctrl+S & 保存当前项目配置，不启动或重连调试；遇到外部修改冲突时报告错误，避免覆盖新内容。\\
+Start / Ctrl+R / F5 & 校验配置，结束旧会话，保存配置并启动新会话。\\
 Workspace / Esc & 从表单返回工作区并保留草稿；在编辑器或选择弹窗中先退出当前编辑/弹窗。\\
 Exit / Ctrl+Q & 直接结束程序并执行正常清理；无需先进入调试工作区。\\\bottomrule
 \end{tabularx}
 \src{\path{src/launch.rs}: Document、Setup、字段提示及相对路径；\path{src/launch/choices.rs}: 项目发现与示例；\path{src/ui.rs}: 启动和退出路由。}
 
+\subsection{按钮、焦点与保存行为}
+0.9.3 使用深蓝灰分层面板、蓝色焦点和真实圆角边框。按钮、搜索框只填充边框内部，悬停、按下和输入反馈也不会给圆角外围染色；禁用项灰显，核心选择保留独立身份色，工作区背景仅施加轻微核心色调。范围包括 Setup 顶部、Project/运行控制工具栏、核心切换、源码页签、检查器与 Watch/Locals。
+
+普通窗口使用三行完整圆角按钮，短窗口保留单行左右边框及原点击区域。宽屏横向排列 Project 操作、核心选择与 Symbols 搜索，并在源码和 Inspector 上方共用调试操作栏；两侧页签对齐。窄面板使用 Regs / Periph 短标签，内容标题仍显示全称；窄窗口保留换行和紧凑布局。Setup 默认选中 Project，箭头不进入顶部按钮，Tab 仍可访问按钮。
+
+\textbf{Save config} 立即保存当前草稿，不 Build、不 Download，也不重新连接。\textbf{Start debugging} 先校验，再关闭旧会话、保存配置并启动新会话；保存错误会阻止新会话启动。下方不再存在 Save to project 开关。Workspace/Esc 保留内存草稿，Exit 退出时未手动保存的 Setup 草稿会放弃；已经运行的会话仍按正常规则清理和保存其 Watch/断点。重映射、Chip/Core 等启动配置须重新 Start 才应用到调试会话。
+\src{\path{src/theme.rs}: control/button；\path{src/ui/render.rs}、\path{src/ui/cores.rs}、\path{src/launch.rs}、\path{src/ui.rs}。}
+
+\Needspace{15\baselineskip}
 \subsection{一次调试的操作顺序}
 \begin{enumerate}
 \item 连接，检查 STOPPED/READY 状态及日志，确认固件和 ELF 匹配。
@@ -932,9 +952,9 @@ B：Bao 工程 & \path{D:/LiBo/Files/DATA/FreeRTOS/BAOHyp/bao-hypervisor}\\
 S：Bao 引用的 SDK & \path{D:/LiBo/Files/DATA/FreeRTOS/BAOHyp/THA6XXX_MC_AS440}\\
 A：Bao 实板记录 & \path{D:/LiBo/Files/DATA/FreeRTOS/BAOHyp/analysis}\\\bottomrule
 \end{tabularx}
-M 和 S 是两个独立目录，不应因为名字相同就视为同一份工具或固件。B 的 profile 通过相对路径引用 S；迁移时如改用 M，需要同时核对 GDB、OpenOCD、SVD、下载器及工作目录。M 基于 \code{50ff448}，B 基于 \code{b25150e} 的 \code{dev/tha6xxx-init} 分支；两者均存在本地修改，本节分析的是 2026-09-21 可见工作树，不能只 checkout 这两个提交就假定得到全部示例。
+M 和 S 是两个独立目录，不应因为名字相同就视为同一份工具或固件。B 的 profile 通过相对路径引用 S；迁移时如改用 M，需要同时核对 GDB、OpenOCD、SVD、下载器及工作目录。M 基于 \code{50ff448}，B 基于 \code{b25150e} 的 \code{dev/tha6xxx-init} 分支；两者均存在本地修改，底层移植分析来自 2026-09-21 可见工作树；本节的芯片目录和 Bao 启动/构建更新另按 2026-10-02 当前文件核对。不能只 checkout 这两个提交就假定得到全部示例。
 
-\notice{此前章节资料包含配置静态核对、历史实板和离线 ELF/GDB 检查；本版另补 2026-09-23 的 MCAL 实板回归，见第\ref{sec:tha-086-validation}节。它实际下载了配套 HEX，不覆盖 Bao 固件。后文 Bao 双 GDB 配方不等于该组合已完成实板测试。}
+\notice{此前章节资料包含配置静态核对、历史实板和离线 ELF/GDB 检查；本版另补 2026-09-23 的 MCAL 实板回归，见第\ref{sec:tha-086-validation}节。它实际下载了配套 HEX，不覆盖 Bao 固件。后文另列 9 月 29 日 Bao smoke 的单/双 GDB 实板流程；双 VM 加逐核 Guest 符号仍保留独立验收边界。}
 
 \subsection{与 STM32F429 适配的关键差异}
 \noindent\begin{tabularx}{\linewidth}{@{}P{25mm}P{49mm}Y@{}}\toprule
@@ -1043,6 +1063,110 @@ for {set _core 0} {$_core < $_cores} {incr _core} {
 本地离线 Tcl 检查覆盖 DEBUGCORE=1/2/3、首次与再次 chipreset、掩码 examine、CSE 写值和 target 恢复。2026-09-23 使用修正后脚本完成单核/多核实板回归，见第\ref{sec:tha-086-validation}节；未做 CSE 新旧值的硬件 A/B 试验，不能仅据功能通过证明复位过程中每次写入都被确认。
 \src{M：\path{.vscode/openocd.cfg}、\path{.vscode/THA6206/tha6206.svd}；Arm Cortex-R52 TRM 100026\_0104\_00\_en，11.6.2；\href{https://github.com/ARM-software/CSAL/blob/master/include/csregisters.h}{Arm CSAL 寄存器定义}。}
 
+\subsection{0.9.0：本地芯片目录与统一核心选择}
+\label{sec:device-catalogue}
+用户芯片目录位于 \path{%LOCALAPPDATA%/debugtui/profiles/devices.toml}。npm 安装时初始化；独立 EXE 首次启动也会初始化。已有文件不覆盖，客户新增的芯片在升级或卸载后保留。\code{debugtui --init-profiles} 可补建或检查，\code{DEBUGTUI_CONFIG_DIR} 可指定配置根目录。默认声明 THA6104 的 core0、THA6206 的 core0/1、THA6412 的 core0/1/2/3 与 STM32F429 的 core0；目录是能力声明，不是硬件自动识别。
+
+Setup 在 Tools / profile 后提供 Chip 与 Debug cores。Chip 按 Enter 打开目录，选择芯片后用 Space 或鼠标勾选核心；A 全选、N 清空、Enter 应用，至少保留一个。Ctrl+S 保存项目，Start 才按新选择启动会话。Chip 页面 N / Add chip 可新增名称、核心编号和 backend，例如 s32k144、0、generic，Ctrl+S / Save 追加目录。重复名称或无效编号拒绝保存，Esc 取消。核心编号支持 0--31，必须唯一。未选芯片时 Debug cores 灰显；L / Legacy 保留旧项目语义。
+
+\begin{lstlisting}
+# debug.toml
+version = 3
+[tools]
+profile = ".vscode/debug-env-chip.toml"
+[debug]
+chip = "tha6206"
+cores = [0, 1]
+
+\end{lstlisting}
+\textbf{工具环境片段（另一个文件）：}
+\begin{lstlisting}
+# debug-env.toml
+backend = "tha6"
+[core_targets."0"]
+endpoint = "127.0.0.1:3333"
+ready = "Listening on port 3333 for gdb connections"
+[core_targets."1"]
+endpoint = "127.0.0.1:3334"
+ready = "Listening on port 3334 for gdb connections"
+\end{lstlisting}
+
+backend 仅选择匹配的工具环境；增加芯片目录条目不会安装 S32K 驱动或烧录算法。单一后端使用环境根字段，多后端可用 \code{[backends.tha6.gdb]}、\code{[backends.stm32f4.service]} 等分组覆盖公共工具配置。generic 可复用未声明 backend 的传统环境。缺少匹配后端、选了不支持的核心、端口缺失或重复均在启动前报告。
+
+所选每核建立独立 GDB，共享一项服务。core1 单核仍命名 core.1 并连接其配置端口。项目 \code{[[cores]]} 可作为逐核模板，仅实例化勾选核心，保留初始化和启动顺序；不勾选的核不会创建 GDB 会话。Watch 和断点写入 \code{core_preferences.<chip>."core.N"}，切换芯片或子集时保留其他配置。共享 Reset 所属核心未选中时停用该组命令，不改派到其他核。Scope All 的软件组运行、暂停与现有逐核单步机制保持不变，不承诺硬件同步锁步。
+
+发行包 \path{profiles/tha6-project.toml.example} 与 \path{profiles/tha6-environment.toml.example} 是一组完整 THA MCAL 示例，分别复制到 M 的 \path{debug-chip.toml} 与 \path{.vscode/debug-env-chip.toml}。用 \code{debugtui --project debug-chip.toml --setup} 打开。\code{${chip}}、\code{${chip_upper}} 模板切换程序、SVD、Build/Download 参数；\code{${core_mask}} 为所选核心位掩码，\code{${available_core_mask}} 为全部支持核心位掩码，\code{${unselected_core_ids}} 为未选编号列表。替换仅限启动相关字段，不处理 Watch、断点表达式或源码映射。\code{${profile_dir}} 保持原工具目录语义。
+
+该示例为 MCAL 启动屏障 examine 全部支持核，但只创建所选核的 GDB。包含 core0 时先连接其他核，再通过 core0 做一次 chipreset 并恢复未选辅助核；仅 core1 等不含 core0 的组合为附加模式，要求 core0 已初始化。芯片切换不会自动编译或烧录，必须使用所选芯片配套 ELF/HEX/SVD。Bao 应保留自身启动策略，不能直接使用 MCAL 的入口和复位钩子。
+
+此版本验证包含目录持久化、TUI 添加/勾选、真实原生 GDB 的 10 种单核/多核组合；原生 GDB 测试不是所有芯片的实板验证。THA6104/6412、STM32 和 S32K 的实际连接能力仍取决于工具适配和对应硬件验证。
+\src{\path{src/devices.rs}、\path{src/launch/devices.rs}、\path{profiles/}、\path{scripts/test-devices.ps1}、\path{scripts/test-devices-gdb.cjs}。}
+
+\subsubsection*{四类文件的职责与最小迁移步骤}
+\begin{longtable}{@{}P{37mm}P{124mm}@{}}\toprule
+文件 & 保存内容、作用阶段与边界\\\midrule\endhead
+用户 devices.toml & 型号、支持的物理 core ID、backend 名称。启动前供 Setup 列表和合法性检查使用，不探测芯片，不启动 OpenOCD。目录本身的 version=1 与项目 version=3 无关。\\
+项目 debug.toml & 本次所选 chip/cores、ELF、源码、任务、逐核启动模板及偏好。用于复现工程调试方案，不把环境展开值写回共享 profile。\\
+工具 debug-env.toml & GDB/Server 路径、公共动作、backend 分组、core\_targets 端口/就绪信息。backend 是配置匹配键，不是动态插件、OpenOCD 驱动名或芯片自动识别结果。\\
+板级 openocd.cfg & 创建实际 target、AP、CTI、GDB 端口及复位操作。工具环境通过参数传 CHIPNAME/DEBUGCORE 等变量；变量含义由该脚本决定，不由 TUI 通用化。\\\bottomrule
+\end{longtable}
+
+默认目录条目的形式如下；S32K 条目是用户可追加的例子，并非随包默认值：
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+# User profiles/devices.toml, NOT project debug.toml
+version = 1
+[devices.tha6206]
+cores = [0, 1]
+backend = "tha6"
+[devices.stm32f429]
+cores = [0]
+backend = "stm32f4"
+# Example user addition; matching tools must be supplied separately.
+[devices.s32k144]
+cores = [0]
+backend = "generic"
+\end{lstlisting}
+\end{minipage}\par
+目录名称区分实际键名；新增名称按不区分大小写拒绝重复。名称与 backend 允许 1--64 个字母、数字、点、下划线或连字符。TUI 当前提供新增和选择，编辑/删除既有条目需直接维护目录文件。追加过程持有跨进程锁，读入最新内容后用同目录临时文件发布；锁等待约 2 秒，失败给出路径，不盲目覆盖。已有目录不会因升级自动合入新默认型号，缺少的型号可在 TUI 追加。
+
+\begin{enumerate}
+\item 旧工程可保持 Legacy；无需为了升级 EXE 强制改写全部工程。启用 Chip 时，Setup 将项目迁移为 version=3，保留已有配置字段；名称匹配的核模板及顶层继承仍提供初始 Watch/断点，运行期保存再写入芯片偏好。不自动重命名旧核心，也不替换用户的工具路径和启动脚本。
+\item 确认目录的 backend 与环境匹配。例如 Bao 旧环境缺少根字段 \code{backend="tha6"}，选择 tha6206 会在启动前报告 requires backend；补齐声明还须提供每核端口/动作，不能通过改成 generic 掩盖不匹配。
+\item 统一 THA 示例按名称 \code{core.0} 至 \code{core.3} 选择模板；旧式自定义名称不会自动按字符串尾部推断物理核，应按示例整理。endpoint 优先取项目核模板，缺省再取环境 core\_targets；仅单选 core0 时允许回退 target.endpoint。
+\item 选择 Chip，再选 Debug cores，核对展开后的 ELF/SVD/命令。Save config 保存；Start 按这些设置启动。切换芯片不自动编译下载，也不证明板卡与选择相符。
+\end{enumerate}
+
+STM32F429 可继续使用原单核工程；如希望也从 Chip 统一选择，保留其原 program/tasks/profile，仅增加：
+\begin{lstlisting}
+# Project: merge into existing tables.
+version = 3
+[debug]
+chip = "stm32f429"
+cores = [0]
+# Its debug-env.toml root includes backend = "stm32f4".
+# An existing [target].endpoint can serve single core0.
+\end{lstlisting}
+它只生成一个 core.0，不需要伪造第二个 target。S32K144 采用同样方式，但用户必须另备兼容的 GDB、Server target/Flash 配置；选择 generic 仅允许复用未声明 backend 的传统环境，不能赋予硬件支持。
+
+同一个环境文件需要同时支持 THA 与 STM32 时，可将各自的工具表放入 \code{[backends.tha6.*]} 和 \code{[backends.stm32f4.*]}，公共表提供默认值。所选分组覆盖公共表，项目字段仍具有更高优先级。分组提供 core\_targets 时整张表替换根映射，因此应列出该后端需要的全部端口。单环境只调 THA 系列时，根字段 backend=tha6 已足够；不要复制多套仅核心子集不同的工程文件。
+
+\subsubsection*{从选择到会话的解析设计}
+\begin{figure}[H]\centering
+\begin{tikzpicture}[node distance=6mm]
+\node[box,text width=130mm] (a) {Setup / CLI：读取项目 chip 和物理 core ID 子集};
+\node[box,text width=130mm,below=of a] (b) {用户目录校验 → backend 覆盖 → 启动字段模板展开};
+\node[box,text width=130mm,below=of b] (c) {项目覆盖 → 按 core.N 筛选模板 → 绑定端口、偏好、就绪信息};
+\node[box,text width=130mm,below=of c] (d) {Project 校验 → Coordinator 共享服务 → 所选核的 GDB 会话};
+\draw[arr](a)--(b);\draw[arr](b)--(c);\draw[arr](c)--(d);
+\end{tikzpicture}
+\caption{启动前解析与运行期协调分离。目录中的 core ID 是物理编号。}
+\end{figure}
+所选核至少一个且不能重复，必须在型号声明中；远程端口不能重复。配置逐核 ready 时，每个所选核都须提供就绪标记。core1-only 在界面和偏好中仍称 core.1，但其工作区 index 可以是 0。内部索引用于当前会话路由，不能拿来生成板级 DEBUGCORE 掩码。
+
+Watch/断点按 chip 加 core.N 存储；切换选择不丢失未选核定义。该隔离不应泛化为所有 UI 偏好：当前 formats/refresh 仍使用既有核心/对象键，应在换芯片时核对通道及寄存器读取策略。共享 Reset 的指定核未选中时只清除共享 restart 动作，不会自动给该核创建会话；各自的板级动作仍必须与目标启动条件匹配。
+\src{\path{src/devices.rs}: resolve/Plan::apply；\path{src/config.rs}: from\_document/save\_preferences；\path{src/launch/devices.rs}；\path{profiles/devices.toml}。}
+
 \subsection{0.8.6 单核与多核实板结果}
 \label{sec:tha-086-validation}
 2026-09-23 使用已安装的 v0.8.6、工程 GDB/OpenOCD 和实际 THA6206，完成 16 个功能组及其中 21 个退出/重连场景。先发现板上 Flash 与 ELF 不匹配，再通过 Load.bat 下载现有配套 HEX；下载后及测试结束时，向量表和代码段都与 ELF 匹配。没有重新编译当前应用或修改源码。
@@ -1131,11 +1255,13 @@ Bao 为静态划分资源的 Hypervisor；本地 THA6xxx 移植选择 \code{armv
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{33mm}P{52mm}Y@{}}\toprule
 入口 & 固件组织 & 当前 DebugTUI 连接\\\midrule
-\code{debug.toml} & \code{tha6206-smoke}；一个单 vCPU Guest，affinity=1，位于 CPU0 & 单 GDB，core0 / 3333；启动动作主动释放物理 core1。\\
-\code{debug-dual.toml} & \code{tha6206-dual}；两个 VM，每个一 vCPU，分别 affinity=1/2 & 仍是单 GDB，core0 / 3333；文件中没有 \code{[[cores]]}。\\
-双 GDB 配方 & 沿用 dual 的固件组织 & 需要显式增加两个 \code{[[cores]]}；见第\ref{sec:bao-multigdb}节，尚未作为组合实板验证。\\\bottomrule
+\code{debug.toml} & \code{tha6206-smoke}；一个单 vCPU Guest，affinity=1，位于 CPU0 & 格式 3；当前本地选择 [0,1]，Setup 可改为 [0]、[1] 或 [0,1]。\\
+\code{debug-dual.toml} & \code{tha6206-dual}；两个 VM，每个一 vCPU，分别 affinity=1/2 & 格式 3；当前选择 [0]，已有两核模板，可在 Setup 选择双核。\\
+逐核 Guest 符号 & 与所选 smoke/dual 镜像一致 & 在现有模板补充各核 Guest ELF；不再要求复制工程只为更改核心子集。详见第\ref{sec:bao-multigdb}节。\\\bottomrule
 \end{tabularx}
 双 VM 不是一个具有两个 vCPU 的 SMP Guest；两个物理核在运行，也不自动意味着出现两个 TUI 核标签。只观察 VM0 时，单 GDB 完全可以启动两核固件；要独立查看 VM1 的 PC、栈、C 断点，则需要 core1 的调试连接。
+
+上述选择是 2026-10-02 文件快照，用户后续保存会改变所选核心；固件类型由 ELF 和 tasks 的 Config 决定，不能由核心标签数推断。
 
 当前启动流程依赖平台的双核同步。不要为了“只调一个 Guest”直接把 \code{platform.cpu_num} 改为 1：现有初始化调用关系中这可能绕开必需的 SoC 初始化。单 vCPU 配置与减少物理 CPU 数不是同一个改动。
 \src{B：\path{src/platform/tha6xxx/platform.mk}、\path{src/platform/tha6xxx/platform.c}、\path{src/platform/tha6xxx/tha6xxx_desc.c}、\path{configs/tha6206-smoke/config.c}、\path{configs/tha6206-dual/config.c}；\href{https://github.com/bao-project/bao-hypervisor}{Bao 上游项目}。}
@@ -1168,8 +1294,8 @@ GIC / Timer & GICD 0xF0000000；GICR 0xF0100000 & 平台描述的计数器频率
 
 已有 MCAL 裸机固件可能假定从 EL2 启动并直接初始化全局时钟、RAM、其他核。将其用作 Guest 需要 EL1 启动代码、banked stacks、向量表、数据/BSS 初始化、中断/定时器适配和设备授权；不能只修改入口地址或把裸机 HEX 嵌进 Bao 就当作完成移植。
 
-\subsection{构建、烧录与源码映射}
-以下命令在 B 根目录执行。当前 PowerShell 包装脚本调用名为 \code{Ubuntu-24.04D} 的 WSL 发行版；迁移前应核对发行版名称和 GNU 工具链。构建主入口是 B 的 Makefile/src/configs，而不是旁边的 bao-demos 工作树。
+\subsection{构建、烧录与源码映射}\label{sec:bao-build-current}
+以下命令在 B 根目录执行。PowerShell 包装脚本默认使用 \code{Ubuntu-24.04D}，支持 -WslDistribution 选择发行版，-Jobs 默认 2、范围 1--32；迁移前核对发行版名称和 GNU 工具链。构建主入口是 B 的 Makefile/src/configs，而不是旁边的 bao-demos 工作树。
 \par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
 # Smoke image, then the dual-VM image (choose one pair).
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tha6206-build.ps1
@@ -1179,14 +1305,24 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tha6206-build.ps1 
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tha6206-download.ps1 -Config tha6206-dual
 
 debugtui --project .\debug.toml
-# Or, for the dual image with the existing core0 workspace:
+# Or use the dual firmware project and select Debug cores in Setup:
 debugtui --project .\debug-dual.toml
 \end{lstlisting}\end{minipage}\par
 脚本先构建 Guest ELF/BIN，再调用 make，参数为 \code{PLATFORM=tha6xxx}、所选 CONFIG、\code{CROSS_COMPILE=arm-none-eabi-} 与 \code{DEBUG=y}。输出为 \path{bin/tha6xxx/<config>/bao.elf}、\code{bao.bin}、\code{bao.hex}；Guest ELF 在 \path{build/tha6xxx/<config>/guest/}。\code{VM_IMAGE} 的 incbin 依赖不一定被构建系统自动追踪，因此包装脚本在 Guest 重建后更新配置源文件时间，使内嵌镜像重新打包。
 
-下载脚本选择同一 Config 的 HEX，记录 SHA-256，调用 S 的厂商下载器并检查退出码，再系统复位。不要混用 smoke 的 ELF 与 dual 的 HEX，也不要拿 Bao 的 BIN 直接按 Guest 的 RAM 地址整体烧写。TUI 的任务 timeout 为 300000 ms；Setup 中更换主 ELF 时也必须检查 build/download 参数是否同步。
+Build 在开始时删除旧 \code{bao.sha256}，仅当 Guest、Bao ELF/BIN/HEX 全部成功后生成三份产物的 SHA-256 清单。失败/取消后旧 ELF 或 HEX 可能仍在磁盘，但因没有成功清单而不能通过本地下载入口。Download 校验同一 Config 的 ELF、BIN、HEX 和清单，任一缺失或哈希不符即报错；校验通过才调用 S 的厂商下载器。烧录器返回 0 后才系统复位，烧录失败不会继续复位。不要混用 smoke 的 ELF 与 dual 的 HEX，也不要拿 Bao 的 BIN 直接按 Guest 的 RAM 地址整体烧写。TUI 的任务 timeout 为 300000 ms；Setup 中更换主 ELF 时也必须检查 build/download 参数是否同步。
 
-现有 profile 用 \code{set substitute-path /mnt/d/ D:/} 解决本机 WSL 路径。迁移工程或使用流水线产物时，在项目 TOML 顶层增加明确前缀映射，供 GDB 与 TUI 一起使用；Source root 只声明本地源码根，不能替代绝对前缀映射。
+无需占用探针的产物检查可单独执行：
+\begin{lstlisting}
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tha6206-download.ps1 -Config tha6206-smoke -VerifyOnly
+# Optional build parameters (use your installed distribution):
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\tha6206-build.ps1 -WslDistribution Ubuntu-24.04D -Jobs 2
+\end{lstlisting}
+VerifyOnly 只比对磁盘文件，不读回 Flash，也不验证源码提交。流水线交付应提供同次构建 ELF/BIN/HEX 及匹配清单；没有可信配套产物时先解决产物问题，不用删掉校验来绕过。该校验是 Bao 工程脚本的约定，DebugTUI 通用 Download 不自动为其他工程生成清单。
+
+构建使用 \code{wsl --cd} 直接传入工程目录，WSL 和 PowerShell 输出均设为 UTF-8，保留原始错误。下载器 stdout/stderr 同时写入 \path{debug_log/flash-<timestamp>.log}；Windows PowerShell 的原生 stderr 可能表现为 ErrorRecord，故脚本以实际原生退出码判断成功，明确读取全局 LASTEXITCODE，避免函数局部同名变量遮蔽。日志会记录镜像、哈希、命令、烧录和复位各阶段退出码。
+
+现有 profile 用 \code{set substitute-path /mnt/d/ D:/} 解决本机 WSL 路径。此手写 GDB init 映射不受 Setup 的 Source remap 开关管理。迁移工程或使用流水线产物时，建议通过 Setup 选择旧目录，并清理冲突的手写 substitute-path；也可在项目 TOML 顶层增加明确前缀映射，供 GDB 与 TUI 一起使用；Source root 只声明本地源码根，不能替代绝对前缀映射。
 \par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
 # Merge into existing tables; do not duplicate [program].
 [program]
@@ -1201,19 +1337,18 @@ to = "."
 \src{B：\path{scripts/tha6206-build.ps1}、\path{scripts/tha6206-build.sh}、\path{scripts/tha6206-download.ps1}、\path{scripts/tha6206/debug-env.toml}。}
 
 \subsection{连接与热复位：先处理启动屏障}
-现有 Bao profile 的 Server 以 DEBUGCORE=3 建立两核 target，GDB 连接 core0。Run/Restart 动作先 chipreset，选回 core0，在两核暂停时执行 \code{set {unsigned int}&_barrier = 0}，再通过 Server 释放 core1，选回 core0 并刷新 GDB 寄存器缓存。Run 还设置 \code{init} 的临时硬件断点并继续，适合从 Bao C 初始化入口观察；Restart 本身与 Continue 的停留位置不同。
-
-这样处理是因为本地 \code{chipreset} 保留 GMU。前一次启动留下的 \code{_barrier=2}，可能让 core1 在 core0 尚未初始化共享状态时越过屏障。清屏障必须在复位后、释放 core1 前完成。使用 \code{&_barrier} 由本次 Bao ELF 解析，不要抄录某次链接得到的数值地址。
+当前 Bao profile 声明 backend=tha6、core0/1 的 3333/3334 端口，Server 仍以 DEBUGCORE=3 建立两个 target。项目的 [debug].cores 决定创建哪些 GDB；没有选中 GDB 不等于物理核不参与 Bao 初始化。
 
 \begin{enumerate}
-\item 确认 Bao ELF、Server 和 core0 端口正确；连接后记录 PC/CPSR。Run 命中 \code{init}，此时主要调试对象是 Hypervisor。
-\item Continue 进入 VM。smoke 检查 Guest 入口、状态 magic 和心跳；dual 检查两个状态块以及 Timer/IPC 计数。
-\item 需要重启实验时使用完整 profile 的 Run/Restart 流程。不要在 Console 只发 \code{monitor chipreset} 后直接继续两个核；不要把清屏障动作放到 core1 已运行之后。
-\item 现有单 GDB profile 主动 \code{monitor resume} core1 是有意设计；扩展双 GDB 时改用协调器的逐核 Run，避免另一条 GDB 仍缓存旧停止状态。
+\item 包含 core0 时，先连接已选的 core1（startup\_order=0），core0 最后连接（=1）。core0 的 after\_connect 执行一次 chipreset，选回 core0，写 \code{set {unsigned int}&_barrier = 0}。
+\item 清屏障后，只对未选中的辅助核执行 Server resume。core0-only 会释放 core1，双 GDB 时由协调器控制已选 core1，避免偷偷恢复另一 GDB 管理的核。最后选回 core0 并刷新寄存器缓存。
+\item Run 的逐核动作只负责进入执行：core0 建 init 临时硬件断点后 Continue，core1 刷新缓存后 Continue；\textbf{Run 不再隐含整片复位}。重做启动实验用 Reset Chip，再 Run All；Continue All 从当前状态继续。
+\item 共享 Reset 仅通过指定的 core.0 执行一次 chipreset、清屏障及恢复未选辅助核，之后协调器同步已选核。core1-only 没有复位拥有者，禁用这组 Reset 动作，是附加到已初始化平台的模式。
 \end{enumerate}
-该办法是调试热复位的启动修正，不证明冷上电/POR 已完整覆盖。\code{on_exit="detach"} 也不保证暂停状态自动变为运行，应以退出前明确的 Continue 和板上观测为准。
+本地 chipreset 保留 GMU，前一次的 \code{_barrier=2} 可能让 core1 过早越过屏障；必须先复位、清屏障，再释放辅助核。地址通过本次 Bao ELF 中的 \code{&_barrier} 解析，不抄录固定数值。只发 monitor chipreset 并不能代替上述完整流程。
 
-若仅附加调试已经运行的 core1，可复制所选 Bao 项目，覆盖 target.endpoint 为 3334、after\_connect 为 []、actions.run 为 [\code{"-exec-continue"}]、actions.restart 为 []，保留 DEBUGCORE=3 和其余工具/镜像字段。不要沿用默认 Run 中的整片复位和手动 target 切换；停止 core1 后再加载 Guest1 符号。附加入口仍可能受 Server 启动动作影响，应检查实际核状态；它不是启动完整平台的替代入口。
+core1-only 在 Setup 直接选 [1]，无需再复制配置并手改端口。前提是 core0 已完成平台初始化；新启动的 Server 也可能影响现有运行状态，须检查该板级脚本。暂停附加核后再添加 Guest1 符号。该模式的配置可加载和选择测试不等于其完整 Build/Download 冷启动已验收。退出后的核状态仍取决于 \code{on_exit}、Server 与板级行为。
+\src{B：\path{debug.toml}、\path{debug-dual.toml}、\path{scripts/tha6206/debug-env.toml}，2026-10-02 文件快照。}
 
 \subsection{同时保留 Bao 与 Guest 的 C 符号}\label{sec:bao-symbols}
 主 \code{program.elf} 应保留 \code{bao.elf}，这样 \code{init}、\code{_barrier}、异常处理和 Hypervisor 栈可正常解析。单独载入 Bao ELF 不会自动得到由 incbin 嵌入的 Guest 调试信息。用 GDB \code{add-symbol-file} 增加相应 Guest ELF，而不要用 \code{symbol-file} 替换掉 Bao 符号。
@@ -1234,59 +1369,27 @@ add-symbol-file "build/tha6xxx/tha6206-dual/guest/guest1.elf" 0x10028000
 
 dual 的两份 ELF 都定义 \code{guest_main}、\code{irq_handler}。每条 GDB 只加载当前物理核对应的 Guest ELF，避免同名符号歧义。将命令放到该核 \code{init} 数组，可在重连时重新加载。若只在 Console 临时添加，重启 GDB 后需再执行。
 
-本次离线检查使用当前 dual Bao ELF，分别增加 Guest0/Guest1 ELF：GDB 能解析 \code{guest_main} 到 \code{configs/tha6206-dual/guest.c} 第 133 行；Guest0 地址为 \code{0x10020230}，Guest1 为 \code{0x100281B4}，并能经源码映射显示 C 文本。这说明当前文件的符号/路径可解析，不代表已验证板上每条 C 单步。Guest 使用优化编译，行与指令并非严格一一对应。
+2026-09-21 的离线检查使用当时 dual Bao ELF，分别增加 Guest0/Guest1 ELF：GDB 能解析 \code{guest_main} 到 \code{configs/tha6206-dual/guest.c} 第 133 行；Guest0 地址为 \code{0x10020230}，Guest1 为 \code{0x100281B4}，并能经源码映射显示 C 文本。这说明当前文件的符号/路径可解析，不代表已验证板上每条 C 单步。Guest 使用优化编译，行与指令并非严格一一对应。
 \src{B：\path{scripts/tha6206-build.sh}、\path{configs/tha6206-dual/guest.c}、\path{configs/tha6206-dual/start.S}；GDB 官方 \href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/Files.html}{Files / add-symbol-file}。}
 
-\subsection{扩展为双 GDB 工作区的配置配方}\label{sec:bao-multigdb}
-\notice{以下配方已核对配置合并规则、逐核启动实现和 ELF 符号，并经 DebugTUI 离线加载确认识别出两个未连接的核心会话。已留存的 Bao 双 VM 板上测试采用其测试脚本/总线观测；不能据此声称以下双 GDB TUI 组合已经通过实板验收。本次也没有改动 B 的工程配置。}
-复制 B 的 \code{debug-dual.toml} 为拟用的 \code{debug-dual-multi.toml}，保留 program、tools、tasks、registers 等字段。把以下字段合并进现有表；同一 TOML 表不能重复声明。新增 \code{[[cores]]} 和 \code{[multicore]}，不要在 profile 中放工程 cores 表。
+\subsection{现有项目切换双 GDB 与补充 Guest 符号}\label{sec:bao-multigdb}
+9 月 29 日迁移后，B 的 smoke/dual 项目均已有格式 3 与两个核模板。调试同一固件时只需在 Setup 选 [0]、[1] 或 [0,1]，不再复制 debug-core0/core1/multi 文件。smoke 与 dual 保留两个项目，是因为固件与任务参数不同。CLI 可在启动前选择：
+\begin{lstlisting}
+debugtui --project .\debug.toml --chip tha6206 --cores 0,1 --setup
+debugtui --project .\debug-dual.toml --chip tha6206 --cores 0,1 --setup
+\end{lstlisting}
+保存后重启会话应用。保留两核模板原有的 startup\_order、after\_connect 和 run；不要重新叠加旧单 GDB 的 Run 复位序列。双核会话须按实际端口连接到 core.0/core.1，并保持 Scope All/Core 与当前检查核心的区别。
 
-\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
-[gdb]
-cwd = "."
-# Keep the existing GPR register list.
-
-[target]
-after_connect = []
-
-[actions]
-run = []
-restart = []
-
-[multicore]
-scope = "all"
-halt_peers = true
-restart_core = "core.0"
-restart = ["monitor chipreset", "set {unsigned int}&_barrier = 0"]
-\end{lstlisting}\end{minipage}\par
-顶层空数组覆盖 profile 的单 GDB 动作，去掉它主动 resume core1 的步骤；每核再显式给出 Run。当前实现中某个 core 的空 \code{run/after_connect} 数组并不清空继承值，所以不能只靠 \code{[[cores]]} 中写 [] 来禁用 profile 动作。
-
-\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
-[[cores]]
-name = "core.0"
-endpoint = "127.0.0.1:3333"
-startup_order = 1
-after_connect = ["monitor chipreset", "set {unsigned int}&_barrier = 0"]
-run = ["-break-insert -h -t init", "-exec-continue"]
-init = ['add-symbol-file "build/tha6xxx/tha6206-dual/guest/guest0.elf" 0x10020000']
-
-[[cores]]
-name = "core.1"
-endpoint = "127.0.0.1:3334"
-startup_order = 0
-run = ["-exec-continue"]
-init = ['add-symbol-file "build/tha6xxx/tha6206-dual/guest/guest1.elf" 0x10028000']
-\end{lstlisting}\end{minipage}\par
-连接时 core1 先附加，core0 最后执行一次共享复位和清屏障；全部连接后同步两个 GDB。首次 Run All 先释放 core1，再让 core0 到 \code{init}；命中时联停可能暂停 core1，随后 Continue All 才让两核继续。这里逐核 Run 不再包含复位：重做完整启动实验应先 Reset Chip，再 Run All，不能在 Guest 正运行时再次 Run 并假定自动回到 Bao 入口。
+要同时调试 dual 的 Guest C 代码，按第\ref{sec:bao-symbols}节在两个已有核模板的 init 数组分别追加 Guest0/Guest1 的 add-symbol-file 命令，设项目 gdb.cwd 为 \code{.}。每条 GDB 只加载其核对应的 Guest ELF，主 program.elf 仍是 Bao。这里的相对 Guest 路径供 GDB 解析，需与所选 Config、RAM 链接地址及同次构建产物一致。保存于 init 的符号命令会随重连重新执行；Console 临时添加不会自动持久化。
 
 \begin{enumerate}
-\item 验证只启动一个 Server、两条 GDB 分别连接 3333/3334，核心标签与真实状态一致；复位后两核 PC 应与本次固件启动入口一致。
-\item core0 加载 Guest0 符号、core1 加载 Guest1 符号；两边 \code{info line guest_main} 分别落在各自 RAM 区间。
-\item 在 core0/VM0 设置普通持久断点，确认默认只属于 core0；切到 core1/VM1 单独设置其断点，分别检查 PC、CPSR、栈和状态块。
-\item 验证 Continue All、Pause All、选核单步、共享复位后屏障初始化及重连符号恢复。需要两 VM 同一函数都停下时，再使用 Cores 关联，并确认每核解析到自己的运行地址。
-\item 做“故障核停住、对端仍运行”的隔离观测时，使用 Core 范围并关闭 \code{halt_peers}；否则软件联停本身就会使对端停止，污染实验结论。
+\item 先核对两核 connect、每核 PC/CPSR 和共享 Reset 后的启动状态，再验证 Run All、Pause All、Continue All 与当前核单步。
+\item 各核 \code{info line guest_main} 必须落在各自 RAM 区间；源码映射只改查找路径，不改符号地址。不能因两个 ELF 都有同名函数就认为其地址相同。
+\item 新建断点默认只属于当前核。需要多核命中时，通过 Breaks 的 Cores 关联，并确认各核实际解析出的代码位置和硬件断点资源。
+\item 做“对端是否独立运行”的隔离测试时，使用 Core 范围并关闭 halt\_peers；否则软件联停可能影响结果。调试器的联停策略与 Bao MPU 隔离是不同机制。
 \end{enumerate}
-DebugTUI 当前没有 VM 列表、自动 vCPU 上下文切换或完整多镜像管理器。这里是一核固定运行一个 VM，利用 per-core init 补充符号的配置适配；若以后迁移/复用 vCPU 或改为 SMP Guest，需要重新设计会话与符号策略。
+\notice{已验证范围：9 月 29 日 Bao smoke 的 core0 单 GDB、core0+1 双 GDB 编译下载链路已通过。dual 固件的双 VM 隔离测试仍是较早记录；dual + 双 GDB + 每核 Guest C 符号的完整组合尚无同等级回归，见第\ref{sec:bao-current-evidence}节。}
+DebugTUI 当前没有 VM 列表、自动 vCPU 上下文切换或完整多镜像管理器。一核固定一个 VM 时，可用逐核 init 添加符号；迁移/复用 vCPU 或 SMP Guest 需要重新定义会话和符号策略。
 
 \subsection{运行时观察：状态块、Timer、IPC 与 UART}
 Bao profile 已配置 \code{[[memory_access]] id="ahb"}，TCL 6666，target=\code{AHB_3}，允许运行中读取。CPU 在启用 MPU 后可能无法直接读某些 RCC/PORT 地址，而 AP3 仍可观察总线侧数据；不要为让 GDB 读寄存器方便而随意扩大 Guest 的设备权限。
@@ -1337,6 +1440,21 @@ UART & VM0 77 字节、VM1 0 字节，原始串口记录可复核；不等于 RX
 每项负向测试从健康状态重启，避免前一项异常污染下一项。目录中保留的 \code{pre-reset-fix} 失败记录用于解释屏障修正，不计入最终七项通过结果。smoke 的另组记录在 A 的 \path{tha6206-board-debug/}：2026-09-21 的 TOML 编译/下载、55956 字节 Flash 对照、心跳变化和 67 字节 Bao UART banner，支持最小入口的构建下载链路。
 \src{A：\path{tha6206-dual-board/verification.json}、\path{first-functional.json}、\path{final-functional.json}、\path{final-healthy-start.json}、\path{isolation-*.json}、\path{artifact-sha256.json}（后五项在同一 dual-board 目录）；\path{tha6206-board-debug/} 的 2026-09-21 记录。}
 
+\subsection{9 月 29 日编译下载故障与当前证据}\label{sec:bao-current-evidence}
+\path{session-20260929-134940-542.log} 的失败发生在 WSL 启动/路径转换阶段，编译器尚未运行，Download 也未执行。独立 \code{/bin/true} 同样返回 \code{Wsl/Service/E_UNEXPECTED}，Windows 同时段有虚拟内存不足记录。确认发行版停止后执行 wsl --shutdown，再启动后恢复；这是当次宿主故障的证据与恢复步骤，不是所有编译错误的统一根因，也不能在有运行作业时盲目关闭全部 WSL。
+
+另修复了包装脚本吞掉原始 WSL 错误、编码不一致和烧录器退出码的判断。诊断顺序是：先看 Console/会话任务输出定位宿主或编译器，再看 bao.sha256 的产物校验，最后看独立 flash 日志；不要把构建失败后留下的旧镜像继续作为新结果调试。
+
+\begin{longtable}{@{}P{35mm}P{126mm}@{}}\toprule
+验证层与固件 & 已记录结果和范围\\\midrule\endhead
+隔离脚本夹具 & 6 项通过：缺失清单、空格/中文路径、ELF 被修改、WSL 原始失败与旧清单失效、原生 stderr 成功、烧录失败不复位；无板卡访问。\\
+Bao smoke / core0 & 已安装 0.9.0，5 项通过：连接、Build 后符号重载、Download 后重连、全量 Flash 比对、C 源码断点/单步及 Guest 心跳。\\
+Bao smoke / core0+1 & 同版 0.9.0，5 项通过：双核连接、Build/Download 释放与重连、Flash 比对、Run/单步/心跳；不等于 dual Guest 符号验收。\\
+Flash 回读 & 56,596 字节全部匹配本次 smoke 构建；SHA-256 见原始报告。该结果不适用于随后其他烧录或另一 Config。\\
+Setup / 0.9.1 & 安装后的程序以 Bao 隔离配置验证无参数启动、三种核心选择和保存；没有连接或重新烧录板卡。\\\bottomrule
+\end{longtable}
+\src{T：\path{artifacts/bao-tasks-1790663763716-5b7a1cdd/report.json}；\path{artifacts/bao-workflow-1790663775392-2c3ae114/report.json}（core0）；\path{artifacts/bao-workflow-1790663333421-4fde5892/report.json}（双核）；\path{artifacts/bao-setup-f2a2b64336c1474b9a201bbb59540787/report.json}。}
+
 \subsection{后续适配边界与故障定位}
 \noindent\begin{tabularx}{\linewidth}{@{}P{40mm}Y@{}}\toprule
 现象 & 检查顺序\\\midrule
@@ -1355,7 +1473,7 @@ RCC/PORT 读失败或值不更新 & CPU 当前 MPU 权限、ahb 通道、刷新�
 
 \newsection{项目与环境配置参考}\label{sec:config}
 \subsection{覆盖、路径和保存规则}
-配置优先级为：默认值 → tools 环境 → 项目字段 → CLI。表按字段合并，数组整体替换；项目中写空数组会清空相应环境数组。环境当前允许 \code{gdb}、\code{target}、\code{service}、\code{actions}、\code{session}、\code{sync}、\code{memory_access}、\code{multicore}，不接受 \code{program}、\code{cores}、\code{live_watch} 等工程表。大部分结构启用 deny\_unknown\_fields，字段拼错会报错。
+配置优先级为：默认值 → tools 公共环境 → 所选 backend 分组 → 项目字段 → CLI。表按字段合并，数组整体替换；项目中写空数组会清空相应环境数组。环境普通配置允许 \code{gdb}、\code{target}、\code{service}、\code{actions}、\code{session}、\code{sync}、\code{memory_access}、\code{multicore}，另接受元数据 \code{backend}、\code{backends}、\code{core_targets}，由芯片解析层消费；不接受 \code{program}、\code{cores}、\code{live_watch} 等工程表。大部分结构启用 deny\_unknown\_fields，字段拼错会报错。
 
 含斜杠的 gdb.executable、service.command 和 cwd 相对定义它们的 TOML 文件；裸命令从 PATH 查找。\code{${profile_dir}} 只在环境文件展开。program、source\_map.to、live\_watch.elf、session.log\_dir 等最终相对项目目录解析；不要认为环境文件中的所有路径字段都会自动相对 profile。CLI 路径相对启动时 cwd 处理。
 
@@ -1363,13 +1481,15 @@ RCC/PORT 读失败或值不更新 & CPU 当前 MPU 权限、ahb 通道、刷新�
 
 保存 Setup 时保留环境引用和工程显式配置，不把整个展开环境写回项目。运行时偏好写入使用全局互斥锁，将相关列表/UI 表合并到最新文档。检测到外部启动配置冲突时拒绝盲写并要求重新加载；跨进程修改及崩溃期间并非数据库式原子事务。
 
-Examples 是主动替换启动草稿的操作，不能理解为只填补空字段；它不立即写文件。Projects 则载入所选项目并重新派生所有显示字段，错误时保留此前有效草稿。保存始终写所选 Project，不改写引用的 profile；没有 TOML 的目录也必须经过显式保存或启用保存的 Start 才产生文件。
+Examples 是主动替换启动草稿的操作，不能理解为只填补空字段；它不立即写文件。Projects 则载入所选项目并重新派生所有显示字段，错误时保留此前有效草稿。保存始终写所选 Project，不改写引用的 profile；没有 TOML 的目录在 Save config 或 Start 时才产生文件，进入 Setup 本身不保存。
 
 \subsection{核心字段}
 \begin{longtable}{@{}P{42mm}P{32mm}P{87mm}@{}}\toprule
 字段 & 默认/类型 & 说明\\\midrule\endhead
-version & 支持不大于 2 & 建议显式写 2；旧 [server] 被拒绝并提示迁移。\\
+version & 支持至 3 & Chip/Core 选择要求 3；旧式配置可保留 1/2。旧 [server] 被拒绝并提示迁移。\\
 tools.profile / root & 空/路径 & profile 优先，root 对应 root/debug-env.toml。\\
+debug.chip / cores & 空/编号数组 & 型号和物理核心编号子集；未选芯片沿用旧模式，选中后校验本地目录和后端。\\
+core\_preferences & 按芯片/核的表 & 保存 watch 与 breakpoints；核名称为 core.N，保留未选核的偏好。\\
 gdb.executable & gdb & 与目标架构匹配的 MI2 调试器。\\
 gdb.args / init & 空数组 & 程序参数 / GDB 初始化命令。\\
 gdb.cwd / env / unset\_env & 可选/映射/数组 & 宿主进程环境；默认 LC\_ALL=C。\\
@@ -1395,6 +1515,7 @@ tasks.build / download & 空字符串 & 单行 shell 命令，工作目录固定
 tasks.timeout\_ms & 300000 & 外部任务超时，必须大于 0。\\
 watch / breakpoints & 空数组 & 表达式列表 / 兼容字符串或详细断点对象。\\
 source\_map & 数组表 & from 是编译路径前缀，to 是本地目录。\\
+source\_remap & enabled/from/aliases & enabled 为可选布尔值；from 为 ELF 目录前缀，目标跟随 Source root；aliases 保存原路径拼写。\\
 ui.animations / unicode & subtle / true & off、subtle、full；Unicode 动效字符开关。\\
 ui.formats / refresh & 空映射 & 数值格式 / 按核按项的读取策略。\\\bottomrule
 \end{longtable}
@@ -1402,6 +1523,8 @@ ui.formats / refresh & 空映射 & 数值格式 / 按核按项的读取策略。
 \subsection{多核和总线字段}
 \noindent\begin{tabularx}{\linewidth}{@{}P{43mm}Y@{}}\toprule
 配置 & 含义\\\midrule
+\code{backend / backends} & 工具环境中的单后端标识/多后端覆盖分组，与用户目录中芯片的 backend 匹配。\\
+\code{[core_targets."N"]} & 工具环境提供该物理核的 endpoint 和可选 ready 字符串；也可放入所选 backend 分组。\\
 \code{[[cores]]} & name 唯一；远程 endpoint 唯一；startup\_order 默认 0。可配 init、after\_connect、run、watch、breakpoints。\\
 \code{[multicore]} & scope 默认 core；halt\_peers 默认 true；共享复位由 restart\_core 和 restart 数组定义。\\
 \code{[[memory_access]]} & 唯一 id、label、tcl\_endpoint、target、while\_running；cores 可选限制通道可用于哪些核。\\
@@ -1431,7 +1554,7 @@ unicode = true
 \begin{figure}[H]\centering
 \begin{tikzpicture}[node distance=9mm]
 \node[box,text width=48mm] (main) {main / cli\\TUI 或 JSONL 入口};
-\node[box,text width=48mm,right=13mm of main] (conf) {launch / choices / config\\工程文档、示例、环境合并};
+\node[box,text width=48mm,right=13mm of main] (conf) {launch / config / devices\\草稿、芯片、环境与模板解析};
 \node[box,text width=109mm] (ui) at ($(main.south)!0.5!(conf.south)+(0,-1.15)$) {ui + 子模块：输入、布局、缓存、补全、刷新、外观};
 \node[box,text width=109mm,below=of ui] (co) {可选 Coordinator：多核路由、共享服务、组控制、回滚};
 \node[box,text width=48mm,below=9mm of co.south,xshift=-31mm] (s0) {Session 0 / Engine\\状态机 + MI 队列};
@@ -1441,10 +1564,27 @@ unicode = true
 \draw[arr] (ui)--(co);\draw[arr] (co)--(s0);\draw[arr] (co)--(s1);
 \draw[arr] (s0)--(io);\draw[arr] (s1)--(io);
 \end{tikzpicture}
-\caption{代码职责图。普通单核未配置 cores/live\_watch/sync 时直接创建 Session。}
+\caption{代码职责图。Legacy 单核未配置 cores/live\_watch/sync 时直接创建 Session；Chip 模式先派生显式 cores。}
 \end{figure}
 
-普通单核仅配置 memory\_access 也不增加 Coordinator 线程；逐项 TCL 读仍在 Session 请求路径中执行。显式 cores、live\_watch 或 sync 任一存在时走协调层。即使 cores 只有一项，也属于显式核工作区；稳定核索引按配置数组位置，启动顺序另由 startup\_order 排序。
+普通单核仅配置 memory\_access 也不增加 Coordinator 线程；逐项 TCL 读仍在 Session 请求路径中执行。显式 cores、live\_watch 或 sync 任一存在时走协调层。即使 cores 只有一项，也属于显式核工作区；工作区索引按最终核心数组位置，启动顺序另由 startup\_order 排序。Chip 模式用物理编号生成 core.N 名称；例如只选 core1，工作区 index 为 0，但名称仍为 core.1、端口仍取物理核 1 的映射。JSONL 的 core index 不应当作芯片物理编号。
+
+\subsection{离线源码目录扫描与统一映射}
+\label{sec:remap-design}
+Setup 重映射通过独立工作线程启动短生命周期 GDB，使用 \code{-nx -nh}、关闭 auto-load，并先设置 source open off；发送 file-exec-and-symbols、file-list-exec-source-files、gdb-exit。只复用选定 GDB 的可执行文件及环境变量，不带 profile 的 args/init/cwd，不创建 Server 或调试连接；工作目录为项目 TOML 所在目录。这样不会为扫描 ELF 执行旧 profile 中的复位或下载钩子，普通调试会话的加载流程仍独立存在。
+
+扫描结果去除虚拟编译文件和控制字符项，以目录层级建立候选，统计映射到 Source root 后的文件存在数并显示样例。列表是候选目录，不是 DWARF 类型/调用关系浏览器。取消、重新扫描和退出弹窗会发出取消标记，子进程由拥有者 kill/wait 回收；UI 通过消息接收结果，不阻塞终端输入。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{37mm}Y@{}}\toprule
+边界 & 当前实现\\\midrule
+GDB 元数据等待 & 使用 session.timeout\_ms 并限制为 1--30 秒；不可达旧网络路径仍可能超时。\\
+输出与列表上限 & GDB 输出最多 32 MiB；过滤后的源文件条目与候选目录各最多 50,000。\\
+路径比较 & 正反斜杠归一化，按完整目录边界匹配；不会将 /ci/app 匹配到 /ci/app2。大小写按原字符串比较，不自动折叠盘符或路径大小写。\\
+映射的消费者 & TUI 本地文件定位、GDB substitute-path 使用同一有效规则；对原拼写、正斜杠、反斜杠生成去重别名。\\
+检查的含义 & matched 表示本地文件存在，不比较文件内容/Git 提交，不保证行号和固件匹配。\\\bottomrule
+\end{tabularx}
+开关未设置时，已有 source\_map 或非空 source\_remap.from 维持启用，兼容旧工程；显式 false 停用两者但保留内容。from 的目标始终是当前 Source root。手工规则中与选中前缀相同的项被选中映射替代，其余手工规则保持顺序并在前；没有自动“最长前缀优先”排序，应把更具体的手工前缀放前面。用户在 GDB init/Console 自行发出的 substitute-path 不属于这套开关。
+\src{\path{src/source.rs}；\path{src/launch/remap.rs}；\path{src/config.rs}: effective\_source\_maps/source\_path；\path{src/session.rs}: connect。}
 
 \subsection{线程和数据结构}
 UI 主线程维护 App、面板状态与输入；Session 工作线程拥有 GDB、Server、Snapshot、断点/Watch 定义、按通道 TCP 缓存。GDB stdout 读取线程解析 MI，stderr 和服务输出读取线程采集日志。旧式 Live Watch 配置增加独立采样线程。Windows 下所有自有进程归入 Job Object。
@@ -1642,7 +1782,7 @@ Coordinator 将用户 id 与内部逐核 id 分离。一个 Batch 顺序等待�
 第\ref{sec:cti}节已说明 CTI/CTM 的硬件路径；这里对应的是其在工作区生命周期中的配置入口。
 \code{sync.open} 在共享 Server 就绪后、GDB 连接前执行，method=tcl 或兼容的 cti 都只发送明确配置的 TCL 字符串。TUI 不识别 CTI 拓扑、不配置 AP、不承诺硬件联停；CTI base、通道、核关联和 MEM-AP 路由均属板级脚本。多个通道可用不同端口，CPU target 名称也不等于固定 AP 编号。
 
-本次已定位并复核 THA6206 双 Cortex-R52 的 2026-09-20 原始 result/events 记录，覆盖组控制、共享复位、运行中 Watch 和多核断点，见第\ref{sec:tha6206}节。Bao 双 VM 的另一组证据见第\ref{sec:bao-tha6206}节；它不能替代 Bao 双 GDB TUI 组合的实板验收。较早“无多核板卡”或“缺原始目录”的描述属于当时的资料范围。
+本次已定位并复核 THA6206 双 Cortex-R52 的 2026-09-20 原始 result/events 记录，覆盖组控制、共享复位、运行中 Watch 和多核断点，见第\ref{sec:tha6206}节。Bao 双 VM 的另一组证据见第\ref{sec:bao-tha6206}节；它不能替代双 VM 加逐核 Guest C 符号的完整 TUI 验收；9 月 29 日已新增 Bao smoke 的双 GDB 编译下载回归，见第\ref{sec:bao-current-evidence}节。较早“无多核板卡”或“缺原始目录”的描述属于当时的资料范围。
 \src{\path{src/coordinator.rs}；\path{src/coordinator/control.rs}；\path{src/coordinator/breakpoints.rs}；\path{src/ui/breakpoints/cores.rs}；\path{tools/examples/multicore-access.md}。}
 
 \newsection{Headless JSONL 自动化接口}\label{sec:jsonl}
@@ -1840,7 +1980,7 @@ node scripts/test-step-isolation.cjs <matching-ELF> 10 1 monitor 60000
 \item 静置 60 秒：\path{artifacts/step-isolation-2026-09-16T13-59-37-549Z/}；重复：\path{artifacts/step-isolation-2026-09-16T14-01-45-671Z/}。
 \item 静置 30 秒：\path{artifacts/step-isolation-2026-09-16T14-01-10-862Z/}；1200 次短会话：\path{artifacts/step-isolation-2026-09-16T13-50-39-156Z/}。
 \end{itemize}
-以上目录本机存在；本次重点核对长会话 trace 的时间戳与三组静置 result。历史 ELF SHA-256 为 \code{076B3D1D9CC4DC04BBBBB6269E816673BA78CBF9730E54BF8B9A4718D842FCDD}，不要与后续 CMSIS-DAP 报告的构建混用。资料汇总见 \path{TESTING.md} 的“追加隔离实验”。
+初版手册已核对以上本地目录、长会话 trace 时间戳与三组静置 result；本轮保留该历史结论。历史 ELF SHA-256 为 \code{076B3D1D9CC4DC04BBBBB6269E816673BA78CBF9730E54BF8B9A4718D842FCDD}，不要与后续 CMSIS-DAP 报告的构建混用。资料汇总见 \path{TESTING.md} 的“追加隔离实验”。
 
 \newsection{构建、测试、打包与证据矩阵}\label{sec:evidence}
 \subsection{开发环境和测试分层}
@@ -1867,8 +2007,28 @@ Rust 单元/集成 & 各模块内联 tests、tests/project\_tasks.rs；解析、
 打包/发布 & test-npm、test-release、release-assets、package；独立 tools/package 校验工具依赖哈希。\\\bottomrule
 \end{tabularx}
 
+\subsection{近期新增测试入口与验收方法}
+统一入口 \path{scripts/test-functional.cjs} 当前默认定义 20 个套件，显式硬件模式另加 3 个。可以用 --only 选择本轮要验证的功能；未执行、跳过、失败与通过分别记录，不能把选择性运行当作所有功能通过。\path{tests/functional-coverage.json} 维护功能到源码/套件的对应，\path{tests/README.md} 给出参数和夹具前提。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+# Read-only host/isolated fixture acceptance; no --hardware.
+node ./scripts/test-functional.cjs --binary ./target/release/debugtui.exe --only cli,devices-tui,devices-gdb,source-remap
+# Real native GDB / GCC are required for devices-gdb and source-remap.
+# Supply --gdb and --cc if they are not discoverable.
+\end{lstlisting}
+\end{minipage}\par
+\begin{longtable}{@{}P{56mm}P{105mm}@{}}\toprule
+新增驱动（scripts 下） & 覆盖与运行边界\\\midrule\endhead
+\path{test-source-remap.ps1}、\path{test-source-remap-gdb.cjs} & 真实终端目录选择与 GDB 映射；路径风格、取消/超时/扫描失败、保存和多核继承。工程 ELF 模式仅扫描，不连接板卡。\\
+\path{test-devices.ps1}、\path{test-devices-gdb.cjs} & TUI 新增/选择芯片、核心子集、目录持久化；用多个真实本机 GDB 检查配置派生，不能当成所有芯片实板结果。\\
+\path{test-devices-tha6206.cjs} & THA6206 的 core0/core1/双核连接和控制；要求配套 MCAL 固件，属于有板卡动作的专项。\\
+\path{test-bao-setup.ps1} & Bao 隔离配置的无参数启动、核心选择与保存；不按 Start，不操作硬件。\\
+\path{test-bao-tasks.cjs} & 构建/下载脚本失败路径和退出码的隔离夹具；不烧录真实板卡。\\
+\path{test-bao-devices.cjs}、\path{test-bao-workflow.cjs} & 前者带固件匹配门槛的连接验证；后者实际 Build/Download/回读/调试，只能在允许切换固件的板卡上执行。\\\bottomrule
+\end{longtable}
+
 \subsection{源码测试与历史证据复核}
-以下按执行阶段记录结果，不把不同时点的测试数量相加。初版的 137 项记录属于 v0.8.3；9 月 21 日的 THA6206/Bao 文档补充曾做配置离线加载、Guest ELF 解析和产物哈希核对。9 月 23 日补充了已安装 v0.8.6 的 MCAL 实板回归和发布前源码检查；其他板卡和 Bao 保留其原始测试日期。
+以下按执行阶段记录结果，不把不同时点的测试数量相加。初版的 137 项记录属于 v0.8.3；9 月 21 日的 THA6206/Bao 文档补充曾做配置离线加载、Guest ELF 解析和产物哈希核对。9 月 23 日补充了已安装 v0.8.6 的 MCAL 回归；9 月 27--29 日新增功能验收、源码重映射、芯片选择及 Bao 构建下载证据。下面保留各自原日期；2026-10-03 的界面、分发验证不是重新跑过这些硬件测试。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{38mm}Y@{}}\toprule
 阶段 & 已记录的结果及边界\\\midrule
@@ -1878,6 +2038,19 @@ v0.8.3 初版源码 & 137 项单元测试、1 项 CLI 集成测试通过，0 失
 9 月 22 日 THA6206 & 三种入口的源码操作/Watch 用例通过；附加 Reset/Run 与代码段比较有失败，保留为历史记录。\\
 9 月 23 日 v0.8.6 & 168 项单元测试、1 项 CLI 集成测试通过，2 项外部环境测试默认忽略；MCAL 实板 16 个功能组通过，包含 21 个退出/重连场景，残留复位和深层栈问题见第\ref{sec:tha-086-validation}节。\\\bottomrule
 \end{tabularx}
+
+\begin{longtable}{@{}P{36mm}P{125mm}@{}}\toprule
+近期阶段 & 已记录结果及未覆盖范围\\\midrule\endhead
+9 月 27 日验收 & 对已安装 0.8.6 的当时 20 个套件通过；44 项新增用例通过、真正烧录 HW-16 跳过。与后来增加的套件数量不同。\\
+9 月 28 日映射 & 0.8.7 的 174 单元 + 1 集成通过、2 忽略；0.8.8 为 175 + 1、2 忽略。验证四种路径风格、离线 GDB 与 THA/Bao ELF 存在性预览；非新的板上失败构建复现。\\
+9 月 29 日芯片选择 & 0.9.0 为 181 单元 + 1 集成通过、2 忽略；10 种真实本机 GDB 组合通过。THA6206 实板 core0/core1/双核三项通过，允许 reset，无 Build/Download；未提供其他三款芯片实板结果。\\
+9 月 29 日 Bao & smoke 单 GDB 与双 GDB 流程各 5 项通过，外部任务夹具 6 项通过。详细边界和产物见第\ref{sec:bao-current-evidence}节。\\
+9 月 29 日界面 & 0.9.1 为 181 单元 + 1 集成通过、2 忽略；严格 Clippy、Release、Bao Setup 选择/保存通过。EXE 已本地安装，芯片目录哈希未改变。\\
+10 月 3 日 v0.9.3 & 185 单元 + 1 集成通过、2 忽略；CLI 12/12、隔离 npm 生命周期 7/7 通过。全局 EXE 与构建哈希一致，15 份工程及芯片目录文件不变；Bao 隔离项目 core0/core1/双核选择与保存通过，无实板操作。\\
+10 月 3 日终端 & 键盘、搜索、配置页、缩放、退出 8/8 通过；独立事件探针未收到该宿主注入的 SGR 鼠标记录，Files 原生用例改用 Tab。此结果不包含真实终端鼠标的端到端验收；鼠标命中保留 App 测试覆盖。\\
+保留的失败 & 旧 ConPTY 通用终端 7/8 及 10 月 3 日首次 TERM-03 鼠标注入失败报告仍保留，不改记为通过；应用内部鼠标命中测试不能替代此端到端结果。\\\bottomrule
+\end{longtable}
+\src{\path{TESTING.md} 的对应日期记录；\path{artifacts/devices-tha6206-1790653885250-7b45250a/report.json}；\path{artifacts/ui-controls-20260929/install.json}；\path{artifacts/terminal-20260929-203508-1db44c3a/report.json}。}
 
 源码选区阶段的详细记录在 \path{artifacts/source-selection-20260922/result.json} 及各入口事件文件中；其中 EXE 哈希只代表该阶段的构建，不代表之后加入 Setup 修改的二进制。\path{artifacts/setup-ux-20260922/} 的 12 份文本快照覆盖空配置、示例列表、应用示例和字段帮助在 45×12、80×24、120×36 下的布局，属于 Ratatui 单元格输出，不是实板连接记录。
 
@@ -1896,7 +2069,7 @@ v0.8.3 初版源码 & 137 项单元测试、1 项 CLI 集成测试通过，0 失
 401=122+75+70+93+41，是请求数而非独立功能数。历史实板报告的源码 SHA 为 \path{8c74f72e4139d62cc3b3034266d22bbfe1a2a14e}，与当前文档基线不同；本次以源码确认相关实现，不能声称历史二进制就是当前重新构建的 EXE。
 
 \subsection{分发和许可证}
-package.json 的 files 目前包含 EXE、说明与许可证，\textbf{不包含 docs、resources/svd 或 tools}。本次手册放入 docs 不会自动进入 npm 包；如需发行附带手册，另更新打包清单。TUI 以 Apache-2.0 分发；GDB、OpenOCD、SEGGER 工具及 SVD 遵从各自许可证，不能用应用许可证替代第三方条款。
+package.json 的 files 目前包含 EXE、profiles、说明与许可证，\textbf{不包含 docs、resources/svd 或 tools}。本次手册放入 docs 不会自动进入 npm 包；如需发行附带手册，另更新打包清单。TUI 以 Apache-2.0 分发；GDB、OpenOCD、SEGGER 工具及 SVD 遵从各自许可证，不能用应用许可证替代第三方条款。
 
 \code{scripts/package.ps1} 核对 npm/EXE 版本并拒绝开发/工具依赖泄入 TUI 包；\code{tools/package.ps1} 验证 dependencies.lock.json 的文件 SHA-256，再生成独立 tools ZIP。当前 ZIP 文件名仍含 stm32-jlink，但内容已经包含 OpenOCD/CMSIS-DAP 配置，应以归档清单为准。
 \src{\path{Cargo.toml}、\path{Cargo.lock}、\path{package.json}；\path{scripts/}；\path{tools/package.ps1}；\path{NOTICE}、\path{THIRD_PARTY_NOTICES.md}、\path{licenses/}。}
@@ -1921,7 +2094,7 @@ package.json 的 files 目前包含 EXE、说明与许可证，\textbf{不包含
 项目 & 本手册采用的当前结论\\\midrule
 SVD 字节序 & Device::parse 对未知/缺失 endian 使用 unwrap\_or(true)；默认小端。不能沿用“未知只展示”的旧说法。\\
 SVD 是否实现 & 已实现解析和 Peripherals，README 部分旧段落“尚未实现”已过时。\\
-环境表数量 & 当前允许八类 section，不止旧文档提到的五类。\\
+环境表数量 & 八类普通 section 加 backend/backends/core\_targets 元数据；新字段由芯片选择层处理。\\
 tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动寻找 tools”只适合旧版本描述。\\
 单核 Server 日志 & Session 将全部 stderr 标为 server-error；Coordinator 的新分帧器区分普通 stderr/真正错误。不能仅凭单核通道名断言发生错误。\\
 下载栏空值 & tasks.download 空仍可能回退 actions.download；应查看确认框/实际动作。\\
@@ -1934,10 +2107,11 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \item refresh 的若干栈/locals/寄存器查询使用容错分支，个别子查询失败可能保留旧列表；错误日志和停止代次比单纯“面板有值”更可靠。
 \item 可见项轮询与旧 live\_watch 的调度不同；旧采样队列容量 64，使用 try\_send，高负载下可能丢采样，不能用作无损数据记录仪。
 \item 旧 live\_watch 的配置只要求正间隔，实际循环 clamp 到 10--60000 ms；逐项 UI 则要求 50--60000 ms，二者不能混用。
-\item 软件组控制不是硬件同步；运行时总线读取不是跨多个值的一致事务；配置持久化不是跨进程原子提交。
+\item 软件组控制不是硬件同步；运行时总线读取不是跨多个值的一致事务；工程偏好写入不是跨进程原子提交；用户芯片目录另有跨进程锁和同目录临时文件发布。
+\item 通用终端 Files 用例 TERM-03 改用 Tab 后通过；该 ConPTY 宿主未交付注入的 SGR 鼠标事件，旧失败报告保留。真实终端鼠标仍未完成端到端验收，应用内部鼠标命中测试不能替代该结果。
 \item 当前没有专门的变量/寄存器写入 UI；原始 GDB 可写，用户应理解实际目标副作用。默认面板读取不等于整个调试连接过程零修改。
 \item Source 选区改变 Ctrl+C 的优先级：聚焦源码且有选区时复制，确定暂停使用 F6。加入 Watch 仍受当前核、当前帧和运行时读取通道限制，不自动启用实时采样。
-\item 本地 THA6206 新 CSE 写值尚需专门实板回归；9 月 22 日附加启动超时与 DSCR.ERR/代码段读取故障仍须排查，不能由离线脚本检查或源码操作用例代替验收。
+\item THA6206 修正后的脚本已有 9 月 23 日及 29 日功能回归，不能再将 9 月 22 日旧失败描述为所有当前流程均失败；CSE 新旧值的专项硬件 A/B 和偶发复位/深栈限制仍按第\ref{sec:tha-086-validation}节单列。
 \end{itemize}
 
 优先维护方向是修复真实下载状态解析、统一两条服务日志路径、对缺省 SVD 字节序给出明确策略或提示，并同步过期 README。若扩展到异构核、线程/RTOS 视图或网络 API，应同时定义数据归属、状态代次、清理及错误契约，再扩展 UI。
@@ -1945,7 +2119,7 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 
 \clearpage\appendix
 \newsection{全工程源文件与职责索引}
-当前 0.8.4 本地工作树的 \code{src} 共 40 个 Rust 文件（含模块测试），下表覆盖全部文件。相对 v0.8.3 新增的模块集中于项目/示例选择、源码文本交互、剪贴板及对应测试。
+2026-10-03 核对的 0.9.3 发布前工作树中，\code{src} 共 48 个 Rust 文件（含模块测试），下表覆盖全部文件。近期新增模块包括芯片目录及选择、离线源码目录扫描和搜索相关模块。
 
 \begin{longtable}{@{}P{55mm}P{106mm}@{}}\toprule
 文件（相对工程根） & 职责与关键入口\\\midrule\endhead
@@ -1954,12 +2128,18 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{src/cli.rs} & Options::parse/document，参数解析、CLI 覆盖、路径绝对化。\\
 \path{src/launch.rs} & Document、Setup、相对路径、字段帮助、文件浏览器、保存冲突/草稿、直接退出和启动动作。\\
 \path{src/launch/choices.rs} & 调试项目 TOML 筛选、Projects 列表和可选 Examples；不保存或启动进程。\\
+\path{src/launch/devices.rs} & Chip 列表、Add chip 表单、核心复选、Legacy 和草稿选择。\\
+\path{src/launch/remap.rs} & ELF 目录选择、父子层级、匹配预览、重新扫描和取消。\\
 \path{src/clipboard.rs} & Windows 原生 Unicode 剪贴板、失败清理与其他平台工具回退。\\
 \path{src/config.rs} & 全配置模型、默认值、递归合并、校验、路径解析、偏好写锁。\\
+\path{src/devices.rs} & 用户目录初始化/追加锁、能力校验、backend 合并、模板展开与所选核派生。\\
+\path{src/source.rs} & 跨主机路径拼写、目录边界、GDB 映射别名、离线 ELF 源文件扫描与取消。\\
+\path{src/search.rs} & 文件模糊匹配评分、大小写处理及 GDB 符号正则构造。\\
 \path{src/session.rs} & Engine/Gdb/Snapshot、命令执行、异步 record、停止刷新、任务/连接/清理。\\
 \path{src/session/breakpoints.rs} & MI 断点编解码、创建/修改/恢复、失败处理及立即持久化。\\
 \path{src/session/watch.rs} & GDB variable object 树、分页、展开映射和变化标记。\\
 \path{src/session/memory.rs} & watch\_resolve、命名内存读、宽度/对齐/端序校验、TCP 缓存。\\
+\path{src/session/symbols.rs} & 停止态 GDB 符号索引请求、来源/位置与查询范围。\\
 \path{src/coordinator.rs} & 多 Session 工作区、共享 Server、Batch/Step 队列、核选择、派生配置。\\
 \path{src/coordinator/control.rs} & Scope、顺序 Run、共享 reset、断点联停和单步隔离。\\
 \path{src/coordinator/breakpoints.rs} & group 注解、成员路由、真实编号映射、undo 队列。\\
@@ -1983,6 +2163,8 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{src/ui/monitor.rs} & 逐项刷新设置、可见项公平调度、LIVE 缓存、错误退避。\\
 \path{src/ui/peripherals.rs} & SVD 树、展开/滚动、寄存器读取及位域显示。\\
 \path{src/ui/source_tabs.rs} & 文件路径去重、独立浏览位置、标签溢出/搜索列表、源码切换时清理选区。\\
+\path{src/ui/search.rs} & Files/Symbols 筛选输入、键鼠导航、延迟查询与结果选择。\\
+\path{src/ui/search/tests.rs} & 搜索输入、焦点、过期结果及宽窄终端布局测试。\\
 \path{src/ui/source_text.rs} & UTF-8 选区、显示坐标、键鼠移动、横向滚动、Copy 与当前核 Add to Watch。\\
 \path{src/ui/source_text/tests.rs} & 选区、中文/Tab、复制、Watch 路由、焦点/代次、横向视口和渲染回归。\\
 \path{src/ui/source_text/hardware_tests.rs} & 显式启用的真实 GDB/THA6206 源码操作测试，普通测试默认忽略。\\
@@ -1994,7 +2176,8 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \subsection{其他目录的工程角色}
 \noindent\begin{tabularx}{\linewidth}{@{}P{38mm}Y@{}}\toprule
 目录/文件 & 内容及分析边界\\\midrule
-\path{tests/} & mock-gdb、SVD fixture 和实际 shell CLI 集成测试。\\
+\path{profiles/} & 默认芯片目录、npm 初始化脚本及 THA 项目/环境示例；不附带调试驱动或工具二进制。\\
+\path{tests/} & mock-gdb、SVD/ELF fixture、ConPTY 终端宿主、覆盖矩阵及实际 shell CLI 集成测试。\\
 \path{scripts/} & 构建、许可证生成、打包、发布资产及模拟/本机/硬件验证。\\
 \path{tools/} & 可选调试环境、BAT、三个 F429 profile、板级 cfg、独立打包与依赖锁。\\
 \path{tools/bin/} & 第三方 GDB、J-Link、OpenOCD 程序/依赖/脚本/许可证；未宣称分析其全部闭源实现。\\
@@ -2003,7 +2186,7 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{artifacts/} & 本地历史测试和发布产物，Git 忽略；不是自动化测试全部成功的推定依据。\\
 \path{.dev/}、\path{target/}、\path{bin/} & 本地工具缓存、Rust 输出及分发 EXE，不是自研模块。\\
 根目录 Markdown & README/ARCHITECTURE/TESTING/PUBLISHING；需按版本和源码交叉核对。\\
-\path{docs/} & 本次 LaTeX/PDF、复现编译脚本和验证记录。\\\bottomrule
+\path{docs/} & 单一 LaTeX 手册、对应 PDF 和重建脚本；验证记录统一在根目录 TESTING.md，视觉中间产物在 artifacts。\\\bottomrule
 \end{tabularx}
 
 \newsection{命令行速查与术语}
@@ -2012,6 +2195,8 @@ CLI 参数 & 行为\\\midrule\endhead
 无参数 & 进入 Setup，不启动调试链路。\\
 --project PATH & 工程目录或配置文件；显式启动选项。\\
 --setup & 强制先检查启动表单。\\
+--chip ID / --cores IDS & 覆盖芯片及物理核心子集，例如 --chip tha6206 --cores 0,1；切换为格式 3，仍需匹配 profile/端口。\\
+--init-profiles & 初始化或校验用户芯片目录，输出其路径并退出，不连接板卡。\\
 --gdb PATH / --gdb-arg ARG & 指定 GDB/追加参数；gdb-arg 可重复。\\
 --environment FILE & 指定工具环境 TOML。\\
 --tools-dir PATH & 简写为 PATH/debug-env.toml。\\
@@ -2094,12 +2279,28 @@ xelatex -interaction=nonstopmode -halt-on-error usermanual.tex
 \subsection{适用场景与现有能力}
 本地提交代码后，流水线编译测试失败；下载该次构建的 HEX 和 ELF，在本地调试时却因 ELF 中的绝对源码路径指向构建机而无法打开 C 文件。DebugTUI 0.8.3 已支持通过工程 TOML 中的 \code{[[source_map]]} 解决此问题，无需修改 DebugTUI 源码或为了改路径重新编译 ELF。
 
-配置同时用于源码窗口查找和 GDB 的 \code{set substitute-path}，并由各核继承。映射只改变文件查找位置，不修改 ELF、HEX、指令地址或目标内存。当前需要手动编辑配置，没有自动导入流水线产物、自动选择 Git 提交或专门的映射编辑表单。配置步骤与示例统一在本附录维护。
+配置同时用于源码窗口查找和 GDB 的 \code{set substitute-path}，并由各核继承。映射只改变文件查找位置，不修改 ELF、HEX、指令地址或目标内存。v0.8.7 增加 Setup 重映射开关、ELF 目录选择和本地文件预览；流水线产物下载及源码版本选择仍由用户完成。配置步骤与示例统一在本附录维护。
+
+\subsection{推荐方式：在 Setup 选择目录层级}
+\begin{enumerate}
+\item Program / ELF 选择服务器构建产物；Source root 选择相同版本的本地源码根。
+\item 将 SVD file 后面的 Source remap 改为 Yes。为 No 时，下一行 ELF path prefix 灰显且不可选择或修改。DebugTUI 在后台使用已配置的 GDB 读取 ELF 源文件表，忽略 profile 中的启动参数、初始化与板级动作，关闭自动加载脚本，不启动 OpenOCD、不连接或复位板卡。
+\item 在 ELF directories 面板选择与 Source root 对应的旧目录。上下键或鼠标选择；左右键选择父/子层级。列表给出本地存在数 / 覆盖文件数，下方预览具体映射。目录层级选错会保留错误的后缀，通常表现为匹配数为零；文件存在也不能证明源码版本一致。
+\item Enter 或 Apply 确认，Ctrl+S 保存，再 Start debugging 使用新映射。ELF path prefix 可重新打开选择；R 重新扫描，Esc 取消并保留原选择。缺失 ELF、无源码记录或扫描失败时显示原因，取消后修正配置。
+\end{enumerate}
+选择写入工程 TOML 的以下表，目标始终跟随当前 Source root；无需另外填写 to。相对 Source root 仍按 TOML 所在目录解释。
+\begin{lstlisting}
+[source_remap]
+enabled = true
+from = "/builds/team/THA6XXX_MC_AS440"
+\end{lstlisting}
+目录匹配支持正反斜杠与混用、Windows 盘符、UNC 路径和空格。若 ELF 保留多种分隔符拼写，扫描自动将它们保存为 aliases，GDB 与 TUI 都应用对应规则。部分 GDB 仍会解析旧网络路径，不可达的 UNC 主机可能使扫描超时；此时可以用下文的手工 source\_map 配置绕过扫描。关闭 Source remap 时保留但停用该选择和已有 source\_map；旧配置未设置开关时仍沿用原规则。额外手工规则先应用，Setup 选择覆盖手工规则中相同的前缀。自行写在 gdb.init 或 Console 中的 substitute-path 命令不受此开关管理，建议迁移至工程映射配置。前缀的大小写须与 ELF 记录一致；不会自动折叠 Windows 盘符大小写，也不按同名文件猜测路径。具体扫描边界及映射顺序见第\ref{sec:remap-design}节。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{45mm}Y@{}}\toprule
 配置项 & 含义与相对路径基准\\\midrule
 \code{program.elf} & GDB 加载的 ELF；相对工程 TOML 所在目录。\\
 \code{program.source_root} & 本地源码查找基础目录、Build/Download 工作目录；相对 TOML。不能代替旧绝对路径映射。\\
+\code{source_remap.from} & Setup 选择的 ELF 目录前缀；目标为 Source root，enabled 为开关。\\
 \code{source_map.from} & ELF 中实际记录的旧目录前缀；保留旧路径，不转为本地目录。\\
 \code{source_map.to} & 对应的本地源码目录；相对 TOML，而非 source\_root。\\
 \code{live_watch.elf} & 已配置旧式 Live Watch 时使用的符号文件；应同步指向该次流水线 ELF。\\\bottomrule

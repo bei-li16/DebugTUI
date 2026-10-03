@@ -23,10 +23,15 @@ fn project_bar(f: &mut UiFrame, a: &mut App, rect: Rect) {
     theme::surface(f, rect, theme::CANVAS);
     f.render_widget(
         Paragraph::new(" Project ").style(Style::default().fg(theme::DIM)),
-        rect,
+        Rect::new(rect.x, rect.y + rect.height / 2, rect.width, 1),
     );
-    let buttons = Rect::new(rect.x + 9, rect.y, 35.min(rect.width.saturating_sub(9)), 1);
-    toolbar(f, a, buttons, &PROJECT_ACTIONS);
+    let buttons = Rect::new(
+        rect.x + 9,
+        rect.y,
+        35.min(rect.width.saturating_sub(9)),
+        rect.height,
+    );
+    toolbar(f, a, buttons, &PROJECT_ACTIONS, rect.height);
     let (note, color) = a.fx.task_label(&a.snapshot.state).unwrap_or_else(|| {
         (
             "Setup: edit & restart · output in Console".into(),
@@ -36,12 +41,18 @@ fn project_bar(f: &mut UiFrame, a: &mut App, rect: Rect) {
     if rect.width >= 85 {
         f.render_widget(
             Paragraph::new(note).style(Style::default().fg(color)),
-            Rect::new(rect.x + 46, rect.y, rect.width - 46, 1),
+            Rect::new(rect.x + 46, rect.y + rect.height / 2, rect.width - 46, 1),
         );
     }
 }
 
-fn wrapped_height(labels: &[&str], width: u16) -> u16 {
+// Full frames need three terminal rows. Keep the existing compact layout when
+// the terminal is short so the source and inspector still have usable space.
+fn control_height(f: &UiFrame) -> u16 {
+    if f.area().height >= 36 { 3 } else { 1 }
+}
+
+fn wrapped_height(labels: &[&str], width: u16, row_height: u16) -> u16 {
     let mut rows = 1;
     let mut x = 0;
     for label in labels {
@@ -52,67 +63,93 @@ fn wrapped_height(labels: &[&str], width: u16) -> u16 {
         }
         x += len;
     }
-    rows
+    rows * row_height
 }
 
 fn hovered(a: &App, rect: Rect) -> bool {
     a.pointer.is_some_and(|p| rect.contains(p))
 }
 
-fn tabs(f: &mut UiFrame, a: &mut App, rect: Rect, panes: &[usize], selected: usize) {
+fn pane_label(pane: usize, width: u16) -> &'static str {
+    // Keep all Inspector tabs on one row in the ordinary 160-column layout.
+    // The section title below still spells out the selected view's full name.
+    match pane {
+        3 if width < 60 => "Regs",
+        10 if width < 60 => "Periph",
+        _ => PANES[pane],
+    }
+}
+
+fn tabs(f: &mut UiFrame, a: &mut App, rect: Rect, panes: &[usize], selected: usize, height: u16) {
     theme::surface(f, rect, theme::PANEL);
     let mut x = rect.x;
     let mut y = rect.y;
+    let height = height.min(rect.height);
     for &pane in panes {
-        let label = format!(" {} ", PANES[pane]);
-        let width = label.len() as u16;
+        let label = pane_label(pane, rect.width);
+        let width = unicode_width::UnicodeWidthStr::width(label) as u16 + 2;
         if x > rect.x && x + width > rect.right() {
-            y += 1;
+            y += height;
             x = rect.x;
         }
         if y >= rect.bottom() {
             break;
         }
-        let hit = Rect::new(x, y, width.min(rect.right().saturating_sub(x)), 1);
+        let hit = Rect::new(
+            x,
+            y,
+            width.min(rect.right().saturating_sub(x)),
+            height.min(rect.bottom() - y),
+        );
         let style = theme::chip(pane == selected, hovered(a, hit));
-        f.render_widget(Paragraph::new(label).style(style), hit);
+        theme::button(f, hit, label, style);
         a.pane_hits.push((hit, pane));
         x += width + 1;
     }
 }
 
-fn toolbar(f: &mut UiFrame, a: &mut App, rect: Rect, actions: &[(&str, &'static str)]) {
+fn toolbar(
+    f: &mut UiFrame,
+    a: &mut App,
+    rect: Rect,
+    actions: &[(&str, &'static str)],
+    height: u16,
+) {
     theme::surface(f, rect, theme::PANEL);
     let mut x = rect.x;
     let mut y = rect.y;
+    let height = height.min(rect.height);
     for &(label, command) in actions {
         let text = format!(" {label} ");
         let width = unicode_width::UnicodeWidthStr::width(text.as_str()) as u16;
         if x > rect.x && x + width > rect.right() {
-            y += 1;
+            y += height;
             x = rect.x;
         }
         if y >= rect.bottom() {
             break;
         }
-        let hit = Rect::new(x, y, width.min(rect.right().saturating_sub(x)), 1);
+        let hit = Rect::new(
+            x,
+            y,
+            width.min(rect.right().saturating_sub(x)),
+            height.min(rect.bottom() - y),
+        );
         let enabled = a.action_enabled(command);
-        let (fg, bg) = if !enabled {
-            (theme::DIM, theme::PANEL)
-        } else if hovered(a, hit) {
-            (theme::TEXT, theme::HOVER)
-        } else if command == "continue" || command == "run" {
-            (theme::GREEN, theme::PC)
+        let tone = if command == "continue" || command == "run" {
+            theme::GREEN
         } else if command == "pause" {
-            (theme::AMBER, theme::CHANGE)
+            theme::AMBER
         } else if command == "quit" {
-            (theme::RED, theme::RAISED)
+            theme::RED
         } else {
-            (theme::TEXT, theme::RAISED)
+            theme::TEXT
         };
-        f.render_widget(
-            Paragraph::new(text).style(Style::default().fg(fg).bg(bg)),
+        theme::button(
+            f,
             hit,
+            label,
+            theme::control(enabled, false, hovered(a, hit), tone),
         );
         a.action_hits.push((hit, command));
         x += width + 1;
@@ -454,11 +491,9 @@ fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
     scrollbar(f, a, 0);
 }
 
-fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
-    theme::surface(f, rect, theme::PANEL);
-    // Keep source visible in very short terminals; every action remains in Help.
+fn execution_actions(a: &App, short: bool) -> Vec<(&'static str, &'static str)> {
     let compact = [ACTIONS[1], ACTIONS[2], ACTIONS[8], ACTIONS[9]];
-    let mut actions = if rect.height < 8 {
+    let mut actions = if short {
         compact.to_vec()
     } else {
         ACTIONS.to_vec()
@@ -497,16 +532,43 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
             ),
         );
     }
+    actions
+}
+
+fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect, shared_actions: bool) {
+    theme::surface(f, rect, theme::PANEL);
+    // Wide layouts share one execution toolbar above both Source and Inspector.
+    // Short terminals keep the compact in-panel controls.
+    let actions = execution_actions(a, rect.height < 8);
     let labels: Vec<_> = actions.iter().map(|(name, _)| *name).collect();
-    let toolbar_height = wrapped_height(&labels, rect.width);
+    let button_height = if rect.height >= 18 {
+        control_height(f)
+    } else {
+        1
+    };
+    let toolbar_height = if shared_actions {
+        0
+    } else {
+        wrapped_height(&labels, rect.width, button_height)
+    };
     let rows = Layout::vertical([
-        Constraint::Length(1),
+        Constraint::Length(button_height),
         Constraint::Length(toolbar_height),
         Constraint::Min(1),
     ])
     .split(rect);
-    tabs(f, a, rows[0], &MAIN_PANES, a.main_pane);
-    toolbar(f, a, rows[1], &actions);
+    // Source text actions share the tab row; reserve their space before drawing
+    // tabs so their frames never cover another control's mouse target.
+    let tab_area = Rect {
+        width: rows[0]
+            .width
+            .saturating_sub(source_text::button_width(a, rows[0])),
+        ..rows[0]
+    };
+    tabs(f, a, tab_area, &MAIN_PANES, a.main_pane, button_height);
+    if !shared_actions {
+        toolbar(f, a, rows[1], &actions, button_height);
+    }
     source_text::buttons(f, a, rows[0]);
     let title = match a.main_pane {
         0 => String::new(),
@@ -560,12 +622,17 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
         variable_panel(f, a, rect);
         return;
     }
-    let labels = SIDE_PANES.map(|i| PANES[i]);
-    let tab_height = wrapped_height(&labels, rect.width);
+    let labels = SIDE_PANES.map(|i| pane_label(i, rect.width));
+    let button_height = if rect.height >= 18 {
+        control_height(f)
+    } else {
+        1
+    };
+    let tab_height = wrapped_height(&labels, rect.width, button_height);
     let local_height = if !compact && rect.height > 12 {
         let height = (rect.height / 3).clamp(5, 12);
         // Reserve the input frame's two border rows without hiding Watch values.
-        height + if height >= 8 { 2 } else { 0 }
+        height + if height >= 8 { 2 } else { 0 } + button_height - 1 + u16::from(button_height == 3)
     } else {
         0
     };
@@ -575,7 +642,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
         Constraint::Length(local_height),
     ])
     .split(rect);
-    tabs(f, a, rows[0], &SIDE_PANES, a.side_pane);
+    tabs(f, a, rows[0], &SIDE_PANES, a.side_pane, button_height);
     let title = match a.side_pane {
         2 => " Stack · click / Enter selects frame ",
         3 => " System registers ",
@@ -601,12 +668,15 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
             .iter()
             .map(|(label, _)| *label)
             .collect();
-        let height = wrapped_height(&labels, inner.width).min(inner.height.saturating_sub(2));
+        let row_height = if inner.height >= 8 { button_height } else { 1 };
+        let height =
+            wrapped_height(&labels, inner.width, row_height).min(inner.height.saturating_sub(2));
         toolbar(
             f,
             a,
             Rect::new(inner.x, inner.y, inner.width, height),
             breakpoints::ACTIONS,
+            row_height,
         );
         inner.y += height;
         inner.height -= height;
@@ -618,14 +688,16 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
         inner.height -= 1;
     }
     if a.side_pane == peripherals::PANE && inner.height > 1 {
+        let height = button_height.min(inner.height.saturating_sub(1));
         toolbar(
             f,
             a,
-            Rect::new(inner.x, inner.y, inner.width, 1),
+            Rect::new(inner.x, inner.y, inner.width, height),
             &[("↻ Refresh selected", "peripheral-refresh")],
+            height,
         );
-        inner.y += 1;
-        inner.height -= 1;
+        inner.y += height;
+        inner.height -= height;
     }
     view(f, a, a.side_pane, inner);
     a.side_rect = a.view_rects[a.side_pane];
@@ -640,12 +712,17 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     let inner = divider.inner(rect);
     f.render_widget(divider, rect);
     let watch = a.variable_pane == 1;
+    let tab_height = if inner.height >= 11 {
+        control_height(f)
+    } else {
+        1
+    };
     let rows = Layout::vertical([
-        Constraint::Length(1),
+        Constraint::Length(tab_height),
         Constraint::Min(0),
         Constraint::Length(if !watch {
             0
-        } else if inner.height >= 9 {
+        } else if inner.height >= tab_height + 8 {
             3
         } else {
             1
@@ -657,7 +734,7 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
         width: rows[0].width.saturating_sub(remove_width),
         ..rows[0]
     };
-    tabs(f, a, tab_area, &VARIABLE_PANES, a.variable_pane);
+    tabs(f, a, tab_area, &VARIABLE_PANES, a.variable_pane, tab_height);
     if remove_width > 0 {
         let hit = Rect::new(
             rows[0].right() - remove_width,
@@ -668,17 +745,11 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
         a.watch.remove_rect = hit;
         let enabled =
             a.watch_removable() && a.watch.pending_remove.is_none() && a.pending_task.is_none();
-        f.render_widget(
-            Paragraph::new(" Del Remove ").style(
-                Style::default()
-                    .fg(if enabled { theme::TEXT } else { theme::DIM })
-                    .bg(if enabled && hovered(a, hit) {
-                        theme::HOVER
-                    } else {
-                        theme::PANEL
-                    }),
-            ),
+        theme::button(
+            f,
             hit,
+            "Del Remove",
+            theme::control(enabled, false, hovered(a, hit), theme::TEXT),
         );
     }
     view(f, a, a.variable_pane, rows[1]);
@@ -705,37 +776,11 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
         );
         a.watch.add_rect = hit;
         let enabled = a.pending_watch.is_none() && a.pending_task.is_none();
-        let button = Block::bordered()
-            .border_type(ratatui::widgets::BorderType::Rounded)
-            .borders(if hit.height >= 3 {
-                Borders::ALL
-            } else {
-                Borders::LEFT | Borders::RIGHT
-            })
-            .border_style(Style::default().fg(if enabled {
-                theme::ACCENT
-            } else {
-                theme::BORDER
-            }))
-            .style(Style::default().bg(if enabled && hovered(a, hit) {
-                theme::HOVER
-            } else {
-                theme::RAISED
-            }));
-        let button_inner = button.inner(hit);
-        f.render_widget(button, hit);
-        f.render_widget(
-            Paragraph::new(" + Add ").style(
-                Style::default()
-                    .fg(if enabled { theme::ACCENT } else { theme::DIM })
-                    .bg(if enabled && hovered(a, hit) {
-                        theme::HOVER
-                    } else {
-                        theme::RAISED
-                    })
-                    .add_modifier(Modifier::BOLD),
-            ),
-            button_inner,
+        theme::button(
+            f,
+            hit,
+            "+ Add",
+            theme::control(enabled, false, hovered(a, hit), theme::TEXT),
         );
     }
 }
@@ -765,7 +810,9 @@ pub(super) fn input_box(
             Borders::LEFT | Borders::RIGHT
         })
         .border_style(Style::default().fg(if focused { theme::ACCENT } else { theme::MUTED }))
-        .style(Style::default().bg(background));
+        // As with buttons, leave the frame on the parent surface and apply the
+        // field background only inside the rounded border.
+        .style(Style::default());
     if full {
         border = border.title(format!(" {label} ")).title_style(
             Style::default()
@@ -1239,10 +1286,15 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
         f.render_widget(
             Paragraph::new(Line::from(vec![
                 Span::styled(format!(" {location}"), Style::default().fg(theme::MUTED)),
-                Span::styled(
-                    format!("  {}", a.snapshot.stop_reason),
-                    Style::default().fg(theme::DIM),
-                ),
+                match a.fx.task_label(&a.snapshot.state) {
+                    Some((label, color)) => {
+                        Span::styled(format!("  · {label}"), Style::default().fg(color))
+                    }
+                    None => Span::styled(
+                        format!("  {}", a.snapshot.stop_reason),
+                        Style::default().fg(theme::DIM),
+                    ),
+                },
             ])),
             Rect::new(rect.x, rect.y + 1, rect.width - right_width, 1),
         );
@@ -1300,55 +1352,106 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         return;
     }
     let search_height = if area.height >= 30 { 3 } else { 1 };
+    let button_height = control_height(f);
+    let header_height = if area.height >= 24 { 2 } else { 1 };
+    let core_height = if a.snapshot.core.is_some() {
+        button_height
+    } else {
+        0
+    };
+    let shared_actions = area.width >= 150 && area.height >= 36;
+    let inline_header = area.width >= if core_height > 0 { 150 } else { 100 };
+    let navigation_height = if inline_header {
+        button_height.max(search_height)
+    } else {
+        button_height + core_height + search_height
+    };
+    let actions = execution_actions(a, false);
+    let labels: Vec<_> = actions.iter().map(|(label, _)| *label).collect();
+    let execution_height = if shared_actions {
+        wrapped_height(&labels, area.width, button_height)
+    } else {
+        0
+    };
     let rows = Layout::vertical([
-        Constraint::Length(
-            (if area.height >= 24 { 3 } else { 2 })
-                + search_height
-                + u16::from(a.snapshot.core.is_some()),
-        ),
+        Constraint::Length(header_height + navigation_height + execution_height),
         Constraint::Min(5),
         Constraint::Length(1),
         Constraint::Length(1),
     ])
     .split(area);
-    let mut header_rect = rows[0];
-    header_rect.height = header_rect.height.saturating_sub(search_height);
-    if a.snapshot.core.is_some() {
-        header_rect.height = header_rect.height.saturating_sub(1);
-    }
+    let header_rect = Rect {
+        height: header_height,
+        ..rows[0]
+    };
     header(f, a, header_rect);
+    let navigation_y = header_rect.bottom();
+    let project_width = if inline_header { 44 } else { area.width };
     project_bar(
         f,
         a,
         Rect::new(
             header_rect.x,
-            header_rect.bottom() - 1,
-            header_rect.width,
-            1,
+            header_rect.bottom(),
+            project_width,
+            button_height,
         ),
     );
-    if a.snapshot.core.is_some() {
+    let core_width = if inline_header && core_height > 0 {
+        (14 + a.snapshot.cores.len().min(3) as u16 * 18).min(area.width.saturating_sub(88))
+    } else {
+        area.width
+    };
+    if core_height > 0 {
         cores::draw(
             f,
             a,
             Rect::new(
-                rows[0].x,
-                rows[0].bottom() - search_height - 1,
-                rows[0].width,
-                1,
+                rows[0].x + if inline_header { 46 } else { 0 },
+                navigation_y + if inline_header { 0 } else { button_height },
+                core_width,
+                core_height,
             ),
         );
     }
+    let search_x = if inline_header {
+        rows[0].x + 46 + if core_height > 0 { core_width + 2 } else { 0 }
+    } else {
+        rows[0].x
+    };
     search::symbol_bar(
         f,
         a,
         Rect::new(
-            rows[0].x,
-            rows[0].bottom() - search_height,
-            rows[0].width.min(118),
-            search_height,
+            search_x,
+            navigation_y
+                + if inline_header {
+                    0
+                } else {
+                    button_height + core_height
+                },
+            rows[0].right().saturating_sub(search_x).min(118),
+            if inline_header {
+                navigation_height
+            } else {
+                search_height
+            },
         ),
     );
+    if shared_actions {
+        toolbar(
+            f,
+            a,
+            Rect::new(
+                rows[0].x,
+                rows[0].bottom() - execution_height,
+                rows[0].width,
+                execution_height,
+            ),
+            &actions,
+            button_height,
+        );
+    }
 
     // Fund the search field from Console height to preserve source/inspector space.
     // Tiny terminals retain the one-row field and the existing minimum layout.
@@ -1363,10 +1466,10 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
             Constraint::Percentage(32),
         ])
         .split(body[0]);
-        main_panel(f, a, columns[0]);
+        main_panel(f, a, columns[0], shared_actions);
         side_panel(f, a, columns[2], false);
     } else if MAIN_PANES.contains(&a.pane) {
-        main_panel(f, a, body[0]);
+        main_panel(f, a, body[0], false);
     } else {
         side_panel(f, a, body[0], true);
     }

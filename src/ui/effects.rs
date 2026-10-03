@@ -300,13 +300,40 @@ fn wash(f: &mut UiFrame, rect: Rect, color: Color, amount: f64) {
         }
     }
 }
+// Hover, press and input animations must respect the same interior as the
+// rounded control renderer; washing its bounding rectangle exposes corners.
+fn wash_control(f: &mut UiFrame, rect: Rect, color: Color, amount: f64) {
+    let rect = rect.intersection(f.area());
+    if rect.is_empty() {
+        return;
+    }
+    let framed = f.buffer_mut()[(rect.x, rect.y)].symbol();
+    let interior = if framed == "╭" && rect.height >= 3 {
+        Rect::new(
+            rect.x + 1,
+            rect.y + 1,
+            rect.width.saturating_sub(2),
+            rect.height - 2,
+        )
+    } else if framed == "│" {
+        Rect::new(
+            rect.x + 1,
+            rect.y,
+            rect.width.saturating_sub(2),
+            rect.height,
+        )
+    } else {
+        rect
+    };
+    wash(f, interior, color, amount);
+}
 /// Decorate already laid-out cells. Text, hit boxes, PC and numeric contents never move.
 pub(super) fn paint(f: &mut UiFrame, a: &mut App) {
     let task_pulse = a.fx.amount("task-result");
     if task_pulse > 0.0
         && let Some(task) = &a.fx.task
     {
-        let y = if f.area().height >= 24 { 2 } else { 1 };
+        let y = if f.area().height >= 24 { 1 } else { 0 };
         wash(
             f,
             Rect::new(0, y, f.area().width, 1),
@@ -424,10 +451,10 @@ pub(super) fn paint(f: &mut UiFrame, a: &mut App) {
         }
     }
     if let Some(rect) = a.fx.pressed {
-        wash(f, rect, theme::TEXT, a.fx.amount("press") * 0.2);
+        wash_control(f, rect, theme::TEXT, a.fx.amount("press") * 0.2);
     }
     if let Some((rect, at)) = a.fx.hover {
-        wash(
+        wash_control(
             f,
             rect,
             theme::ACCENT,
@@ -440,9 +467,9 @@ pub(super) fn paint(f: &mut UiFrame, a: &mut App) {
     ] {
         let p = a.fx.amount("input-focus");
         if focus {
-            wash(f, r, theme::ACCENT, 0.08 * (1.0 - p));
+            wash_control(f, r, theme::ACCENT, 0.08 * (1.0 - p));
         }
-        wash(f, r, theme::RED, a.fx.amount("error") * 0.15);
+        wash_control(f, r, theme::RED, a.fx.amount("error") * 0.15);
         if r.width > 0 && r.height > 0 {
             f.buffer_mut()[(r.x, r.y)].fg = mix(theme::ACCENT, theme::TEXT, a.fx.amount("submit"));
         }

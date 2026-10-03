@@ -1,3 +1,5 @@
+backend = "stm32f4"
+
 # Optional STM32F429 single-core debugging + running AHB memory access.
 [gdb]
 executable = "./bin/gdb/bin/arm-none-eabi-gdb.exe"

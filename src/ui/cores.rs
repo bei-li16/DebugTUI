@@ -16,9 +16,9 @@ pub(super) fn color(index: usize) -> Color {
 fn mix(base: Color, accent: Color) -> Color {
     if let (Color::Rgb(r, g, b), Color::Rgb(ar, ag, ab)) = (base, accent) {
         Color::Rgb(
-            ((r as u16 * 7 + ar as u16) / 8) as u8,
-            ((g as u16 * 7 + ag as u16) / 8) as u8,
-            ((b as u16 * 7 + ab as u16) / 8) as u8,
+            ((r as u16 * 31 + ar as u16) / 32) as u8,
+            ((g as u16 * 31 + ag as u16) / 32) as u8,
+            ((b as u16 * 31 + ab as u16) / 32) as u8,
         )
     } else {
         base
@@ -56,24 +56,34 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App, rect: Rect) {
     theme::surface(f, rect, theme::CANVAS);
     f.render_widget(
         Paragraph::new(" Cores ").style(Style::default().fg(color(active))),
-        Rect::new(rect.x, rect.y, 7, 1),
+        Rect::new(rect.x, rect.y + rect.height / 2, 7, 1),
     );
-    let previous = Rect::new(rect.x + 7, rect.y, 3, 1);
-    f.render_widget(
-        Paragraph::new(" ‹ ").style(theme::chip(false, false)),
+    let previous = Rect::new(rect.x + 7, rect.y, 3, rect.height);
+    theme::button(
+        f,
         previous,
+        "‹",
+        theme::chip(false, a.pointer.is_some_and(|p| previous.contains(p))),
     );
     a.core_hits.push((previous, (active + count - 1) % count));
-    let next = Rect::new(rect.right() - 3, rect.y, 3, 1);
-    f.render_widget(Paragraph::new(" › ").style(theme::chip(false, false)), next);
+    let slots = ((rect.width.saturating_sub(14)) / 18).max(1) as usize;
+    // Keep the next arrow beside the visible cores instead of at the far edge
+    // of a wide terminal. Leave gaps between outlined controls.
+    let next_x = (rect.x + 11 + count.min(slots) as u16 * 18).min(rect.right() - 3);
+    let next = Rect::new(next_x, rect.y, 3, rect.height);
+    theme::button(
+        f,
+        next,
+        "›",
+        theme::chip(false, a.pointer.is_some_and(|p| next.contains(p))),
+    );
     a.core_hits.push((next, (active + 1) % count));
-    let slots = ((rect.width.saturating_sub(13)) / 21).max(1) as usize;
     let start = active
         .saturating_sub(slots / 2)
         .min(count.saturating_sub(slots));
-    let mut x = rect.x + 10;
+    let mut x = rect.x + 11;
     for core in a.snapshot.cores.iter().skip(start).take(slots) {
-        let width = 20.min(next.x.saturating_sub(x));
+        let width = 17.min(next.x.saturating_sub(x));
         if width == 0 {
             break;
         }
@@ -83,25 +93,19 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App, rect: Rect) {
             "READY" => "READY",
             _ => "OFF",
         };
-        let label = format!(" {} · {badge} ", core.name);
-        let hit = Rect::new(x, rect.y, width, 1);
-        f.render_widget(
-            Paragraph::new(label).style(
-                Style::default()
-                    .fg(color(core.index))
-                    .bg(if core.index == active {
-                        mix(theme::RAISED, color(core.index))
-                    } else {
-                        theme::PANEL
-                    })
-                    .add_modifier(if core.index == active {
-                        Modifier::BOLD
-                    } else {
-                        Modifier::empty()
-                    }),
-            ),
-            hit,
+        let label = format!("{} · {badge}", core.name);
+        let hit = Rect::new(x, rect.y, width, rect.height);
+        let selected = core.index == active;
+        let mut style = theme::control(
+            true,
+            selected,
+            a.pointer.is_some_and(|p| hit.contains(p)),
+            color(core.index),
         );
+        if selected {
+            style = style.fg(theme::CANVAS).bg(color(core.index));
+        }
+        theme::button(f, hit, &label, style);
         a.core_hits.push((hit, core.index));
         x += width + 1;
     }

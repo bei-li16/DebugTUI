@@ -1,0 +1,53 @@
+# Copy to the MCAL project root as debug-chip.toml.
+# Place tha6-environment.toml.example in .vscode as debug-env-chip.toml.
+# This is a board-specific MCAL startup policy, not part of the chip catalogue.
+version = 3
+watch = ["uart_cnt"]
+[tools]
+profile = ".vscode/debug-env-chip.toml"
+[debug]
+chip = "tha6206"
+cores = [0, 1]
+[program]
+elf = "DemoWorkspace/CodeProject/Debug/${chip_upper}_Demo_Prj.elf"
+source_root = "."
+svd = ".vscode/${chip_upper}/${chip}.svd"
+[tasks]
+build = '.\DemoWorkspace\CodeProject\Build.bat ghs rebuild ${chip}'
+download = '.\.vscode\Load.bat ${chip}'
+[session]
+on_exit = "detach"
+log_dir = "debug_log"
+[multicore]
+scope = "all"
+halt_peers = true
+restart_core = "core.0"
+[live_watch]
+bus_target = "AHB_3"
+elf = "DemoWorkspace/CodeProject/Debug/${chip_upper}_Demo_Prj.elf"
+interval_ms = 200
+tcl_endpoint = "127.0.0.1:6666"
+
+# Templates are filtered by [debug].cores; unused cores do not create sessions.
+# Connect helpers first, then core0 resets once. Unselected helpers are resumed
+# so the MCAL startup barrier can complete during core0-only debugging.
+[[cores]]
+name = "core.0"
+startup_order = 3
+after_connect = ["monitor chipreset", "monitor foreach _core {${unselected_core_ids}} {targets core.$_core; resume}; targets core.0"]
+run = ["tbreak _main", "-exec-continue"]
+[[cores]]
+name = "core.1"
+startup_order = 0
+after_connect = []
+run = ["-exec-continue"]
+[[cores]]
+name = "core.2"
+startup_order = 1
+after_connect = []
+run = ["-exec-continue"]
+[[cores]]
+name = "core.3"
+startup_order = 2
+after_connect = []
+run = ["-exec-continue"]
