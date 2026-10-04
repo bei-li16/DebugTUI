@@ -6,7 +6,7 @@ const out=outputDirectory('variable-write-native');
 const binary=path.resolve(process.argv[2]||path.join(root,'target/debug/debugtui.exe'));
 const cc=process.env.DEBUGTUI_TEST_CC||'C:/MinGW/bin/gcc.exe',gdb=process.env.DEBUGTUI_TEST_GDB||'C:/MinGW/bin/gdb.exe';
 const suite=new Cases(out,{layer:'native GCC/GDB local process; no board',board_tests_executed:false,binary,binary_sha256:hash(binary),gdb,cc});
-const ids=['WRITE-T-VAR-CANCEL','WRITE-T-VAR-SCALARS','WRITE-T-VAR-MEMBERS','WRITE-T-VAR-CONST','WRITE-T-VAR-POINTER','WRITE-T-VAR-FLOAT','WRITE-T-VAR-LOCALS','WRITE-T-VAR-CLEANUP'];
+const ids=['WRITE-T-VAR-CANCEL','WRITE-T-VAR-SCALARS','WRITE-T-VAR-MEMBERS','WRITE-T-VAR-CONST','WRITE-T-VAR-POINTER','WRITE-T-VAR-FLOAT','WRITE-T-VAR-SPECIAL-FLOAT','WRITE-T-VAR-LOCALS','WRITE-T-VAR-CLEANUP'];
 const source=path.join(out,'sample.c'),exe=path.join(out,'sample.exe'),project=path.join(out,'project.toml');
 fs.writeFileSync(source,`
 #include <stdint.h>
@@ -16,6 +16,8 @@ int32_t signed_value=-2;
 uint64_t wide_value=1;
 float float_value=1.5f;
 double double_value=2.5;
+struct FP32 { uint32_t before; float value; uint32_t after; } fp32={0x12345678,1.0f,0x87654321};
+struct FP64 { uint64_t before; double value; uint64_t after; } fp64={0x1122334455667788ULL,1.0,0x8877665544332211ULL};
 const uint32_t constant=9;
 ConstAlias alias_constant=10;
 uint32_t *const fixed_pointer=&value;
@@ -31,7 +33,7 @@ int main(void){fixture(42);return 0;}
 `);
 execFileSync(cc,['-g','-O0',source,'-o',exe],{windowsHide:true});
 const quote=x=>JSON.stringify(x.replaceAll('\\','/'));
-const watches=['value','signed_value','wide_value','float_value','double_value','constant','alias_constant','fixed_pointer','pointer_to_const','object','const_object','pair_pointer'];
+const watches=['value','signed_value','wide_value','float_value','double_value','fp32','fp64','constant','alias_constant','fixed_pointer','pointer_to_const','object','const_object','pair_pointer'];
 fs.writeFileSync(project,`version=2\nwatch=${JSON.stringify(watches)}\n[[breakpoints]]\nlocation='checkpoint'\nkind='code'\n[gdb]\nexecutable=${quote(gdb)}\n[target]\nmode='local'\n[program]\nelf=${quote(exe)}\n[session]\non_exit='disconnect'\n[[writes.regions]]\nid='native-fixture-ram'\nkind='ram'\nstart='0x1'\nend='0xffffffffffffffff'\nwidths=[8,16,32,64,128]\nscope='core'\n`);
 const originalHash=hash(project);let session;
 const context=async()=>(await session.command('registers_list')).context;
@@ -76,6 +78,39 @@ const readNumber=async expression=>BigInt((await evaluate(expression)).split(' '
     if(!await suite.test('WRITE-T-VAR-FLOAT','Finite typed float/double writes and exact negative-zero readback',async()=>{
       const negative=await apply(await request('float_value','-0','float'));assert.equal(negative.observed.hex,'0x80000000');
       const regular=await apply(await request('double_value','3.25','float'));assert.equal(await evaluate('double_value'),'3.25');return {negative,regular};
+    }))return;
+    if(!await suite.test('WRITE-T-VAR-SPECIAL-FLOAT','Exact signed Infinity, quiet/signaling NaN payloads; no target calls, neighbour changes or leaked literal values',async()=>{
+      const evidence=[];
+      for(const [root,bits,word] of [['fp32',32,'unsigned int'],['fp64',64,'unsigned long long']]){
+        await session.command('watch_expand',{expression:root,path:[],expanded:true});
+        const positive=bits===32?'0x7f800000':'0x7ff0000000000000';
+        const negative=bits===32?'0xff800000':'0xfff0000000000000';
+        const nan=bits===32?'0x7fc00000':'0x7ff8000000000000';
+        const negativeNan=bits===32?'0xffc00000':'0xfff8000000000000';
+        const custom=bits===32?['0x7fc00012','0xffc54321','0x7f800001','0xff800123']:['0x7ff8000000000012','0xfff8fedcba987654','0x7ff0000000000001','0xfff0000000012345'];
+        const inputs=[['Infinity','float',positive],['-Infinity','float',negative],['NaN','float',nan],['-NaN','float',negativeNan],...custom.map(hex=>[Buffer.from(hex.slice(2),'hex').reverse().toString('hex'),'bytes',hex])];
+        for(const [text,kind,expected] of inputs){
+          const before=await evaluate(`*((${word} *)&${root}.value)`);
+          const draft=await session.command('write_preview',{target:{kind:'variable',pane:'watch',expression:root,path:[1]},selection:{kind:'register'},input:{kind,text,...(kind==='bytes'?{little_endian:true}:{})},context:await context()});
+          assert.equal(draft.plan.value.hex,expected);
+          assert.equal(await evaluate(`*((${word} *)&${root}.value)`),before,'preview wrote target storage');
+          const count=session.logs('mi>').filter(l=>l.text.includes('-var-assign ')).length;
+          const result=await apply(draft);
+          assert.equal(result.observed.hex,expected);
+          assert.equal(BigInt(await evaluate(`*((${word} *)&${root}.value)`)),BigInt(expected),'independent raw storage differs');
+          assert.equal(session.logs('mi>').filter(l=>l.text.includes('-var-assign ')).length,count+1);
+          evidence.push({root,text,expected,literal:draft.literal,result});
+        }
+      }
+      assert.equal(await readNumber('fp32.before'),0x12345678n);assert.equal(await readNumber('fp32.after'),0x87654321n);
+      assert.equal(await readNumber('fp64.before'),0x1122334455667788n);assert.equal(await readNumber('fp64.after'),0x8877665544332211n);
+      assert.equal(await readNumber('calls'),0n);
+      const logs=session.logs('mi>').map(l=>l.text);
+      const creation=logs.filter(line=>line.includes('python import gdb;')&&line.includes('gdb.set_convenience_variable'));
+      const removal=logs.filter(line=>line.includes('python gdb.set_convenience_variable')&&line.includes(', None)'));
+      assert(creation.length>0);assert.equal(removal.length,creation.length);
+      assert(!logs.some(line=>line.includes('-data-write-memory')||line.includes('call side_effect')));
+      return evidence;
     }))return;
     if(!await suite.test('WRITE-T-VAR-LOCALS','Caller-frame Locals struct/array members and argument remain bound to the selected frame',async()=>{
       await session.command('frame',{level:1});const status=await session.command('status');assert(status.locals.some(v=>v.name==='local_object'));

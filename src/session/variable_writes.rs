@@ -6,6 +6,7 @@ use crate::{
     writes::{Input, MemoryKind, Outcome, ScalarType, Selection, variable_lvalue},
 };
 use std::path::PathBuf;
+mod literals;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 struct Metadata {
@@ -31,10 +32,55 @@ pub(super) struct Draft {
     target: Json,
     metadata: Metadata,
     raw: RawValue,
-    assignment: String,
+    assignment: Assignment,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", content = "expression", rename_all = "snake_case")]
+enum Assignment {
+    Expression(String),
+    ExactFloatBits,
 }
 
 impl Engine {
+    fn check_variable_literal(
+        &mut self,
+        metadata: &Metadata,
+        raw: &RawValue,
+        assignment: &str,
+    ) -> Result<RawValue, String> {
+        let expression = format!("(__typeof__({}))({assignment})", metadata.expression);
+        let created = self.mi(&format!("-var-create - * {}", mi::quote(&expression)))?;
+        let name = created.data.string("name");
+        if name.is_empty() {
+            return Err("GDB omitted the numeric literal object".into());
+        }
+        let result = self.variable_raw(&name, raw.bits);
+        let cleanup = self.mi(&format!("-var-delete {}", mi::quote(&name)));
+        match (result, cleanup) {
+            (Ok(observed), Ok(_)) => Ok(observed),
+            (Err(error), Ok(_)) => Err(error),
+            (Err(error), Err(cleanup)) => Err(format!(
+                "{error}; numeric literal cleanup failed: {cleanup}"
+            )),
+            (Ok(_), Err(error)) => Err(format!("Numeric literal cleanup failed: {error}")),
+        }
+    }
+    fn resolve_variable_assignment(
+        &mut self,
+        metadata: &Metadata,
+        input: &Input,
+    ) -> Result<(RawValue, Assignment), String> {
+        let (raw, assignment) = metadata.scalar.assignment(input)?;
+        if !metadata.scalar.requires_literal_probe(&raw) {
+            return Ok((raw, Assignment::Expression(assignment)));
+        }
+        let observed = self.check_variable_literal(metadata, &raw, &assignment)?;
+        if observed == raw {
+            return Ok((raw, Assignment::Expression(assignment)));
+        }
+        self.with_exact_float_literal(metadata, &raw, |_, _| Ok(()))?;
+        Ok((raw, Assignment::ExactFloatBits))
+    }
     fn without_target_calls<T>(
         &mut self,
         body: impl FnOnce(&mut Self) -> Result<T, String>,
@@ -381,6 +427,10 @@ impl Engine {
         {
             return Err("GDB selected frame differs from the edit context".into());
         }
+        self.stopped()?;
+        if self.register_context() != *context || self.cancellation.load(Ordering::Relaxed) {
+            return Err("Variable edit context changed during frame inspection".into());
+        }
         Ok(thread)
     }
     pub(super) fn preview_variable_write(&mut self, p: &Json) -> Result<Json, String> {
@@ -413,7 +463,7 @@ impl Engine {
         let (metadata, raw, assignment) = self.without_target_calls(|engine| {
             engine.with_variable(&p["target"], |engine, node| {
                 let metadata = engine.variable_metadata(&node, &context)?;
-                let (raw, assignment) = metadata.scalar.assignment(&input)?;
+                let (raw, assignment) = engine.resolve_variable_assignment(&metadata, &input)?;
                 Ok((metadata, raw, assignment))
             })
         })?;
@@ -435,7 +485,7 @@ impl Engine {
         )?;
         let result = json!({"draft":token,"target":p["target"],"context":context,"thread":thread,"owner":metadata.owner,"scope":metadata.scope,"metadata":metadata,
             "channel":"gdb","endpoint":self.project.target.endpoint,"plan":{"value":raw,"selected_mask":mask,"needs_fresh_read":false},"outcome":Outcome::NotSent,
-            "warning":"Typed assignment recreates and rechecks this member, type and storage at Apply; GDB target function calls are disabled during inspection and assignment.","expires_in_ms":DRAFT_LIFETIME.as_millis()});
+            "literal":assignment,"warning":"Typed assignment recreates and rechecks this member, type and storage at Apply; GDB target function calls are disabled during inspection and assignment. Special float literals are checked against the exact preview bits.","expires_in_ms":DRAFT_LIFETIME.as_millis()});
         self.write_drafts.2.insert(
             token,
             Draft {
@@ -491,39 +541,63 @@ impl Engine {
                     if engine.variable_context(&draft.context)? != draft.thread {
                         return Err("Variable thread changed before assignment".into());
                     }
-                    let expression = format!(
-                        "(__typeof__({}))({})",
-                        metadata.expression, draft.assignment
-                    );
-                    sent = true;
-                    outcome = Outcome::Unknown;
-                    engine.mi(&format!(
-                        "-var-assign {} {}",
-                        mi::quote(&node.string("name")),
-                        mi::quote(&expression)
-                    ))?;
-                    outcome = Outcome::Accepted;
-                    if engine.register_context() != draft.context
-                        || engine.snapshot.state != "STOPPED"
-                    {
-                        return Err(
-                            "Assignment accepted but context changed before verification".into(),
-                        );
-                    }
-                    let observed =
-                        engine.variable_raw(&node.string("name"), metadata.scalar.bits)?;
-                    if engine.register_context() != draft.context
-                        || engine.snapshot.state != "STOPPED"
-                    {
-                        return Err("Context changed during variable verification".into());
-                    }
-                    outcome = if observed == draft.raw {
-                        Outcome::Verified
-                    } else {
-                        Outcome::Mismatch
+                    let mut assign = |engine: &mut Self, assignment: &str| {
+                        // Literal probing also drains asynchronous MI records.
+                        // Recheck after it, immediately before the sole assignment.
+                        if engine.variable_context(&draft.context)? != draft.thread {
+                            return Err("Variable thread changed during literal inspection".into());
+                        }
+                        let expression =
+                            format!("(__typeof__({}))({assignment})", metadata.expression);
+                        sent = true;
+                        outcome = Outcome::Unknown;
+                        engine.mi(&format!(
+                            "-var-assign {} {}",
+                            mi::quote(&node.string("name")),
+                            mi::quote(&expression)
+                        ))?;
+                        outcome = Outcome::Accepted;
+                        if engine.register_context() != draft.context
+                            || engine.snapshot.state != "STOPPED"
+                        {
+                            return Err(
+                                "Assignment accepted but context changed before verification"
+                                    .into(),
+                            );
+                        }
+                        let observed =
+                            engine.variable_raw(&node.string("name"), metadata.scalar.bits)?;
+                        if engine.register_context() != draft.context
+                            || engine.snapshot.state != "STOPPED"
+                        {
+                            return Err("Context changed during variable verification".into());
+                        }
+                        outcome = if observed == draft.raw {
+                            Outcome::Verified
+                        } else {
+                            Outcome::Mismatch
+                        };
+                        result["observed"] = json!(observed);
+                        Ok(())
                     };
-                    result["observed"] = json!(observed);
-                    Ok(())
+                    match &draft.assignment {
+                        Assignment::Expression(expression) => {
+                            if metadata.scalar.requires_literal_probe(&draft.raw)
+                                && engine
+                                    .check_variable_literal(&metadata, &draft.raw, expression)?
+                                    != draft.raw
+                            {
+                                return Err(
+                                    "GDB numeric literal changed since preview; no write sent"
+                                        .into(),
+                                );
+                            }
+                            assign(engine, expression)
+                        }
+                        Assignment::ExactFloatBits => {
+                            engine.with_exact_float_literal(&metadata, &draft.raw, assign)
+                        }
+                    }
                 })
             })
         })();

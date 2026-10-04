@@ -194,9 +194,27 @@ impl ScalarType {
                 return Err("Typed float writer needs 32 or 64 bits".into());
             };
             if !value.is_finite() {
-                return Err("This typed MI writer cannot construct NaN/Infinity without a raw-memory bypass".into());
-            }
-            if value == 0.0 && value.is_sign_negative() {
+                // GDB evaluates literal arithmetic while may-call-functions is
+                // off. The engine checks the resulting raw bits before sending
+                // an assignment; no target helper or memory cast is involved.
+                let overflow = if self.bits == 32 {
+                    "((float)(0x1p127 + 0x1p127))"
+                } else {
+                    "((double)(0x1p1023 + 0x1p1023))"
+                };
+                let positive = if value.is_nan() {
+                    // The engine probes this candidate, then uses an exact
+                    // host buffer if its NaN sign or payload does not match.
+                    format!("(-({overflow} - {overflow}))")
+                } else {
+                    overflow.into()
+                };
+                if value.is_sign_negative() {
+                    format!("(-{positive})")
+                } else {
+                    positive
+                }
+            } else if value == 0.0 && value.is_sign_negative() {
                 "(-1.0 * 0.0)".into()
             } else {
                 format!("{value:e}")
@@ -217,6 +235,14 @@ impl ScalarType {
             raw.hex.clone()
         };
         Ok((raw, expression))
+    }
+    pub fn requires_literal_probe(&self, raw: &RawValue) -> bool {
+        self.float
+            && match (raw.bits, raw.integer()) {
+                (32, Ok(n)) => n & 0x7f800000 == 0x7f800000,
+                (64, Ok(n)) => n & 0x7ff0000000000000 == 0x7ff0000000000000,
+                _ => false,
+            }
     }
 }
 
@@ -354,7 +380,86 @@ mod tests {
                     text: "NaN".into(),
                     ..input
                 })
-                .is_err()
+                .is_ok()
         );
+    }
+    #[test]
+    fn special_float_inputs_preserve_sign_payload_and_require_backend_proof() {
+        for (bits, hexes) in [
+            (
+                32,
+                vec![
+                    "7f800000", "ff800000", "7fc00012", "ffc54321", "7f800001", "ff800123",
+                ],
+            ),
+            (
+                64,
+                vec![
+                    "7ff0000000000000",
+                    "fff0000000000000",
+                    "7ff8000000000012",
+                    "fff8fedcba987654",
+                    "7ff0000000000001",
+                    "fff0000000012345",
+                ],
+            ),
+        ] {
+            let scalar = ScalarType {
+                bits,
+                signed: true,
+                float: true,
+                pointer: false,
+                boolean: false,
+            };
+            for hex in hexes {
+                for little in [true, false] {
+                    let mut octets = hex
+                        .as_bytes()
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
+                        .map(|b| std::str::from_utf8(b).unwrap())
+                        .collect::<Vec<_>>();
+                    if little {
+                        octets.reverse();
+                    }
+                    let input = Input {
+                        kind: InputKind::Bytes,
+                        text: octets.join(" "),
+                        little_endian: Some(little),
+                    };
+                    let (raw, _) = scalar.assignment(&input).unwrap();
+                    assert_eq!(raw.hex, format!("0x{hex}"));
+                    assert!(scalar.requires_literal_probe(&raw));
+                }
+            }
+            let finite = scalar
+                .assignment(&Input {
+                    kind: InputKind::Float,
+                    text: "-0".into(),
+                    little_endian: None,
+                })
+                .unwrap()
+                .0;
+            assert!(!scalar.requires_literal_probe(&finite));
+            assert!(
+                scalar
+                    .assignment(&Input {
+                        kind: InputKind::Float,
+                        text: "1e9999".into(),
+                        little_endian: None
+                    })
+                    .is_err()
+            );
+            assert!(
+                scalar
+                    .assignment(&Input {
+                        kind: InputKind::Float,
+                        text: "NaN;call f()".into(),
+                        little_endian: None
+                    })
+                    .is_err()
+            );
+        }
     }
 }

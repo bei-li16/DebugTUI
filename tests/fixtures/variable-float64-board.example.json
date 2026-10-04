@@ -1,0 +1,20 @@
+{
+  "frame": 0,
+  "frame_function": "debug_write_fixture",
+  "target": {"kind": "variable", "pane": "watch", "expression": "float_fixture64", "path": [1], "channel": "gdb"},
+  "probe": "float_fixture64.value",
+  "path_expression": "(float_fixture64).value",
+  "input": {"kind": "float", "text": "Infinity"},
+  "little_endian": true,
+  "owner": "core:core0",
+  "scope": "core",
+  "sentinels": ["float_fixture64.before", "float_fixture64.after", "variable_write_fixture_calls"],
+  "special_inputs": [
+    {"label": "positive Infinity", "input": {"kind": "float", "text": "Infinity"}, "expected_raw": "0x7ff0000000000000"},
+    {"label": "negative Infinity", "input": {"kind": "float", "text": "-Infinity"}, "expected_raw": "0xfff0000000000000"},
+    {"label": "positive quiet payload", "input": {"kind": "bytes", "text": "12 00 00 00 00 00 f8 7f", "little_endian": true}, "expected_raw": "0x7ff8000000000012"},
+    {"label": "negative quiet payload", "input": {"kind": "bytes", "text": "54 76 98 ba dc fe f8 ff", "little_endian": true}, "expected_raw": "0xfff8fedcba987654"},
+    {"label": "positive signaling payload", "input": {"kind": "bytes", "text": "01 00 00 00 00 00 f0 7f", "little_endian": true}, "expected_raw": "0x7ff0000000000001"},
+    {"label": "negative signaling payload", "input": {"kind": "bytes", "text": "45 23 01 00 00 00 f0 ff", "little_endian": true}, "expected_raw": "0xfff0000000012345"}
+  ]
+}

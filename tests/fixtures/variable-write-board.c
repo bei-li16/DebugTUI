@@ -23,6 +23,13 @@ struct VariableWriteFixture fixture = {
     0x13579bdf, 0x11223344, 0x55667788, {10,11,12},
     UINT64_C(0x123456789abcdef0), 1.5f, 2.5
 };
+struct FloatWriteFixture32 { uint32_t before; float value; uint32_t after; } float_fixture32 = {0x12345678, 1.0f, 0x87654321};
+struct FloatWriteFixture64 { uint64_t before; double value; uint64_t after; } float_fixture64 = {UINT64_C(0x1122334455667788), 1.0, UINT64_C(0x8877665544332211)};
+uint32_t variable_write_fixture_calls;
+FIXTURE_NOINLINE int variable_write_fixture_side_effect(void) {
+    ++variable_write_fixture_calls;
+    return 42;
+}
 volatile uint32_t variable_write_fixture_sink;
 FIXTURE_NOINLINE void debug_write_fixture(void) {
     variable_write_fixture_sink = fixture.value;

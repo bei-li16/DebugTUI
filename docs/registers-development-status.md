@@ -2,6 +2,8 @@
 
 本文件记录开发分支上的实际实现，配合 [开发 TODO](registers-development-todo.md) 使用。当前仍是未发布的开发版本；下述软件验证不能作为芯片或 OpenOCD 实板能力证明。
 
+2026-10-05 特殊变量浮点批次：Watch／Locals typed writer 接入正负 Infinity 和精确 quiet／signaling NaN payload。Preview／Apply 核对 GDB 常量原始位；不匹配时使用按目标字节序构造的主机 Python buffer，重新核对后才发送一次类型赋值。常量检查之后再次验证停止上下文；取消、能力缺失和位模式不符不发送写入，发送后错误不重试，清理错误保留实际结果。完整 Cargo 回归 309 单元、89 集成通过，2 ignored；严格 Clippy 通过。`artifacts/functional-1791153172094-f4f1823d/report.json` 的 unit／variable-write suites 通过，F26 映射齐全，其他 19 suites 未选；本机实际 GCC/GDB 的 9 阶段含 16 次特殊值写入及独立位读取、邻接与函数计数验证。WRITE-H01 float／double 驱动在实际二进制＋大小端 MI 模型分别 6 阶段通过，默认 5 skipped，R52 固件对象编译通过。配套 ARM GDB 无 Python：加载真实 R52 EABI 对象后 8 个 Infinity 常量通过，精确 NaN buffer 一项 skipped；本机 Python GDB 的大小端 24 常量通过。详见 [写入路径和实际限制](variable-special-float-writes.md) 与 [延后案例](../tests/cases/variable-special-floats.md)。变量引用、位域、128 位实际后端和配套工具集精确 NaN 支持仍待完成；未上板、安装、推送或发布。
+
 2026-10-05 状态与取消批次：补齐 Total／Shown／当前 Valid、可读定义和八类状态计数；字段／折叠不重复计数，完整错误／来源／时间可键鼠滚动访问。当前单项硬件缺失也参与 Target 筛选，All 中不自动试读。读取／Probe／MPU／selector 采用独立请求取消标记，原子事务仍完整恢复，整批新结果丢弃，旧样本保留；Scope All 只取消当前 worker，恢复未知仍 FAULT。完整回归 308 单元、83 集成通过，2 ignored；严格 Clippy 通过。`artifacts/functional-1791150195450-fbd63962/report.json` 的 unit suite 通过，F24 的 42 个模式均有证据，其余 20 suites skipped。REG-205/206/211 的软件要求已核对；实际 PowerShell／VS Code 视觉验收和 [人工环境 case](../tests/cases/register-status-cancel.md) 未执行。完整 DDI 0568 的 HCPTR、调试态 FP 陷阱和 DCPS2 UNKNOWN 状态核对见 [方案限制](register-read-status-and-cancel.md)；EL1／Guest VFP 仍未完成。未上板、安装、推送或发布。
 
 2026-10-05 VFP 批次：接入显式 `vfp_command` 和独立协议，Hyp 物理 DSPSR／MIDR／HCPTR 验证后读 VMRS 与 D pair；未改模式或 FPU 控制。依据 R52 TRM §§16.5–16.6 和完整 DDI 0568 D1.3，SP-only D16 与 DP/NEON D32 分开适配，Single／Double／Quad 的 S/D/Q 共用一次物理 pair，保留全部 128 位。十五项 Probe 新增 FPSID、MVFR0/1/2 和实际 FPEXC.EN；未使能、未实现、未知特性和访问受限分别记录。生产 C 事务覆盖 63 个故障点，物理 R0/R1 恢复回读，以及完整 DSPSR／HCPTR／FPEXC 变化拒绝。完整 Cargo 回归 299 单元、76 集成通过，2 ignored；严格 Clippy 通过，F24 的 34 个模式有实际通过证据。REG-H03 默认 4 skipped；实际二进制双核软件驱动的 D32、D16、未使能、TCP10 受限四种流程各 5 阶段通过，独立 GNU Arm 采样钩子编译通过。自检修复 REG-H02/H03 对汇编无类型参考数组的 GDB 读取，显式指针表达式通过真实 GCC/GDB 高位原始字验证。Windows/Linux 新目录后端构建、原生协议／参数／状态检查和 Windows 9 项包检查通过，源码 ZIP 的四个固定提交解压／对象／独立 clone 回读通过；记录在 `artifacts/openocd-adapter-windows-vfp/summary.json` 和 `artifacts/functional-1791147270982-4af639a5/report.json`。合法 EL1/Guest/User VFP 读取、R52+ 实际身份、完整 TODO 和最终安装发布仍未完成；未执行上板，未推送或发布。
@@ -63,7 +65,7 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 
 ## 完整任务仍需完成的部分
 
-2026-10-05 按用户新要求自检：TODO 中有 71 项开发条目，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新 VFP 批次完整 Cargo 回归通过 299 项单元、76 项集成测试，2 项 ignored；严格 Clippy 通过。其他功能 suite 仍需在完整任务验收时统一运行。F24 新增银行、MRRC 与 VFP 模式的测试映射，不能用软件状态替代整份 TODO 验收。
+2026-10-05 按用户新要求自检：TODO 中有 71 项开发条目，REG-205/206/211 三项已核对，其余条目仍需完整验收，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新完整 Cargo 和实际 GDB 回归见上方批次记录。其他功能 suite 仍需在完整任务验收时统一运行。F24／F26 的银行、MRRC、VFP 和变量写入测试映射不能替代整份 TODO 验收。
 
 | 条目范围 | 已有实现与证据 | 尚未完成／需补验收 |
 |---|---|---|
@@ -74,11 +76,11 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 | REG-401–408 | Timer/PMU/GIC 部分目录、PMU 数量与直接/选择器读取、物理/虚拟 GIC 能力分离和 AP 条件软件夹具；Windows MRRC 候选构建/命令检查 | 完整 Timer 权限/一致性适配，完整 GIC/Debug/STM 类别及显式板级映射，Bao EL2/Guest 场景及全部延后驱动 |
 | REG-501–506 | 软件回归、严格 Clippy、F24–F26 覆盖来源和限制、增量用户手册/开发记录/示例 | 全部延后案例与原功能回归，完整架构/环境/mcal-vsconfig 配套文档，最终升版、产物/profile 一致性、安装升级、非主分支推送与 Release |
 | BUS-001–008 | Setup 通道编辑、各面板入口、路由/来源、范围和绑定失效、运行限制/无回退；`src/launch/channels.rs`、`src/ui/monitor.rs`、`src/session/memory.rs`、F25 | 新增系统寄存器 MMIO 模块的完整接入及相应 BUS 延后场景/Issue #1 完整验收 |
-| WRITE-001–012 | Core 整数、声明 RAM、8/16/32 位 MMIO、typed Watch/Locals writer；草稿/权限/owner/服务锁/结果/取消；SVD 字段及部分特殊语义；F26 | 系统/状态/银行/浮点和 64 位 MMIO writer；变量位域/引用/NaN/Infinity/128 位后端；一次写、解锁、自清零等实际策略；全部类别的重叠缓存及 WRITE-T/H 和最终版本化交付 |
+| WRITE-001–012 | Core 整数、声明 RAM、8/16/32 位 MMIO、typed Watch/Locals writer；正负 Infinity、精确 NaN payload 的 GDB 常量检查及条件 Python buffer；草稿/权限/owner/服务锁/结果/取消；SVD 字段及部分特殊语义；F26 | 系统/状态/银行/浮点和 64 位 MMIO writer；变量位域/引用/128 位后端，配套 ARM GDB 的精确 NaN 主机接口；一次写、解锁、自清零等实际策略；全部类别的重叠缓存及 WRITE-T/H 和最终版本化交付 |
 
 测试矩阵自检：REG-T01–T11、BUS-T01–T05、WRITE-T01–T12 必须随上述缺口逐项补足，现有绿色软件测试不能覆盖未接入的类别。延后驱动当前覆盖 REG-H01/H14 能力子集、REG-H02 模式银行独立基线和权限拒绝、REG-H03 Hyp VFP 四类独立基线、REG-H04/H06 选择器子集、REG-H04 完整 MPU/MAIR、REG-H05 Timer MRRC 基线/高字驱动、WRITE-H01 typed 变量子集、WRITE-H02 Core 和 WRITE-H04 RAM 子集；其余 REG-H/BUS-H/WRITE-H 的可执行用例仍需准备。上板执行按本任务要求不做，交付仍须写好所有相应 case 并记录未执行；不能把 skipped 计为 passed。
 
-完整运行工具版本／哈希与目标描述、可选类别／R52+ 及板级身份能力矩阵（显式能力采样为十五项，完整类别矩阵仍未完成）；最终工具集与 profile 整合、安装升级；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；变量的位域／引用／特殊浮点及 128 位后端验收、64 位 MMIO writer 和其余写入类别的跨面板编辑；系统／银行／浮点 writer、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、推送及 Release。浮点／向量显示已完成，Hyp VFP 实际读取通道和别名已有软件证据；EL1/Guest 合法读取及完整 PowerShell／VS Code 终端视觉验收仍待完成。不得因基础框架或部分 writer 通过测试而把完整 TODO 或 Goal 标为完成。
+完整运行工具版本／哈希与目标描述、可选类别／R52+ 及板级身份能力矩阵（显式能力采样为十五项，完整类别矩阵仍未完成）；最终工具集与 profile 整合、安装升级；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；变量的位域／引用及 128 位后端验收、配套 ARM GDB 精确 NaN 支持、64 位 MMIO writer 和其余写入类别的跨面板编辑；系统／银行／浮点 writer、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、推送及 Release。浮点／向量显示已完成，Hyp VFP 实际读取通道和别名已有软件证据；EL1/Guest 合法读取及完整 PowerShell／VS Code 终端视觉验收仍待完成。不得因基础框架或部分 writer 通过测试而把完整 TODO 或 Goal 标为完成。
 
 ## 当前 writer 矩阵
 
@@ -91,7 +93,7 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 | D/S/Q 与 FP 状态 | 实际 writer 尚未适配；GDB LONGEST 通路不得写 128 位向量 | GDB 14 源码、宽度拒绝测试 |
 | RAM | 声明地址区域、owner、通道与 byte_writable 后，GDB MI 或 target 限定 TCL 字节写入；最多 4096 字节，Flash 走 Download | 实际 worker 软件夹具、64 位地址、范围哨兵、错误及延后脚本验证；实板未执行 |
 | SVD 外设及字段 | 声明 MMIO 区域及 TCL 通道；单个对齐 8/16/32 位访问；GDB MMIO 与 64 位 MMIO writer 未适配 | 真实 TCP TCL 软件夹具；大小端、混合语义、WO、回读与错误覆盖；实板未执行 |
-| Watch／Locals 标量与结构体／数组成员 | GDB `-var-assign` 类型赋值；实际类型、可赋值性、地址、线程、帧、owner 在预览／应用重新检查；声明 RAM，寄存器驻留只接受物理 frame 0；const／volatile／AP 路由无隐式回退 | 本机 GCC/GDB 8 阶段通过；MI 故障夹具与键鼠测试；128 位表达式仅纯单元验证；实板未执行 |
+| Watch／Locals 标量与结构体／数组成员 | GDB `-var-assign` 类型赋值；实际类型、可赋值性、地址、线程、帧、owner 在预览／应用重新检查；声明 RAM，寄存器驻留只接受物理 frame 0；特殊 float／double 常量逐位核对，精确 buffer 依赖实际 GDB Python；const／volatile／AP 路由无隐式回退 | 本机 GCC/GDB 9 阶段通过，含正负 Infinity 和 quiet／signaling NaN payload；配套 ARM GDB 无 Python 时所需 buffer 安全拒绝；MI 大小端／故障／多核隔离与键鼠测试；128 位表达式仅纯单元验证；实板未执行 |
 | 混合 RW/RO/WO、W1C/W0C、枚举／保留位／一次写 | 规划器有软件夹具；缺少硬件规则明确拒绝，仅按已声明元数据开放已适配 MMIO writer，不能宣称实板已验证 | `writes::tests`、SVD 元数据夹具；实板未执行 |
 
 GDB writer 的依据为 [GDB 14 MI 实现](https://gnu.googlesource.com/binutils-gdb/+/refs/heads/gdb-14-branch/gdb/mi/mi-main.c) 和实际工作区 ARM GDB 的 `-info-gdb-mi-command data-write-register-values`／`-gdb-show may-write-registers` 输出。SVD 继承及特殊语义依据为 [CMSIS-SVD register 规范](https://open-cmsis-pack.github.io/svd-spec/main/elem_registers.html)。这些软件依据不证明某块板卡的写权限或调试授权。

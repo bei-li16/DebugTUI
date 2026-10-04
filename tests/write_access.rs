@@ -7,6 +7,8 @@ use debugtui::{
 };
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf, time::Duration};
+#[path = "write_access/float_cases.rs"]
+mod float_cases;
 
 fn fixture(label: &str, flags: &[(&str, &str)]) -> (Project, PathBuf) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
