@@ -74,7 +74,7 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 47] = [
+const COMMANDS: [&str; 48] = [
     "edit-value",
     "cores",
     "core NAME_OR_INDEX",
@@ -118,6 +118,7 @@ const COMMANDS: [&str; 47] = [
     "find TEXT",
     "elf PATH",
     "refresh",
+    "register-probe",
     "peripheral-refresh",
     "build",
     "help",
@@ -535,6 +536,7 @@ impl App {
                     self.hide_source();
                 }
                 self.snapshot = *snapshot;
+                self.sync_register_capabilities();
             }
             Event::Log {
                 channel,
@@ -563,6 +565,9 @@ impl App {
                 result,
                 error,
             } => {
+                if self.register_probe_response(id, &result, error.as_deref()) {
+                    return false;
+                }
                 if self.write_response(id, &result, error.as_deref()) {
                     return false;
                 }
@@ -754,6 +759,7 @@ impl App {
             "register-search" => self.start_register_search(),
             "register-filter" => self.filter_registers(),
             "register-definitions" => self.toggle_register_definitions(),
+            "register-probe" => self.probe_registers(engine),
             "scope" => self.submit(engine, "control_scope", json!({"scope":arg})),
             "scope-toggle" => self.submit(engine, "control_scope", json!({"scope":if self.group_control() { "core" } else { "all" }})),
             "appearance" => self.open_appearance(),
@@ -1380,6 +1386,7 @@ impl App {
                 !self.snapshot.state.starts_with("STARTING") && self.snapshot.state != "CONNECTING"
             }
             "pause" => self.snapshot.state == "RUNNING",
+            "register-probe" => self.register_view.enabled() && self.snapshot.state == "STOPPED",
             "register-search" | "register-filter" | "register-definitions" => {
                 self.register_view.enabled()
             }

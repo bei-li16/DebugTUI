@@ -19,6 +19,7 @@ use std::{
 };
 
 mod breakpoints;
+mod capabilities;
 mod memory;
 mod memory_writes;
 mod registers;
@@ -154,6 +155,10 @@ pub struct Snapshot {
     pub generation: u64,
     #[serde(default)]
     pub register_session: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register_generation: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register_probe: Option<crate::registers::capabilities::Probe>,
     pub async_supported: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core: Option<CoreStatus>,
@@ -186,6 +191,8 @@ impl Default for Snapshot {
             memory: vec![],
             generation: 0,
             register_session: 0,
+            register_generation: None,
+            register_probe: None,
             async_supported: false,
             core: None,
             cores: vec![],
@@ -1570,6 +1577,7 @@ impl Engine {
             }
             "status" => Ok(serde_json::to_value(&self.snapshot).unwrap()),
             "registers_list" => self.registers_list(),
+            "registers_probe" => self.probe_register_capabilities(p),
             "registers_read" => self.read_registers(p),
             "memory_channels" => self.memory_channels(),
             "complete" => {

@@ -14,6 +14,14 @@ pub(super) fn new_session() -> u64 {
 impl Engine {
     pub(super) fn invalidate_register_samples(&mut self) {
         let context = self.register_context();
+        if self
+            .snapshot
+            .register_probe
+            .as_ref()
+            .is_some_and(|p| p.context != context || self.snapshot.state != "STOPPED")
+        {
+            self.snapshot.register_probe = None;
+        }
         for sample in &mut self.snapshot.register_samples {
             if self.snapshot.state != "STOPPED"
                 || !sample.applies(&context, sample.owner.as_deref())
@@ -47,7 +55,7 @@ impl Engine {
         let configured = self.register_catalogue.as_ref().map_err(Clone::clone)?;
         Ok(match configured {
             Some((catalogue, source)) => {
-                json!({"catalogue":catalogue,"source":source,"context":self.register_context(),"facts":self.project.registers.facts,"fact_source":"configuration"})
+                json!({"catalogue":catalogue,"source":source,"context":self.register_context(),"facts":self.effective_register_facts(),"probe":self.snapshot.register_probe,"fact_source":if self.snapshot.register_probe.is_some(){"configuration_and_current_target_observation"}else{"configuration"}})
             }
             None => json!({"catalogue":null,"source":"gdb","context":self.register_context()}),
         })
@@ -99,7 +107,8 @@ impl Engine {
                 return Err("Register read cancelled".into());
             }
             let register = catalogue.register(id).unwrap();
-            let (implementation, evidence) = register.implementation(&self.project.registers.facts);
+            let (implementation, evidence) =
+                register.implementation(&self.effective_register_facts());
             let mut topology = self.project.registers.topology.clone();
             if topology.chip.is_empty() {
                 topology.chip = self.project.debug.chip.clone();
@@ -171,7 +180,7 @@ impl Engine {
         self.publish();
         Ok(json!({"context":context,"samples":samples}))
     }
-    fn store_register_samples(&mut self, samples: &[Sample], catalogue: &Catalogue) {
+    pub(super) fn store_register_samples(&mut self, samples: &[Sample], catalogue: &Catalogue) {
         for sample in samples {
             let previous = self
                 .snapshot
@@ -219,7 +228,7 @@ impl Engine {
             }
         }
     }
-    fn read_register_value(
+    pub(super) fn read_register_value(
         &mut self,
         register: &Register,
         catalogue: &Catalogue,
@@ -240,7 +249,8 @@ impl Engine {
                 // Alias requests cannot bypass a parent's access or implementation restrictions.
                 if !parent.access.readable()
                     || parent.read_side_effect
-                    || parent.implementation(&self.project.registers.facts).0 == Implementation::No
+                    || parent.implementation(&self.effective_register_facts()).0
+                        == Implementation::No
                 {
                     return Err((
                         Reason::AccessRestricted,
@@ -413,7 +423,7 @@ impl Engine {
     }
 }
 
-fn route_name(register: &Register) -> String {
+pub(super) fn route_name(register: &Register) -> String {
     match &register.reader {
         Reader::Gdb { name } => format!("gdb:{name}"),
         Reader::Alias { source, .. } => format!("alias:{source}"),

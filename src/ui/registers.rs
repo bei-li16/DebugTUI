@@ -9,6 +9,7 @@ pub(super) const ACTIONS: &[(&str, &str)] = &[
     ("Find", "register-search"),
     ("Group", "register-filter"),
     ("Target / All", "register-definitions"),
+    ("Probe caps", "register-probe"),
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,6 +30,7 @@ pub(super) struct RegisterView {
     previous: BTreeMap<(String, String), Sample>,
     attempts: BTreeSet<(u64, u64, String, u32, String)>,
     pending: Option<(u64, Context)>,
+    probe_pending: Option<(u64, Context)>,
     query: String,
     search_original: String,
     pub(super) searching: bool,
@@ -114,6 +116,7 @@ impl RegisterView {
             previous: BTreeMap::new(),
             attempts: BTreeSet::new(),
             pending: None,
+            probe_pending: None,
             query: String::new(),
             search_original: String::new(),
             searching: false,
@@ -249,10 +252,150 @@ impl RegisterView {
 }
 
 impl App {
+    pub(super) fn sync_register_capabilities(&mut self) {
+        let facts = self
+            .snapshot
+            .register_probe
+            .as_ref()
+            .filter(|p| p.context == self.register_context() && self.snapshot.state == "STOPPED")
+            .map(|p| p.effective(&self.project.registers.facts))
+            .unwrap_or_else(|| self.project.registers.facts.clone());
+        if facts != self.register_view.facts {
+            self.register_view.facts = facts;
+            for sample in self.register_view.values.values_mut() {
+                sample.stale();
+            }
+            self.register_view.rebuild();
+            self.selections[3] = self
+                .selected(3)
+                .min(self.register_view.rows.len().saturating_sub(1));
+            if self.pane == 3 {
+                self.selection = self.selections[3];
+            }
+        }
+        let context = self.register_context();
+        if let Some(probe) = &self.snapshot.register_probe
+            && probe.context == context
+            && self.snapshot.state == "STOPPED"
+        {
+            for sample in &probe.samples {
+                if sample.context != context {
+                    continue;
+                }
+                let Some(index) = self
+                    .register_view
+                    .catalogue
+                    .as_ref()
+                    .and_then(|c| c.registers.iter().position(|r| r.id == sample.id))
+                else {
+                    continue;
+                };
+                let owner = self.register_view.owner(&self.project, &context, index);
+                if owner != sample.owner {
+                    continue;
+                }
+                let Some(owner) = owner else {
+                    continue;
+                };
+                let key = (owner, sample.id.clone());
+                if self
+                    .register_view
+                    .values
+                    .get(&key)
+                    .is_none_or(|old| old.timestamp_ms <= sample.timestamp_ms)
+                {
+                    self.register_view.values.insert(key, sample.clone());
+                }
+                self.register_view.attempts.insert((
+                    context.session,
+                    context.generation,
+                    context.core.clone(),
+                    context.frame,
+                    sample.id.clone(),
+                ));
+            }
+        }
+    }
+    pub(super) fn probe_registers(&mut self, engine: Option<&EngineHandle>) {
+        if self.demo
+            || engine.is_none()
+            || !self.register_view.enabled()
+            || self.snapshot.state != "STOPPED"
+            || self.register_view.pending.is_some()
+            || self.register_view.probe_pending.is_some()
+        {
+            return;
+        }
+        let context = self.register_context();
+        if context.frame != 0 {
+            self.notice = "Select physical frame 0 before probing capabilities.".into();
+            return;
+        }
+        let id = self.next_id;
+        self.register_view.probe_pending = Some((id, context.clone()));
+        self.submit(engine, "registers_probe", json!({"context":context}));
+        if !self.pending_commands.contains(&id) {
+            self.register_view.probe_pending = None;
+        }
+    }
+    pub(super) fn register_probe_response(
+        &mut self,
+        id: u64,
+        result: &Value,
+        error: Option<&str>,
+    ) -> bool {
+        let Some((pending, context)) = self.register_view.probe_pending.clone() else {
+            return false;
+        };
+        if pending != id {
+            return false;
+        }
+        self.register_view.probe_pending = None;
+        self.pending_commands.remove(&id);
+        self.fx.response(id, error.is_none());
+        if context != self.register_context() || self.snapshot.state != "STOPPED" {
+            return true;
+        }
+        if let Some(error) = error {
+            self.notice = format!("Capability probe: {error}");
+            return true;
+        }
+        if let Ok(probe) =
+            serde_json::from_value::<crate::registers::capabilities::Probe>(result["probe"].clone())
+            && probe.context == context
+        {
+            self.notice = format!(
+                "Capability probe: {} facts; {} · unknown/failed {}. Raw evidence in Log.",
+                probe.facts.len(),
+                probe
+                    .identity
+                    .as_ref()
+                    .map(|i| format!(
+                        "{} {}",
+                        i.model.as_deref().unwrap_or("Unknown CPU"),
+                        i.revision_name
+                    ))
+                    .unwrap_or_else(|| "Unknown CPU".into()),
+                probe
+                    .samples
+                    .iter()
+                    .filter(|s| s.state != State::Valid)
+                    .count()
+            );
+            self.snapshot.register_probe = Some(probe);
+            self.sync_register_capabilities();
+        } else {
+            self.notice = "Invalid or expired capability probe response".into();
+        }
+        true
+    }
     pub(super) fn register_context(&self) -> Context {
         Context {
             session: self.snapshot.register_session,
-            generation: self.snapshot.generation,
+            generation: self
+                .snapshot
+                .register_generation
+                .unwrap_or(self.snapshot.generation),
             core: self
                 .snapshot
                 .core
@@ -369,6 +512,7 @@ impl App {
             || self.demo
             || self.snapshot.state != "STOPPED"
             || self.register_view.pending.is_some()
+            || self.register_view.probe_pending.is_some()
         {
             return false;
         }
@@ -409,6 +553,7 @@ impl App {
         if self.side_pane != 3
             || !self.register_view.enabled()
             || self.register_view.pending.is_some()
+            || self.register_view.probe_pending.is_some()
             || self.view_rects[3].height == 0
         {
             return false;
@@ -819,6 +964,103 @@ mod tests {
             timestamp_ms: 23,
             source: format!("gdb:{id}"),
         }
+    }
+    #[test]
+    fn capability_probe_is_explicit_single_flight_and_uses_physical_stop_generation() {
+        let mut app = app();
+        app.snapshot.generation = 900;
+        app.snapshot.register_generation = Some(3);
+        let (engine, requests) = engine();
+        assert!(requests.try_recv().is_err());
+        app.probe_registers(Some(&engine));
+        let request = requests.try_recv().unwrap();
+        assert_eq!(request.method, "registers_probe");
+        assert_eq!(request.params["context"]["generation"], 3);
+        app.probe_registers(Some(&engine));
+        assert!(!app.ensure_registers(Some(&engine)));
+        assert!(requests.try_recv().is_err());
+        app.register_probe_response(request.id, &json!({}), Some("unavailable"));
+        assert!(app.register_view.probe_pending.is_none());
+        assert!(app.notice.contains("unavailable"));
+        assert!(requests.try_recv().is_err(), "Failures must not retry");
+        app.snapshot.frame.level = 1;
+        app.probe_registers(Some(&engine));
+        assert!(requests.try_recv().is_err());
+        assert!(app.notice.contains("frame 0"));
+    }
+    #[test]
+    fn late_capability_probe_response_cannot_change_another_stop_frame_or_session() {
+        for change in 0..3 {
+            let mut app = app();
+            let (engine, requests) = engine();
+            app.probe_registers(Some(&engine));
+            let request = requests.try_recv().unwrap();
+            match change {
+                0 => app.snapshot.generation += 1,
+                1 => app.snapshot.frame.level = 1,
+                _ => app.snapshot.register_session += 1,
+            }
+            assert!(app.register_probe_response(request.id, &json!({"probe":{}}), None));
+            assert!(app.snapshot.register_probe.is_none());
+            assert!(app.register_view.probe_pending.is_none());
+            assert!(app.pending_commands.is_empty());
+            assert!(requests.try_recv().is_err());
+        }
+    }
+    #[test]
+    fn capability_facts_are_context_scoped_and_never_persist_as_customer_configuration() {
+        let mut app = app();
+        app.project
+            .registers
+            .facts
+            .insert("icc.physical.prebits".into(), 7);
+        app.register_view.facts = app.project.registers.facts.clone();
+        let old = sample(&app, "r0", "0x42");
+        app.register_view
+            .values
+            .insert(("core:default".into(), "r0".into()), old);
+        let mut probe = crate::registers::capabilities::Probe {
+            context: app.register_context(),
+            thread: "1".into(),
+            identity: None,
+            facts: BTreeMap::new(),
+            samples: vec![
+                sample(&app, "midr", "0x411fd134"),
+                sample(&app, "cpsr", "0x1a"),
+                sample(&app, "icc_ctlr", "0x400"),
+            ],
+            gdb_names: vec![],
+            notes: vec![],
+        };
+        probe.decode();
+        let (engine, requests) = engine();
+        app.probe_registers(Some(&engine));
+        let request = requests.try_recv().unwrap();
+        app.register_probe_response(request.id, &json!({"probe":probe}), None);
+        assert_eq!(app.register_view.facts["icc.physical.prebits"], 5);
+        assert_eq!(app.project.registers.facts["icc.physical.prebits"], 7);
+        assert_eq!(
+            app.register_view.values[&("core:default".into(), "r0".into())].state,
+            State::Stale
+        );
+        assert_eq!(
+            app.register_view.values[&("core:default".into(), "cpsr".into())].state,
+            State::Valid
+        );
+        assert_eq!(
+            app.register_view.values[&("core:default".into(), "icc_ctlr".into())]
+                .value
+                .as_ref()
+                .unwrap()
+                .hex,
+            "0x00000400"
+        );
+        assert!(app.notice.contains("Raw evidence in Log"));
+        assert!(requests.try_recv().is_err());
+        app.snapshot.generation += 1;
+        app.sync_register_capabilities();
+        assert_eq!(app.register_view.facts["icc.physical.prebits"], 7);
+        assert_eq!(app.project.registers.facts["icc.physical.prebits"], 7);
     }
     #[test]
     fn only_visible_expanded_registers_are_read_and_pending_does_not_accumulate() {

@@ -700,6 +700,18 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 ## 开发与验证
 
+### 读取当前核心能力（开发分支）
+
+配置 R52 寄存器目录后，在暂停核心的物理 frame 0 点击 System Regs 的 **Probe caps**，或执行 `:register-probe`。这会显式采样 CPSR、MIDR、ID_PFR1、ID_DFR0、MPUIR、HMPUIR、CPACR、PMCR、ICC_CTLR 和 ICH_VTR 中当前身份及权限允许的项目。连接、切核和下次暂停不会自动执行这项探测。实际 MIDR 目前只识别 Arm Cortex-R52 的 D13 编码；其他型号、尚未适配的 R52+ 身份或无法读取的身份保留 Unknown，并停止扩展探测。
+
+Log 保留逐项原始值、读取来源、错误和能力解码依据。EL1 MPU 数量来自 MPUIR[15:8]，EL2 来自 HMPUIR[7:0]；目录补齐 EL1 的 16–23 号区域，是否显示依实际实现数量判断。只有已确认的 Hyp 模式与 GIC 系统接口才探测物理 ICC 和 ICH；虚拟 ICH_VTR 的优先级信息不会用于物理 ICC AP 寄存器过滤。CPACR 权限值不能证明 FPU 已实现或 FPEXC.EN 已打开。
+
+观测结果只覆盖当前会话／核心／停止代次／帧的运行时实现条件，不改写工程中的 `registers.facts`。运行、换帧、重连、写入或停止代次改变后失效；失败保留 Unknown 与原因。Scope All 仍只探测当前物理核心。当前采样没有验收完整可选寄存器、目标描述位宽、64 位／银行／浮点后端的行为。
+
+Headless 先调用 `registers_list` 获取 `context`，再用 `registers_probe` 传入相同的 `context`。响应含 `probe.samples`、带寄存器及通道来源的 `probe.facts`、实际 MIDR 解码、GDB 可见名称、说明及有效 worker 的工具路径声明。路径声明不等于真实服务器版本／哈希证明。多核 Snapshot 的 `register_generation` 用于寄存器上下文，`generation` 仍表示协调器刷新版本。
+
+### 编辑 Core 寄存器（开发分支）
+
 开发分支新增的 Core 寄存器编辑尚未进入 v0.9.3 release。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。
 
 修改输入必须重新预览；切核、帧、运行、重连或换 ELF 后旧草稿不可应用。Core writer 的 Scope All 仍只写当前核心；共享区域只执行一次所属 owner 的写入。`verified` 表示按有效掩码回读一致，`accepted` 表示后端已受理但没有完成安全验证，`mismatch` 表示回读不符，`unknown` 表示可能已写入而无法确定结果；不自动重试、回滚或重放。发送后关闭编辑窗口不会撤回操作。PC/SP 改动会使源码、栈、Locals、反汇编等视图失效并重新读取；这不是通用的目标恢复操作。

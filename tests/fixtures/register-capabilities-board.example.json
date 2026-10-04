@@ -1,0 +1,8 @@
+{
+  "frame_function": "debug_capability_fixture",
+  "stable_registers": ["cpsr", "cpacr", "pmcr"],
+  "expected_raw": {"midr": "0x411fd134"},
+  "expected_facts": {"mpu.el1.regions": 24, "pmu.present": 1},
+  "expected_unavailable": ["hmpuir", "icc_ctlr", "ich_vtr"],
+  "expected_unknown_facts": ["mpu.el2.regions", "icc.physical.prebits", "icv.virtual.prebits"]
+}

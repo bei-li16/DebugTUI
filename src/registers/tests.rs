@@ -47,6 +47,37 @@ fn shipped_catalogues_have_valid_routes_and_cpu_specific_models() {
                 }
             ));
             assert!(catalogue.register("hprbar23").is_some());
+            assert!(matches!(
+                catalogue.register("prbar23").unwrap().reader,
+                Reader::Cp15 {
+                    cp: 15,
+                    op1: 1,
+                    crn: 6,
+                    crm: 11,
+                    op2: 4
+                }
+            ));
+            assert!(matches!(
+                catalogue.register("prlar23").unwrap().reader,
+                Reader::Cp15 {
+                    cp: 15,
+                    op1: 1,
+                    crn: 6,
+                    crm: 11,
+                    op2: 5
+                }
+            ));
+            assert!(matches!(
+                catalogue.register("ich_vtr").unwrap().reader,
+                Reader::Cp15 {
+                    cp: 15,
+                    op1: 4,
+                    crn: 12,
+                    crm: 11,
+                    op2: 1
+                }
+            ));
+            assert_eq!(catalogue.register("ich_vtr").unwrap().bits, 32);
             assert!(catalogue.register("elr_hyp").is_some());
         }
     }

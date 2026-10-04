@@ -2,6 +2,10 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04，尚未发布）
 
+能力探测批次：267 项单元测试、37 项集成测试通过，2 项既有外部环境测试 ignored；严格 Clippy 通过。新增十项显式 R52 能力采样及带来源的上下文事实；实际身份未适配、ID 读取失败、非 Hyp、异步 RUNNING、前后实际线程／帧变化及过期上下文分别验证，不把 Unknown 当作未实现。双核 worker 夹具确认 Scope All 仅读取当前核心；界面使用物理停止代次，观测事实不写回客户配置。目录补齐 EL1 MPU 16–23 区域并新增 ICH_VTR；物理／虚拟 GIC 解码各自保留来源。
+
+`node scripts/test-register-capabilities-hardware.cjs` 默认 4 skipped，不连接目标。显式 `--run --project FILE --core NAME --case JSON --binary FILE` 才执行 REG-H01/H14 的能力子集；案例见 `tests/fixtures/register-capabilities-board.example.json`，可选独立固件钩子见同目录 `register-capabilities-board.c`。示例中的 MIDR、区域数量、非 Hyp 预期及稳定寄存器必须按实际核、修订和已验证通道填写，MCAL/Bao 和 core0/core1 分别运行。实际二进制＋MI 软件夹具通过 5 阶段（含清理），报告 `board_tests_executed=false`，原工程不变。`--gdb FILE`／`--openocd FILE` 可记录操作员指定的主机工具路径、哈希与版本；不能将该文件身份当作已经运行的调试服务器身份。完整目标描述、可选类别、工具构建对应关系与其余 REG-H 用例仍未验收。
+
 变量写入批次：256 项单元测试、27 项集成测试通过，2 项既有环境测试 ignored；严格 Clippy 通过。真实 GCC/GDB 的 `node scripts/test-variable-write-gdb.cjs target/debug/debugtui.exe` 8 阶段全部通过，覆盖精确 32/64 位数值、指针、struct／数组成员、const 及别名拒绝、浮点负零、调用者帧 Locals 和过期草稿；项目哈希不变。键鼠／窄窗口、表达式校验、根存储先检查、权限／类型／地址改变、优化掉、函数调用策略恢复、发送后错误／断连／超时、清理失败和无重试另有 MI 管道及 Ratatui 证据。
 
 `node scripts/test-variable-write-hardware.cjs` 默认生成 4 skipped，不连接目标；`--run --project FILE --core core0 --case FILE --fixture-function debug_write_fixture --binary FILE` 才使用已暂停的独立普通 RAM 夹具。夹具源码见 `tests/fixtures/variable-write-board.c`，案例格式见 `tests/fixtures/variable-write-board.example.json`；成员顺序、符号、owner、帧、字节序必须按实际固件填写，Watch 根需已在工程中声明。core0/core1 及双核共享 owner 分别运行并保留结果；driver 不运行／暂停／复位 CPU。通过实际二进制＋MI 软件夹具验证 5 阶段（含清理），独立 RAM 回读、两侧符号及原项目哈希检查通过，报告 `board_tests_executed=false`。128 位变量、位域／引用／特殊浮点和其他上板场景仍待补足；本批未升版或发布。

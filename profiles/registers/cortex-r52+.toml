@@ -1117,6 +1117,16 @@ read_side_effect = true
 access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
 
 [[registers]]
+id = "ich_vtr"
+name = "ICH_VTR"
+group = "gic"
+bits = 32
+access = "ro"
+description = "ICH_VTR in the gic register group."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 11, op2 = 1 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+
+[[registers]]
 id = "cntfrq"
 name = "CNTFRQ"
 group = "timer"
@@ -2057,6 +2067,438 @@ access_condition = "Halted physical core; access depends on current EL, traps an
 [[registers.conditions]]
 fact = "mpu.el1.regions"
 min = 16
+[[registers.fields]]
+name = "LIMIT"
+segments = [{ offset = 6, width = 26 }]
+description = "Inclusive region limit address bits [31:6]; low address bits are all ones."
+[[registers.fields]]
+name = "EN"
+segments = [{ offset = 0, width = 1 }]
+description = "Region enable."
+[[registers.fields]]
+name = "AttrIndx"
+segments = [{ offset = 1, width = 3 }]
+description = "Index into memory attribute registers."
+
+[[registers]]
+id = "prbar16"
+name = "PRBAR16"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region base address, permissions, shareability and execute-never attributes."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 8, op2 = 0 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 17
+[[registers.fields]]
+name = "BASE"
+segments = [{ offset = 6, width = 26 }]
+description = "Region base address bits [31:6]."
+[[registers.fields]]
+name = "XN"
+segments = [{ offset = 0, width = 1 }]
+description = "Execute-never attribute."
+[[registers.fields]]
+name = "AP"
+segments = [{ offset = 1, width = 2 }]
+description = "Region data access permission."
+[[registers.fields]]
+name = "SH"
+segments = [{ offset = 3, width = 2 }]
+description = "Region shareability."
+
+[[registers]]
+id = "prlar16"
+name = "PRLAR16"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region inclusive limit, memory-attribute index and enable state."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 8, op2 = 1 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 17
+[[registers.fields]]
+name = "LIMIT"
+segments = [{ offset = 6, width = 26 }]
+description = "Inclusive region limit address bits [31:6]; low address bits are all ones."
+[[registers.fields]]
+name = "EN"
+segments = [{ offset = 0, width = 1 }]
+description = "Region enable."
+[[registers.fields]]
+name = "AttrIndx"
+segments = [{ offset = 1, width = 3 }]
+description = "Index into memory attribute registers."
+
+[[registers]]
+id = "prbar17"
+name = "PRBAR17"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region base address, permissions, shareability and execute-never attributes."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 8, op2 = 4 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 18
+[[registers.fields]]
+name = "BASE"
+segments = [{ offset = 6, width = 26 }]
+description = "Region base address bits [31:6]."
+[[registers.fields]]
+name = "XN"
+segments = [{ offset = 0, width = 1 }]
+description = "Execute-never attribute."
+[[registers.fields]]
+name = "AP"
+segments = [{ offset = 1, width = 2 }]
+description = "Region data access permission."
+[[registers.fields]]
+name = "SH"
+segments = [{ offset = 3, width = 2 }]
+description = "Region shareability."
+
+[[registers]]
+id = "prlar17"
+name = "PRLAR17"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region inclusive limit, memory-attribute index and enable state."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 8, op2 = 5 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 18
+[[registers.fields]]
+name = "LIMIT"
+segments = [{ offset = 6, width = 26 }]
+description = "Inclusive region limit address bits [31:6]; low address bits are all ones."
+[[registers.fields]]
+name = "EN"
+segments = [{ offset = 0, width = 1 }]
+description = "Region enable."
+[[registers.fields]]
+name = "AttrIndx"
+segments = [{ offset = 1, width = 3 }]
+description = "Index into memory attribute registers."
+
+[[registers]]
+id = "prbar18"
+name = "PRBAR18"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region base address, permissions, shareability and execute-never attributes."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 9, op2 = 0 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 19
+[[registers.fields]]
+name = "BASE"
+segments = [{ offset = 6, width = 26 }]
+description = "Region base address bits [31:6]."
+[[registers.fields]]
+name = "XN"
+segments = [{ offset = 0, width = 1 }]
+description = "Execute-never attribute."
+[[registers.fields]]
+name = "AP"
+segments = [{ offset = 1, width = 2 }]
+description = "Region data access permission."
+[[registers.fields]]
+name = "SH"
+segments = [{ offset = 3, width = 2 }]
+description = "Region shareability."
+
+[[registers]]
+id = "prlar18"
+name = "PRLAR18"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region inclusive limit, memory-attribute index and enable state."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 9, op2 = 1 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 19
+[[registers.fields]]
+name = "LIMIT"
+segments = [{ offset = 6, width = 26 }]
+description = "Inclusive region limit address bits [31:6]; low address bits are all ones."
+[[registers.fields]]
+name = "EN"
+segments = [{ offset = 0, width = 1 }]
+description = "Region enable."
+[[registers.fields]]
+name = "AttrIndx"
+segments = [{ offset = 1, width = 3 }]
+description = "Index into memory attribute registers."
+
+[[registers]]
+id = "prbar19"
+name = "PRBAR19"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region base address, permissions, shareability and execute-never attributes."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 9, op2 = 4 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 20
+[[registers.fields]]
+name = "BASE"
+segments = [{ offset = 6, width = 26 }]
+description = "Region base address bits [31:6]."
+[[registers.fields]]
+name = "XN"
+segments = [{ offset = 0, width = 1 }]
+description = "Execute-never attribute."
+[[registers.fields]]
+name = "AP"
+segments = [{ offset = 1, width = 2 }]
+description = "Region data access permission."
+[[registers.fields]]
+name = "SH"
+segments = [{ offset = 3, width = 2 }]
+description = "Region shareability."
+
+[[registers]]
+id = "prlar19"
+name = "PRLAR19"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region inclusive limit, memory-attribute index and enable state."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 9, op2 = 5 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 20
+[[registers.fields]]
+name = "LIMIT"
+segments = [{ offset = 6, width = 26 }]
+description = "Inclusive region limit address bits [31:6]; low address bits are all ones."
+[[registers.fields]]
+name = "EN"
+segments = [{ offset = 0, width = 1 }]
+description = "Region enable."
+[[registers.fields]]
+name = "AttrIndx"
+segments = [{ offset = 1, width = 3 }]
+description = "Index into memory attribute registers."
+
+[[registers]]
+id = "prbar20"
+name = "PRBAR20"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region base address, permissions, shareability and execute-never attributes."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 10, op2 = 0 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 21
+[[registers.fields]]
+name = "BASE"
+segments = [{ offset = 6, width = 26 }]
+description = "Region base address bits [31:6]."
+[[registers.fields]]
+name = "XN"
+segments = [{ offset = 0, width = 1 }]
+description = "Execute-never attribute."
+[[registers.fields]]
+name = "AP"
+segments = [{ offset = 1, width = 2 }]
+description = "Region data access permission."
+[[registers.fields]]
+name = "SH"
+segments = [{ offset = 3, width = 2 }]
+description = "Region shareability."
+
+[[registers]]
+id = "prlar20"
+name = "PRLAR20"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region inclusive limit, memory-attribute index and enable state."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 10, op2 = 1 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 21
+[[registers.fields]]
+name = "LIMIT"
+segments = [{ offset = 6, width = 26 }]
+description = "Inclusive region limit address bits [31:6]; low address bits are all ones."
+[[registers.fields]]
+name = "EN"
+segments = [{ offset = 0, width = 1 }]
+description = "Region enable."
+[[registers.fields]]
+name = "AttrIndx"
+segments = [{ offset = 1, width = 3 }]
+description = "Index into memory attribute registers."
+
+[[registers]]
+id = "prbar21"
+name = "PRBAR21"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region base address, permissions, shareability and execute-never attributes."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 10, op2 = 4 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 22
+[[registers.fields]]
+name = "BASE"
+segments = [{ offset = 6, width = 26 }]
+description = "Region base address bits [31:6]."
+[[registers.fields]]
+name = "XN"
+segments = [{ offset = 0, width = 1 }]
+description = "Execute-never attribute."
+[[registers.fields]]
+name = "AP"
+segments = [{ offset = 1, width = 2 }]
+description = "Region data access permission."
+[[registers.fields]]
+name = "SH"
+segments = [{ offset = 3, width = 2 }]
+description = "Region shareability."
+
+[[registers]]
+id = "prlar21"
+name = "PRLAR21"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region inclusive limit, memory-attribute index and enable state."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 10, op2 = 5 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 22
+[[registers.fields]]
+name = "LIMIT"
+segments = [{ offset = 6, width = 26 }]
+description = "Inclusive region limit address bits [31:6]; low address bits are all ones."
+[[registers.fields]]
+name = "EN"
+segments = [{ offset = 0, width = 1 }]
+description = "Region enable."
+[[registers.fields]]
+name = "AttrIndx"
+segments = [{ offset = 1, width = 3 }]
+description = "Index into memory attribute registers."
+
+[[registers]]
+id = "prbar22"
+name = "PRBAR22"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region base address, permissions, shareability and execute-never attributes."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 11, op2 = 0 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 23
+[[registers.fields]]
+name = "BASE"
+segments = [{ offset = 6, width = 26 }]
+description = "Region base address bits [31:6]."
+[[registers.fields]]
+name = "XN"
+segments = [{ offset = 0, width = 1 }]
+description = "Execute-never attribute."
+[[registers.fields]]
+name = "AP"
+segments = [{ offset = 1, width = 2 }]
+description = "Region data access permission."
+[[registers.fields]]
+name = "SH"
+segments = [{ offset = 3, width = 2 }]
+description = "Region shareability."
+
+[[registers]]
+id = "prlar22"
+name = "PRLAR22"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region inclusive limit, memory-attribute index and enable state."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 11, op2 = 1 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 23
+[[registers.fields]]
+name = "LIMIT"
+segments = [{ offset = 6, width = 26 }]
+description = "Inclusive region limit address bits [31:6]; low address bits are all ones."
+[[registers.fields]]
+name = "EN"
+segments = [{ offset = 0, width = 1 }]
+description = "Region enable."
+[[registers.fields]]
+name = "AttrIndx"
+segments = [{ offset = 1, width = 3 }]
+description = "Index into memory attribute registers."
+
+[[registers]]
+id = "prbar23"
+name = "PRBAR23"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region base address, permissions, shareability and execute-never attributes."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 11, op2 = 4 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 24
+[[registers.fields]]
+name = "BASE"
+segments = [{ offset = 6, width = 26 }]
+description = "Region base address bits [31:6]."
+[[registers.fields]]
+name = "XN"
+segments = [{ offset = 0, width = 1 }]
+description = "Execute-never attribute."
+[[registers.fields]]
+name = "AP"
+segments = [{ offset = 1, width = 2 }]
+description = "Region data access permission."
+[[registers.fields]]
+name = "SH"
+segments = [{ offset = 3, width = 2 }]
+description = "Region shareability."
+
+[[registers]]
+id = "prlar23"
+name = "PRLAR23"
+group = "mpu_el1"
+bits = 32
+access = "rw"
+description = "MPU region inclusive limit, memory-attribute index and enable state."
+reader = { kind = "cp15", cp = 15, op1 = 1, crn = 6, crm = 11, op2 = 5 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 24
 [[registers.fields]]
 name = "LIMIT"
 segments = [{ offset = 6, width = 26 }]

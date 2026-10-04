@@ -13,6 +13,7 @@ let interrupts = 0;
 let frameLevel = 0;
 let registerWritten = false;
 let writerProbed = false;
+let registerReadCount = 0;
 let memoryWritten = false;
 let memoryWriterProbed = false;
 const variables = process.env.DEBUGTUI_TEST_VARIABLES ? require('./mock-variable-gdb.cjs') : null;
@@ -67,10 +68,13 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   if (cmd === '-list-target-features') return done('features=["async"]');
   if (cmd === '-thread-info') {
     if (state === 'running' && pauseMode === 'query-rejected') return send(`${token}^error,msg="Cannot execute this command while the target is running."`);
-    const thread = writerProbed && process.env.DEBUGTUI_TEST_WRITE_THREAD_CHANGE ? '2' : '1';
+    const thread = (writerProbed && process.env.DEBUGTUI_TEST_WRITE_THREAD_CHANGE) || (registerReadCount && process.env.DEBUGTUI_TEST_CAPABILITY_THREAD_CHANGE) ? '2' : '1';
     return done(state === 'ready' ? 'threads=[]' : `threads=[{id="${thread}",state="${state}"}],current-thread-id="${thread}"`);
   }
-  if (cmd === '-stack-info-frame') return state === 'stopped' ? done(frame()) : send(`${token}^error,msg="No frame"`);
+  if (cmd === '-stack-info-frame') {
+    if (registerReadCount && process.env.DEBUGTUI_TEST_CAPABILITY_FRAME_CHANGE) frameLevel = 1;
+    return state === 'stopped' ? done(frame()) : send(`${token}^error,msg="No frame"`);
+  }
   if (cmd.startsWith('-stack-list-frames')) return done(`stack=[${frame()}]`);
   if (cmd.startsWith('-stack-list-variables')) return done('variables=[{name="counter",value="42"}]');
   if (/^-stack-select-frame \d+$/.test(cmd)) { frameLevel = Number(cmd.split(' ')[1]); return done(); }
@@ -95,6 +99,7 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
     return done('register-values=[' + indices.map(i => `{number="${i}",value="0x100000008"}`).join(',') + ']');
   }
   if (cmd.startsWith('-data-list-register-values r ')) {
+    registerReadCount++;
     if (registerWritten && process.env.DEBUGTUI_TEST_WRITE_VERIFY_ERROR) return send(`${token}^error,msg="Fixture readback unavailable"`);
     const indices = cmd.slice('-data-list-register-values r '.length).split(' ').map(Number);
     if (indices.some(index => unreadableRegisters.includes(names[index]))) {

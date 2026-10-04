@@ -59,7 +59,7 @@ impl Engine {
             || threads.iter().any(|t| t.string("state") != "stopped")
         {
             return Err(
-                "Write requires a selected thread and all threads in this core connection stopped"
+                "Requires a selected GDB thread and all threads in this core connection stopped"
                     .into(),
             );
         }
@@ -106,7 +106,7 @@ impl Engine {
         if register.scope != Scope::Core {
             return Err("A GDB register writer must belong to one physical core".into());
         }
-        let (implementation, evidence) = register.implementation(&self.project.registers.facts);
+        let (implementation, evidence) = register.implementation(&self.effective_register_facts());
         if implementation == Implementation::No
             || (implementation == Implementation::Unknown && !register.conditions.is_empty())
         {
@@ -359,6 +359,7 @@ impl Engine {
         // Even an unknown result may have changed storage. Invalidate every overlapping view
         // rather than publishing a guessed command value as a fresh target sample.
         self.write_drafts.clear();
+        self.snapshot.register_probe = None;
         self.snapshot.generation += 1;
         for sample in &mut self.snapshot.register_samples {
             sample.stale();

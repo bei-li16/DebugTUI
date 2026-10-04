@@ -69,14 +69,14 @@ def generate(cpu, m_profile=False):
             "hsctlr":(4,1,0,0),"hcr":(4,1,1,0),"hdcr":(4,1,1,1),"hcptr":(4,1,1,2),"hstr":(4,1,1,3),"hsr":(4,5,2,0),"hdfar":(4,6,0,0),"hifar":(4,6,0,2),"hvbar":(4,12,0,0),"htpidr":(4,13,0,2),
             "hmpuir":(4,0,0,4),"hprselr":(4,6,2,1),"hprenr":(4,6,1,1),"hmair0":(4,10,2,0),"hmair1":(4,10,2,1),
             "pmcr":(0,9,12,0),"pmceid0":(0,9,12,6),"pmceid1":(0,9,12,7),"pmcntenset":(0,9,12,1),"pmcntenclr":(0,9,12,2),"pmovsr":(0,9,12,3),"pmselr":(0,9,12,5),"pmxevtyper":(0,9,13,1),"pmxevcntr":(0,9,13,2),
-            "icc_ctlr":(0,12,12,4),"icc_sre":(0,12,12,5),"icc_pmr":(0,4,6,0),"icc_rpr":(0,12,11,3),"icc_ap0r0":(0,12,8,4),"icc_ap1r0":(0,12,9,0),"icc_iar0":(0,12,8,0),"icc_iar1":(0,12,12,0),
+            "icc_ctlr":(0,12,12,4),"icc_sre":(0,12,12,5),"icc_pmr":(0,4,6,0),"icc_rpr":(0,12,11,3),"icc_ap0r0":(0,12,8,4),"icc_ap1r0":(0,12,9,0),"icc_iar0":(0,12,8,0),"icc_iar1":(0,12,12,0),"ich_vtr":(4,12,11,1),
             "cntfrq":(0,14,0,0),"cntkctl":(0,14,1,0),"cntp_tval":(0,14,2,0),"cntp_ctl":(0,14,2,1),"cntv_tval":(0,14,3,0),"cntv_ctl":(0,14,3,1),"cnthctl":(4,14,1,0),"cnthp_tval":(4,14,2,0),"cnthp_ctl":(4,14,2,1),
         }
         for name,(op1,crn,crm,op2) in encodings.items():
-            groupid = "gic" if name.startswith("icc_") else "timer" if name.startswith("cnt") else "pmu" if name.startswith("pm") else "mpu_el2" if name in ["hmpuir","hprselr","hprenr","hmair0","hmair1"] else "mpu_el1" if name in ["mpuir","prselr","mair0","mair1"] else "virt" if name.startswith("h") else "id" if name in ["midr","ctr","mpidr"] or name.startswith("id_") else "exceptions" if name in ["dfsr","ifsr","adfsr","aifsr","dfar","ifar"] else "control"
-            readonly = name.startswith("id_") or name in ["midr","ctr","mpidr","mpuir","hmpuir","pmceid0","pmceid1","icc_rpr","icc_iar0","icc_iar1"]
+            groupid = "gic" if name.startswith(("icc_", "ich_")) else "timer" if name.startswith("cnt") else "pmu" if name.startswith("pm") else "mpu_el2" if name in ["hmpuir","hprselr","hprenr","hmair0","hmair1"] else "mpu_el1" if name in ["mpuir","prselr","mair0","mair1"] else "virt" if name.startswith("h") else "id" if name in ["midr","ctr","mpidr"] or name.startswith("id_") else "exceptions" if name in ["dfsr","ifsr","adfsr","aifsr","dfar","ifar"] else "control"
+            readonly = name.startswith("id_") or name in ["midr","ctr","mpidr","mpuir","hmpuir","pmceid0","pmceid1","icc_rpr","icc_iar0","icc_iar1","ich_vtr"]
             reg(name,groupid,access="ro" if readonly else "rw",kind="cp15",params=dict(cp=15,op1=op1,crn=crn,crm=crm,op2=op2),effect=name.startswith("icc_iar"))
-        for level,count in [(1,16),(2,24)]:
+        for level,count in [(1,24),(2,24)]:
             for n in range(count):
                 for limit in [False,True]:
                     name = ("h" if level==2 else "") + ("prlar" if limit else "prbar") + str(n)

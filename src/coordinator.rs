@@ -191,6 +191,7 @@ impl Coordinator {
     fn snapshot(&self) -> Snapshot {
         let mut s = self.engines[self.active].snapshot.clone();
         if self.multi() {
+            s.register_generation = Some(s.generation);
             s.generation = self.engines[self.active].revision;
             s.cores = self.statuses();
             s.core = s.cores.get(self.active).cloned();
