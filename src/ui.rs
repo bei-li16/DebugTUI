@@ -55,6 +55,7 @@ mod formats;
 mod highlight;
 #[cfg(test)]
 mod live_watch_tests;
+mod memory;
 mod monitor;
 mod peripherals;
 mod registers;
@@ -72,7 +73,7 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 44] = [
+const COMMANDS: [&str; 46] = [
     "cores",
     "core NAME_OR_INDEX",
     "scope all|core",
@@ -105,6 +106,8 @@ const COMMANDS: [&str; 44] = [
     "disable NUMBER|all",
     "delete NUMBER",
     "memory ADDRESS [COUNT]",
+    "memory-access",
+    "memory-refresh",
     "disasm [ADDRESS]",
     "files",
     "symbols",
@@ -178,7 +181,9 @@ Start debugging at the top (Enter / Ctrl+R / F5) closes the previous session and
 Workspace / Esc returns without restarting; Ctrl+Q exits the program.
 Shell commands run in Source root; output appears in Console.
 Connected sessions are released, then restored after success.
-Memory loads at $sp; :memory ADDRESS [COUNT] reads another range.
+Memory: Memory access selects address, byte count and channel; Read refreshes the range.
+:memory ADDRESS [COUNT] uses the selected channel. GDB accepts $sp while stopped;
+bus channels require a literal address and never halt the target to read.
 Peripherals: configure SVD in F2 Setup. Click / Enter expands groups and fields.
 Left / Right collapses / expands; r / Refresh reads the selected register.
 Only visible registers inside expanded groups refresh after stops.
@@ -284,6 +289,7 @@ pub struct App {
     core_info: Option<(String, usize, usize)>,
     core_hits: Vec<(Rect, usize)>,
     monitor: monitor::Monitor,
+    memory_panel: memory::MemoryView,
     breaks: breakpoints::Breaks,
 }
 impl App {
@@ -361,6 +367,7 @@ impl App {
             core_info: None,
             core_hits: vec![],
             monitor: Default::default(),
+            memory_panel: Default::default(),
             breaks: Default::default(),
         };
         a.fx.mode = a.project.ui.animations;
@@ -470,6 +477,7 @@ impl App {
         match event {
             Event::LiveWatch { sample } => self.apply_live_watch(sample),
             Event::Snapshot { snapshot } => {
+                self.memory_snapshot(&snapshot);
                 let core_changed = snapshot.core.as_ref().map(|c| c.index)
                     != self.snapshot.core.as_ref().map(|c| c.index);
                 if core_changed {
@@ -550,6 +558,9 @@ impl App {
                 result,
                 error,
             } => {
+                if self.memory_response(id, &result, error.as_deref()) {
+                    return false;
+                }
                 if self.register_response(id, &result, error.as_deref()) {
                     return false;
                 }
@@ -765,6 +776,8 @@ impl App {
             "peripheral-refresh" => self.refresh_peripheral(engine),
             "watch-access" => { self.select_pane(1); self.open_monitor(1, self.selection); }
             "peripheral-access" => { self.select_pane(peripherals::PANE); self.open_monitor(peripherals::PANE, self.selection); }
+            "memory-access" => { self.select_pane(4); self.open_memory_access(); }
+            "memory-refresh" => { self.select_pane(4); self.request_memory_dump(engine, true); }
             "select_core" | "core" => {
                 let params = match arg.parse::<usize>() {
                     Ok(index) => json!({"index":index}),
@@ -795,15 +808,7 @@ impl App {
                 json!({"level":arg.parse::<u64>().unwrap_or(0)}),
             ),
             "memory" => {
-                let mut parts = arg.split_whitespace();
-                let address = parts.next().unwrap_or("$sp");
-                let count = parts
-                    .next()
-                    .and_then(|v| v.parse::<u64>().ok())
-                    .unwrap_or(256);
-                self.select_pane(4);
-                self.view_stamps[4] = Some(self.view_stamp());
-                self.submit(engine, "memory", json!({"address":address,"count":count}));
+                self.memory_command(engine, arg);
             }
             "disasm" => {
                 self.select_pane(5);
@@ -935,7 +940,7 @@ impl App {
             }
             return false;
         }
-        if self.monitor_key_event(key, engine) {
+        if self.memory_key_event(key, engine) || self.monitor_key_event(key, engine) {
             return false;
         }
         if self.break_dialog_key(key, engine) {
@@ -1203,6 +1208,8 @@ impl App {
             || self.setup.is_some()
             || self.quitting
             || self.pending_view.is_some()
+            || self.memory_panel.busy()
+            || self.memory_panel.modal()
             || self.monitor.busy()
             || self.completion.busy()
             || self.symbol_search.busy()
@@ -1231,7 +1238,6 @@ impl App {
             }
             let (method, params) = match pane {
                 5 => ("disassemble", json!({"address":"$pc"})),
-                4 => ("memory", json!({"address":"$sp","count":256})),
                 7 => ("files", json!({})),
                 _ => continue,
             };
@@ -1245,16 +1251,9 @@ impl App {
             }
             self.view_stamps[pane] = Some(stamp);
             self.view_errors[pane] = None;
-            match pane {
-                5 => {
-                    self.snapshot.assembly.clear();
-                    self.view_tops[5] = 0;
-                }
-                4 => {
-                    self.snapshot.memory.clear();
-                    self.view_tops[4] = 0;
-                }
-                _ => {}
+            if pane == 5 {
+                self.snapshot.assembly.clear();
+                self.view_tops[5] = 0;
             }
             self.pending_view = Some((self.next_id, pane));
             self.submit(engine, method, params);
@@ -1322,6 +1321,11 @@ impl App {
         match command {
             "commandlist" | "quit" | "setup" => true,
             "watch-access" => !self.snapshot.watches.is_empty(),
+            "memory-access" => true,
+            "memory-refresh" => {
+                matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
+                    && !self.memory_panel.busy()
+            }
             "peripheral-access" => self
                 .peripheral_monitor_item(self.selections[peripherals::PANE])
                 .is_some(),
@@ -1458,7 +1462,7 @@ impl App {
             return;
         }
         let point = (mouse.column, mouse.row).into();
-        if self.monitor_mouse(mouse, engine) {
+        if self.memory_mouse(mouse, engine) || self.monitor_mouse(mouse, engine) {
             return;
         }
         if self.break_dialog_mouse(mouse, engine) {
@@ -1843,6 +1847,7 @@ pub fn run(
                     app.formats = formats::Formats::default();
                     app.breaks = breakpoints::Breaks::default();
                     app.monitor = monitor::Monitor::default();
+                    app.memory_panel = memory::MemoryView::default();
                     app.core_hits.clear();
                     app.peripherals = peripherals::Peripherals::load(&project.program.svd);
                     app.register_view = registers::RegisterView::load(&project);
@@ -1921,6 +1926,9 @@ pub fn run(
         if app.ensure_visible_data(engine.as_ref()) {
             dirty = true;
         }
+        if app.ensure_memory_dump(engine.as_ref()) {
+            dirty = true;
+        }
         if app.ensure_monitors(engine.as_ref()) {
             dirty = true;
         }
@@ -1966,6 +1974,8 @@ pub fn run(
                 Input::Paste(text) => {
                     if let Some(setup) = &mut app.setup {
                         setup.paste(&text);
+                        dirty = true;
+                    } else if app.memory_paste(&text) {
                         dirty = true;
                     } else if app.breaks.modal() {
                         app.break_paste(&text);

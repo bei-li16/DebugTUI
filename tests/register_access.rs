@@ -11,6 +11,95 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[test]
+fn memory_dumps_use_complete_scoped_mi_responses_and_reject_running_results() {
+    for running in [false, true] {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let output = root
+            .join("artifacts")
+            .join(format!("memory dump {} {running}", std::process::id()));
+        fs::create_dir_all(&output).unwrap();
+        let transcript = output.join("commands.txt");
+        fs::write(&transcript, "").unwrap();
+        let mut project = Project::default();
+        project.gdb.executable = "node".into();
+        project.gdb.args = vec![
+            root.join("tests/mock-gdb.cjs")
+                .to_string_lossy()
+                .into_owned(),
+        ];
+        project
+            .gdb
+            .env
+            .insert("DEBUGTUI_TEST_REGISTERS".into(), json!([]).to_string());
+        project.gdb.env.insert(
+            "DEBUGTUI_TEST_TRANSCRIPT".into(),
+            transcript.to_string_lossy().into_owned(),
+        );
+        project.gdb.env.insert(
+            "DEBUGTUI_TEST_MEMORY_BLOCKS".into(),
+            r#"[{begin="0x100000008",contents="007f"},{begin="0x10000000a",contents="80ff"}]"#
+                .into(),
+        );
+        if running {
+            project
+                .gdb
+                .env
+                .insert("DEBUGTUI_TEST_MEMORY_RUN_ON_READ".into(), "1".into());
+        }
+        project.registers.catalogue = root.join("profiles/registers/cortex-r52.toml");
+        project.target.endpoint = "localhost:3333".into();
+        project.session.on_exit = "disconnect".into();
+        let engine = session::spawn(project);
+        response(&engine, 1, "connect", json!({}));
+        let listed = response(&engine, 2, "registers_list", json!({}));
+        engine
+            .send(Request::new(
+                3,
+                "memory_dump",
+                json!({"address":"0x100000008","count":4,"context":listed["context"]}),
+            ))
+            .unwrap();
+        loop {
+            if let Event::Response {
+                id: 3,
+                ok,
+                result,
+                error,
+            } = engine.events.recv_timeout(Duration::from_secs(10)).unwrap()
+            {
+                if running {
+                    assert!(!ok);
+                    assert!(error.unwrap().contains("running state changed"));
+                } else {
+                    assert!(ok, "{error:?}");
+                    assert_eq!(result["address"], "0x100000008");
+                    assert_eq!(result["bytes"], json!([0, 127, 128, 255]));
+                    assert_eq!(result["context"], listed["context"]);
+                    assert_eq!(result["endpoint"], "localhost:3333");
+                }
+                break;
+            }
+        }
+        let state = response(&engine, 4, "status", json!({}));
+        assert_eq!(
+            state["memory"],
+            json!([]),
+            "raw ranges must not publish an unqualified snapshot"
+        );
+        let commands = fs::read_to_string(&transcript).unwrap();
+        assert_eq!(
+            commands
+                .lines()
+                .filter(|line| line.starts_with("-data-read-memory-bytes "))
+                .collect::<Vec<_>>(),
+            ["-data-read-memory-bytes \"0x100000008\" 4"]
+        );
+        assert!(!commands.contains("-exec-interrupt"));
+        response(&engine, 5, "quit", json!({}));
+    }
+}
+
 fn response(engine: &session::EngineHandle, id: u64, method: &str, params: Value) -> Value {
     engine.send(Request::new(id, method, params)).unwrap();
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -30,6 +119,97 @@ fn response(engine: &session::EngineHandle, id: u64, method: &str, params: Value
             return result;
         }
     }
+}
+
+#[test]
+fn all_core_control_scope_keeps_memory_reads_on_the_selected_core_and_rejects_old_contexts() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output = root
+        .join("artifacts")
+        .join(format!("memory multicore {}", std::process::id()));
+    fs::create_dir_all(&output).unwrap();
+    let transcript = output.join("commands.txt");
+    fs::write(&transcript, "").unwrap();
+    let mut project = Project::default();
+    project.gdb.executable = "node".into();
+    project.gdb.args = vec![
+        root.join("tests/mock-gdb.cjs")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    project
+        .gdb
+        .env
+        .insert("DEBUGTUI_TEST_REGISTERS".into(), json!([]).to_string());
+    project.gdb.env.insert(
+        "DEBUGTUI_TEST_TRANSCRIPT".into(),
+        transcript.to_string_lossy().into_owned(),
+    );
+    project.gdb.env.insert(
+        "DEBUGTUI_TEST_MEMORY_BLOCKS".into(),
+        r#"[{begin="0x100000008",contents="007f80ff"}]"#.into(),
+    );
+    project.registers.catalogue = root.join("profiles/registers/cortex-r52.toml");
+    project.cores = (0..2)
+        .map(|index| debugtui::config::Core {
+            name: format!("core{index}"),
+            endpoint: format!("localhost:{}", 3333 + index),
+            ..Default::default()
+        })
+        .collect();
+    let engine = debugtui::coordinator::spawn(project);
+    response(&engine, 1, "connect", json!({}));
+    response(&engine, 20, "select_core", json!({"index":0}));
+    response(&engine, 2, "control_scope", json!({"scope":"all"}));
+    let first = response(&engine, 3, "registers_list", json!({}));
+    assert_eq!(first["context"]["core"], "core0");
+    let read = response(
+        &engine,
+        4,
+        "memory_dump",
+        json!({"address":"0x100000008","count":4,"context":first["context"]}),
+    );
+    assert_eq!(read["target"], "core0");
+    assert_eq!(read["endpoint"], "localhost:3333");
+    response(&engine, 5, "select_core", json!({"index":1}));
+    engine
+        .send(Request::new(
+            6,
+            "memory_dump",
+            json!({"address":"0x100000008","count":4,"context":first["context"]}),
+        ))
+        .unwrap();
+    loop {
+        if let Event::Response {
+            id: 6, ok, error, ..
+        } = engine.events.recv_timeout(Duration::from_secs(10)).unwrap()
+        {
+            assert!(!ok);
+            assert!(error.unwrap().contains("expired core"));
+            break;
+        }
+    }
+    let second = response(&engine, 7, "registers_list", json!({}));
+    assert_eq!(second["context"]["core"], "core1");
+    assert_ne!(first["context"]["session"], second["context"]["session"]);
+    let read = response(
+        &engine,
+        8,
+        "memory_dump",
+        json!({"address":"0x100000008","count":4,"context":second["context"]}),
+    );
+    assert_eq!(read["target"], "core1");
+    assert_eq!(read["endpoint"], "localhost:3334");
+    let commands = fs::read_to_string(&transcript).unwrap();
+    assert_eq!(
+        commands
+            .lines()
+            .filter(|line| line.starts_with("-data-read-memory-bytes "))
+            .count(),
+        2
+    );
+    assert!(!commands.contains("-exec-interrupt"));
+    response(&engine, 9, "quit", json!({}));
 }
 
 #[test]

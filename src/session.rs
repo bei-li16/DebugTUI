@@ -1497,6 +1497,9 @@ impl Engine {
                 {
                     return Err("Refresh interval must be 0 or 50..60000 ms".into());
                 }
+                for range in ui.memory.values() {
+                    range.validate()?;
+                }
                 let saved = self.project.save_ui(&ui)?;
                 self.project.ui = ui;
                 Ok(json!({"saved":saved}))
@@ -1705,6 +1708,7 @@ impl Engine {
             "watch_expand" => self.expand_watch(p),
             "watch_resolve" => self.resolve_watch(p),
             "memory_read" => self.read_memory_channel(p),
+            "memory_dump" => self.read_memory_dump(p),
             "break" | "data_break" | "delete_break" | "enable_break" | "update_break"
             | "break_apply" => self.breakpoint_command(method, p),
             "frame" => {

@@ -47,6 +47,12 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
     return done('register-values=[' + indices.map(index => `{number="${index}",value="${rawValues[names[index]] || '0x12345678'}"}`).join(',') + ']');
   }
   if (cmd === '-break-list') return done('BreakpointTable={body=[]}');
+  if (cmd.startsWith('-data-read-memory-bytes ') && process.env.DEBUGTUI_TEST_MEMORY_BLOCKS) {
+    if (process.env.DEBUGTUI_TEST_MEMORY_RUN_ON_READ) {
+      state = 'running'; send('*running,thread-id="all"');
+    }
+    return done('memory=' + process.env.DEBUGTUI_TEST_MEMORY_BLOCKS);
+  }
   if (cmd === '-interpreter-exec console "delete breakpoints"') return done();
   // The coordinator refreshes each core after connecting; the fixture has no register cache.
   if (cmd === '-interpreter-exec console "maintenance flush register-cache"') return done();

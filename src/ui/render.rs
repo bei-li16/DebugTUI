@@ -235,14 +235,18 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
             ),
             2 => ("Call stack", "Pause the target to inspect its frames."),
             3 => ("Registers", "Connect and pause to inspect register values."),
-            4 | 5 if a.snapshot.state == "RUNNING" => {
+            4 => (
+                "Memory range",
+                "Memory access selects the range and channel; Read obtains a sample.",
+            ),
+            5 if a.snapshot.state == "RUNNING" => {
                 ("Target running", "Pause the target to load this view.")
             }
-            4 | 5 if a.snapshot.state == "STOPPED" => (
+            5 if a.snapshot.state == "STOPPED" => (
                 "Reading from GDB…",
                 "The view will update when the request completes.",
             ),
-            4 | 5 => (
+            5 => (
                 "Waiting for target",
                 "Connect and stop the target to load this view.",
             ),
@@ -652,7 +656,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
     let title = match a.side_pane {
         2 => " Stack · click / Enter selects frame ",
         3 => " System registers ",
-        4 => " Memory · :memory ADDRESS [COUNT] ",
+        4 => " Memory ",
         _ => " Breakpoints · Space toggle · e edit ",
     };
     let title = if a.side_pane == peripherals::PANE {
@@ -669,6 +673,31 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
     ));
     let mut inner = block.inner(rows[1]);
     f.render_widget(block, rows[1]);
+    if a.side_pane == 4 && inner.height > 0 {
+        let access = if inner.width < 27 {
+            "Access"
+        } else {
+            "Memory access"
+        };
+        let height = wrapped_height(&[access, "↻ Read"], inner.width, 1)
+            .min(inner.height.saturating_sub(1).max(1));
+        toolbar(
+            f,
+            a,
+            Rect::new(inner.x, inner.y, inner.width, height),
+            &[(access, "memory-access"), ("↻ Read", "memory-refresh")],
+            1,
+        );
+        inner.y += height;
+        inner.height -= height;
+        let detail_height = 2.min(inner.height.saturating_sub(1));
+        f.render_widget(
+            Paragraph::new(a.memory_caption()).style(Style::default().fg(theme::MUTED)),
+            Rect::new(inner.x, inner.y, inner.width, detail_height),
+        );
+        inner.y += detail_height;
+        inner.height -= detail_height;
+    }
     if a.side_pane == 6 && inner.height > 2 {
         let labels: Vec<_> = breakpoints::ACTIONS
             .iter()
@@ -1216,6 +1245,8 @@ fn hint(command: &str) -> &str {
         "data-break" => "Set a hardware watchpoint",
         "delete" => "Delete breakpoint by number",
         "memory" => "Read memory bytes",
+        "memory-access" => "Select Memory address, byte count and channel",
+        "memory-refresh" => "Read the selected Memory range and channel once",
         "disasm" => "Disassemble at address (default $pc)",
         "files" => "List source files",
         "symbols" => "Search functions, variables and types; open source location",
@@ -1713,5 +1744,6 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     }
     formats::popup(f, a);
     monitor::draw(f, a);
+    memory::draw(f, a);
     breakpoints::popup(f, a);
 }

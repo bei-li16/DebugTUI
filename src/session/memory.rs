@@ -12,6 +12,117 @@ fn integer(text: &str) -> Result<u64, String> {
 }
 
 impl Engine {
+    pub(super) fn read_memory_dump(&mut self, p: &Json) -> Result<Json, String> {
+        let context = self.register_context();
+        if let Some(expected) = p.get("context") {
+            let expected: crate::registers::Context = serde_json::from_value(expected.clone())
+                .map_err(|e| format!("Memory context: {e}"))?;
+            if expected != context {
+                return Err(
+                    "Memory request belongs to an expired core, frame or stop context".into(),
+                );
+            }
+        }
+        let count = p["count"].as_u64().ok_or("Memory byte count is required")?;
+        if !(1..=4096).contains(&count) {
+            return Err("Read 1..4096 memory bytes per request".into());
+        }
+        let address = p["address"].as_str().ok_or("Memory address is required")?;
+        if address.is_empty() || address.len() > 256 || address.chars().any(char::is_control) {
+            return Err("Invalid memory address".into());
+        }
+        if let Ok(base) = literal_address(address) {
+            base.checked_add(count).ok_or("Memory address overflow")?;
+        }
+        if self.cancellation.load(Ordering::Relaxed) {
+            return Err("Memory read cancelled".into());
+        }
+        let channel = p["channel"].as_str().unwrap_or("");
+        let (base, bytes, target, endpoint, source) = if channel.is_empty() {
+            self.stopped()?;
+            let record = self.mi(&format!(
+                "-data-read-memory-bytes {} {count}",
+                mi::quote(address)
+            ))?;
+            let blocks = record
+                .data
+                .field("memory")
+                .map(Value::items)
+                .unwrap_or_default();
+            let (base, bytes) = dump_blocks(blocks, count)?;
+            (
+                base,
+                bytes,
+                context.core.clone(),
+                self.project.target.endpoint.clone(),
+                "GDB".into(),
+            )
+        } else {
+            if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING") {
+                return Err("Memory access requires a connected target".into());
+            }
+            let access = self
+                .project
+                .memory_access
+                .iter()
+                .find(|access| access.id == channel)
+                .filter(|access| access.cores.is_empty() || access.cores.contains(&context.core))
+                .cloned()
+                .ok_or("Memory channel is not available for this core")?;
+            if self.snapshot.state == "RUNNING" && !access.while_running {
+                return Err("This memory channel requires a stopped core".into());
+            }
+            let base = literal_address(address)?;
+            base.checked_add(count).ok_or("Memory address overflow")?;
+            if !self.memory_connections.contains_key(channel) {
+                self.memory_connections
+                    .insert(channel.into(), connect(&access.tcl_endpoint)?);
+            }
+            let command = format!("{} read_memory 0x{base:x} 8 {count}", word(&access.target));
+            let text = match transact(self.memory_connections.get_mut(channel).unwrap(), &command) {
+                Ok(text) => text,
+                Err(error) => {
+                    self.memory_connections.remove(channel);
+                    return Err(error);
+                }
+            };
+            let bytes = text
+                .split_whitespace()
+                .map(|token| {
+                    integer(token).and_then(|value| {
+                        u8::try_from(value).map_err(|_| {
+                            "Memory response contains a value wider than one byte".into()
+                        })
+                    })
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            if bytes.len() != count as usize {
+                return Err("Incomplete memory response".into());
+            }
+            (
+                base,
+                bytes,
+                access.target,
+                access.tcl_endpoint,
+                self.project.memory_access_source.clone(),
+            )
+        };
+        if self.register_context() != context
+            || (channel.is_empty() && self.snapshot.state != "STOPPED")
+        {
+            return Err("Target context or running state changed during the memory read".into());
+        }
+        if self.cancellation.load(Ordering::Relaxed) {
+            return Err("Memory read cancelled".into());
+        }
+        // The caller owns the view cache. Never publish an unqualified memory
+        // snapshot that could be applied after a core/frame selection changes.
+        Ok(
+            json!({"address":format!("0x{base:x}"),"bytes":bytes,"channel":channel,
+            "target":target,"endpoint":endpoint,"source":source,"context":context,
+            "state":self.snapshot.state,"atomic":false}),
+        )
+    }
     pub(super) fn memory_channels(&self) -> Result<Json, String> {
         let core = self.project.preference_core.as_deref().unwrap_or("default");
         Ok(
@@ -201,6 +312,44 @@ impl Engine {
     }
 }
 
+pub(super) fn literal_address(address: &str) -> Result<u64, String> {
+    let digits = address
+        .strip_prefix("0x")
+        .or_else(|| address.strip_prefix("0X"));
+    let value = if let Some(digits) = digits {
+        u64::from_str_radix(digits, 16)
+    } else {
+        address.parse()
+    };
+    value.map_err(|_| "Bus memory access requires a literal hexadecimal or decimal address".into())
+}
+
+fn dump_blocks(blocks: &[Value], count: u64) -> Result<(u64, Vec<u8>), String> {
+    let first = blocks.first().ok_or("Incomplete memory response")?;
+    let base = literal_address(&first.string("begin"))?;
+    base.checked_add(count).ok_or("Memory address overflow")?;
+    let mut bytes = Vec::with_capacity(count as usize);
+    for block in blocks {
+        if literal_address(&block.string("begin"))? != base + bytes.len() as u64 {
+            return Err("Memory response contains a gap or overlapping blocks".into());
+        }
+        let contents = block.string("contents");
+        if !contents.len().is_multiple_of(2)
+            || !contents.bytes().all(|b| b.is_ascii_hexdigit())
+            || contents.len() / 2 > count as usize - bytes.len()
+        {
+            return Err("Invalid memory response bytes".into());
+        }
+        for pair in contents.as_bytes().as_chunks::<2>().0 {
+            bytes.push(u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap());
+        }
+    }
+    if bytes.len() != count as usize {
+        return Err("Incomplete memory response".into());
+    }
+    Ok((base, bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,5 +412,157 @@ mod tests {
                 && !command.contains("targets")
                 && !command.contains("target current")
         );
+    }
+
+    fn memory_fixture(response: &'static [u8]) -> (String, thread::JoinHandle<String>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = listener.local_addr().unwrap().to_string();
+        let worker = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut packet = vec![];
+            let mut byte = [0];
+            loop {
+                stream.read_exact(&mut byte).unwrap();
+                if byte[0] == 0x1a {
+                    break;
+                }
+                packet.push(byte[0]);
+            }
+            stream.write_all(response).unwrap();
+            String::from_utf8(packet).unwrap()
+        });
+        (endpoint, worker)
+    }
+
+    fn memory_engine(endpoint: &str) -> Engine {
+        let mut project = Project {
+            preference_core: Some("core1".into()),
+            memory_access_source: "project:fixture.toml".into(),
+            ..Default::default()
+        };
+        project.memory_access.push(crate::config::MemoryAccess {
+            id: "ap".into(),
+            target: "soc.bus".into(),
+            tcl_endpoint: endpoint.into(),
+            while_running: true,
+            cores: vec!["core1".into()],
+            ..Default::default()
+        });
+        let (events, _) = mpsc::sync_channel(512);
+        let mut engine = Engine::new(project, events, Arc::new(AtomicBool::new(false)));
+        engine.snapshot.state = "RUNNING".into();
+        engine
+    }
+
+    #[test]
+    fn bus_dump_preserves_address_order_and_reports_non_atomic_explicit_core_route() {
+        let (endpoint, worker) = memory_fixture(b"__DEBUGTUI_RPC__0:0x00 0x7f 0x80 0xff\x1a");
+        let mut engine = memory_engine(&endpoint);
+        let result=engine.read_memory_dump(&json!({"address":"0x100000008","count":4,"channel":"ap","context":engine.register_context()})).unwrap();
+        assert_eq!(result["address"], "0x100000008");
+        assert_eq!(result["bytes"], json!([0, 127, 128, 255]));
+        assert_eq!(result["context"]["core"], "core1");
+        assert_eq!(result["target"], "soc.bus");
+        assert_eq!(result["endpoint"], endpoint);
+        assert_eq!(result["source"], "project:fixture.toml");
+        assert_eq!(result["atomic"], false);
+        assert!(engine.snapshot.memory.is_empty());
+        let command = worker.join().unwrap();
+        assert!(
+            command.contains("soc.bus") && command.contains("read_memory 0x100000008 8 4"),
+            "{command}"
+        );
+        assert!(
+            !command.contains("halt")
+                && !command.contains("targets")
+                && !command.contains("target current")
+        );
+    }
+
+    #[test]
+    fn invalid_dump_context_limits_channels_and_capabilities_touch_no_transport() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let mut engine = memory_engine(&listener.local_addr().unwrap().to_string());
+        for request in [
+            json!({"address":"0x1000","count":0,"channel":"ap"}),
+            json!({"address":"0x1000","count":4097,"channel":"ap"}),
+            json!({"address":"0xffffffffffffffff","count":1,"channel":"ap"}),
+            json!({"address":"$sp","count":4,"channel":"ap"}),
+            json!({"address":"0x1000","count":4,"channel":"missing"}),
+            json!({"address":"0x1000","count":4,"channel":"ap","context":{"session":0,"generation":0,"core":"core0","frame":0}}),
+        ] {
+            assert!(engine.read_memory_dump(&request).is_err());
+            assert!(engine.memory_connections.is_empty());
+        }
+        engine.project.memory_access[0].while_running = false;
+        assert!(
+            engine
+                .read_memory_dump(&json!({"address":"0x1000","count":4,"channel":"ap"}))
+                .is_err()
+        );
+        engine.project.memory_access[0].while_running = true;
+        engine.project.preference_core = Some("core0".into());
+        assert!(
+            engine
+                .read_memory_dump(&json!({"address":"0x1000","count":4,"channel":"ap"}))
+                .is_err()
+        );
+        assert_eq!(
+            listener.accept().unwrap_err().kind(),
+            std::io::ErrorKind::WouldBlock
+        );
+    }
+
+    #[test]
+    fn incomplete_bus_dump_is_an_error_without_gdb_fallback_or_retry() {
+        let (endpoint, worker) = memory_fixture(b"__DEBUGTUI_RPC__0:0xaa\x1a");
+        let mut engine = memory_engine(&endpoint);
+        assert_eq!(
+            engine
+                .read_memory_dump(&json!({"address":"0x1000","count":4,"channel":"ap"}))
+                .unwrap_err(),
+            "Incomplete memory response"
+        );
+        assert!(engine.gdb.is_none());
+        assert!(engine.snapshot.memory.is_empty());
+        assert!(worker.join().unwrap().contains("read_memory 0x1000 8 4"));
+    }
+
+    #[test]
+    fn gdb_dump_requires_complete_contiguous_valid_bytes_without_truncating_high_addresses() {
+        let parse_blocks = |contents: &str| {
+            mi::parse(&format!("1^done,memory={contents}"))
+                .unwrap()
+                .unwrap()
+                .data
+                .field("memory")
+                .unwrap()
+                .items()
+                .to_vec()
+        };
+        let blocks = parse_blocks(
+            r#"[{begin="0x100000008",contents="007f"},{begin="0x10000000a",contents="80ff"}]"#,
+        );
+        assert_eq!(
+            dump_blocks(&blocks, 4).unwrap(),
+            (0x100000008, vec![0, 127, 128, 255])
+        );
+        for contents in [
+            r#"[{begin="0x1000",contents="00"}]"#,
+            r#"[{begin="0x1000",contents="00"},{begin="0x1000",contents="7f80ff"}]"#,
+            r#"[{begin="0x1000",contents="00"},{begin="0x1002",contents="7f80ff"}]"#,
+            r#"[{begin="0x1000",contents="007f80fg"}]"#,
+            r#"[{begin="0x1000",contents="007f80f"}]"#,
+            r#"[{begin="0xffffffffffffffff",contents="007f80ff"}]"#,
+        ] {
+            assert!(
+                dump_blocks(&parse_blocks(contents), 4).is_err(),
+                "{contents}"
+            );
+        }
     }
 }

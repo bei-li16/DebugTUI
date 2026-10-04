@@ -180,6 +180,7 @@ pub struct Ui {
     pub unicode: bool,
     pub formats: BTreeMap<String, Radix>,
     pub refresh: BTreeMap<String, RefreshPolicy>,
+    pub memory: BTreeMap<String, MemoryRange>,
 }
 impl Default for Ui {
     fn default() -> Self {
@@ -188,7 +189,34 @@ impl Default for Ui {
             unicode: true,
             formats: BTreeMap::new(),
             refresh: BTreeMap::new(),
+            memory: BTreeMap::new(),
         }
+    }
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct MemoryRange {
+    pub address: String,
+    pub count: u64,
+}
+impl Default for MemoryRange {
+    fn default() -> Self {
+        Self {
+            address: "$sp".into(),
+            count: 256,
+        }
+    }
+}
+impl MemoryRange {
+    pub(crate) fn validate(&self) -> Result<(), String> {
+        if !(1..=4096).contains(&self.count)
+            || self.address.is_empty()
+            || self.address.len() > 256
+            || self.address.chars().any(char::is_control)
+        {
+            return Err("Memory ranges need an address and 1..4096 bytes".into());
+        }
+        Ok(())
     }
 }
 /// Hardware mappings (DAP/AP/CTI) belong to the environment, never to the TUI.
@@ -725,6 +753,9 @@ impl Project {
             }
         }
         validate_memory_access(&self.memory_access, &self.cores)?;
+        for range in self.ui.memory.values() {
+            range.validate()?;
+        }
         for policy in self.ui.refresh.values() {
             if policy.interval_ms != 0 && !(50..=60000).contains(&policy.interval_ms) {
                 return Err("Refresh interval must be 0 (off) or 50..60000 ms".into());
@@ -1010,6 +1041,13 @@ mod tests {
             ..Default::default()
         };
         ui.formats.insert("watch:counter".into(), Radix::Binary);
+        ui.memory.insert(
+            "chip:fixture|core1|memory:range".into(),
+            MemoryRange {
+                address: "0x20000000".into(),
+                count: 128,
+            },
+        );
         ui.refresh.insert(
             "single|watch:counter".into(),
             RefreshPolicy {
@@ -1033,6 +1071,7 @@ mod tests {
         );
         assert_eq!(reloaded.watch, vec!["counter"]);
         assert_eq!(reloaded.ui.refresh["single|watch:counter"].interval_ms, 100);
+        assert_eq!(reloaded.ui.memory, ui.memory);
         assert_eq!(
             profile_before,
             fs::read(base.join("tools/debug-env.toml")).unwrap()

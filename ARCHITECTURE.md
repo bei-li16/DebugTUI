@@ -1,5 +1,15 @@
 # DebugTUI 架构
 
+## 寄存器与内存访问开发分支（尚未发布）
+
+`registers.rs` 定义版本化目录、读取路由、位域、精确原始值、实现条件及显式 core/cluster/chip 归属；`session/registers.rs` 按请求读取，错误按条目隔离。`ui/registers.rs` 展示分组树并只请求当前可见条目。旧 `Snapshot.registers` 保留，新增样本包含来源、原因、状态和上下文；目录或读取失败不证明硬件缺失。
+
+`launch/channels.rs` 编辑项目的 `memory_access` 草稿，不改写继承的工具 profile。配置加载记录实际来源。`ui/monitor.rs` 的 Watch／外设策略按芯片、核心和条目保存，绑定及迟到响应检查会话、停止代次和栈帧；Watch 地址仍由 GDB 在暂停时解析。
+
+`ui/memory.rs` 保存每芯片／核心的范围和通道，使用 `memory_dump` 请求。新接口限制 1–4096 字节；GDB 响应必须连续、完整并包含合法字节，总线响应按地址序解释为字节，不进行字节序重排。结果包含路由和上下文，由发起请求的视图验证后缓存；不通过无上下文的 `Snapshot.memory` 发布。切核、重连、切帧、范围或通道改变后丢弃迟到结果。暂停时可见面板每个停止点只读取一次，运行时仅手动读取配置声明允许的通道。旧 `memory` JSON 接口保持兼容。
+
+`debug_access.rs` 在同一 OpenOCD 服务的 GDB 请求和 TCL 请求间串行化访问，按解析后的 endpoint 共用锁。该调度不约束外部调试客户端。目录中的银行、浮点和 64 位后端能力仍需核对具体工具构建，未完成能力与写入接口详见 [开发进度](docs/registers-development-status.md)。
+
 ## 0.8.3-local.3 多核断点
 
 `ui/breakpoints/cores.rs` 提供选中断点的核心复选列表；新建源码断点不带核心范围。`coordinator/breakpoints.rs` 为显式关联的断点分配稳定 group 标识，各核仍拥有自己的 GDB 编号。`BreakpointOptions.group` 保存在各自 `[[cores]].breakpoints` 中；Session 维护本次连接的编号到 group 的映射，重连通过保存的定义重建。快照中的 `cores` 来自真实每核断点列表，不根据地址相同推测关联。

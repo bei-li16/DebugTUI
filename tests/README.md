@@ -25,7 +25,7 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --only c
 
 ## 功能覆盖
 
-[`functional-coverage.json`](functional-coverage.json) 将软件划分为 **22 个功能组**，映射到实现文件、必需套件、Rust 测试证据及验证限制：
+[`functional-coverage.json`](functional-coverage.json) 将软件划分为 **25 个功能组**，映射到实现文件、必需套件、Rust 测试证据及验证限制：
 
 | ID | 功能 |
 |---|---|
@@ -35,8 +35,22 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --only c
 | F13–F16 | 栈/Locals/寄存器、反汇编/内存、SVD/外设、运行时读取与刷新 |
 | F17–F19 | 多核与关联断点、Build/Download 任务生命周期、日志 |
 | F20–F22 | 外观/动效/键鼠/窗口尺寸、退出与清理、安装/升级/卸载/重装 |
+| F23 | 芯片目录、Setup 新增及核心选择 |
+| F24–F25 | 开发分支的寄存器目录／按需视图、Setup 与各面板的显式内存通道 |
 
 `automated-passed` 表示该组所列套件和单元测试证据通过，**不是代码行/分支覆盖率，也不是全部硬件和输入组合都已验收**。多核套件使用多个真实本机 GDB，不能替代多核实板；demo 终端验证实际输入和渲染，不能替代目标执行。物理拔插/断电、多小时稳定性、其他宿主/探针、系统剪贴板、颜色/字体及公共 Release 下载另行验收。具体限制保存在矩阵和每次报告中。
+
+## 开发分支寄存器与内存夹具
+
+`tests/register_access.rs` 在 Windows 下启动隔离的 Node MI 夹具，验证目录模式连接不自动扫描寄存器、稀疏索引、逐项失败、精确 64 位值和异步 RUNNING 结果失效；同时检查连续内存块、64 位地址和 Scope All 下只读取选中核心。`src/session/memory.rs` 的 TCP 夹具检查显式 target／endpoint、地址序字节及无效请求在连接前拒绝；UI 单元测试检查各档布局、取消不保存、策略隔离和迟到响应丢弃。
+
+```powershell
+cargo test --locked
+cargo test --locked --test register_access
+cargo clippy --locked --all-targets -- -D warnings
+```
+
+这些夹具不启动 OpenOCD、不连接板卡，不证明芯片的寄存器实现、AP 映射或缓存一致性。完整任务的后端扩展、写入和延后上板用例仍在开发，见 [开发进度](../docs/registers-development-status.md)。
 
 ## Setup 源码映射专项（0.8.7）
 

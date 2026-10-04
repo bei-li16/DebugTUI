@@ -1,5 +1,12 @@
 # DebugTUI 验证记录
 
+## 寄存器与显式内存通道开发分支（2026-10-04，尚未发布）
+
+- 230 项单元测试和 5 项本地集成测试通过，2 项既有外部环境测试 ignored；`cargo clippy --locked --all-targets -- -D warnings` 通过。
+- Setup 通道草稿、保存／取消、核心限制及窄窗口经过测试。Watch、Peripherals、Memory 均有可见入口；Memory 范围和通道按芯片／核心保存，读取失败不重试或回退，运行中不隐式停核。
+- MI 管道和 TCP 夹具覆盖连续完整字节、64 位地址与原始值、单项寄存器失败、RUNNING 通知及会话／核心／停止点／栈帧／范围变化后迟到响应失效。双核心夹具确认 Scope All 不广播内存读取。
+- `tests/functional-coverage.json` 新增 F24／F25 关联本批软件证据与限制。未运行完整功能套件或新上板验收，未升版、全局安装、推送或发布；完整待完成范围见 [开发进度](docs/registers-development-status.md)。
+
 ## 0.9.3 本地升版与安装（2026-10-03）
 
 - Cargo、Cargo.lock 工程条目和 npm 包版本同步为 **0.9.3**，README 当前版本更新；包含下述配色、宽屏布局、圆角填色及 Setup 默认 Project / 字段箭头循环修改。

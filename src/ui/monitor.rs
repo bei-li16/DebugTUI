@@ -522,6 +522,8 @@ impl App {
             || self.quitting
             || self.pending_task.is_some()
             || self.monitor.busy()
+            || self.memory_panel.busy()
+            || self.memory_panel.modal()
             || !self.pending_commands.is_empty()
             || self.pending_view.is_some()
             || self.completion.busy()

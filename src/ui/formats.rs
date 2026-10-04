@@ -425,8 +425,7 @@ impl App {
         (self.view_rects[4].width.saturating_sub(12) as usize / 12).clamp(1, 16)
     }
     pub(super) fn memory_bytes(&self) -> Vec<(u64, String)> {
-        self.snapshot
-            .memory
+        self.memory_lines()
             .iter()
             .flat_map(|line| {
                 let mut parts = line.split_whitespace();

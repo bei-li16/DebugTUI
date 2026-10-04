@@ -188,7 +188,7 @@ impl RegisterView {
 }
 
 impl App {
-    fn register_context(&self) -> Context {
+    pub(super) fn register_context(&self) -> Context {
         Context {
             session: self.snapshot.register_session,
             generation: self.snapshot.generation,
