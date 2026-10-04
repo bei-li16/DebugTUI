@@ -53,6 +53,47 @@ def evaluate(data):
         if op == 'debugtui_banked_protocol':
             return (0, 'old-banked-adapter' if fault == 'bank_protocol' else
                     'debugtui-armv8-banked-1 mrs physical-readback no-mode-change stop-on-fault')
+        if op == 'debugtui_vfp_protocol':
+            return (0, 'old-vfp-adapter' if fault == 'vfp_protocol' else
+                    'debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault')
+        if op == 'vfp':
+            reg = args[0]
+            if fault == 'vfp_refusal_context_change':
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+                return (1, 'debugtui-vfp:access-restricted', -308)
+            if fault == 'vfp_identity':
+                return (1, 'debugtui-vfp:reader-unsupported', -300)
+            if fault == 'vfp_trapped':
+                return (1, 'debugtui-vfp:access-restricted', -308)
+            if fault == 'vfp_fault':
+                cpu['status'] = 'unknown'
+                return (1, 'Core state restoration failed: VFP fixture outcome unknown', -1)
+            single = fault == 'vfp_d16'
+            mvfr0, mvfr1 = (0x10110021, 0x11000011) if single else (0x10110222, 0x12111111)
+            if fault == 'vfp_unknown':
+                mvfr1 = 0x12113111
+            enabled = fault != 'vfp_disabled'
+            fpexc = 0x40000700 if enabled else 0x700
+            controls = {'fpsid':0x41034025, 'fpscr':0xa000009f, 'mvfr0':mvfr0,
+                        'mvfr1':mvfr1, 'mvfr2':0x40 if single else 0x43, 'fpexc':fpexc}
+            data = reg.startswith(('d','q'))
+            if fault == 'vfp_unknown' and data:
+                return (1, 'debugtui-vfp:reader-unsupported', -300)
+            if single and data and (reg.startswith('q') or int(reg[1:]) >= 16):
+                return (1, 'debugtui-vfp:not-implemented', -308)
+            if not enabled and (data or reg == 'fpscr'):
+                return (1, 'debugtui-vfp:feature-disabled', -308)
+            if data:
+                pair = int(reg[1:]) // 2 if reg.startswith('d') else int(reg[1:])
+                offset = pair + (0x100000000 if name == 'cpu1' else 0)
+                value = f'0x{0x7ff8000012345678 + offset:016x}{0x800000003f800000 + offset:016x}'
+            else:
+                value = f'0x{controls[reg]:08x}'
+            if fault == 'vfp_short':
+                value = '0x1'
+            if fault == 'vfp_context_change':
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+            return (0, f'mvfr0 0x{mvfr0:08x} mvfr1 0x{mvfr1:08x} fpexc 0x{fpexc:08x} value {value}')
         if op == 'banked':
             if fault == 'bank_refusal_context_change':
                 Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
@@ -124,6 +165,7 @@ def evaluate(data):
                   '15 0 10 2 0': cpu.get('mair0', 0xff440400), '15 0 10 2 1': cpu.get('mair1', 0xff440400),
                   '15 4 10 2 0': cpu.get('hmair0', 0xff440400), '15 4 10 2 1': cpu.get('hmair1', 0xff440400),
                   '15 4 1 1 0': cpu.get('hcr', 1), '15 4 6 1 1': (1 << cpu['el2_count']) - 1,
+                  '15 4 1 1 2': 1 << 10 if fault == 'vfp_trapped' else cpu.get('hcptr', 0),
                   '15 0 14 2 1': 0, '15 0 14 3 1': 0, '15 4 14 2 1': 0,
                   '15 0 14 0 0': 100000000, '15 0 14 1 0': 0, '15 4 14 1 0': 0}
         if encoding in scalar:

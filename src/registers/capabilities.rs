@@ -1,7 +1,8 @@
 //! Decode evidence from current physical-core samples, without guessing from errors.
 use super::*;
 pub const PROBE_IDS: &[&str] = &[
-    "cpsr", "midr", "id_pfr1", "id_dfr0", "mpuir", "hmpuir", "cpacr", "pmcr", "icc_ctlr", "ich_vtr",
+    "cpsr", "midr", "id_pfr1", "id_dfr0", "mpuir", "hmpuir", "cpacr", "pmcr", "icc_ctlr",
+    "ich_vtr", "fpsid", "mvfr0", "mvfr1", "mvfr2", "fpexc",
 ];
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Identity {
@@ -167,6 +168,39 @@ impl Probe {
                 (n >> 11) & 31,
                 "pmcr",
                 "PMCR.N; only read, never enable/reset counters",
+            );
+        }
+        if let (Some(m0), Some(m1)) = (self.raw("mvfr0"), self.raw("mvfr1")) {
+            if let Some(features) = super::vfp::features(m0, m1) {
+                self.fact(
+                    "vfp.present",
+                    1,
+                    "mvfr0",
+                    "Observed R52 single-precision feature; independent of CPACR/FPEXC permissions",
+                );
+                self.fact(
+                    "vfp.d_registers",
+                    features.d_registers,
+                    "mvfr0",
+                    "MVFR0.SIMDReg physical D16/D32 capacity; not a GDB name-count inference",
+                );
+                self.fact(
+                    "vfp.double_precision",
+                    u64::from(features.double_precision),
+                    "mvfr0",
+                    "MVFR0.FPDP; D storage width does not imply double-precision arithmetic",
+                );
+                self.fact("vfp.neon",u64::from(features.neon),"mvfr1","MVFR1 SIMD load/store, integer and single-precision fields, consistent with MVFR0; raw Q storage view does not prove NEON execution permission");
+            } else {
+                self.notes.push("Decode: Unadapted or contradictory R52 MVFR0/MVFR1; floating-point capacity and NEON remain unknown".into());
+            }
+        }
+        if let Some(n) = self.raw("fpexc") {
+            self.fact(
+                "vfp.enabled",
+                (n >> 30) & 1,
+                "fpexc",
+                "Actual FPEXC.EN; never changed by this reader",
             );
         }
         if self.raw("cpsr").is_some_and(|n| n & 31 == 0x1a) {

@@ -168,6 +168,10 @@ impl Engine {
                         sample.reason = reason;
                         sample.detail = error;
                         sample.state = match reason {
+                            Reason::HardwareNotImplemented => {
+                                sample.implementation = Implementation::No;
+                                State::Unsupported
+                            }
                             Reason::ReaderUnsupported => State::Unsupported,
                             Reason::AccessRestricted
                             | Reason::FeatureDisabled
@@ -246,6 +250,7 @@ impl Engine {
         let value = match &register.reader {
             Reader::Gdb { name } => self.gdb_register_value(name, register.bits)?,
             Reader::Banked { name } => self.read_banked_register(name)?,
+            Reader::Vfp { name } => self.read_vfp_register(name, values)?,
             Reader::Alias { source, offset } => {
                 let parent = catalogue.register(source).ok_or_else(|| {
                     (
@@ -466,6 +471,7 @@ pub(super) fn route_name(register: &Register) -> String {
         Reader::Mmio { component, .. } => format!("mmio:{component}"),
         Reader::Backend { name } => format!("openocd:{name}"),
         Reader::Banked { name } => format!("openocd:aarch64 banked:{name}"),
+        Reader::Vfp { name } => format!("openocd:aarch64 vfp:{name}"),
         Reader::Cp15 { .. } => "openocd:cp15".into(),
         Reader::Cp15_64 { .. } => "gdb:cp15_64".into(),
     }

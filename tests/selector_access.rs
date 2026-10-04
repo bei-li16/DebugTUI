@@ -25,6 +25,8 @@ mod banked_cases;
 mod mpu_cases;
 #[path = "selector_access/mrrc_cases.rs"]
 mod mrrc_cases;
+#[path = "selector_access/vfp_cases.rs"]
+mod vfp_cases;
 struct Fixture {
     project: Project,
     transcript: PathBuf,

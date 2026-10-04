@@ -15,6 +15,7 @@ pub mod capabilities;
 pub mod display;
 pub mod mpu;
 pub mod selector;
+pub mod vfp;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -33,6 +34,8 @@ pub struct Config {
     pub cp15_64_command: String,
     /// State-preserving R52 banked MRS adapter; no legacy get_reg fallback.
     pub banked_command: String,
+    /// Explicit adapter with physical VFP enable, capacity and scratch checks.
+    pub vfp_command: String,
     /// Opt-in MCR used only for adapted, saved/restored selector transactions.
     pub selector_command: String,
     /// Genuine ISB; empty retains the guarded legacy CP15ISB route.
@@ -89,6 +92,9 @@ impl Config {
         }
         if !matches!(self.banked_command.as_str(), "" | "aarch64 banked") {
             return Err("registers.banked_command must be aarch64 banked".into());
+        }
+        if !matches!(self.vfp_command.as_str(), "" | "aarch64 vfp") {
+            return Err("registers.vfp_command must be aarch64 vfp".into());
         }
         if !self.isb_command.is_empty()
             && (self.isb_command != "aarch64 isb"
@@ -212,6 +218,9 @@ pub enum Reader {
         name: String,
     },
     Banked {
+        name: String,
+    },
+    Vfp {
         name: String,
     },
     Mmio {
@@ -647,6 +656,13 @@ impl Catalogue {
                 }
             }
             match &register.reader {
+                Reader::Vfp { name }
+                    if vfp::Kind::parse(name).is_none_or(|kind| kind.bits() != register.bits)
+                        || register.scope != Scope::Core
+                        || register.read_side_effect =>
+                {
+                    return Err(format!("Invalid VFP reader for {}", register.id));
+                }
                 Reader::Banked { name }
                     if !banked::valid_name(name)
                         || register.bits != 32

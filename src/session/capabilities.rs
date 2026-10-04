@@ -49,7 +49,7 @@ impl Engine {
         let mut probe=Probe {context:context.clone(),thread,identity:None,facts:BTreeMap::new(),samples:vec![],gdb_names:vec![],notes:vec![
             "GDB names prove visibility only; unspecified widths and unprobed classes remain unknown".into(),
             "FPU presence, FPEXC.EN, banked-register and genuine MRRC capabilities are not inferred from CPACR or a read failure".into(),
-            "Identity/MPU/GIC decoding uses Cortex-R52 TRM 100026_0104_01_en §§4.3, 10.3; target responses retained separately".into()]};
+            "Identity/MPU/GIC/VFP decoding uses Cortex-R52 TRM 100026_0104_01_en §§4.3, 10.3, 16.5–16.6 and DDI 0568 D1.3; target responses retained separately".into()]};
         let mut values = BTreeMap::new();
         for &id in PROBE_IDS {
             if self.cancellation.load(Ordering::Relaxed) {

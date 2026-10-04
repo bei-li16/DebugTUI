@@ -23,7 +23,8 @@ def generate(cpu, m_profile=False):
         description = descriptions.get(id, f"{id.upper()} in the {group} register group.")
         if id.startswith(('prbar','hprbar')) and id[-1:].isdigit(): description = "MPU region base address, permissions, shareability and execute-never attributes."
         if id.startswith(('prlar','hprlar')) and id[-1:].isdigit(): description = "MPU region inclusive limit, memory-attribute index and enable state."
-        if group == 'vfp' and id != 'fpscr': description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+        if group in ('single', 'double', 'quad'): description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+        if group == 'vfp' and id != 'fpscr': description = ("Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension." if m_profile else "Raw floating-point identification or enable-control register; observation never enables the FPU.")
         lines.append(f"description = {q(description)}")
         params = params or {"name":id}
         route = [f"kind = {q(kind)}"] + [f"{key} = {q(value) if isinstance(value,str) else value}" for key,value in params.items()]
@@ -92,11 +93,20 @@ def generate(cpu, m_profile=False):
             for typename,crm in [("pmevcntr",8),("pmevtyper",12)]:
                 reg(f"{typename}{n}","pmu",kind="cp15",params=dict(cp=15,op1=0,crn=14,crm=crm,op2=n),conditions=[("pmu.counters",n+1)])
     group("vfp","Floating point","simd")
+    if not m_profile:
+        group("quad","Quad","simd")
+        group("double","Double","simd")
+        group("single","Single","simd")
     for n in range(16 if m_profile else 32):
-        reg(f"d{n}","vfp",bits=64,conditions=[("vfp.d_registers",n+1)])
+        reg(f"d{n}","vfp" if m_profile else "double",bits=64,kind="gdb" if m_profile else "vfp",conditions=[("vfp.d_registers",n+1)])
     for n in range(32):
-        reg(f"s{n}","vfp",kind="alias",params=dict(source=f"d{n//2}",offset=32*(n%2)),conditions=[("vfp.d_registers",n//2+1)])
-    reg("fpscr","vfp",conditions=[("vfp.present",1)])
+        reg(f"s{n}","vfp" if m_profile else "single",kind="alias",params=dict(source=f"d{n//2}",offset=32*(n%2)),conditions=[("vfp.d_registers",n//2+1)])
+    if not m_profile:
+        for n in range(16):
+            reg(f"q{n}","quad",bits=128,kind="vfp",conditions=[("vfp.neon",1)])
+        for name in ["fpsid","mvfr0","mvfr1","mvfr2","fpexc"]:
+            reg(name,"vfp",access="rw" if name=="fpexc" else "ro",kind="vfp")
+    reg("fpscr","vfp",kind="gdb" if m_profile else "vfp",conditions=[("vfp.present",1)])
     ROOT.mkdir(parents=True,exist_ok=True)
     (ROOT / f"{cpu}.toml").write_text("\n".join(lines)+"\n",encoding="utf-8",newline="\n")
 

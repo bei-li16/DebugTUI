@@ -151,3 +151,9 @@ Bao 配置适配回归：`pwsh -NoProfile -File scripts/test-bao-setup.ps1 -Proj
 Bao Build/Download 回归：`node scripts/test-bao-tasks.cjs <Bao工程根>` 使用隔离副本测试缺失清单、ELF 被更换、WSL 失败后的旧产物失效、原始错误编码及下载器非零退出码，不访问实板。
 
 `node scripts/test-bao-workflow.cjs <EXE> <Bao工程根> --flash 0` 验证 core0；末尾改为 `0,1` 验证双核。该驱动会重新构建并烧录 Bao smoke，要求开始时板上已是匹配的 smoke 固件；覆盖连接状态下 Build/Download、释放探针、重连和符号加载、全镜像 Flash 回读、C 断点/单步、Guest 心跳。它使用隔离 TOML 并检查原始项目/profile 哈希不变。
+
+VFP 使用 `registers::vfp::tests`、能力事实单元测试和 `tests/selector_access/vfp_cases.rs`，覆盖 86 个存储／控制视图、共享 pair、D16 不授权 Q、协议／精确宽度／身份／权限、未使能、未知原始 MVFR、物理线程／帧前后检查、未知故障隔离和 Scope All 当前 owner。C 测试编译实际生产头文件，核对 63 个故障点、R0/R1 恢复回读和前后 DSPSR／HCPTR／FPEXC 一致。`tools/openocd-adapter/tests/vfp-encoding.s` 用 GNU Arm 汇编器独立核对 VMRS、VMOV 与 HCPTR 编码。REG-H02/H03 用显式 `unsigned int *` 读取汇编定义的参考数组／ready，避免依赖缺失的调试类型；真实 native GCC/GDB 验证无类型符号的高位原始字，记录 `artifacts/vfp-untyped-reference-gdb.log`。
+
+REG-H03 驱动 `node scripts/test-register-vfp-hardware.cjs` 默认 4 skipped，不访问目标。显式参数为 `--run --project FILE --core NAME --case JSON --binary FILE`；以 `tests/fixtures/register-vfp-board.example.json` 为起点，替换实际固件／CPU／MVFR／使能／陷阱证据并移除 `software_example`。启动固件建立 Hyp 权限和 FP 内容，主机驱动不运行、下载、复位或使能；工程设置 `on_exit="disconnect"`，禁用连接时控制动作，只在 `register-vfp-board.S` 的 ready 循环暂停。参考数组与 ready 变量须每核独立，ready 命名为 `${reference}_ready`；可用 `DEBUGTUI_VFP_REFERENCE`、`DEBUGTUI_VFP_READY`、`DEBUGTUI_VFP_HOOK` 编译独立钩子。钩子先检查 Hyp/HCPTR，TCP10=1 不注入 VMRS，EN=0 不注入 FPSCR／VMOV，D16 不读高 D，无模式或 FPU 写入。
+
+编译示例：`arm-linux-gnueabi-gcc -mcpu=cortex-r52 -mfpu=neon-fp-armv8 -mfloat-abi=softfp -c tests/fixtures/register-vfp-board.S`。实际二进制的双核软件用例分别验证 D32、SP-only D16、EN=0、TCP10=1 四类五阶段流程；独立参考低／高字对照所有合法 S/D/Q 原始位及控制值，记录 peer、PC/CPSR/HCPTR、R0/R1 和 FPEXC／工程未变。GDB scratch 样本只是逻辑视图，物理回读由适配器执行；报告 `board_tests_executed=false`。合法 EL1/Guest 读取仍待补，不能用安全拒绝代替完整 REG-H03 验收。

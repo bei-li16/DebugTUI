@@ -4065,14 +4065,29 @@ id = "vfp"
 name = "Floating point"
 parent = "simd"
 
+[[groups]]
+id = "quad"
+name = "Quad"
+parent = "simd"
+
+[[groups]]
+id = "double"
+name = "Double"
+parent = "simd"
+
+[[groups]]
+id = "single"
+name = "Single"
+parent = "simd"
+
 [[registers]]
 id = "d0"
 name = "D0"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d0" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d0" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 1
@@ -4080,11 +4095,11 @@ min = 1
 [[registers]]
 id = "d1"
 name = "D1"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d1" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d1" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 2
@@ -4092,11 +4107,11 @@ min = 2
 [[registers]]
 id = "d2"
 name = "D2"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d2" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d2" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 3
@@ -4104,11 +4119,11 @@ min = 3
 [[registers]]
 id = "d3"
 name = "D3"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d3" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d3" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 4
@@ -4116,11 +4131,11 @@ min = 4
 [[registers]]
 id = "d4"
 name = "D4"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d4" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d4" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 5
@@ -4128,11 +4143,11 @@ min = 5
 [[registers]]
 id = "d5"
 name = "D5"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d5" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d5" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 6
@@ -4140,11 +4155,11 @@ min = 6
 [[registers]]
 id = "d6"
 name = "D6"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d6" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d6" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 7
@@ -4152,11 +4167,11 @@ min = 7
 [[registers]]
 id = "d7"
 name = "D7"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d7" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d7" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 8
@@ -4164,11 +4179,11 @@ min = 8
 [[registers]]
 id = "d8"
 name = "D8"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d8" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d8" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 9
@@ -4176,11 +4191,11 @@ min = 9
 [[registers]]
 id = "d9"
 name = "D9"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d9" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d9" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 10
@@ -4188,11 +4203,11 @@ min = 10
 [[registers]]
 id = "d10"
 name = "D10"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d10" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d10" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 11
@@ -4200,11 +4215,11 @@ min = 11
 [[registers]]
 id = "d11"
 name = "D11"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d11" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d11" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 12
@@ -4212,11 +4227,11 @@ min = 12
 [[registers]]
 id = "d12"
 name = "D12"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d12" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d12" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 13
@@ -4224,11 +4239,11 @@ min = 13
 [[registers]]
 id = "d13"
 name = "D13"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d13" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d13" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 14
@@ -4236,11 +4251,11 @@ min = 14
 [[registers]]
 id = "d14"
 name = "D14"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d14" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d14" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 15
@@ -4248,11 +4263,11 @@ min = 15
 [[registers]]
 id = "d15"
 name = "D15"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d15" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d15" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 16
@@ -4260,11 +4275,11 @@ min = 16
 [[registers]]
 id = "d16"
 name = "D16"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d16" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d16" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 17
@@ -4272,11 +4287,11 @@ min = 17
 [[registers]]
 id = "d17"
 name = "D17"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d17" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d17" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 18
@@ -4284,11 +4299,11 @@ min = 18
 [[registers]]
 id = "d18"
 name = "D18"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d18" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d18" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 19
@@ -4296,11 +4311,11 @@ min = 19
 [[registers]]
 id = "d19"
 name = "D19"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d19" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d19" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 20
@@ -4308,11 +4323,11 @@ min = 20
 [[registers]]
 id = "d20"
 name = "D20"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d20" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d20" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 21
@@ -4320,11 +4335,11 @@ min = 21
 [[registers]]
 id = "d21"
 name = "D21"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d21" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d21" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 22
@@ -4332,11 +4347,11 @@ min = 22
 [[registers]]
 id = "d22"
 name = "D22"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d22" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d22" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 23
@@ -4344,11 +4359,11 @@ min = 23
 [[registers]]
 id = "d23"
 name = "D23"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d23" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d23" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 24
@@ -4356,11 +4371,11 @@ min = 24
 [[registers]]
 id = "d24"
 name = "D24"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d24" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d24" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 25
@@ -4368,11 +4383,11 @@ min = 25
 [[registers]]
 id = "d25"
 name = "D25"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d25" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d25" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 26
@@ -4380,11 +4395,11 @@ min = 26
 [[registers]]
 id = "d26"
 name = "D26"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d26" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d26" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 27
@@ -4392,11 +4407,11 @@ min = 27
 [[registers]]
 id = "d27"
 name = "D27"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d27" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d27" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 28
@@ -4404,11 +4419,11 @@ min = 28
 [[registers]]
 id = "d28"
 name = "D28"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d28" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d28" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 29
@@ -4416,11 +4431,11 @@ min = 29
 [[registers]]
 id = "d29"
 name = "D29"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d29" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d29" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 30
@@ -4428,11 +4443,11 @@ min = 30
 [[registers]]
 id = "d30"
 name = "D30"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d30" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d30" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 31
@@ -4440,11 +4455,11 @@ min = 31
 [[registers]]
 id = "d31"
 name = "D31"
-group = "vfp"
+group = "double"
 bits = 64
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
-reader = { kind = "gdb", name = "d31" }
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "d31" }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 32
@@ -4452,10 +4467,10 @@ min = 32
 [[registers]]
 id = "s0"
 name = "S0"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d0", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4464,10 +4479,10 @@ min = 1
 [[registers]]
 id = "s1"
 name = "S1"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d0", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4476,10 +4491,10 @@ min = 1
 [[registers]]
 id = "s2"
 name = "S2"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d1", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4488,10 +4503,10 @@ min = 2
 [[registers]]
 id = "s3"
 name = "S3"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d1", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4500,10 +4515,10 @@ min = 2
 [[registers]]
 id = "s4"
 name = "S4"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d2", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4512,10 +4527,10 @@ min = 3
 [[registers]]
 id = "s5"
 name = "S5"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d2", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4524,10 +4539,10 @@ min = 3
 [[registers]]
 id = "s6"
 name = "S6"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d3", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4536,10 +4551,10 @@ min = 4
 [[registers]]
 id = "s7"
 name = "S7"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d3", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4548,10 +4563,10 @@ min = 4
 [[registers]]
 id = "s8"
 name = "S8"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d4", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4560,10 +4575,10 @@ min = 5
 [[registers]]
 id = "s9"
 name = "S9"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d4", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4572,10 +4587,10 @@ min = 5
 [[registers]]
 id = "s10"
 name = "S10"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d5", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4584,10 +4599,10 @@ min = 6
 [[registers]]
 id = "s11"
 name = "S11"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d5", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4596,10 +4611,10 @@ min = 6
 [[registers]]
 id = "s12"
 name = "S12"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d6", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4608,10 +4623,10 @@ min = 7
 [[registers]]
 id = "s13"
 name = "S13"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d6", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4620,10 +4635,10 @@ min = 7
 [[registers]]
 id = "s14"
 name = "S14"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d7", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4632,10 +4647,10 @@ min = 8
 [[registers]]
 id = "s15"
 name = "S15"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d7", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4644,10 +4659,10 @@ min = 8
 [[registers]]
 id = "s16"
 name = "S16"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d8", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4656,10 +4671,10 @@ min = 9
 [[registers]]
 id = "s17"
 name = "S17"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d8", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4668,10 +4683,10 @@ min = 9
 [[registers]]
 id = "s18"
 name = "S18"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d9", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4680,10 +4695,10 @@ min = 10
 [[registers]]
 id = "s19"
 name = "S19"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d9", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4692,10 +4707,10 @@ min = 10
 [[registers]]
 id = "s20"
 name = "S20"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d10", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4704,10 +4719,10 @@ min = 11
 [[registers]]
 id = "s21"
 name = "S21"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d10", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4716,10 +4731,10 @@ min = 11
 [[registers]]
 id = "s22"
 name = "S22"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d11", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4728,10 +4743,10 @@ min = 12
 [[registers]]
 id = "s23"
 name = "S23"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d11", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4740,10 +4755,10 @@ min = 12
 [[registers]]
 id = "s24"
 name = "S24"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d12", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4752,10 +4767,10 @@ min = 13
 [[registers]]
 id = "s25"
 name = "S25"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d12", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4764,10 +4779,10 @@ min = 13
 [[registers]]
 id = "s26"
 name = "S26"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d13", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4776,10 +4791,10 @@ min = 14
 [[registers]]
 id = "s27"
 name = "S27"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d13", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4788,10 +4803,10 @@ min = 14
 [[registers]]
 id = "s28"
 name = "S28"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d14", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4800,10 +4815,10 @@ min = 15
 [[registers]]
 id = "s29"
 name = "S29"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d14", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4812,10 +4827,10 @@ min = 15
 [[registers]]
 id = "s30"
 name = "S30"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d15", offset = 0 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
@@ -4824,14 +4839,251 @@ min = 16
 [[registers]]
 id = "s31"
 name = "S31"
-group = "vfp"
+group = "single"
 bits = 32
 access = "rw"
-description = "Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension."
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
 reader = { kind = "alias", source = "d15", offset = 32 }
 [[registers.conditions]]
 fact = "vfp.d_registers"
 min = 16
+
+[[registers]]
+id = "q0"
+name = "Q0"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q0" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q1"
+name = "Q1"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q1" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q2"
+name = "Q2"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q2" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q3"
+name = "Q3"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q3" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q4"
+name = "Q4"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q4" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q5"
+name = "Q5"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q5" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q6"
+name = "Q6"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q6" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q7"
+name = "Q7"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q7" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q8"
+name = "Q8"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q8" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q9"
+name = "Q9"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q9" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q10"
+name = "Q10"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q10" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q11"
+name = "Q11"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q11" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q12"
+name = "Q12"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q12" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q13"
+name = "Q13"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q13" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q14"
+name = "Q14"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q14" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "q15"
+name = "Q15"
+group = "quad"
+bits = 128
+access = "rw"
+description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
+reader = { kind = "vfp", name = "q15" }
+[[registers.conditions]]
+fact = "vfp.neon"
+min = 1
+
+[[registers]]
+id = "fpsid"
+name = "FPSID"
+group = "vfp"
+bits = 32
+access = "ro"
+description = "Raw floating-point identification or enable-control register; observation never enables the FPU."
+reader = { kind = "vfp", name = "fpsid" }
+
+[[registers]]
+id = "mvfr0"
+name = "MVFR0"
+group = "vfp"
+bits = 32
+access = "ro"
+description = "Raw floating-point identification or enable-control register; observation never enables the FPU."
+reader = { kind = "vfp", name = "mvfr0" }
+
+[[registers]]
+id = "mvfr1"
+name = "MVFR1"
+group = "vfp"
+bits = 32
+access = "ro"
+description = "Raw floating-point identification or enable-control register; observation never enables the FPU."
+reader = { kind = "vfp", name = "mvfr1" }
+
+[[registers]]
+id = "mvfr2"
+name = "MVFR2"
+group = "vfp"
+bits = 32
+access = "ro"
+description = "Raw floating-point identification or enable-control register; observation never enables the FPU."
+reader = { kind = "vfp", name = "mvfr2" }
+
+[[registers]]
+id = "fpexc"
+name = "FPEXC"
+group = "vfp"
+bits = 32
+access = "rw"
+description = "Raw floating-point identification or enable-control register; observation never enables the FPU."
+reader = { kind = "vfp", name = "fpexc" }
 
 [[registers]]
 id = "fpscr"
@@ -4840,7 +5092,7 @@ group = "vfp"
 bits = 32
 access = "rw"
 description = "Floating-point status, exceptions and control."
-reader = { kind = "gdb", name = "fpscr" }
+reader = { kind = "vfp", name = "fpscr" }
 [[registers.conditions]]
 fact = "vfp.present"
 min = 1

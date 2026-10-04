@@ -712,11 +712,11 @@ Headless 使用 `register_preferences`，提交 `scope` 和单个 `preferences`�
 
 ### 读取当前核心能力（开发分支）
 
-配置 R52 寄存器目录后，在暂停核心的物理 frame 0 点击 System Regs 的 **Probe caps**，或执行 `:register-probe`。这会显式采样 CPSR、MIDR、ID_PFR1、ID_DFR0、MPUIR、HMPUIR、CPACR、PMCR、ICC_CTLR 和 ICH_VTR 中当前身份及权限允许的项目。连接、切核和下次暂停不会自动执行这项探测。实际 MIDR 目前只识别 Arm Cortex-R52 的 D13 编码；其他型号、尚未适配的 R52+ 身份或无法读取的身份保留 Unknown，并停止扩展探测。
+配置 R52 寄存器目录后，在暂停核心的物理 frame 0 点击 System Regs 的 **Probe caps**，或执行 `:register-probe`。这会显式采样 CPSR、MIDR、ID_PFR1、ID_DFR0、MPUIR、HMPUIR、CPACR、PMCR、ICC_CTLR 、ICH_VTR，以及 FPSID、MVFR0/1/2、FPEXC 共十五项中当前身份及权限允许的项目。连接、切核和下次暂停不会自动执行这项探测。实际 MIDR 目前只识别 Arm Cortex-R52 的 D13 编码；其他型号、尚未适配的 R52+ 身份或无法读取的身份保留 Unknown，并停止扩展探测。
 
 Log 保留逐项原始值、读取来源、错误和能力解码依据。EL1 MPU 数量来自 MPUIR[15:8]，EL2 来自 HMPUIR[7:0]；目录补齐 EL1 的 16–23 号区域，是否显示依实际实现数量判断。只有已确认的 Hyp 模式与 GIC 系统接口才探测物理 ICC 和 ICH；虚拟 ICH_VTR 的优先级信息不会用于物理 ICC AP 寄存器过滤。CPACR 权限值不能证明 FPU 已实现或 FPEXC.EN 已打开。
 
-观测结果只覆盖当前会话／核心／停止代次／帧的运行时实现条件，不改写工程中的 `registers.facts`。运行、换帧、重连、写入或停止代次改变后失效；失败保留 Unknown 与原因。Scope All 仍只探测当前物理核心。当前采样没有验收完整可选寄存器、目标描述位宽、64 位／银行／浮点后端的行为。
+观测结果只覆盖当前会话／核心／停止代次／帧的运行时实现条件，不改写工程中的 `registers.facts`。运行、换帧、重连、写入或停止代次改变后失效；失败保留 Unknown 与原因。Scope All 仍只探测当前物理核心。当前采样没有验收完整可选寄存器、目标描述位宽或物理后端的执行行为；MVFR0/1 证实 D16/D32 与 NEON，FPEXC 独立记录启用状态。
 
 Headless 先调用 `registers_list` 获取 `context`，再用 `registers_probe` 传入相同的 `context`。响应含 `probe.samples`、带寄存器及通道来源的 `probe.facts`、实际 MIDR 解码、GDB 可见名称、说明及有效 worker 的工具路径声明。路径声明不等于真实服务器版本／哈希证明。多核 Snapshot 的 `register_generation` 用于寄存器上下文，`generation` 仍表示协调器刷新版本。
 
@@ -727,6 +727,16 @@ Headless 先调用 `registers_list` 获取 `context`，再用 `registers_probe` 
 读取只接受当前暂停核心的物理 frame 0。后端从调试态 DSPSR 读取完整停止 CPSR，以实际 MIDR 确认身份；普通 MRS CPSR 屏蔽执行状态位，不能用于这个检查。当前银行使用普通 MOV／MRS，其他银行使用架构允许的 banked MRS。它不切换模式；在 R52 的非 Hyp 模式下，Hyp 的 SP／ELR／SPSR 返回 Access restricted；User 模式在读取 DSPSR 后拒绝专用银行访问，不尝试 MIDR／banked MRS，当前用户寄存器仍在 Core 中读取。System 模式可读取其他银行。当前仅适配 Arm D13 Cortex-R52，R52+ 专用身份仍待确认。
 
 同一服务租约涵盖前后线程／帧检查和单次 target 事务；Scope All 仍只读选中核。后端保存、恢复并物理回读 R0，再核对 DSPSR 的完整停止状态一致，成功结果固定 8 位十六进制。线程／帧变化丢弃样本；恢复不确定时进入 FAULT、停用共享通道，显式重连前不重试。生产事务和实际二进制软件用例已验证；物理探针和板卡尚未验证，延后驱动见 [测试说明](tests/README.md)。银行 reader 不开放 writer 或使能 FPU。
+
+### 读取 R52 浮点与向量视图（开发分支）
+
+R52 目录将 Single、Double、Quad 分组，并以独立 `vfp` reader 读取 D/Q 和 FPSID、FPSCR、MVFR0/1/2、FPEXC；S 是 D 的原始位别名。工程显式配置 `registers.vfp_command = "aarch64 vfp"`、TCL endpoint 和各核 target，使用固定适配后端。配置为空或协议不匹配时返回 Reader unsupported，不回退 GDB 或旧 get_reg。
+
+先 **Probe caps** 获取实际 MVFR/FPEXC 证据，再按需 **Read**。未知实现条件不会自动尝试数据；手动读取会由后端重新核验权限。当前专用读取要求暂停物理 frame 0、实际 R52 D13 身份、Hyp 模式和 HCPTR.TCP10=0。EL1/Guest/User 的合法读取路径仍待适配，当前显示 Access restricted，不等同于未实现。
+
+MVFR0/1 确认 SP-only D16 或 DP/NEON D32；D16 仍有 64 位 D 存储，但不支持双精度运算或 Q 视图。FPEXC.EN=0 时标识和 FPEXC 可读，数据与 FPSCR 显示 Feature disabled。程序不修改模式、CPACR/HCPTR/FPEXC/FPSCR 或 FP 数据。未知／矛盾 MVFR 保留原始证据，不授权高 D 或 Q 读取。
+
+同一请求内 S/D/Q 共享精确 128 位物理 pair，保留 NaN 载荷、负零及高位；缓存不跨请求／核心／停止点／帧。Scope All 只读选中核。后端恢复回读 R0/R1，并复核 DSPSR、HCPTR、FPEXC；异常未知进入 FAULT，重连前不重试。软件用例和 Windows/Linux 构建通过，物理执行按本任务要求未测试。REG-H03 驱动和独立固件钩子见 [测试说明](tests/README.md)。
 
 ### 读取 MPU／PMU 选择器组（开发分支）
 

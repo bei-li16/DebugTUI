@@ -2,6 +2,8 @@
 
 本文件记录开发分支上的实际实现，配合 [开发 TODO](registers-development-todo.md) 使用。当前仍是未发布的开发版本；下述软件验证不能作为芯片或 OpenOCD 实板能力证明。
 
+2026-10-05 VFP 批次：接入显式 `vfp_command` 和独立协议，Hyp 物理 DSPSR／MIDR／HCPTR 验证后读 VMRS 与 D pair；未改模式或 FPU 控制。依据 R52 TRM §§16.5–16.6 和完整 DDI 0568 D1.3，SP-only D16 与 DP/NEON D32 分开适配，Single／Double／Quad 的 S/D/Q 共用一次物理 pair，保留全部 128 位。十五项 Probe 新增 FPSID、MVFR0/1/2 和实际 FPEXC.EN；未使能、未实现、未知特性和访问受限分别记录。生产 C 事务覆盖 63 个故障点，物理 R0/R1 恢复回读，以及完整 DSPSR／HCPTR／FPEXC 变化拒绝。完整 Cargo 回归 299 单元、76 集成通过，2 ignored；严格 Clippy 通过，F24 的 34 个模式有实际通过证据。REG-H03 默认 4 skipped；实际二进制双核软件驱动的 D32、D16、未使能、TCP10 受限四种流程各 5 阶段通过，独立 GNU Arm 采样钩子编译通过。自检修复 REG-H02/H03 对汇编无类型参考数组的 GDB 读取，显式指针表达式通过真实 GCC/GDB 高位原始字验证。Windows/Linux 新目录后端构建、原生协议／参数／状态检查和 Windows 9 项包检查通过，源码 ZIP 的四个固定提交解压／对象／独立 clone 回读通过；记录在 `artifacts/openocd-adapter-windows-vfp/summary.json` 和 `artifacts/functional-1791147270982-4af639a5/report.json`。合法 EL1/Guest/User VFP 读取、R52+ 实际身份、完整 TODO 和最终安装发布仍未完成；未执行上板，未推送或发布。
+
 2026-10-05 银行批次：接入专用 banked reader 和独立后端协议，内置目录的 23 个银行不再回退旧 mode-switch DPM。依据本地完整 DDI 0568A.c 架构补充，当前银行用普通 MOV／MRS，其他银行只用合法 banked MRS；读取物理 DSPSR 保存的完整停止 CPSR／MIDR、保存恢复回读 R0，并复核全部 DSPSR 位，包括 T／IT。User 和非 Hyp 的 Hyp 银行安全拒绝，未知 R52+ 身份不猜测；实际帧／线程变化丢弃值，结果不确定停用共享通道。Linux 一键脚本和 Windows 脚本各完成全新目录构建，原生生产事务／协议／参数／状态检查通过；C 测试覆盖 20 个故障点。Cargo 回归为 294 单元、66 集成、2 ignored，严格 Clippy 通过。REG-H02 默认 4 skipped；实际二进制在双核软件模型的 Hyp 基线／User 拒绝流程各 5 阶段通过，独立采样钩子 8 个模式汇编通过。未执行上板测试；VFP、完整能力／写入／界面验收及最终安装发布仍待完成。
 
 2026-10-05 Windows 后端批次：固定源码／依赖的全新目录 MinGW-w64 构建通过，包含 J-Link、CMSIS-DAP HID／USB、ST-Link 和 FTDI。Windows 原生生产事务、协议、参数／状态拒绝、静态 DLL 导入、两份 F429 配置和两种 CMSIS-DAP 后端的离线检查通过；9 项包完整性／负向检查通过。源码 ZIP 解压后四份固定提交的 Git 对象检查和独立缓存 clone 回读通过，保留对应源码、配方和许可；修复 ZIP 遗漏 Git 空 refs 目录的问题。动态系统组件与 USB 驱动由宿主提供，离线检查不证明探针通信。当前工具集和安装未替换，未连接物理探针或上板。本批未修改 Rust 运行时，最近 Cargo 完整回归仍为 292 单元、58 集成、2 ignored。最终工具集／profile 整合、安装升级及完整任务验收仍待完成，未推送或发布。
@@ -31,7 +33,7 @@
 - `registers_list` 和 `registers_read` JSON 接口。逐项隔离 GDB 读取失败，保留名称列表中的空位及原索引；配置目录时停止沿用旧自动寄存器批量刷新。
 - `Snapshot.registers` 保留原有结构，投影已经按需获取的 Core GDB 值；新增 `register_samples` 提供精确值、状态、原始原因、归属、来源和时间。继续运行、换停止点、会话或相关栈帧后旧结果失效。
 - core/cluster/chip 显式拓扑；未知 cluster 不根据核心编号猜测。实现条件为 Yes/No/Unknown，配置事实的来源标为 configuration，不把目录存在或访问失败当作硬件已实现／未实现。
-- 显式 `registers_probe` 和 System Regs 的 Probe caps：固定十项 CPSR／身份／MPU／PMU／GIC 能力样本绑定当前物理核心、线程、frame 0 和停止代次，前后检查实际 GDB 线程／帧。当前只识别 Arm D13 Cortex-R52；身份未适配时停止可选探测。非 Hyp 不读取 HMPUIR、物理 ICC 或 ICH；未知 GIC／PMU 不推测读取。原始值、错误、名称可见性及观测事实来源保留于 JSON 和 Log。CPACR 不推断 FPU 存在或启用。
+- 显式 `registers_probe` 和 System Regs 的 Probe caps：固定十五项 CPSR／身份／MPU／PMU／GIC／VFP 能力样本绑定当前物理核心、线程、frame 0 和停止代次，前后检查实际 GDB 线程／帧。当前只识别 Arm D13 Cortex-R52；身份未适配时停止可选探测。非 Hyp 不读取 HMPUIR、物理 ICC 或 ICH；未知 GIC／PMU 不推测读取。原始值、错误、名称可见性及观测事实来源保留于 JSON 和 Log。CPACR 不推断 FPU 存在或启用。
 - 观测事实仅在相同上下文覆盖配置声明；下一停止点、换帧／会话或写入后失效，客户事实配置不变。多核 Snapshot 单列 worker `register_generation`，界面请求不再误用协调器刷新版本；Scope All 不广播探测。R52 EL1 目录补足 24 区域，新增只读 ICH_VTR；物理 ICC 与虚拟 ICH 的能力分别解码。
 - 32 位 CP15 显式后端命令；内置银行改用经独立协议门禁的专用 `aarch64 banked`，当前／非当前银行均不改变模式，缺少配置或协议时返回 Reader unsupported。单个 TCL 请求内保存、选择、检查实际核心暂停状态并恢复 target。自定义旧 `backend` reader 仍是通用通道，不具有该专用银行保证。MMIO 使用显式组件和既有内存通道。存在读取副作用的项目只允许显式手动读，WO 和明确未实现的项目不读取。
 - OpenOCD 服务级访问锁覆盖各核心的 GDB 请求、TCL 访问及 Live Watch。目标恢复失败或可能改变状态的事务结果未知时，共享服务停止后续访问；显式重连才解除。普通目标限定的只读总线查询断线仍可重连。
@@ -53,28 +55,28 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 
 新增 `scripts/test-memory-write-hardware.cjs` 准备 WRITE-H04 RAM 子集：默认不连接，显式 --run 才执行专用暂停夹具、取消、写入、独立读取、两侧哨兵及成功后的显式恢复。脚本已在实际 DebugTUI 可执行文件与软件 MI 夹具上运行；报告 board_tests_executed=false。仍需补足 MMIO、缓存一致性及其他 WRITE-H 场景。
 
-64 位 CP15 未配置适配器时仍使用具名 GDB 寄存器；显式 `cp15_64_command` 经协议门禁读取真正 MRRC 的固定 16 位十六进制输出。读不到时绝不用任意两次 MRC 拼接。Windows 候选后端的软件构建与离线命令检查已通过；现有安装仍是旧工具集，物理 Timer 条件未验证。专用银行后端的内部事务已验证无模式写入，并在生产事务中物理回读 R0／DSPSR；这不能证明实板成功路径或调试异常没有副作用。未知浮点／MPU／GIC 条件不自动轮询，VFP 读取及使能状态适配仍未完成。
+64 位 CP15 未配置适配器时仍使用具名 GDB 寄存器；显式 `cp15_64_command` 经协议门禁读取真正 MRRC 的固定 16 位十六进制输出。读不到时绝不用任意两次 MRC 拼接。Windows 候选后端的软件构建与离线命令检查已通过；现有安装仍是旧工具集，物理 Timer 条件未验证。专用银行后端的内部事务已验证无模式写入，并在生产事务中物理回读 R0／DSPSR；这不能证明实板成功路径或调试异常没有副作用。未知浮点／MPU／GIC 条件不自动轮询，Hyp VFP 读取和实际 MVFR/FPEXC 已有软件证据；EL1/Guest 合法读取仍未完成。
 
 上述通道经过隔离的 MI/TCL 软件夹具验证，尚未执行上板验证。用户已指定本任务不执行上板测试；交付仍需准备可执行的相应用例并明确记录未执行。
 
 ## 完整任务仍需完成的部分
 
-2026-10-05 按用户新要求自检：TODO 中有 71 项开发条目，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。银行批次完整 Cargo 回归通过 294 项单元、66 项集成测试，2 项 ignored；严格 Clippy 通过。其他功能 suite 仍需在完整任务验收时统一运行。F24 新增银行与 MRRC 模式的测试映射，不能用软件状态替代整份 TODO 验收。
+2026-10-05 按用户新要求自检：TODO 中有 71 项开发条目，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新 VFP 批次完整 Cargo 回归通过 299 项单元、76 项集成测试，2 项 ignored；严格 Clippy 通过。其他功能 suite 仍需在完整任务验收时统一运行。F24 新增银行、MRRC 与 VFP 模式的测试映射，不能用软件状态替代整份 TODO 验收。
 
 | 条目范围 | 已有实现与证据 | 尚未完成／需补验收 |
 |---|---|---|
 | REG-001–008 | 显式当前核 Probe、原始 MIDR/数量/GIC 事实、已配置 MRC/银行路径、隔离的软件多核响应；固定 Windows MRRC/ISB 后端与依赖、候选源码/运行包；`capabilities.rs`、`tests/capability_access.rs` | 完整运行工具身份与实际安装对应、GDB 目标描述及各类位宽、FPU/Timer 和 R52+ 差异、完整能力矩阵、最终 tools/profile 整合及安装升级 |
 | REG-101–110 | 严格目录、精确原始值/字段/别名、逐项 reader、上下文/owner、CPU/目录 Setup、内置与用户目录、三态条件；`registers.rs`、`tests/register_access.rs`、覆盖矩阵 F24 | 对最新完整交付范围重新验证 EXE/ZIP/npm 安装升级与客户目录保留；各新增类别的身份/条件/别名适配仍需完成 |
 | REG-201–211 | 树、字段、列、说明、搜索、按需批次、目标/定义切换、逐核格式与隔离偏好、MPU 总览；`src/ui/registers.rs` 及显示/MPU 测试 | 目录总数/当前显示/本次有效值及各状态分类计数尚未全部呈现；Reader unsupported 的可见分类、完整读取取消和 PowerShell/VS Code 宽窄中文/对比度视觉验收需补足 |
-| REG-301–308 | R52 目录、32 位 MRC、直接 EL1/EL2 MPU 与 MAIR、保存/恢复选择器、故障隔离与完整服务锁；真实 ISB／MRRC 和专用银行后端的新目录构建与离线验证；REG-H02 驱动与 8 模式钩子；`session/banked.rs` 及银行事务测试 | VFP/FPSCR/使能状态读取、目标限定 Q/D/S 别名能力和全部 VFP 延后用例；未知 R52+ 身份仍未适配 |
+| REG-301–308 | R52 目录、32 位 MRC、直接 EL1/EL2 MPU 与 MAIR、保存/恢复选择器、故障隔离与完整服务锁；真实 ISB／MRRC 和专用银行后端的新目录构建与离线验证；REG-H02 驱动与 8 模式钩子；`session/banked.rs` 及银行事务测试；Hyp VFP/FPSCR 与 MVFR/FPEXC、D16/D32 别名、REG-H03 四类软件用例 | 合法 EL1/Guest/User 读取、更多模式延后用例及未知 R52+ 身份仍未完成 |
 | REG-401–408 | Timer/PMU/GIC 部分目录、PMU 数量与直接/选择器读取、物理/虚拟 GIC 能力分离和 AP 条件软件夹具；Windows MRRC 候选构建/命令检查 | 完整 Timer 权限/一致性适配，完整 GIC/Debug/STM 类别及显式板级映射，Bao EL2/Guest 场景及全部延后驱动 |
 | REG-501–506 | 软件回归、严格 Clippy、F24–F26 覆盖来源和限制、增量用户手册/开发记录/示例 | 全部延后案例与原功能回归，完整架构/环境/mcal-vsconfig 配套文档，最终升版、产物/profile 一致性、安装升级、非主分支推送与 Release |
 | BUS-001–008 | Setup 通道编辑、各面板入口、路由/来源、范围和绑定失效、运行限制/无回退；`src/launch/channels.rs`、`src/ui/monitor.rs`、`src/session/memory.rs`、F25 | 新增系统寄存器 MMIO 模块的完整接入及相应 BUS 延后场景/Issue #1 完整验收 |
 | WRITE-001–012 | Core 整数、声明 RAM、8/16/32 位 MMIO、typed Watch/Locals writer；草稿/权限/owner/服务锁/结果/取消；SVD 字段及部分特殊语义；F26 | 系统/状态/银行/浮点和 64 位 MMIO writer；变量位域/引用/NaN/Infinity/128 位后端；一次写、解锁、自清零等实际策略；全部类别的重叠缓存及 WRITE-T/H 和最终版本化交付 |
 
-测试矩阵自检：REG-T01–T11、BUS-T01–T05、WRITE-T01–T12 必须随上述缺口逐项补足，现有绿色软件测试不能覆盖未接入的类别。延后驱动当前覆盖 REG-H01/H14 能力子集、REG-H02 模式银行独立基线和权限拒绝、REG-H04/H06 选择器子集、REG-H04 完整 MPU/MAIR、REG-H05 Timer MRRC 基线/高字驱动、WRITE-H01 typed 变量子集、WRITE-H02 Core 和 WRITE-H04 RAM 子集；其余 REG-H/BUS-H/WRITE-H 的可执行用例仍需准备。上板执行按本任务要求不做，交付仍须写好所有相应 case 并记录未执行；不能把 skipped 计为 passed。
+测试矩阵自检：REG-T01–T11、BUS-T01–T05、WRITE-T01–T12 必须随上述缺口逐项补足，现有绿色软件测试不能覆盖未接入的类别。延后驱动当前覆盖 REG-H01/H14 能力子集、REG-H02 模式银行独立基线和权限拒绝、REG-H03 Hyp VFP 四类独立基线、REG-H04/H06 选择器子集、REG-H04 完整 MPU/MAIR、REG-H05 Timer MRRC 基线/高字驱动、WRITE-H01 typed 变量子集、WRITE-H02 Core 和 WRITE-H04 RAM 子集；其余 REG-H/BUS-H/WRITE-H 的可执行用例仍需准备。上板执行按本任务要求不做，交付仍须写好所有相应 case 并记录未执行；不能把 skipped 计为 passed。
 
-完整运行工具版本／哈希与目标描述、可选类别／R52+ 及板级身份能力矩阵（显式能力采样仍只有十项）；最终工具集与 profile 整合、安装升级；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；变量的位域／引用／特殊浮点及 128 位后端验收、64 位 MMIO writer 和其余写入类别的跨面板编辑；系统／银行／浮点 writer、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、推送及 Release。浮点／向量显示已完成，但实际 VFP 读取、别名适配和完整 PowerShell／VS Code 终端视觉验收仍待完成。不得因基础框架或部分 writer 通过测试而把完整 TODO 或 Goal 标为完成。
+完整运行工具版本／哈希与目标描述、可选类别／R52+ 及板级身份能力矩阵（显式能力采样为十五项，完整类别矩阵仍未完成）；最终工具集与 profile 整合、安装升级；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；变量的位域／引用／特殊浮点及 128 位后端验收、64 位 MMIO writer 和其余写入类别的跨面板编辑；系统／银行／浮点 writer、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、推送及 Release。浮点／向量显示已完成，Hyp VFP 实际读取通道和别名已有软件证据；EL1/Guest 合法读取及完整 PowerShell／VS Code 终端视觉验收仍待完成。不得因基础框架或部分 writer 通过测试而把完整 TODO 或 Goal 标为完成。
 
 ## 当前 writer 矩阵
 

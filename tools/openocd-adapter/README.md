@@ -16,6 +16,7 @@ cp15_64_command = "aarch64 mrrc"
 selector_command = "aarch64 mcr"
 isb_command = "aarch64 isb"
 banked_command = "aarch64 banked"
+vfp_command = "aarch64 vfp"
 tcl_endpoint = "127.0.0.1:6666"
 
 [registers.targets]
@@ -29,6 +30,16 @@ core1 = "board.cpu1"
 
 状态检查读取调试态可在各 EL 访问的 DSPSR（CP15 op1=3,c4,c5,op2=0），它保存完整停止 CPSR。普通 MRS CPSR 会屏蔽执行位，且 User 模式的模式／中断字段不能可靠使用，因此不用它来判断模式或核对完整状态。当前银行使用 MOV／普通 MRS，其他允许的银行使用 banked MRS。R52 没有 Monitor 模式，SP_hyp／SPSR_hyp 仅在当前 Hyp 通过普通访问读取；ELR_hyp 在 Hyp 可直接 banked MRS。非 Hyp 拒绝三项 Hyp 银行，User 模式读 DSPSR 后不注入 MIDR 或银行指令。只接受 Arm implementer 0x41／part D13，R52+ 未知身份返回 unsupported。每次保存／恢复／物理回读 R0，并核对前后全部 DSPSR 位，包括 T／IT；故障停止、不推测 rollback 或改写模式／FPU 控制。内置目录不再回退旧 get_reg／mode-switch DPM。自定义旧 backend reader 不具有该保证。
 
+## VFP 原始值与别名
+
+`aarch64 debugtui_vfp_protocol` 返回 `debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault`。`aarch64 vfp NAME` 接受 FPSID、FPSCR、MVFR0/1/2、FPEXC（小写名称）以及 D0–31、Q0–15。控制值为 32 位，数据始终返回两个 D 寄存器组成的 128 位物理采样，并附 MVFR0、MVFR1 和 FPEXC 原始证据。DebugTUI 按请求缓存物理 pair，D 的两个 lane、S 的低／高 32 位和 Q 共用同一值；不会把截断的 GDB 输出补成宽值，也不回退旧 get_reg。
+
+R52 TRM §§16.5–16.6 的两种配置为 SP-only D16（MVFR0=`0x10110021`、MVFR1=`0x11000011`）和 DP/NEON D32（`0x10110222`、`0x12111111`）。DDI 0568 D1.3 明确 SP-only 仍允许 GP 两寄存器与 D 的 VMOV；D16 中超过 D15 或 Q 视图明确未实现。未知／矛盾字段保留原始控制值，拒绝数据访问；FPINST/FPINST2 不实现，不试探。
+
+当前专用通道只接受物理 DSPSR 证明的 Hyp 模式和实际 R52 D13 MIDR；读取 HCPTR.TCP10，受限时不执行 VMRS。Hyp 不依据 CPACR 推断权限。FPEXC.EN=0 仍可读取标识／FPEXC，FPSCR 和数据返回 Feature disabled。EL1/Guest/User 当前安全返回 Access restricted，其合法 VFP 读取仍是待补后端／权限策略；这不是硬件未实现证明。读取不会切换模式、写 CPACR/HCPTR/FPEXC/FPSCR 或 FP 数据。
+
+每次保存／恢复／物理回读 R0/R1，复核前后完整 DSPSR、HCPTR 和 FPEXC；传输／指令／恢复结果未知立即停用目标，不继续注入或重试。S/D/Q 的共享缓存仅在同一已校验的读取请求内有效，不跨核／停止点／线程／帧复用。Scope All 只访问选中核心。
+
 ## 构建和软件验证
 
 在具备 Git、GCC、make、autoconf、automake、libtool 和 pkg-config 的 Unix 构建环境中执行：
@@ -37,7 +48,7 @@ core1 = "board.cpu1"
 sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 ```
 
-输出目录必须是新路径。脚本保留固定版本源码、安装目录、GPL 许可和测试报告；可追加 configure 选项选择探针及交叉工具链。USB 接口需要对应开发依赖。默认包含 dummy/remote-bitbang，关闭 J-Link 子模块。本银行批次已用上述 Linux 一键脚本在全新目录完成 WSL Ubuntu 22.04 构建和真实命令检查。Windows 使用下面单独经过全新目录构建验证的脚本。
+输出目录必须是新路径。脚本保留固定版本源码、安装目录、GPL 许可和测试报告；可追加 configure 选项选择探针及交叉工具链。USB 接口需要对应开发依赖。默认包含 dummy/remote-bitbang，关闭 J-Link 子模块。本 VFP 批次已用上述 Linux 一键脚本在全新目录完成 WSL Ubuntu 22.04 构建和真实命令检查。Windows 使用下面单独经过全新目录构建验证的脚本。
 
 检查已应用补丁的源码和后端：
 
@@ -45,9 +56,9 @@ sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 python3 tools/openocd-adapter/test.py --source PATH_TO_PINNED_SOURCE --out artifacts/openocd-adapter-tests --openocd PATH_TO_BACKEND
 ```
 
-事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，另验证银行事务的 20 个故障点、R0 恢复／CPSR 变化及安全权限拒绝；严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对两项协议、帮助以及参数和全部 23 个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用 GNU Arm 汇编器独立确认 MRRC、Thumb ISB 及银行／当前寄存器编码。
+事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，另验证银行事务的 20 个故障点、R0 恢复／CPSR 变化及安全权限拒绝，以及 VFP 的 63 个故障点、R0/R1 恢复、DSPSR／FPEXC／HCPTR 变化、D16/D32、未使能和原始未知 MVFR；严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对三项协议、帮助以及参数和全部 23 个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用 GNU Arm 汇编器独立确认 MRRC、Thumb ISB 及银行／当前寄存器编码；`tests/vfp-encoding.s` 核对 VMRS／VMOV／HCPTR。
 
-本银行批次 Linux 候选后端 SHA-256 为 `ff0a0db439a66b16ad824a4094d6ff9f28033295592cf71402dd7fdd757630e3`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-04-19:50)`。dirty 来自尚未成为上游提交的适配补丁，构建时间为 UTC。上一批 MRRC／ISB 候选哈希保留在 lock 的 previous_candidates，不能用于当前补丁。候选产物未安装或发布，未来分发须保留源码、补丁与许可，不能把其能力写到现有 Windows 二进制上。
+本 VFP 批次 Linux 候选后端 SHA-256 为 `e9147a1bf9252ac182fa093342427c5f9b42e311930a110cad79619c893877ef`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-04-20:32)`。dirty 来自尚未成为上游提交的适配补丁，构建时间为 UTC。上一批 MRRC／ISB 候选哈希保留在 lock 的 previous_candidates，不能用于当前补丁。候选产物未安装或发布，未来分发须保留源码、补丁与许可，不能把其能力写到现有 Windows 二进制上。
 
 ## Windows 后端、依赖和候选包
 
@@ -76,9 +87,12 @@ python tools/openocd-adapter/tests/windows-package.py --candidate G:/Build/openo
 
 原生检查先验证清单、配方和源码 ZIP，再执行生产事务测试及真实后端命令检查，核对 J-Link、CMSIS-DAP、ST-Link、FTDI 的注册，以及两份 F429 配置和 HID／USB bulk 后端能离线加载。物理配置加载在 config 阶段结束，显式 init 被拒绝；只在前面的独立事务检查中初始化进程内 dummy，不连接真实探针或打开调试端口。检查成功后才把 `native_windows_verified` 标为 true 并重新生成候选 ZIP。九项包检查包含缺失 DLL、非 PE、同大小篡改、新增 DLL、有效 ZIP 内补丁篡改和 Git 空目录遗失拒绝。
 
-本银行批次 Windows 候选后端 SHA-256 为 `0c14538d630ac6872fb8e0552f1f1e1c8959cae57e471e33b79d33331d2b87ce`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-04-19:51)`，构建时间为 UTC。本批完整的新目录 Windows 构建及原生命令、依赖、配置检查通过；源码 ZIP 固定提交回读已核对，仍不代表探针通信或 R52 实板指令执行通过。现有 `tools/bin/openocd`、依赖锁及安装未改动。最终 tools/profile 合并、安装升级和整个任务完成后的 Release 仍待完成；不能只分发运行 ZIP 而遗漏对应源码与许可。
+本 VFP 批次 Windows 候选后端 SHA-256 为 `26336038fc2790a42e575e6d28f1e8ee5b8aea5d82025cb9f9b78b1f880c75b6`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-04-20:33)`，构建时间为 UTC。本批完整的新目录 Windows 构建及原生命令、依赖、配置检查通过；源码 ZIP 固定提交回读已核对，仍不代表探针通信或 R52 实板指令执行通过。现有 `tools/bin/openocd`、依赖锁及安装未改动。最终 tools/profile 合并、安装升级和整个任务完成后的 Release 仍待完成；不能只分发运行 ZIP 而遗漏对应源码与许可。
 
 ## 延后执行的物理核心用例
+
+VFP REG-H03 驱动 `scripts/test-register-vfp-hardware.cjs` 默认 4 skipped；独立 `tests/fixtures/register-vfp-board.S` 不写模式／FPU，TCP10=1 或 EN=0 分别停止可选指令。实际 DebugTUI 双核软件流程覆盖 D32、D16、未使能、陷阱受限四类，每类 5 阶段；独立 GNU Arm 钩子编译通过。运行时按每核固件原始参考字核对 S/D/Q 和控制，并验证 peer、状态与工程未变。准备与限制见 [测试说明](../../tests/README.md#开发分支寄存器与内存夹具)；EL1/Guest 合法读取仍未完成，未执行上板。
+
 
 银行 REG-H02 驱动、独立汇编钩子和逐核案例详见 [测试说明](../../tests/README.md#开发分支寄存器与内存夹具)。默认 4 skipped；Hyp／User 的实际 DebugTUI 二进制软件流程各 5 阶段通过，8 个 R52 模式的独立钩子均汇编通过，不记为上板验证。当前银行的固件样本使用普通 MOV／MRS，其他银行使用独立 GNU 指令，钩子不切换模式或改 FPU 控制；实际试验在 ready 循环暂停，确认每核存储和不可访问项。
 

@@ -147,8 +147,16 @@ fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop
             .iter()
             .any(|v| v.as_str().unwrap().contains("Actual MIDR is unreadable"))
     );
-    for sample in result["probe"]["samples"].as_array().unwrap() {
-        assert_eq!(sample["state"], "valid");
+    let samples = result["probe"]["samples"].as_array().unwrap();
+    assert_eq!(samples.len(), 15);
+    for sample in samples {
+        if NAMES.iter().any(|name| sample["id"] == *name) {
+            assert_eq!(sample["state"], "valid");
+        } else {
+            assert_eq!(sample["state"], "unsupported");
+            assert_eq!(sample["reason"], "reader_unsupported");
+            assert!(sample["value"].is_null());
+        }
         assert_eq!(sample["context"], listed["context"]);
         assert_eq!(sample["owner"], "core:default");
     }

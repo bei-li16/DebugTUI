@@ -66,7 +66,7 @@ const stable = async () => {
     if (!await suite.test(ids[1], 'Probe once; retain exact raw values, errors and capability provenance', async () => {
       evidence=await session.command('registers_probe', {context});
       assert.deepEqual(evidence.context, context);
-      assert.equal(evidence.probe.samples.length, 10);
+      assert.equal(evidence.probe.samples.length, 15);
       assert(evidence.probe.samples.every(s=>s.owner===`core:${options.core}` && JSON.stringify(s.context)===JSON.stringify(context)));
       for (const [id, raw] of Object.entries(spec.expected_raw)) {
         const sample=evidence.probe.samples.find(s=>s.id===id); assert.equal(sample?.state,'valid');
@@ -84,7 +84,11 @@ const stable = async () => {
         const sample=evidence.probe.samples.find(s=>s.id===id);
         assert.equal(sample?.state,'unavailable'); assert.equal(sample.implementation,'unknown'); assert.equal(sample.value,null);
       }
-      for (const key of ['vfp.present','vfp.enabled']) assert.equal(evidence.probe.facts[key],undefined,'CPACR must not infer FPU state');
+      const observed = id => evidence.probe.samples.find(s=>s.id===id && s.state==='valid');
+      if(!observed('mvfr0') || !observed('mvfr1'))assert.equal(evidence.probe.facts['vfp.present'],undefined,'CPACR must not infer FPU presence');
+      const fpexc=observed('fpexc');
+      if(fpexc){assert.equal(evidence.probe.facts['vfp.enabled']?.value,Number((exact(fpexc.value.hex)>>30n)&1n));assert.equal(evidence.probe.facts['vfp.enabled']?.register,'fpexc');}
+      else assert.equal(evidence.probe.facts['vfp.enabled'],undefined,'CPACR must not infer FPEXC.EN');
       for (const key of spec.expected_unknown_facts || []) assert.equal(evidence.probe.facts[key],undefined,key);
       const physical=evidence.probe.facts['icc.physical.prebits'];
       if (physical) assert.equal(physical.register,'icc_ctlr');

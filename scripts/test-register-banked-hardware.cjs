@@ -30,6 +30,11 @@ for (const entry of spec.banks) {
   if (!unavailable) assert(/^[a-zA-Z_]\w*(\[\d+\])?$/.test(entry.reference), 'Reference must be a firmware variable/array element');
 }
 const raw = text => { assert(/^0x[0-9a-f]{8}$/i.test(text), `Exact 32-bit raw required: ${text}`); return BigInt(text); };
+const referenceExpression = reference => {
+  const match = /^([a-zA-Z_]\w*)(?:\[(\d+)\])?$/.exec(reference);
+  assert(match, 'Reference must be a firmware symbol or array element');
+  return `((unsigned int *)&${match[1]})[${match[2] || '0'}]`;
+};
 const projectHash = hash(project);
 Object.assign(suite.metadata, {binary,binary_sha256:hash(binary),project,project_sha256:projectHash,
   case_file:caseFile,case_sha256:hash(caseFile),evidence_source:spec.evidence_source,
@@ -72,7 +77,7 @@ const select = async core => {
     if (!await suite.test(phases[2],'Compare all banks with independent firmware samples and legal refusals',async()=>{
       const references = {};
       for(const entry of spec.banks.filter(e=>!e.unavailable)){
-        const result=await session.command('evaluate',{expression:`(unsigned int)${entry.reference}`});
+        const result=await session.command('evaluate',{expression:referenceExpression(entry.reference)});
         assert(/^(0x[0-9a-f]+|\d+)$/i.test(result.value));
         references[entry.id]=BigInt(result.value); assert(references[entry.id]<(1n<<32n));
       }

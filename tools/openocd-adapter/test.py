@@ -46,17 +46,26 @@ def main():
                     '-o', str(bank_executable)], check=True)
     banks_tested = subprocess.run([str(bank_executable)], capture_output=True, text=True, check=True)
     (out/'banked-transfer-test.log').write_text(banks_tested.stdout+banks_tested.stderr, encoding='utf-8')
+    vfp_executable = out/('vfp-transfer.exe' if os.name == 'nt' else 'vfp-transfer')
+    subprocess.run([args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror',
+                    '-I', str(source/'src/target'), str(here/'tests/vfp-transfer.c'),
+                    '-o', str(vfp_executable)], check=True)
+    vfp_tested = subprocess.run([str(vfp_executable)], capture_output=True, text=True, check=True)
+    (out/'vfp-transfer-test.log').write_text(vfp_tested.stdout+vfp_tested.stderr, encoding='utf-8')
     report = {'board_tests_executed': False, 'revision': revision,
               'patch_sha256': lock['patch_sha256'], 'transaction_passed': True,
               'transaction_binary_sha256': digest(executable),
               'banked_transaction_passed': True, 'banked_protocol': lock['banked_protocol'],
               'banked_transaction_binary_sha256': digest(bank_executable),
+              'vfp_transaction_passed': True, 'vfp_protocol': lock['vfp_protocol'],
+              'vfp_transaction_binary_sha256': digest(vfp_executable),
               'backend_commands_passed': False, 'limitations':
               ['Transport/exception execution requires the deferred physical-core cases.']}
     if args.openocd:
         backend = args.openocd.resolve()
         protocol = lock['protocol']
         bank_protocol = lock['banked_protocol']
+        vfp_protocol = lock['vfp_protocol']
         # Initialize only the virtual adapter, keeping the target unexamined.
         # Exact native error codes prevent an init-mode rejection from falsely
         # passing an argument/state-guard test.
@@ -70,9 +79,11 @@ dap create dt.dap -tap dt.cpu
 target create dt.cpu armv8r -dap dt.dap -dbgbase 0 -defer-examine
 if {[aarch64 debugtui_adapter] ne "%s"} {error "adapter protocol mismatch"}
 if {[aarch64 debugtui_banked_protocol] ne "%s"} {error "banked protocol mismatch"}
+if {[aarch64 debugtui_vfp_protocol] ne "%s"} {error "VFP protocol mismatch"}
 help aarch64 mrrc
 help aarch64 isb
 help aarch64 banked
+help aarch64 vfp
 catch {init} dummy_init_result
 proc expect_error {body expected} {
     if {![catch {uplevel 1 $body} result]} {error "command unexpectedly succeeded"}
@@ -91,9 +102,15 @@ foreach invalid {sp_mon spsr_usr SP_IRQ} {expect_error [list aarch64 banked $inv
 foreach bank {sp_irq lr_irq spsr_irq r8_fiq r9_fiq r10_fiq r11_fiq r12_fiq sp_fiq lr_fiq spsr_fiq sp_und lr_und spsr_und sp_abt lr_abt spsr_abt sp_svc lr_svc spsr_svc sp_hyp elr_hyp spsr_hyp} {
     expect_error [list aarch64 banked $bank] -311
 }
+expect_error {aarch64 vfp} -601
+expect_error {aarch64 vfp d0 0} -601
+foreach invalid {d32 q16 d01 D0 s0 fpinst fpinst2 d-1} {expect_error [list aarch64 vfp $invalid] -603}
+foreach control {fpsid fpscr mvfr0 mvfr1 mvfr2 fpexc} {expect_error [list aarch64 vfp $control] -311}
+for {set index 0} {$index < 32} {incr index} {expect_error [list aarch64 vfp d$index] -311}
+for {set index 0} {$index < 16} {incr index} {expect_error [list aarch64 vfp q$index] -311}
 puts "PASS: adapter protocol, command help, encoding bounds, unexamined target guards"
 shutdown
-''' % (protocol, bank_protocol)
+''' % (protocol, bank_protocol, vfp_protocol)
         script_file = out/'backend-commands.tcl'
         script_file.write_text(script, encoding='utf-8')
         result = subprocess.run([str(backend), '-f', str(script_file)],

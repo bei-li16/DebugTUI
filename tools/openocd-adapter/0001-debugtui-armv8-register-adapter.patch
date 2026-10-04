@@ -1,29 +1,31 @@
 diff --git a/src/target/Makefile.am b/src/target/Makefile.am
-index 3d855ab..bbc00f3 100644
+index 3d855ab..c2eebba 100644
 --- a/src/target/Makefile.am
 +++ b/src/target/Makefile.am
-@@ -187,6 +187,8 @@ ARC_SRC = \
+@@ -187,6 +187,9 @@ ARC_SRC = \
  	%D%/armv7m_trace.h \
  	%D%/armv8.h \
  	%D%/armv8_dpm.h \
 +	%D%/armv8_debugtui.h \
 +	%D%/armv8_debugtui_banked.h \
++	%D%/armv8_debugtui_vfp.h \
  	%D%/armv8_opcodes.h \
  	%D%/armv8_cache.h \
  	%D%/avrt.h \
 diff --git a/src/target/aarch64.c b/src/target/aarch64.c
-index 19ab923..a5ab149 100644
+index 19ab923..672d88f 100644
 --- a/src/target/aarch64.c
 +++ b/src/target/aarch64.c
-@@ -15,6 +15,7 @@
+@@ -15,6 +15,8 @@
  #include "target_request.h"
  #include "target_type.h"
  #include "armv8_opcodes.h"
 +#include "armv8_debugtui_banked.h"
++#include "armv8_debugtui_vfp.h"
  #include "armv8_cache.h"
  #include "arm_coresight.h"
  #include "arm_semihosting.h"
-@@ -3154,6 +3155,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3154,6 +3156,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  		command_print(CMD, "%s: not an ARM", target_name(target));
  		return ERROR_FAIL;
  	}
@@ -34,7 +36,7 @@ index 19ab923..a5ab149 100644
  
  	if (target->state != TARGET_HALTED) {
  		command_print(CMD, "Error: [%s] not halted", target_name(target));
-@@ -3212,16 +3217,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3212,16 +3218,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  
  		/* NOTE: parameters reordered! */
  		/* ARMV4_5_MCR(cpnum, op1, 0, crn, crm, op2) */
@@ -63,7 +65,7 @@ index 19ab923..a5ab149 100644
  
  		command_print(CMD, "0x%" PRIx32, value);
  	}
-@@ -3229,7 +3242,129 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3229,7 +3243,189 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  	return ERROR_OK;
  }
  
@@ -154,7 +156,67 @@ index 19ab923..a5ab149 100644
 +	return ERROR_OK;
 +}
 +
++COMMAND_HANDLER(aarch64_debugtui_vfp_protocol_command)
++{
++	if (CMD_ARGC != 0)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	command_print(CMD, DEBUGTUI_VFP_PROTOCOL);
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(aarch64_debugtui_vfp_command)
++{
++	struct armv8_debugtui_vfp_request request;
++	if (CMD_ARGC != 1)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	if (!armv8_debugtui_vfp_request(CMD_ARGV[0], &request))
++		return ERROR_COMMAND_ARGUMENT_INVALID;
++	struct target *target = get_current_target(CMD_CTX);
++	if (!target || !target_was_examined(target))
++		return ERROR_TARGET_NOT_EXAMINED;
++	struct arm *arm = target_to_arm(target);
++	if (!is_arm(arm) || !arm->arch_info || !is_armv8(arm->arch_info) || !arm->dpm)
++		return ERROR_TARGET_INVALID;
++	if (target->state != TARGET_HALTED)
++		return ERROR_TARGET_NOT_HALTED;
++	struct armv8_debugtui_vfp_result result;
++	bool uncertain = false;
++	int retval = armv8_dpm_debugtui_vfp(arm->dpm, &request, &result, &uncertain);
++	if (uncertain) {
++		target->state = TARGET_UNKNOWN;
++		command_print(CMD, "Core state restoration failed: VFP outcome unknown; reconnect required");
++		return retval;
++	}
++	if (retval > 0) {
++		const char *reason = retval == DEBUGTUI_VFP_RESTRICTED ? "access-restricted" :
++			retval == DEBUGTUI_VFP_DISABLED ? "feature-disabled" :
++			retval == DEBUGTUI_VFP_NOT_IMPLEMENTED ? "not-implemented" : "reader-unsupported";
++		command_print(CMD, "debugtui-vfp:%s", reason);
++		return retval == DEBUGTUI_VFP_UNSUPPORTED ? ERROR_TARGET_INVALID : ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
++	}
++	if (retval != ERROR_OK)
++		return retval;
++	if (request.data)
++		command_print(CMD, "mvfr0 0x%08" PRIx32 " mvfr1 0x%08" PRIx32 " fpexc 0x%08" PRIx32
++			" value 0x%016" PRIx64 "%016" PRIx64,
++			result.mvfr0, result.mvfr1, result.fpexc, result.words[1], result.words[0]);
++	else
++		command_print(CMD, "mvfr0 0x%08" PRIx32 " mvfr1 0x%08" PRIx32 " fpexc 0x%08" PRIx32
++			" value 0x%08" PRIx32, result.mvfr0, result.mvfr1, result.fpexc, (uint32_t)result.words[0]);
++	return ERROR_OK;
++}
++
  static const struct command_registration aarch64_exec_command_handlers[] = {
++	{
++		.name = "debugtui_vfp_protocol", .mode = COMMAND_ANY,
++		.handler = aarch64_debugtui_vfp_protocol_command,
++		.help = "report checked VFP protocol without target access", .usage = "",
++	},
++	{
++		.name = "vfp", .mode = COMMAND_EXEC, .handler = aarch64_debugtui_vfp_command,
++		.help = "read R52 VFP controls or storage pairs in proven Hyp permissions; never enable FPU",
++		.usage = "fpsid|fpscr|mvfr0|mvfr1|mvfr2|fpexc|d0..d31|q0..q15",
++	},
 +	{
 +		.name = "debugtui_banked_protocol",
 +		.mode = COMMAND_ANY,
@@ -413,20 +475,203 @@ index 0000000..f293869
 +}
 +
 +#endif
+diff --git a/src/target/armv8_debugtui_vfp.h b/src/target/armv8_debugtui_vfp.h
+new file mode 100644
+index 0000000..a320c89
+--- /dev/null
++++ b/src/target/armv8_debugtui_vfp.h
+@@ -0,0 +1,176 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_VFP_H
++#define OPENOCD_TARGET_ARMV8_DEBUGTUI_VFP_H
++
++#include "armv8_debugtui_banked.h"
++
++#define DEBUGTUI_VFP_PROTOCOL "debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault"
++#define DEBUGTUI_VFP_UNSUPPORTED 1
++#define DEBUGTUI_VFP_RESTRICTED 2
++#define DEBUGTUI_VFP_DISABLED 3
++#define DEBUGTUI_VFP_NOT_IMPLEMENTED 4
++#define DEBUGTUI_VMRS(reg) (UINT32_C(0xeef00a10) | ((reg) << 16))
++#define DEBUGTUI_READ_HCPTR ARMV4_5_MRC(15, 4, 0, 1, 1, 2)
++
++struct armv8_debugtui_vfp_request {
++	unsigned int control, pair, lane;
++	bool data, quad;
++};
++
++struct armv8_debugtui_vfp_result {
++	uint64_t words[2];
++	uint32_t mvfr0, mvfr1, fpexc, hcptr;
++	bool neon;
++};
++
++static inline bool armv8_debugtui_vfp_request(const char *name,
++	struct armv8_debugtui_vfp_request *request)
++{
++	memset(request, 0, sizeof(*request));
++	const struct { const char *name; unsigned int reg; } controls[] = {
++		{"fpsid", 0}, {"fpscr", 1}, {"mvfr0", 7}, {"mvfr1", 6}, {"mvfr2", 5}, {"fpexc", 8},
++	};
++	for (unsigned int i = 0; i < sizeof(controls) / sizeof(controls[0]); i++) {
++		if (!strcmp(name, controls[i].name)) {
++			request->control = controls[i].reg;
++			return true;
++		}
++	}
++	if (name[0] != 'd' && name[0] != 'q')
++		return false;
++	size_t length = strlen(name);
++	if (length != 2 && length != 3)
++		return false;
++	if (name[1] < '0' || name[1] > '9' || (length == 3 &&
++		(name[1] == '0' || name[2] < '0' || name[2] > '9')))
++		return false;
++	unsigned int index = name[1] - '0';
++	if (length == 3)
++		index = index * 10 + name[2] - '0';
++	request->quad = name[0] == 'q';
++	if (index >= (request->quad ? 16u : 32u))
++		return false;
++	request->data = true;
++	request->pair = request->quad ? index : index / 2;
++	request->lane = request->quad ? 0 : index % 2;
++	return true;
++}
++
++static inline int armv8_debugtui_vfp_features(uint32_t mvfr0, uint32_t mvfr1,
++	unsigned int *registers, bool *neon)
++{
++	unsigned int count = mvfr0 & 15, sp = (mvfr0 >> 4) & 15, dp = (mvfr0 >> 8) & 15;
++	uint32_t simd = mvfr1 & UINT32_C(0x000fff00);
++	/* R52 TRM 16.5/16.6 and DDI 0568 D1.3: D16 SP-only or D32 + NEON.
++	 * Unknown or contradictory encodings never authorize optional D/Q access. */
++	if (sp == 2 && count == 1 && dp == 0 && simd == 0) {
++		*registers = 16;
++		*neon = false;
++	} else if (sp == 2 && count == 2 && dp == 2 && simd == UINT32_C(0x00011100)) {
++		*registers = 32;
++		*neon = true;
++	} else {
++		return DEBUGTUI_VFP_UNSUPPORTED;
++	}
++	return 0;
++}
++
++static inline int armv8_debugtui_vfp_transfer(const struct armv8_debugtui_io *io,
++	const struct armv8_debugtui_vfp_request *request,
++	struct armv8_debugtui_vfp_result *result, bool *uncertain)
++{
++	uint32_t before, after, midr, hcptr, mvfr0, mvfr1, fpexc;
++	struct armv8_debugtui_vfp_result sample = {0};
++	unsigned int registers = 0;
++	bool neon = false;
++	*uncertain = false;
++	int retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_DSPSR, false, &before);
++	if (retval)
++		goto fault;
++	/* Hyp permits direct trap inspection. Other modes require another proven
++	 * reader/policy; do not inject inaccessible HCPTR or guess Guest permissions. */
++	if ((before & 31) != 0x1a)
++		return DEBUGTUI_VFP_RESTRICTED;
++	retval = armv8_debugtui_mrc_mcr_transfer(io, ARMV4_5_MRC(15, 0, 0, 0, 0, 0), false, &midr);
++	if (retval)
++		goto fault;
++	if ((midr >> 24) != 0x41 || ((midr >> 4) & 0xfff) != 0xd13 || ((midr >> 16) & 15) != 15)
++		return DEBUGTUI_VFP_UNSUPPORTED;
++	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_HCPTR, false, &hcptr);
++	if (retval)
++		goto fault;
++	if (hcptr & (1u << 10))
++		return DEBUGTUI_VFP_RESTRICTED; /* VMRS is also undefined in Hyp when TCP10=1. */
++	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_VMRS(7), false, &mvfr0);
++	if (retval)
++		goto fault;
++	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_VMRS(6), false, &mvfr1);
++	if (retval)
++		goto fault;
++	retval = armv8_debugtui_vfp_features(mvfr0, mvfr1, &registers, &neon);
++	if (retval && request->data)
++		return retval;
++	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_VMRS(8), false, &fpexc);
++	if (retval)
++		goto fault;
++	if (request->data && (request->pair * 2 >= registers || (request->quad && !neon)))
++		return DEBUGTUI_VFP_NOT_IMPLEMENTED;
++	if ((request->data || request->control == 1) && !(fpexc & (1u << 30)))
++		return DEBUGTUI_VFP_DISABLED;
++	if (request->data) {
++		/* VMOV Rt,Rt2,Dn is permitted even by the SP-only instruction subset.
++		 * Read both D lanes once so all overlapping views share one raw sample.
++		 * VMOV is VFP, not an Advanced SIMD instruction; TASE is not bypassed
++		 * to execute NEON arithmetic. Q is only an implemented storage view. */
++		for (unsigned int i = 0; i < 2; i++) {
++			unsigned int index = request->pair * 2 + i;
++			retval = armv8_debugtui_mrrc_transfer(io, 11, 1 | ((index >> 4) << 1),
++				index & 15, &sample.words[i]);
++			if (retval)
++				goto fault;
++		}
++	} else {
++		uint32_t value;
++		if (request->control == 7)
++			value = mvfr0;
++		else if (request->control == 6)
++			value = mvfr1;
++		else if (request->control == 8)
++			value = fpexc;
++		else {
++			retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_VMRS(request->control), false, &value);
++			if (retval)
++				goto fault;
++		}
++		sample.words[0] = value;
++	}
++	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_VMRS(8), false, &after);
++	if (retval)
++		goto fault;
++	if (after != fpexc)
++		goto mismatch;
++	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_HCPTR, false, &after);
++	if (retval)
++		goto fault;
++	if (after != hcptr)
++		goto mismatch;
++	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_DSPSR, false, &after);
++	if (retval)
++		goto fault;
++	if (before != after)
++		goto mismatch;
++	sample.mvfr0 = mvfr0;
++	sample.mvfr1 = mvfr1;
++	sample.fpexc = fpexc;
++	sample.hcptr = hcptr;
++	sample.neon = neon;
++	*result = sample;
++	return 0;
++mismatch:
++	retval = -1;
++fault:
++	*uncertain = true;
++	return retval;
++}
++
++#endif
 diff --git a/src/target/armv8_dpm.c b/src/target/armv8_dpm.c
-index 508ec97..40e1026 100644
+index 508ec97..d833969 100644
 --- a/src/target/armv8_dpm.c
 +++ b/src/target/armv8_dpm.c
-@@ -16,6 +16,8 @@
+@@ -16,6 +16,9 @@
  #include "breakpoints.h"
  #include "target_type.h"
  #include "armv8_opcodes.h"
 +#include "armv8_debugtui.h"
 +#include "armv8_debugtui_banked.h"
++#include "armv8_debugtui_vfp.h"
  
  #include "helper/time_support.h"
  
-@@ -194,8 +196,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
+@@ -194,8 +197,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
  	return ERROR_OK;
  }
  
@@ -437,7 +682,7 @@ index 508ec97..40e1026 100644
  {
  	struct armv8_common *armv8 = dpm->arm->arch_info;
  	uint32_t dscr = dpm->dscr;
-@@ -203,6 +205,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -203,6 +206,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  
  	if (p_dscr)
  		dscr = *p_dscr;
@@ -446,7 +691,7 @@ index 508ec97..40e1026 100644
  
  	/* Wait for InstrCompl bit to be set */
  	long long then = timeval_ms();
-@@ -249,9 +253,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -249,9 +254,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  
  	if (dscr & DSCR_ERR) {
  		LOG_ERROR("Opcode 0x%08" PRIx32 ", DSCR.ERR=1, DSCR.EL=%i", opcode, dpm->last_el);
@@ -460,7 +705,7 @@ index 508ec97..40e1026 100644
  
  	if (p_dscr)
  		*p_dscr = dscr;
-@@ -259,6 +266,156 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -259,6 +267,185 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  	return retval;
  }
  
@@ -597,6 +842,35 @@ index 508ec97..40e1026 100644
 +	return retval;
 +}
 +
++int armv8_dpm_debugtui_vfp(struct arm_dpm *dpm,
++	const struct armv8_debugtui_vfp_request *request,
++	struct armv8_debugtui_vfp_result *result, bool *uncertain)
++{
++	*uncertain = false;
++	int retval = dpmv8_debugtui_prepare(dpm);
++	if (retval != ERROR_OK) {
++		*uncertain = retval != ERROR_TARGET_NOT_HALTED;
++		return retval;
++	}
++	if (armv8_dpm_get_core_state(dpm) == ARM_STATE_AARCH64)
++		return DEBUGTUI_VFP_UNSUPPORTED;
++	struct dpmv8_debugtui_context context = {
++		.dpm = dpm,
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++	};
++	struct armv8_debugtui_io io = {
++		.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
++		.write_gpr = dpmv8_debugtui_write_gpr, .execute = dpmv8_debugtui_execute,
++	};
++	retval = armv8_debugtui_vfp_transfer(&io, request, result, uncertain);
++	if (retval != ERROR_OK)
++		return retval;
++	retval = dpm->finish(dpm);
++	if (retval != ERROR_OK)
++		*uncertain = true;
++	return retval;
++}
++
 +int armv8_dpm_debugtui_isb(struct arm_dpm *dpm)
 +{
 +	int retval = dpmv8_debugtui_prepare(dpm);
@@ -618,10 +892,10 @@ index 508ec97..40e1026 100644
  {
  	return dpmv8_exec_opcode(dpm, opcode, NULL);
 diff --git a/src/target/armv8_dpm.h b/src/target/armv8_dpm.h
-index 19b33da..4409eb7 100644
+index 19b33da..161b426 100644
 --- a/src/target/armv8_dpm.h
 +++ b/src/target/armv8_dpm.h
-@@ -23,6 +23,14 @@ struct armv8_common;
+@@ -23,6 +23,19 @@ struct armv8_common;
   */
  int armv8_dpm_setup(struct arm_dpm *dpm);
  int armv8_dpm_initialize(struct arm_dpm *dpm);
@@ -633,6 +907,11 @@ index 19b33da..4409eb7 100644
 +struct armv8_debugtui_bank;
 +int armv8_dpm_debugtui_banked(struct arm_dpm *dpm,
 +	const struct armv8_debugtui_bank *bank, uint32_t *value, bool *uncertain);
++struct armv8_debugtui_vfp_request;
++struct armv8_debugtui_vfp_result;
++int armv8_dpm_debugtui_vfp(struct arm_dpm *dpm,
++	const struct armv8_debugtui_vfp_request *request,
++	struct armv8_debugtui_vfp_result *result, bool *uncertain);
  
  int armv8_dpm_read_current_registers(struct arm_dpm *dpm);
  int armv8_dpm_modeswitch(struct arm_dpm *dpm, enum arm_mode mode);

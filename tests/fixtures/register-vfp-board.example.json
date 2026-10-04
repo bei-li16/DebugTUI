@@ -1,0 +1,15 @@
+{
+  "software_example": true,
+  "frame_function": "debugtui_vfp_board_fixture",
+  "evidence_source": "Replace with independently built firmware identity, GNU Arm sample hook and per-core reference symbols",
+  "expected_midr": "0x411fd134",
+  "expected_mode": "0x1a",
+  "expected_mvfr0": "0x10110222",
+  "expected_mvfr1": "0x12111111",
+  "expected_enabled": true,
+  "expected_trapped": false,
+  "reference": "debugtui_vfp_reference",
+  "stable_registers": ["r0", "r1", "pc", "cpsr", "hcptr"],
+  "peer_core": "core1",
+  "control_scope": "all"
+}

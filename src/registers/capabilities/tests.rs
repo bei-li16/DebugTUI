@@ -197,6 +197,71 @@ fn optional_unknown_encodings_and_cpacr_do_not_invent_absence_or_fpu_enablement(
 }
 
 #[test]
+fn vfp_capacity_and_enablement_need_independent_current_physical_evidence() {
+    for (m0, m1, count, dp, neon) in [
+        (0x10110021, 0x11000011, 16, 0, 0),
+        (0x10110222, 0x12111111, 32, 1, 1),
+    ] {
+        let p = probe(&[
+            ("mvfr0", m0),
+            ("mvfr1", m1),
+            ("fpexc", 0x700),
+            ("cpacr", 0xf00000),
+        ]);
+        assert_eq!(p.facts["vfp.present"].value, 1);
+        assert_eq!(p.facts["vfp.d_registers"].value, count);
+        assert_eq!(p.facts["vfp.double_precision"].value, dp);
+        assert_eq!(p.facts["vfp.neon"].value, neon);
+        assert_eq!(p.facts["vfp.enabled"].value, 0);
+        assert_eq!(p.facts["vfp.enabled"].register, "fpexc");
+        assert_eq!(p.facts["vfp.d_registers"].source, "gdb:mvfr0");
+        assert_eq!(p.facts["vfp.neon"].source, "gdb:mvfr1");
+    }
+    for values in [
+        vec![("mvfr0", 0x10110222)],
+        vec![("mvfr0", 0x10110222), ("mvfr1", 0x12113111)],
+        vec![("mvfr0", 0x10110021), ("mvfr1", 0x12111111)],
+    ] {
+        let p = probe(&values);
+        for key in [
+            "vfp.present",
+            "vfp.d_registers",
+            "vfp.double_precision",
+            "vfp.neon",
+        ] {
+            assert!(!p.facts.contains_key(key));
+        }
+    }
+}
+
+#[test]
+fn vfp_cross_core_or_stale_features_never_authorize_aliases() {
+    for id in ["mvfr0", "mvfr1", "fpexc"] {
+        for stale in 0..4 {
+            let mut p = probe(&[
+                ("mvfr0", 0x10110222),
+                ("mvfr1", 0x12111111),
+                ("fpexc", 0x40000700),
+            ]);
+            let sample = p.samples.iter_mut().find(|s| s.id == id).unwrap();
+            match stale {
+                0 => sample.context.core = "core0".into(),
+                1 => sample.context.generation += 1,
+                2 => sample.state = State::Unavailable,
+                _ => sample.value = Some(RawValue::parse("0x40000700", 64).unwrap()),
+            }
+            p.decode();
+            if id == "fpexc" {
+                assert!(!p.facts.contains_key("vfp.enabled"));
+            } else {
+                assert!(!p.facts.contains_key("vfp.d_registers"));
+                assert!(!p.facts.contains_key("vfp.neon"));
+            }
+        }
+    }
+}
+
+#[test]
 fn observed_context_facts_override_declarations_and_report_retains_raw_sources() {
     let mut p = probe(&[("cpsr", 0x1a), ("icc_ctlr", 0x400)]);
     let declared = BTreeMap::from([

@@ -47,9 +47,9 @@ fn deferred_bank_driver_checks_independent_baselines_peer_and_user_refusals() {
             .env
             .insert("DEBUGTUI_TEST_REGISTER_VALUES".into(), values.to_string());
         let mut references = serde_json::Map::new();
-        for (index, bank) in spec["banks"].as_array().unwrap().iter().enumerate() {
+        for index in 0..spec["banks"].as_array().unwrap().len() {
             references.insert(
-                format!("(unsigned int){}", bank["reference"].as_str().unwrap()),
+                format!("((unsigned int *)&debugtui_banked_reference)[{index}]"),
                 json!(format!("0x{:08x}", 0x51000000u32 + index as u32)),
             );
         }
