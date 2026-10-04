@@ -307,6 +307,307 @@ fn shared_ram_owner_requires_trusted_peer_states_and_all_scope_never_broadcasts(
     let _ = request(&engine, 17, "quit", json!({}));
 }
 
+fn variable_fixture(label: &str, flags: &[(&str, &str)]) -> (Project, PathBuf) {
+    let (mut project, transcript) = ram_fixture(label, flags);
+    project
+        .gdb
+        .env
+        .insert("DEBUGTUI_TEST_VARIABLES".into(), "1".into());
+    project.watch = vec!["counter".into()];
+    (project, transcript)
+}
+fn variable_preview(
+    engine: &session::EngineHandle,
+    id: u64,
+    text: &str,
+) -> (bool, Value, Option<String>) {
+    let context = ok(engine, id, "registers_list", json!({}))["context"].clone();
+    request(
+        engine,
+        id + 1,
+        "write_preview",
+        json!({"target":{"kind":"variable","pane":"watch","expression":"counter"},"selection":{"kind":"register"},"context":context,"input":{"kind":"unsigned","text":text}}),
+    )
+}
+fn variable_assignments(transcript: &PathBuf) -> Vec<String> {
+    fs::read_to_string(transcript)
+        .unwrap()
+        .lines()
+        .filter(|l| l.starts_with("-var-assign "))
+        .map(str::to_owned)
+        .collect()
+}
+#[test]
+fn variable_drafts_use_typed_assignment_cancel_replay_and_nonzero_frame() {
+    let (project, transcript) = variable_fixture("variable typed", &[]);
+    let engine = session::spawn(project);
+    ok(&engine, 1, "connect", json!({}));
+    let (success, draft, error) = variable_preview(&engine, 2, "4294967295");
+    assert!(success, "{error:?}");
+    assert_eq!(draft["metadata"]["scalar"]["bits"], 32);
+    ok(&engine, 4, "write_cancel", json!({"draft":draft["draft"]}));
+    assert_eq!(
+        ok(&engine, 5, "write_apply", json!({"draft":draft["draft"]}))["outcome"],
+        "not_sent"
+    );
+    assert!(variable_assignments(&transcript).is_empty());
+    ok(&engine, 6, "frame", json!({"level":1}));
+    let (success, draft, error) = variable_preview(&engine, 7, "4294967295");
+    assert!(success, "{error:?}");
+    let result = ok(&engine, 9, "write_apply", json!({"draft":draft["draft"]}));
+    assert_eq!(result["outcome"], "verified", "{result}");
+    assert_eq!(result["observed"]["hex"], "0xffffffff");
+    assert_eq!(variable_assignments(&transcript).len(), 1);
+    assert!(variable_assignments(&transcript)[0].contains("(__typeof__(counter))(0xffffffff)"));
+    assert!(memory_writes(&transcript).is_empty());
+    assert_eq!(
+        ok(&engine, 10, "write_apply", json!({"draft":draft["draft"]}))["outcome"],
+        "not_sent"
+    );
+    ok(&engine, 11, "quit", json!({}));
+}
+#[test]
+fn variable_preview_rejects_const_volatile_optimized_noneditable_mmio_and_unproven_storage() {
+    for (flag, value) in [
+        ("DEBUGTUI_TEST_VARIABLE_TYPE", "const unsigned int"),
+        ("DEBUGTUI_TEST_VARIABLE_TYPE", "volatile unsigned int"),
+        ("DEBUGTUI_TEST_VARIABLE_OPTIMIZED", "1"),
+        ("DEBUGTUI_TEST_VARIABLE_NOT_EDITABLE", "1"),
+        ("DEBUGTUI_TEST_VARIABLE_ADDRESS", "0x40000000"),
+        ("DEBUGTUI_TEST_VARIABLE_ADDRESS", "0x8000000"),
+        (
+            "DEBUGTUI_TEST_VARIABLE_NO_ADDRESS",
+            "Cannot take address of a bitfield",
+        ),
+        ("DEBUGTUI_TEST_NO_VARIABLE_WRITER", "1"),
+        ("DEBUGTUI_TEST_MEMORY_READONLY", "1"),
+    ] {
+        let (project, transcript) =
+            variable_fixture(&format!("variable reject {flag} {value}"), &[(flag, value)]);
+        let engine = session::spawn(project);
+        ok(&engine, 1, "connect", json!({}));
+        let result = variable_preview(&engine, 2, "7");
+        assert!(!result.0, "{flag} {value}: {result:?}");
+        assert!(variable_assignments(&transcript).is_empty());
+        let commands = fs::read_to_string(&transcript).unwrap();
+        if flag == "DEBUGTUI_TEST_VARIABLE_ADDRESS"
+            || flag == "DEBUGTUI_TEST_VARIABLE_TYPE"
+            || flag == "DEBUGTUI_TEST_VARIABLE_NO_ADDRESS"
+            || flag == "DEBUGTUI_TEST_MEMORY_READONLY"
+        {
+            let inspection = commands
+                .split("-gdb-set may-call-functions off")
+                .last()
+                .unwrap();
+            assert!(
+                !inspection.contains("-var-create "),
+                "Rejected storage must not fetch a root variable: {inspection}"
+            );
+        }
+        if commands.contains("-gdb-set may-call-functions off") {
+            assert!(commands.contains("-gdb-set may-call-functions on"));
+        }
+        ok(&engine, 4, "quit", json!({}));
+    }
+}
+#[test]
+fn variable_apply_rechecks_type_address_permissions_frame_and_explicit_watch_route() {
+    for flag in [
+        "DEBUGTUI_TEST_VARIABLE_TYPE_CHANGE",
+        "DEBUGTUI_TEST_VARIABLE_ADDRESS_CHANGE",
+        "DEBUGTUI_TEST_VARIABLE_PERMISSION_CHANGE",
+        "frame-change",
+    ] {
+        let (project, transcript) =
+            variable_fixture(&format!("variable change {flag}"), &[(flag, "1")]);
+        let engine = session::spawn(project);
+        ok(&engine, 1, "connect", json!({}));
+        let (success, draft, error) = variable_preview(&engine, 2, "7");
+        assert!(success, "{flag}: {error:?}");
+        if flag == "frame-change" {
+            ok(&engine, 4, "frame", json!({"level":1}));
+        }
+        let result = ok(&engine, 5, "write_apply", json!({"draft":draft["draft"]}));
+        assert_eq!(result["outcome"], "not_sent", "{flag}: {result}");
+        assert!(variable_assignments(&transcript).is_empty());
+        ok(&engine, 6, "quit", json!({}));
+    }
+    let (mut project, transcript) = variable_fixture("variable AP route", &[]);
+    project.ui.refresh.insert(
+        "single|watch:counter".into(),
+        debugtui::config::RefreshPolicy {
+            channel: "ap".into(),
+            ..Default::default()
+        },
+    );
+    let engine = session::spawn(project);
+    ok(&engine, 1, "connect", json!({}));
+    let result = variable_preview(&engine, 2, "7");
+    assert!(!result.0 && result.2.unwrap().contains("explicit bus channel"));
+    assert!(variable_assignments(&transcript).is_empty());
+    ok(&engine, 4, "quit", json!({}));
+}
+#[test]
+fn variable_post_send_outcomes_are_precise_and_never_retry_or_use_memory_fallback() {
+    for (flag, value, expected) in [
+        ("DEBUGTUI_TEST_VARIABLE_MISMATCH", "1", "mismatch"),
+        ("DEBUGTUI_TEST_VARIABLE_VERIFY_ERROR", "1", "accepted"),
+        ("DEBUGTUI_TEST_VARIABLE_WRITE_RUN", "1", "accepted"),
+        ("DEBUGTUI_TEST_VARIABLE_CLEANUP_ERROR", "1", "verified"),
+        ("DEBUGTUI_TEST_VARIABLE_WRITE_ERROR", "error", "unknown"),
+        ("DEBUGTUI_TEST_VARIABLE_WRITE_ERROR", "closed", "unknown"),
+        ("DEBUGTUI_TEST_VARIABLE_WRITE_ERROR", "timeout", "unknown"),
+    ] {
+        let (project, transcript) = variable_fixture(
+            &format!("variable outcome {flag} {value}"),
+            &[(flag, value)],
+        );
+        let engine = session::spawn(project);
+        ok(&engine, 1, "connect", json!({}));
+        let (success, draft, error) = variable_preview(&engine, 2, "7");
+        assert!(success, "{error:?}");
+        let result = ok(&engine, 4, "write_apply", json!({"draft":draft["draft"]}));
+        assert_eq!(result["outcome"], expected, "{flag}: {result}");
+        assert_eq!(variable_assignments(&transcript).len(), 1);
+        assert!(memory_writes(&transcript).is_empty());
+        assert_eq!(
+            ok(&engine, 5, "write_apply", json!({"draft":draft["draft"]}))["outcome"],
+            "not_sent"
+        );
+        let _ = request(&engine, 6, "quit", json!({}));
+    }
+}
+#[test]
+fn late_stop_notification_cannot_clear_unknown_variable_write_fault() {
+    let (project, transcript) = variable_fixture(
+        "variable unknown late stop",
+        &[("DEBUGTUI_TEST_VARIABLE_WRITE_ERROR", "error-stop")],
+    );
+    let engine = session::spawn(project);
+    ok(&engine, 1, "connect", json!({}));
+    let (success, draft, error) = variable_preview(&engine, 2, "7");
+    assert!(success, "{error:?}");
+    assert_eq!(
+        ok(&engine, 4, "write_apply", json!({"draft":draft["draft"]}))["outcome"],
+        "unknown"
+    );
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(ok(&engine, 5, "status", json!({}))["state"], "FAULT");
+    let before = fs::read_to_string(&transcript).unwrap();
+    assert!(!variable_preview(&engine, 6, "8").0);
+    assert_eq!(fs::read_to_string(&transcript).unwrap(), before);
+    assert_eq!(variable_assignments(&transcript).len(), 1);
+    let _ = request(&engine, 8, "quit", json!({}));
+}
+#[test]
+fn variable_function_policy_preserves_off_and_restoration_fault_blocks_further_inspection() {
+    let (project, transcript) = variable_fixture(
+        "variable calls already off",
+        &[("DEBUGTUI_TEST_VARIABLE_CALLS_OFF", "1")],
+    );
+    let engine = session::spawn(project);
+    ok(&engine, 1, "connect", json!({}));
+    let (success, draft, error) = variable_preview(&engine, 2, "7");
+    assert!(success, "{error:?}");
+    assert_eq!(
+        ok(&engine, 4, "write_apply", json!({"draft":draft["draft"]}))["outcome"],
+        "verified"
+    );
+    assert!(
+        !fs::read_to_string(&transcript)
+            .unwrap()
+            .contains("-gdb-set may-call-functions")
+    );
+    ok(&engine, 5, "quit", json!({}));
+    let (project, transcript) = variable_fixture(
+        "variable function restore failure",
+        &[("DEBUGTUI_TEST_VARIABLE_RESTORE_ERROR", "1")],
+    );
+    let engine = session::spawn(project);
+    ok(&engine, 1, "connect", json!({}));
+    let result = variable_preview(&engine, 2, "7");
+    assert!(!result.0 && result.2.unwrap().contains("restoration failed"));
+    assert_eq!(ok(&engine, 4, "status", json!({}))["state"], "FAULT");
+    let before = fs::read_to_string(&transcript).unwrap();
+    assert!(!variable_preview(&engine, 5, "8").0);
+    assert_eq!(fs::read_to_string(&transcript).unwrap(), before);
+    assert!(variable_assignments(&transcript).is_empty());
+    let _ = request(&engine, 7, "quit", json!({}));
+}
+#[test]
+fn deferred_variable_board_case_uses_actual_binary_and_independent_ram_then_restores() {
+    let (mut project, transcript) = variable_fixture("deferred variable driver", &[]);
+    project.version = 2;
+    let config = transcript.parent().unwrap().join("variable-project.toml");
+    fs::write(&config, toml::to_string_pretty(&project).unwrap()).unwrap();
+    let case_file = transcript.parent().unwrap().join("variable-case.json");
+    fs::write(&case_file, json!({"frame":0,"frame_function":"main","target":{"kind":"variable","pane":"watch","expression":"counter"},"probe":"counter","input":{"kind":"unsigned","text":"0x12345678"},"little_endian":true,"owner":"core:default","scope":"core","sentinels":["before","after"]}).to_string()).unwrap();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output = std::process::Command::new("node")
+        .arg(root.join("scripts/test-variable-write-hardware.cjs"))
+        .args([
+            "--run",
+            "--software-fixture",
+            "--binary",
+            env!("CARGO_BIN_EXE_debugtui"),
+            "--project",
+        ])
+        .arg(config)
+        .arg("--case")
+        .arg(case_file)
+        .args(["--core", "default", "--fixture-function", "main"])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("\"passed\":5,\"failed\":0,\"skipped\":0"),
+        "{stdout}"
+    );
+    let directory = stdout
+        .lines()
+        .find_map(|l| {
+            l.strip_prefix("RESULT ")
+                .and_then(|s| s.split_once("} ").map(|(_, p)| p))
+        })
+        .unwrap();
+    let report: Value =
+        serde_json::from_slice(&fs::read(PathBuf::from(directory).join("report.json")).unwrap())
+            .unwrap();
+    assert_eq!(report["board_tests_executed"], false);
+    assert_eq!(
+        variable_assignments(&transcript).len(),
+        2,
+        "one typed test write and one explicit verified restoration"
+    );
+    assert!(memory_writes(&transcript).is_empty());
+}
+#[test]
+fn local_collapse_while_running_sends_no_target_inspection() {
+    let (project, transcript) =
+        variable_fixture("locals collapse", &[("DEBUGTUI_TEST_PAUSE", "running")]);
+    let engine = session::spawn(project);
+    ok(&engine, 1, "connect", json!({}));
+    ok(&engine, 2, "continue", json!({}));
+    let before = fs::read_to_string(&transcript).unwrap();
+    assert_eq!(
+        ok(
+            &engine,
+            3,
+            "local_expand",
+            json!({"expression":"counter","expanded":false})
+        )["expanded"],
+        false
+    );
+    assert_eq!(fs::read_to_string(&transcript).unwrap(), before);
+    let _ = request(&engine, 4, "quit", json!({}));
+}
+
 fn tcl_script(packet: &str) -> String {
     let quoted = packet
         .strip_prefix("set __dt_code [catch \"")

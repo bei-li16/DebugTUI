@@ -145,8 +145,8 @@ impl App {
     fn selected_numeric_item(&self) -> Option<Item> {
         let pane = self.pane;
         let row = self.selected(pane);
-        if pane == 1 {
-            return self.watch_item(row);
+        if matches!(pane, 1 | 9) {
+            return self.variable_item(pane, row);
         }
         if pane == 3 && self.register_view.enabled() {
             return self.register_format_item(row);
@@ -359,8 +359,8 @@ impl App {
         spans
     }
     pub(super) fn numeric_view(&mut self, f: &mut UiFrame, pane: usize, rect: Rect) {
-        if pane == 1 {
-            self.watch_numeric_view(f, rect);
+        if matches!(pane, 1 | 9) {
+            self.watch_numeric_view(f, pane, rect);
             return;
         }
         let vars = match pane {

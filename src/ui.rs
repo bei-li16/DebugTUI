@@ -1064,7 +1064,9 @@ impl App {
         }
         match key.code {
             KeyCode::Char('f') if key.modifiers.is_empty() => self.open_format(None),
-            KeyCode::Char('e') if key.modifiers.is_empty() && matches!(self.pane, 3 | 4 | 10) => {
+            KeyCode::Char('e')
+                if key.modifiers.is_empty() && matches!(self.pane, 1 | 3 | 4 | 9 | 10) =>
+            {
                 self.open_edit_value()
             }
             KeyCode::F(2) => self.open_setup(),
@@ -1123,6 +1125,12 @@ impl App {
             KeyCode::Right if self.pane == 1 => {
                 self.toggle_watch(Some(true), engine);
             }
+            KeyCode::Left if self.pane == 9 => {
+                self.toggle_local(Some(false), engine);
+            }
+            KeyCode::Right if self.pane == 9 => {
+                self.toggle_local(Some(true), engine);
+            }
             KeyCode::Up => self.move_selection(-1),
             KeyCode::PageDown => self.move_selection(12),
             KeyCode::PageUp => self.move_selection(-12),
@@ -1141,7 +1149,9 @@ impl App {
             KeyCode::Enter => {
                 if self.pane == peripherals::PANE {
                     self.toggle_peripheral(None);
-                } else if self.pane == 1 && self.toggle_watch(None, engine) {
+                } else if (self.pane == 1 && self.toggle_watch(None, engine))
+                    || (self.pane == 9 && self.toggle_local(None, engine))
+                {
                 } else if self.pane == 7 {
                     if let Some(file) = self
                         .filtered_files()
@@ -1338,7 +1348,7 @@ impl App {
                 };
         }
         match command {
-            "edit-value" => matches!(self.pane, 3 | 4 | 10),
+            "edit-value" => matches!(self.pane, 1 | 3 | 4 | 9 | 10),
             "commandlist" | "quit" | "setup" => true,
             "watch-access" => !self.snapshot.watches.is_empty(),
             "memory-access" => true,
@@ -1406,7 +1416,7 @@ impl App {
             7 => self.filtered_files().len(),
             8 => self.logs.len(),
             10 => self.peripherals.len(),
-            _ => self.snapshot.locals.len() * 2,
+            _ => watch::rows(&self.snapshot.locals).len() * 2,
         }
     }
     fn set_view_top(&mut self, pane: usize, top: usize) {
@@ -1656,6 +1666,15 @@ impl App {
                     .find(|(rect, _)| rect.contains(point))
                 {
                     let action = *action;
+                    if action == "edit-value"
+                        && let Some((_, pane)) = self
+                            .write_editor
+                            .entry_hits
+                            .iter()
+                            .find(|(r, _)| r.contains(point))
+                    {
+                        self.select_pane(*pane);
+                    }
                     if self.action_enabled(action) {
                         if action == "commandlist" {
                             self.palette_index = 0;

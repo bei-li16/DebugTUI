@@ -15,26 +15,36 @@ impl Engine {
             .clone()
             .into_iter()
             .take(64)
-            .map(|name| self.read_watch(&name))
+            .map(|name| self.read_variable_tree(&name, false))
             .collect();
     }
 
-    fn read_watch(&mut self, expression: &str) -> Variable {
+    pub(super) fn read_variable_tree(&mut self, expression: &str, local: bool) -> Variable {
         let old = self
             .snapshot
             .watches
             .iter()
             .find(|v| v.name == expression)
             .cloned();
+        let old = if local {
+            self.snapshot
+                .locals
+                .iter()
+                .find(|v| v.name == expression)
+                .cloned()
+        } else {
+            old
+        };
+        let key = if local {
+            format!("locals:{expression}")
+        } else {
+            expression.into()
+        };
         let result = self.mi(&format!("-var-create - * {}", mi::quote(expression)));
         let mut value = match result {
             Ok(record) => {
                 let object = record.data.string("name");
-                let expansions = self
-                    .watch_expansions
-                    .get(expression)
-                    .cloned()
-                    .unwrap_or_default();
+                let expansions = self.watch_expansions.get(&key).cloned().unwrap_or_default();
                 let mut remaining = MAX_NODES;
                 let value = self.read_watch_node(
                     expression,
@@ -198,8 +208,65 @@ impl Engine {
             if params["more"].as_bool().unwrap_or(false) {
                 *count = count.saturating_add(PAGE).min(MAX_NODES);
             }
-            let value = self.read_watch(expression);
+            let value = self.read_variable_tree(expression, false);
             self.snapshot.watches[root] = value;
+        }
+        self.publish();
+        Ok(json!({"expanded":expanded}))
+    }
+    pub(super) fn expand_local(&mut self, p: &Json) -> Result<Json, String> {
+        let expression = p["expression"].as_str().ok_or("Local root name required")?;
+        let index = self
+            .snapshot
+            .locals
+            .iter()
+            .position(|v| v.name == expression)
+            .ok_or("Local no longer exists")?;
+        let path: Vec<usize> = serde_json::from_value(p.get("path").cloned().unwrap_or(json!([])))
+            .map_err(|_| "Invalid local child path")?;
+        if path.len() > MAX_DEPTH {
+            return Err("Local expansion depth limit reached".into());
+        }
+        let key = format!("locals:{expression}");
+        if path.is_empty() && p["expanded"].as_bool() == Some(false) {
+            if let Some(tree) = self.snapshot.locals[index].tree.as_mut() {
+                tree.expanded = false;
+            }
+            if let Some(counts) = self.watch_expansions.get_mut(&key) {
+                counts.remove(&path);
+            }
+            self.publish();
+            return Ok(json!({"expanded":false}));
+        }
+        if self.snapshot.locals[index]
+            .tree
+            .as_ref()
+            .is_none_or(|t| t.child_count == 0)
+            && path.is_empty()
+        {
+            self.stopped()?;
+            self.snapshot.locals[index] = self.read_variable_tree(expression, true);
+        }
+        let tree = find_node(&mut self.snapshot.locals[index], &path)
+            .and_then(|v| v.tree.as_mut())
+            .ok_or("Local child no longer exists")?;
+        if tree.child_count == 0 {
+            return Err("This local value has no children".into());
+        }
+        let expanded = p["expanded"].as_bool().unwrap_or(!tree.expanded);
+        if expanded {
+            self.stopped()?;
+            let counts = self.watch_expansions.entry(key).or_default();
+            let count = counts.entry(path).or_insert(PAGE);
+            if p["more"].as_bool().unwrap_or(false) {
+                *count = count.saturating_add(PAGE).min(MAX_NODES);
+            }
+            self.snapshot.locals[index] = self.read_variable_tree(expression, true);
+        } else {
+            tree.expanded = false;
+            if let Some(counts) = self.watch_expansions.get_mut(&key) {
+                counts.remove(&path);
+            }
         }
         self.publish();
         Ok(json!({"expanded":expanded}))

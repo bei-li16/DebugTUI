@@ -23,6 +23,7 @@ mod memory;
 mod memory_writes;
 mod registers;
 mod symbols;
+mod variable_writes;
 mod watch;
 mod writes;
 pub(crate) use symbols::Symbol;
@@ -422,6 +423,7 @@ struct Engine {
     register_access_fault: Option<String>,
     write_drafts: writes::Drafts,
     write_peers: Vec<CoreStatus>,
+    console_capture: Option<String>,
     exiting: bool,
     job: Option<crate::process::Job>,
     cancellation: Arc<AtomicBool>,
@@ -577,6 +579,7 @@ impl Engine {
             register_access_fault: None,
             write_drafts: Default::default(),
             write_peers: vec![],
+            console_capture: None,
             exiting: false,
             job: None,
             cancellation,
@@ -592,7 +595,13 @@ impl Engine {
     }
     fn state(&mut self, state: &str) {
         self.write_drafts.clear();
-        self.snapshot.state = state.into();
+        self.snapshot.state = if self.register_access_fault.is_some()
+            && matches!(state, "STOPPED" | "RUNNING" | "READY")
+        {
+            "FAULT".into()
+        } else {
+            state.into()
+        };
         self.invalidate_register_samples();
         self.publish();
     }
@@ -700,7 +709,11 @@ impl Engine {
                         return;
                     }
                     self.snapshot.generation += 1;
-                    self.snapshot.state = "STOPPED".into();
+                    self.snapshot.state = if self.register_access_fault.is_some() {
+                        "FAULT".into()
+                    } else {
+                        "STOPPED".into()
+                    };
                     self.snapshot.assembly.clear();
                     self.snapshot.memory.clear();
                     self.snapshot.stop_reason = r.data.string("reason");
@@ -722,10 +735,19 @@ impl Engine {
                             ),
                         );
                     }
-                    self.refresh_pending = true;
+                    self.refresh_pending = self.register_access_fault.is_none();
                     self.invalidate_register_samples();
                     self.publish();
                 } else if matches!(r.kind, '~' | '@' | '&') {
+                    if r.kind == '~'
+                        && let Some(capture) = &mut self.console_capture
+                    {
+                        if capture.len() + r.data.text().len() <= 65536 {
+                            capture.push_str(r.data.text());
+                        } else if !capture.contains('\0') {
+                            capture.push('\0');
+                        }
+                    }
                     let internal = r.kind == '@' && self.rpc_echo.internal(r.data.text());
                     self.log(
                         if internal {
@@ -1308,6 +1330,10 @@ impl Engine {
                         .take(128)
                         .map(|x| Variable {
                             name: x.string("name"),
+                            tree: Some(WatchTree {
+                                type_name: x.string("type"),
+                                ..Default::default()
+                            }),
                             value: {
                                 let value = x.string("value");
                                 if value.is_empty() {
@@ -1321,6 +1347,15 @@ impl Engine {
                         .collect()
                 })
                 .unwrap_or_default();
+        }
+        for index in 0..self.snapshot.locals.len() {
+            let name = self.snapshot.locals[index].name.clone();
+            if self
+                .watch_expansions
+                .contains_key(&format!("locals:{name}"))
+            {
+                self.snapshot.locals[index] = self.read_variable_tree(&name, true);
+            }
         }
         self.refresh_watches();
         // Catalogue mode reads only what the UI/headless client explicitly asks
@@ -1725,6 +1760,7 @@ impl Engine {
             }
             "watch_expand" => self.expand_watch(p),
             "watch_resolve" => self.resolve_watch(p),
+            "local_expand" => self.expand_local(p),
             "memory_read" => self.read_memory_channel(p),
             "memory_dump" => self.read_memory_dump(p),
             "write_preview" => self.preview_write(p),

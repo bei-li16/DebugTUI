@@ -2,6 +2,10 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04，尚未发布）
 
+变量写入批次：256 项单元测试、27 项集成测试通过，2 项既有环境测试 ignored；严格 Clippy 通过。真实 GCC/GDB 的 `node scripts/test-variable-write-gdb.cjs target/debug/debugtui.exe` 8 阶段全部通过，覆盖精确 32/64 位数值、指针、struct／数组成员、const 及别名拒绝、浮点负零、调用者帧 Locals 和过期草稿；项目哈希不变。键鼠／窄窗口、表达式校验、根存储先检查、权限／类型／地址改变、优化掉、函数调用策略恢复、发送后错误／断连／超时、清理失败和无重试另有 MI 管道及 Ratatui 证据。
+
+`node scripts/test-variable-write-hardware.cjs` 默认生成 4 skipped，不连接目标；`--run --project FILE --core core0 --case FILE --fixture-function debug_write_fixture --binary FILE` 才使用已暂停的独立普通 RAM 夹具。夹具源码见 `tests/fixtures/variable-write-board.c`，案例格式见 `tests/fixtures/variable-write-board.example.json`；成员顺序、符号、owner、帧、字节序必须按实际固件填写，Watch 根需已在工程中声明。core0/core1 及双核共享 owner 分别运行并保留结果；driver 不运行／暂停／复位 CPU。通过实际二进制＋MI 软件夹具验证 5 阶段（含清理），独立 RAM 回读、两侧符号及原项目哈希检查通过，报告 `board_tests_executed=false`。128 位变量、位域／引用／特殊浮点和其他上板场景仍待补足；本批未升版或发布。
+
 RAM／MMIO writer 批次：250 项单元测试、19 项本地集成测试通过，2 项既有外部环境测试 ignored；严格 Clippy 通过。新增 64 位地址／4096 字节边界及两侧哨兵、声明 RAM／Flash／MMIO 区域拒绝规则、字节序、非零帧、权限变化、回读不符及发送后错误无重试。实际 TCP TCL 软件夹具验证一个 MMIO 字访问、布局／AP 大小端转换、保留位、邻接 W1C 中性值、WO 和读副作用对象无回读、物理 CPU 状态及 Apply 重新查询字节序。共享 owner 不能由 JSON 伪造 peer 状态；All scope 不广播写入，其他核心缓存与草稿失效。
 
 `scripts/test-memory-write-hardware.cjs` 默认 4 项 skipped、零目标连接；通过实际 DebugTUI 可执行文件及 MI 软件夹具执行全部 5 阶段（含关闭），原工程保持不变，RAM 与哨兵明确恢复；报告 `board_tests_executed=false`。本批未执行上板测试。当前本地 ARM GDB 只读探测确认 `data-write-memory-bytes` 存在、`may-write-memory=on`，不作为目标写权限证明。MMIO、缓存一致性及其余延后上板案例仍需补足。

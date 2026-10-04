@@ -7,6 +7,7 @@ pub(super) struct WatchView {
     pub remove_hits: Vec<(Rect, String)>,
     pub pending_remove: Option<u64>,
     pub expand_hits: Vec<(Rect, String)>,
+    pub local_expand_hits: Vec<(Rect, String)>,
 }
 
 pub(super) struct WatchRow<'a> {
@@ -64,6 +65,80 @@ pub(super) fn rows(watches: &[Variable]) -> Vec<WatchRow<'_>> {
 }
 
 impl App {
+    pub(super) fn variable_edit_candidate(&self, pane: usize) -> Result<writes::Candidate, String> {
+        let values = if pane == 1 {
+            &self.snapshot.watches
+        } else {
+            &self.snapshot.locals
+        };
+        let nodes = rows(values);
+        let node = nodes
+            .get(self.selected(pane) / 2)
+            .filter(|n| !n.more)
+            .ok_or("Select a scalar variable or member")?;
+        let type_hint = node
+            .value
+            .tree
+            .as_ref()
+            .map(|t| t.type_name.clone())
+            .unwrap_or_default();
+        let channel = if pane == 1 {
+            self.project
+                .ui
+                .refresh
+                .get(&self.monitor_key(&node.key()))
+                .or_else(|| {
+                    self.project
+                        .ui
+                        .refresh
+                        .get(&self.monitor_key(&format!("watch:{}", node.root)))
+                })
+                .map(|p| p.channel.clone())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        Ok(writes::Candidate {
+            target: json!({"kind":"variable","pane":if pane==1{"watch"}else{"locals"},"expression":node.root,"path":node.path,"channel":channel,"type_hint":type_hint}),
+            selection: crate::writes::Selection::Register,
+            title: format!(
+                "{} · {}",
+                if pane == 1 { "Watch" } else { "Locals" },
+                node.value.name
+            ),
+            bits: 0,
+            value: String::new(),
+            reason: node
+                .value
+                .error
+                .then(|| "Variable value is unavailable at this stop/frame".into()),
+        })
+    }
+    pub(super) fn toggle_local(
+        &mut self,
+        expand: Option<bool>,
+        engine: Option<&EngineHandle>,
+    ) -> bool {
+        let nodes = rows(&self.snapshot.locals);
+        let Some(node) = nodes.get(self.selected(9) / 2) else {
+            return false;
+        };
+        let Some(tree) = &node.value.tree else {
+            return false;
+        };
+        if tree.child_count == 0
+            && !tree.type_name.contains('*')
+            && !tree.type_name.contains('[')
+            && !tree.type_name.contains("struct ")
+            && !tree.type_name.contains("union ")
+            && !tree.type_name.contains("class ")
+        {
+            return false;
+        }
+        let expanded = expand.unwrap_or(!tree.expanded || node.more);
+        self.submit(engine,"local_expand",json!({"expression":node.root,"path":node.path,"expanded":expanded,"more":node.more&&expanded}));
+        true
+    }
     pub(super) fn add_watch_input(&mut self, engine: Option<&EngineHandle>) {
         let expression = self.watch_input.trim().to_owned();
         if expression.is_empty() || self.pending_watch.is_some() {
@@ -79,8 +154,16 @@ impl App {
     }
 
     pub(super) fn reconcile_watch_selection(&mut self, next: &Snapshot) {
-        let old = rows(&self.snapshot.watches);
-        let next = rows(&next.watches);
+        self.reconcile_variable_selection(1, &next.watches);
+        self.reconcile_variable_selection(9, &next.locals);
+    }
+    fn reconcile_variable_selection(&mut self, pane: usize, next: &[Variable]) {
+        let old = rows(if pane == 1 {
+            &self.snapshot.watches
+        } else {
+            &self.snapshot.locals
+        });
+        let next = rows(next);
         if old
             .iter()
             .map(WatchRow::key)
@@ -88,7 +171,7 @@ impl App {
         {
             return;
         }
-        let row = self.selected(1);
+        let row = self.selected(pane);
         let previous = old.get(row / 2);
         let index = previous
             .and_then(|previous| {
@@ -106,27 +189,28 @@ impl App {
         } else {
             index * 2 + row % 2
         };
-        self.selections[1] = row;
-        if self.pane == 1 {
+        self.selections[pane] = row;
+        if self.pane == pane {
             self.selection = row;
         }
-        let visible = self.view_rects[1].height.max(1) as usize;
+        let visible = self.view_rects[pane].height.max(1) as usize;
         let max = (next.len() * 2).saturating_sub(visible);
-        self.view_tops[1] = self.view_tops[1].min(max);
-        if self.pane == 1 {
-            if row < self.view_tops[1] {
-                self.view_tops[1] = row;
-            } else if row >= self.view_tops[1] + visible {
-                self.view_tops[1] = (row + 1 - visible).min(max);
+        self.view_tops[pane] = self.view_tops[pane].min(max);
+        if self.pane == pane {
+            if row < self.view_tops[pane] {
+                self.view_tops[pane] = row;
+            } else if row >= self.view_tops[pane] + visible {
+                self.view_tops[pane] = (row + 1 - visible).min(max);
             }
         }
         // A deleted expression must not leave a second, stale selected highlight.
-        if self
-            .formats
-            .selected
-            .as_ref()
-            .is_some_and(|key| key.starts_with("watch:") || key.starts_with("watch-child:"))
-        {
+        if self.formats.selected.as_ref().is_some_and(|key| {
+            if pane == 1 {
+                key.starts_with("watch:") || key.starts_with("watch-child:")
+            } else {
+                key.starts_with("local:")
+            }
+        }) {
             self.formats.selected = None;
         }
     }
@@ -172,37 +256,58 @@ impl App {
         true
     }
     pub(super) fn watch_item(&self, row: usize) -> Option<formats::Item> {
-        let nodes = rows(&self.snapshot.watches);
+        self.variable_item(1, row)
+    }
+    pub(super) fn variable_item(&self, pane: usize, row: usize) -> Option<formats::Item> {
+        let nodes = rows(if pane == 1 {
+            &self.snapshot.watches
+        } else {
+            &self.snapshot.locals
+        });
         let node = nodes.get(row / 2).filter(|v| !v.more)?;
         Some(formats::Item {
             rect: Rect::default(),
-            pane: 1,
+            pane,
             row,
-            key: node.key(),
+            key: if pane == 1 {
+                node.key()
+            } else if node.path.is_empty() {
+                self.numeric_key(9, node.root)
+            } else {
+                format!("{}:{}", self.numeric_key(9, node.root), json!(node.path))
+            },
             name: node.value.name.clone(),
-            raw: self
-                .watch_sample(&node.key())
+            raw: (pane == 1)
+                .then(|| self.watch_sample(&node.key()))
+                .flatten()
                 .map(|s| s.0)
                 .unwrap_or_else(|| node.value.value.clone()),
             default: crate::config::Radix::Decimal,
         })
     }
-    pub(super) fn watch_numeric_view(&mut self, f: &mut UiFrame, rect: Rect) {
-        let watches = self.snapshot.watches.clone();
+    pub(super) fn watch_numeric_view(&mut self, f: &mut UiFrame, pane: usize, rect: Rect) {
+        let watches = if pane == 1 {
+            self.snapshot.watches.clone()
+        } else {
+            self.snapshot.locals.clone()
+        };
         let nodes = rows(&watches);
-        let start = self.view_tops[1];
+        let start = self.view_tops[pane];
         for row in start..start + rect.height as usize {
             let Some(node) = nodes.get(row / 2) else {
                 break;
             };
             let mut displayed = node.value.clone();
-            if let Some((text, changed, error)) = self.watch_sample(&node.key()) {
+            if let Some((text, changed, error)) = (pane == 1)
+                .then(|| self.watch_sample(&node.key()))
+                .flatten()
+            {
                 displayed.value = text;
                 displayed.changed = changed;
                 displayed.error = error;
             }
             let value = &displayed;
-            let close_width = if node.removable() && rect.width >= 8 {
+            let close_width = if pane == 1 && node.removable() && rect.width >= 8 {
                 3
             } else {
                 0
@@ -215,15 +320,29 @@ impl App {
             );
             let mut item = formats::Item {
                 rect: hit,
-                pane: 1,
+                pane,
                 row,
-                key: node.key(),
+                key: if pane == 1 {
+                    node.key()
+                } else if node.path.is_empty() {
+                    self.numeric_key(9, node.root)
+                } else {
+                    format!("{}:{}", self.numeric_key(9, node.root), json!(node.path))
+                },
                 name: value.name.clone(),
                 raw: value.value.clone(),
                 default: crate::config::Radix::Decimal,
             };
             let tree = value.tree.as_ref();
-            let expandable = tree.is_some_and(|t| t.child_count > 0);
+            let expandable = tree.is_some_and(|t| {
+                t.child_count > 0
+                    || (pane == 9
+                        && (t.type_name.contains("struct ")
+                            || t.type_name.contains("union ")
+                            || t.type_name.contains("class ")
+                            || t.type_name.contains('*')
+                            || t.type_name.contains('[')))
+            });
             let indent = "  ".repeat(node.path.len() + usize::from(node.more));
             let spans = if node.more {
                 vec![Span::styled(
@@ -269,7 +388,7 @@ impl App {
                 spans.extend(self.numeric_spans(&item, value.changed, value.error));
                 spans
             };
-            let selected = self.pane == 1 && self.selected(1) / 2 == row / 2;
+            let selected = self.pane == pane && self.selected(pane) / 2 == row / 2;
             let bg = if selected {
                 theme::SELECTED
             } else {
@@ -291,7 +410,11 @@ impl App {
                         1,
                     )
                 };
-                self.watch.expand_hits.push((arrow, node.key()));
+                if pane == 1 {
+                    self.watch.expand_hits.push((arrow, node.key()));
+                } else {
+                    self.watch.local_expand_hits.push((arrow, node.key()));
+                }
                 // Value/name selection outside the disclosure arrow is unchanged.
                 if !node.more && arrow.right() > hit.x {
                     item.rect.x = arrow.right();
@@ -338,6 +461,28 @@ impl App {
         }
     }
     pub(super) fn watch_mouse(&mut self, mouse: MouseEvent, engine: Option<&EngineHandle>) -> bool {
+        if self.variable_pane == 9 && mouse.kind == MouseEventKind::Down(event::MouseButton::Left) {
+            let point = (mouse.column, mouse.row).into();
+            if let Some((_, key)) = self
+                .watch
+                .local_expand_hits
+                .iter()
+                .find(|(r, _)| r.contains(point))
+            {
+                let index = rows(&self.snapshot.locals)
+                    .iter()
+                    .position(|v| v.key() == *key);
+                if let Some(index) = index {
+                    self.select_pane(9);
+                    self.selection = index * 2;
+                    self.editing = false;
+                    self.watch_editing = false;
+                    self.completion.invalidate();
+                    self.toggle_local(None, engine);
+                }
+                return true;
+            }
+        }
         if self.variable_pane != 1 || mouse.kind != MouseEventKind::Down(event::MouseButton::Left) {
             return false;
         }
@@ -819,6 +964,63 @@ mod tests {
             ..Default::default()
         });
         a
+    }
+    #[test]
+    fn variable_editor_binds_selected_nested_member_and_locals_frame_without_assignment() {
+        let (engine, requests) = session::test_channel();
+        let mut a = tree_app();
+        a.selection = 4;
+        let candidate = a.variable_edit_candidate(1).unwrap();
+        assert_eq!(candidate.target["expression"], "outer");
+        assert_eq!(candidate.target["path"], json!([0, 0]));
+        a.snapshot.locals = a.snapshot.watches.clone();
+        a.snapshot.frame.level = 2;
+        a.select_pane(9);
+        a.selection = 4;
+        key(&mut a, KeyCode::Char('e'), &engine);
+        assert!(a.write_editor.modal());
+        a.write_paste("77");
+        key(&mut a, KeyCode::Tab, &engine);
+        key(&mut a, KeyCode::Tab, &engine);
+        key(&mut a, KeyCode::Enter, &engine);
+        let request = requests.try_recv().unwrap();
+        assert_eq!(request.method, "write_preview");
+        assert_eq!(request.params["target"]["pane"], "locals");
+        assert_eq!(request.params["target"]["path"], json!([0, 0]));
+        assert_eq!(request.params["context"]["frame"], 2);
+        assert!(requests.try_recv().is_err());
+    }
+    #[test]
+    fn locals_tree_mouse_keyboard_and_selection_follow_members_in_narrow_views() {
+        let (engine, requests) = session::test_channel();
+        let mut a = tree_app();
+        a.snapshot.locals = a.snapshot.watches.clone();
+        a.select_pane(9);
+        for (width, height) in [(45, 12), (80, 24), (160, 42)] {
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal.draw(|f| draw(f, &mut a)).unwrap();
+            let arrow = a
+                .watch
+                .local_expand_hits
+                .iter()
+                .find(|(_, key)| key == "watch:outer")
+                .unwrap()
+                .0;
+            assert!(arrow.right() <= width && arrow.bottom() <= height);
+            click(&mut a, arrow, &engine);
+            let request = requests.try_recv().unwrap();
+            assert_eq!(request.method, "local_expand");
+            assert_eq!(request.params["expanded"], false);
+        }
+        a.selection = 4;
+        let mut next = a.snapshot.clone();
+        next.locals[0].tree.as_mut().unwrap().expanded = false;
+        a.update(Event::Snapshot {
+            snapshot: Box::new(next),
+        });
+        assert_eq!(a.selection, 0);
+        key(&mut a, KeyCode::Right, &engine);
+        assert_eq!(requests.try_recv().unwrap().method, "local_expand");
     }
     #[test]
     fn watch_tree_disclosure_mouse_and_keyboard_dispatch_paths() {

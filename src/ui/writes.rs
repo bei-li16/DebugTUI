@@ -60,6 +60,7 @@ pub(super) struct Editor {
     pending: Option<Pending>,
     cancels: VecDeque<String>,
     hits: Vec<(Rect, usize)>,
+    pub(super) entry_hits: Vec<(Rect, usize)>,
 }
 impl Editor {
     pub(super) fn modal(&self) -> bool {
@@ -68,9 +69,10 @@ impl Editor {
 }
 impl App {
     pub(super) fn open_edit_value(&mut self) {
-        if !matches!(self.pane, 3 | 4 | 10) {
+        if !matches!(self.pane, 1 | 3 | 4 | 9 | 10) {
             self.notice =
-                "Select a System Regs, Memory or Peripherals object before editing.".into();
+                "Select a Watch, Locals, System Regs, Memory or Peripherals object before editing."
+                    .into();
             return;
         }
         if self.write_editor.pending.is_some() {
@@ -78,6 +80,7 @@ impl App {
             return;
         }
         let candidate = match match self.pane {
+            1 | 9 => self.variable_edit_candidate(self.pane),
             4 => Ok(self.memory_edit_candidate()),
             10 => self.peripheral_edit_candidate(),
             _ => self
@@ -95,7 +98,13 @@ impl App {
             .clone()
             .unwrap_or_else(|| "Enter a value, then Preview. Preview never sends a write.".into());
         let input = Input {
-            kind: if candidate.target["kind"] == "memory" {
+            kind: if candidate.target["kind"] == "variable"
+                && candidate.target["type_hint"]
+                    .as_str()
+                    .is_some_and(|s| s == "float" || s == "double")
+            {
+                InputKind::Float
+            } else if candidate.target["kind"] == "memory" {
                 InputKind::Bytes
             } else {
                 InputKind::Unsigned
@@ -188,7 +197,12 @@ impl App {
             let popup = self.write_editor.popup.as_mut().unwrap();
             popup.input.kind = match popup.input.kind {
                 InputKind::Unsigned => InputKind::Signed,
-                InputKind::Signed if matches!(popup.candidate.bits, 32 | 64) => InputKind::Float,
+                InputKind::Signed
+                    if matches!(popup.candidate.bits, 32 | 64)
+                        || popup.candidate.target["kind"] == "variable" =>
+                {
+                    InputKind::Float
+                }
                 InputKind::Signed | InputKind::Float => InputKind::Bytes,
                 InputKind::Bytes => InputKind::Enumeration,
                 InputKind::Enumeration => InputKind::Unsigned,
@@ -322,6 +336,9 @@ impl App {
                 )
             };
             if error.is_none() && result["draft"].is_string() {
+                if let Some(bits) = result["metadata"]["scalar"]["bits"].as_u64() {
+                    popup.candidate.bits = bits as u16;
+                }
                 popup.preview = Some(result.clone());
                 popup.field = 3;
             }
@@ -549,6 +566,65 @@ mod tests {
     }
     fn response(app: &App, token: &str) -> Value {
         json!({"draft":token,"context":app.register_context(),"target":{"kind":"register","id":"r0"},"owner":"default","channel":"gdb","endpoint":"localhost:3333","plan":{"selected_mask":{"bits":32,"hex":"0xffffffff"},"needs_fresh_read":false},"outcome":"not_sent"})
+    }
+    #[test]
+    fn panel_edit_buttons_choose_rendered_locals_context_when_source_has_focus() {
+        let (engine, requests) = session::test_channel();
+        for (width, height) in [(45, 12), (80, 24), (160, 42)] {
+            let mut app = app();
+            app.snapshot.frame.level = 1;
+            app.snapshot.locals = vec![Variable {
+                name: "local_counter".into(),
+                value: "7".into(),
+                tree: Some(crate::session::WatchTree {
+                    type_name: "unsigned int".into(),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }];
+            app.select_pane(9);
+            // Compact layouts show the focused pane; the wide layout shows
+            // Locals alongside Source and must route its button independently.
+            if width >= 160 {
+                app.select_pane(0);
+            }
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+            let context = app
+                .write_editor
+                .entry_hits
+                .iter()
+                .find(|(_, pane)| *pane == 9)
+                .unwrap()
+                .0;
+            let hit = app
+                .action_hits
+                .iter()
+                .find(|(r, action)| *action == "edit-value" && context.contains((r.x, r.y).into()))
+                .unwrap()
+                .0;
+            app.mouse(
+                MouseEvent {
+                    kind: MouseEventKind::Down(event::MouseButton::Left),
+                    column: hit.x,
+                    row: hit.y,
+                    modifiers: KeyModifiers::NONE,
+                },
+                Some(&engine),
+            );
+            assert_eq!(app.pane, 9);
+            assert_eq!(
+                app.write_editor.popup.as_ref().unwrap().candidate.target["pane"],
+                "locals"
+            );
+            app.write_paste("77");
+            app.write_action(2, Some(&engine));
+            let request = requests.try_recv().unwrap();
+            assert_eq!(request.method, "write_preview");
+            assert_eq!(request.params["target"]["expression"], "local_counter");
+            assert_eq!(request.params["context"]["frame"], 1);
+            assert!(requests.try_recv().is_err());
+        }
     }
     #[test]
     fn edit_value_controls_fit_narrow_windows_and_cancel_sends_no_apply() {

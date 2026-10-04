@@ -15,9 +15,11 @@ let registerWritten = false;
 let writerProbed = false;
 let memoryWritten = false;
 let memoryWriterProbed = false;
+const variables = process.env.DEBUGTUI_TEST_VARIABLES ? require('./mock-variable-gdb.cjs') : null;
 const memory = new Map();
 const memoryBase = BigInt(process.env.DEBUGTUI_TEST_RAM_BASE || '0x20000000');
 for (let i = 0; i < 4098; i++) memory.set(memoryBase + BigInt(i), 0xaa);
+variables?.initialize(memory);
 const frame = () => `frame={level="${frameLevel}",addr="0x100000008",func="main",file="sample.c",line="${line}"}`;
 const send = value => process.stdout.write(value + '\n');
 readline.createInterface({ input: process.stdin }).on('line', input => {
@@ -26,6 +28,7 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   const [, token, cmd] = match;
   fs.appendFileSync(transcript, cmd + '\n');
   const done = data => send(`${token}^done${data ? ',' + data : ''}`);
+  if (variables?.handle(cmd, {done, memory, error: message => send(`${token}^error,msg=${JSON.stringify(message)}`), running: () => {state='running';send('*running,thread-id="all"');}, stopped: () => {state='stopped';send(`*stopped,reason="signal-received",${frame()}`);}})) return;
   if (cmd.startsWith('-gdb-set ') || cmd.startsWith('-file-exec-and-symbols ')) return done();
   if (cmd === '-gdb-show may-write-registers') {
     const disabled = process.env.DEBUGTUI_TEST_REGISTER_READONLY || (writerProbed && process.env.DEBUGTUI_TEST_WRITE_PERMISSION_CHANGE);

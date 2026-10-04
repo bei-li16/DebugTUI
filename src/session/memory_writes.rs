@@ -32,7 +32,11 @@ enum Payload {
 }
 
 impl Engine {
-    fn write_owner(&self, region: &Region, context: &Context) -> Result<(String, usize), String> {
+    pub(super) fn write_owner(
+        &self,
+        region: &Region,
+        context: &Context,
+    ) -> Result<(String, usize), String> {
         let topology = &self.project.registers.topology;
         let owner = topology
             .owner(region.scope, &context.core)

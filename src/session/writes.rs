@@ -14,14 +14,16 @@ pub(super) static NEXT_DRAFT: AtomicU64 = AtomicU64::new(1);
 pub(super) struct Drafts(
     BTreeMap<String, Draft>,
     pub(super) BTreeMap<String, super::memory_writes::Draft>,
+    pub(super) BTreeMap<String, super::variable_writes::Draft>,
 );
 impl Drafts {
     pub(super) fn clear(&mut self) {
         self.0.clear();
         self.1.clear();
+        self.2.clear();
     }
     pub(super) fn len(&self) -> usize {
-        self.0.len() + self.1.len()
+        self.0.len() + self.1.len() + self.2.len()
     }
 }
 struct Draft {
@@ -65,6 +67,14 @@ impl Engine {
         Ok(selected)
     }
     pub(super) fn preview_write(&mut self, p: &Json) -> Result<Json, String> {
+        if let Some(error) = &self.register_access_fault {
+            return Err(format!(
+                "Debug access is faulted; reconnect before another write: {error}"
+            ));
+        }
+        if p["target"]["kind"] == "variable" {
+            return self.preview_variable_write(p);
+        }
         if matches!(p["target"]["kind"].as_str(), Some("memory" | "peripheral")) {
             return self.preview_memory_write(p);
         }
@@ -193,7 +203,8 @@ impl Engine {
     pub(super) fn cancel_write(&mut self, p: &Json) -> Result<Json, String> {
         let token = p["draft"].as_str().ok_or("Write draft ID required")?;
         let removed = self.write_drafts.0.remove(token).is_some()
-            | self.write_drafts.1.remove(token).is_some();
+            | self.write_drafts.1.remove(token).is_some()
+            | self.write_drafts.2.remove(token).is_some();
         Ok(
             json!({"draft":token,"outcome":if removed {json!(Outcome::NotSent)} else {Json::Null},"cancelled":removed,
             "detail":if removed {"Draft cancelled before sending"} else {"No pending draft; a sent write cannot be withdrawn"}}),
@@ -221,6 +232,9 @@ impl Engine {
     }
     pub(super) fn apply_write(&mut self, p: &Json) -> Result<Json, String> {
         let token = p["draft"].as_str().ok_or("Write draft ID required")?;
+        if self.write_drafts.2.contains_key(token) {
+            return self.apply_variable_write(token);
+        }
         if self.write_drafts.1.contains_key(token) {
             return self.apply_memory_write(token);
         }

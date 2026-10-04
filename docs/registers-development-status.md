@@ -38,7 +38,7 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 
 ## 完整任务仍需完成的部分
 
-寄存器视图偏好持久化及浮点／向量格式；实际身份与能力采集；64 位后端能力、MPU/PMU 选择器事务和区域视图；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；Watch／Locals writer、64 位 MMIO writer 和其余写入类别的跨面板编辑；系统／银行／浮点 writer、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、推送及 Release。不得因基础框架或 Core 写入通过测试而把完整 TODO 或 Goal 标为完成。
+寄存器视图偏好持久化及浮点／向量格式；实际身份与能力采集；64 位后端能力、MPU/PMU 选择器事务和区域视图；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；变量的位域／引用／特殊浮点及 128 位后端验收、64 位 MMIO writer 和其余写入类别的跨面板编辑；系统／银行／浮点 writer、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、推送及 Release。不得因基础框架或部分 writer 通过测试而把完整 TODO 或 Goal 标为完成。
 
 ## 当前 writer 矩阵
 
@@ -51,12 +51,16 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 | D/S/Q 与 FP 状态 | 实际 writer 尚未适配；GDB LONGEST 通路不得写 128 位向量 | GDB 14 源码、宽度拒绝测试 |
 | RAM | 声明地址区域、owner、通道与 byte_writable 后，GDB MI 或 target 限定 TCL 字节写入；最多 4096 字节，Flash 走 Download | 实际 worker 软件夹具、64 位地址、范围哨兵、错误及延后脚本验证；实板未执行 |
 | SVD 外设及字段 | 声明 MMIO 区域及 TCL 通道；单个对齐 8/16/32 位访问；GDB MMIO 与 64 位 MMIO writer 未适配 | 真实 TCP TCL 软件夹具；大小端、混合语义、WO、回读与错误覆盖；实板未执行 |
-| 变量与结构体成员 | writer 与面板入口仍待完成 | 不计入已交付写入类别 |
+| Watch／Locals 标量与结构体／数组成员 | GDB `-var-assign` 类型赋值；实际类型、可赋值性、地址、线程、帧、owner 在预览／应用重新检查；声明 RAM，寄存器驻留只接受物理 frame 0；const／volatile／AP 路由无隐式回退 | 本机 GCC/GDB 8 阶段通过；MI 故障夹具与键鼠测试；128 位表达式仅纯单元验证；实板未执行 |
 | 混合 RW/RO/WO、W1C/W0C、枚举／保留位／一次写 | 规划器有软件夹具；缺少硬件规则明确拒绝，仅按已声明元数据开放已适配 MMIO writer，不能宣称实板已验证 | `writes::tests`、SVD 元数据夹具；实板未执行 |
 
 GDB writer 的依据为 [GDB 14 MI 实现](https://gnu.googlesource.com/binutils-gdb/+/refs/heads/gdb-14-branch/gdb/mi/mi-main.c) 和实际工作区 ARM GDB 的 `-info-gdb-mi-command data-write-register-values`／`-gdb-show may-write-registers` 输出。SVD 继承及特殊语义依据为 [CMSIS-SVD register 规范](https://open-cmsis-pack.github.io/svd-spec/main/elem_registers.html)。这些软件依据不证明某块板卡的写权限或调试授权。
 
 ## 软件验证记录
+
+2026-10-04 变量写入批次：256 项单元测试、27 项集成测试通过，2 项环境测试 ignored；严格 Clippy 通过。新增精确类型赋值、根存储先检查、const／volatile／优化掉与不可赋值拒绝、原 GDB 函数调用策略恢复；地址／类型／权限／帧变化拒绝旧草稿，发送后错误／超时／断连仅一次赋值并准确分类，回读失败保留 accepted，清理失败要求重连。Locals 支持成员树、格式、键鼠展开及跨帧编辑，树收起不访问目标。真实本机 GDB 的 8 阶段报告位于 `artifacts/variable-write-native-1791113030953-3eec4e55/`，原工程 SHA256 保持一致。
+
+新增 `scripts/test-variable-write-hardware.cjs` 和 `tests/fixtures/variable-write-board.example.json`：默认 4 skipped；指定独立暂停夹具、核心、栈帧、类型路径、布局及邻接符号后，执行取消、单次赋值、独立地址／RAM 回读、哨兵和成功后的显式恢复。真实 DebugTUI 二进制与 MI 软件夹具已通过 5 阶段，报告 `board_tests_executed=false`。需按实际工程分别准备 core0/core1、双核共享 owner、调用者帧及各成员用例；不将软件夹具记作上板验收。
 
 2026-10-04 Core 写入批次：247 项单元测试、10 项本地集成测试通过，2 项 ignored；严格 Clippy 通过。新增精度／特殊写规划、SVD 元数据、独立 writer、真实 UI 键鼠与窄布局、失败保留草稿、MI 单次写／取消／权限及线程变化／上下文失效／准确结果状态／无重试。实板 Core 用例默认生成 skipped；全流程通过本地 MI 夹具，报告 `board_tests_executed=false`，未执行板卡测试。其他写类别和完整 TODO 仍未验收，未升版或发布。
 

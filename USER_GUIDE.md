@@ -704,7 +704,15 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 修改输入必须重新预览；切核、帧、运行、重连或换 ELF 后旧草稿不可应用。Core writer 的 Scope All 仍只写当前核心；共享区域只执行一次所属 owner 的写入。`verified` 表示按有效掩码回读一致，`accepted` 表示后端已受理但没有完成安全验证，`mismatch` 表示回读不符，`unknown` 表示可能已写入而无法确定结果；不自动重试、回滚或重放。发送后关闭编辑窗口不会撤回操作。PC/SP 改动会使源码、栈、Locals、反汇编等视图失效并重新读取；这不是通用的目标恢复操作。
 
-未声明独立 writer 的对象可查看原因，当前 CPSR、系统／银行／浮点寄存器及变量 writer 仍在开发。RAM 和 8/16/32 位 SVD MMIO writer 的声明方式与限制见下方。数值规划器支持 128 位，并不表示 GDB 整数 writer 能写 128 位向量；完整范围与验证限制见 [开发进度](docs/registers-development-status.md)。
+未声明独立 writer 的对象可查看原因，当前 CPSR、系统／银行／浮点寄存器 writer 仍在开发。Watch／Locals 的标量及成员已接入 GDB 类型赋值。RAM 和 8/16/32 位 SVD MMIO writer 的声明方式与限制见下方。数值规划器支持 128 位，并不表示 GDB 整数 writer 能写 128 位向量；完整范围与验证限制见 [开发进度](docs/registers-development-status.md)。
+
+### 编辑 Watch／Locals 变量（开发分支）
+
+在 Watch 或 Locals 选中标量／展开成员，点击 **Edit value**、按 **e** 或执行 `:edit-value`。Locals 的左右箭头、Enter 和成员旁的箭头可展开／收起；编辑绑定当前线程和栈帧，普通 RAM 局部变量可在调用者帧中修改。成员路径会在 Preview 和 Apply 各自重新创建、解析和检查，GDB 变量对象名称不会作为持久标识。
+
+Unsigned、Signed、Float、Bytes 输入会按 GDB 的实际类型与宽度校验；Bytes 必须选择字节序。普通存储要求声明覆盖根对象及所选成员的 GDB RAM 区域；所选标量的宽度和对齐必须允许。寄存器驻留变量只有 GDB 明确确认且处于物理 frame 0 才接受。GDB 的 editable 属性不能覆盖 const、volatile 或项目区域权限，显式 AP Watch 不会自动改走 GDB。指针值与其指向对象分别检查，修改指针值不会写入其指向对象。
+
+赋值通过 `-var-assign` 保留类型语义；检查和赋值期间禁用 GDB 目标函数调用，并恢复原设置。表达式限定为变量、成员、解引用和常量数组下标；不接受函数、赋值、算术、转换或动态下标。不可赋值、优化掉、作用域／类型／地址变化会拒绝；未知结果不重试。当前已用真实本机 GDB 验证 32/64 位整数、指针、结构体／数组成员及 float/double，包括负零。128 位变量表达式仅有纯软件验证；引用、位域、long double、NaN/Infinity 尚需适配，不能绕过类型 writer 改写原始内存。[GDB 变量对象接口](https://sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI-Variable-Objects.html)
 
 ### 声明 RAM 与外设写入区域（开发分支）
 

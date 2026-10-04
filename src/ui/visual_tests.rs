@@ -19,7 +19,7 @@ fn theme_preserves_hit_areas_focus_and_execution_context() {
         assert_eq!(
             a.action_hits
                 .iter()
-                .filter(|(_, command)| *command != "watch-access")
+                .filter(|(_, command)| !matches!(*command, "watch-access" | "edit-value"))
                 .count(),
             if h == 12 { 7 } else { 13 }
         );
@@ -155,7 +155,7 @@ fn wide_workspace_aligns_project_core_search_and_shared_execution_toolbar() {
         assert!(
             a.action_hits
                 .iter()
-                .filter(|(_, command)| *command != "watch-access")
+                .filter(|(_, command)| !matches!(*command, "watch-access" | "edit-value"))
                 .all(|(hit, _)| hit.bottom() <= a.source_rect.y)
         );
         let source_tab = a.pane_hits.iter().find(|(_, pane)| *pane == 0).unwrap().0;

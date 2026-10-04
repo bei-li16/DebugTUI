@@ -36,6 +36,7 @@ const suites = [
   ps('native','scripts/test-native-gdb.ps1',['-Binary',binary,'-Gdb',gdb||'gdb','-Compiler',cc||'gcc'],true),
   js('completion','scripts/test-completion-gdb.cjs',[binary],true),
   js('watch-tree','scripts/test-watch-tree-gdb.cjs',[binary],true),
+  js('variable-write','scripts/test-variable-write-gdb.cjs',[binary],true),
   js('search','scripts/test-search-gdb.cjs',[binary],true),
   js('breakpoints','scripts/test-breakpoints-gdb.cjs',[binary],true),
   js('memory','scripts/test-memory-access-gdb.cjs',[binary],true),

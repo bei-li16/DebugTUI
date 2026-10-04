@@ -1,0 +1,12 @@
+{
+  "frame": 0,
+  "frame_function": "debug_write_fixture",
+  "target": {"kind": "variable", "pane": "watch", "expression": "fixture", "path": [0], "channel": "gdb"},
+  "probe": "fixture.value",
+  "path_expression": "(fixture).value",
+  "input": {"kind": "unsigned", "text": "0x89abcdef"},
+  "little_endian": true,
+  "owner": "core:core0",
+  "scope": "core",
+  "sentinels": ["fixture.before", "fixture.after"]
+}

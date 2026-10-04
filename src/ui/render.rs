@@ -135,7 +135,7 @@ fn toolbar(
             width.min(rect.right().saturating_sub(x)),
             height.min(rect.bottom() - y),
         );
-        let enabled = a.action_enabled(command);
+        let enabled = command == "edit-value" || a.action_enabled(command);
         let tone = if command == "continue" || command == "run" {
             theme::GREEN
         } else if command == "pause" {
@@ -679,8 +679,11 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
         } else {
             "Memory access"
         };
-        let height = wrapped_height(&[access, "↻ Read"], inner.width, 1)
+        let height = wrapped_height(&[access, "↻ Read", "Edit value"], inner.width, 1)
             .min(inner.height.saturating_sub(1).max(1));
+        a.write_editor
+            .entry_hits
+            .push((Rect::new(inner.x, inner.y, inner.width, height), 4));
         toolbar(
             f,
             a,
@@ -727,7 +730,16 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
         inner.height -= 1;
     }
     if a.side_pane == peripherals::PANE && inner.height > 1 {
-        let height = button_height.min(inner.height.saturating_sub(1));
+        let height = wrapped_height(
+            &["Memory access", "↻ Read", "Edit value"],
+            inner.width,
+            button_height,
+        )
+        .min(inner.height.saturating_sub(1));
+        a.write_editor.entry_hits.push((
+            Rect::new(inner.x, inner.y, inner.width, height),
+            peripherals::PANE,
+        ));
         toolbar(
             f,
             a,
@@ -759,6 +771,9 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
     if a.side_pane == 3 && a.register_view.enabled() && inner.height > 2 {
         let height = wrapped_height(&a.register_action_labels(), inner.width, 1)
             .min(inner.height.saturating_sub(2));
+        a.write_editor
+            .entry_hits
+            .push((Rect::new(inner.x, inner.y, inner.width, height), 3));
         toolbar(
             f,
             a,
@@ -789,7 +804,7 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     };
     let rows = Layout::vertical([
         Constraint::Length(tab_height),
-        Constraint::Length(u16::from(watch)),
+        Constraint::Length(1),
         Constraint::Min(0),
         Constraint::Length(if !watch {
             0
@@ -823,13 +838,17 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
             theme::control(enabled, false, hovered(a, hit), theme::TEXT),
         );
     }
+    a.write_editor.entry_hits.push((rows[1], a.variable_pane));
     if watch {
-        let width = rows[1].width.min(16);
+        let width = rows[1].width.min(30);
         toolbar(
             f,
             a,
             Rect::new(rows[1].x, rows[1].y, width, rows[1].height),
-            &[("Memory access", "watch-access")],
+            &[
+                ("Memory access", "watch-access"),
+                ("Edit value", "edit-value"),
+            ],
             1,
         );
         let selected = if a.pane == 1 {
@@ -846,6 +865,8 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
                 rows[1].height,
             ),
         );
+    } else {
+        toolbar(f, a, rows[1], &[("Edit value", "edit-value")], 1);
     }
     view(f, a, a.variable_pane, rows[2]);
     if watch {
@@ -1429,6 +1450,8 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     a.watch.remove_rect = Rect::default();
     a.watch.remove_hits.clear();
     a.watch.expand_hits.clear();
+    a.watch.local_expand_hits.clear();
+    a.write_editor.entry_hits.clear();
     a.core_hits.clear();
     a.completion.hits.clear();
     a.completion.area = Rect::default();
