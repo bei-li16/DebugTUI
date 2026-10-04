@@ -1515,6 +1515,7 @@ impl Engine {
             "status" => Ok(serde_json::to_value(&self.snapshot).unwrap()),
             "registers_list" => self.registers_list(),
             "registers_read" => self.read_registers(p),
+            "memory_channels" => self.memory_channels(),
             "complete" => {
                 self.inactive()?;
                 let input = text("text");

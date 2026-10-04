@@ -136,14 +136,18 @@ impl Engine {
                     "Capability is unknown; verify it or request an explicit manual read".into();
             } else {
                 match self.read_register_value(register, &catalogue, &mut values) {
-                    Ok(value) if self.register_context() == context => {
+                    Ok(value)
+                        if self.register_context() == context
+                            && self.snapshot.state == "STOPPED" =>
+                    {
                         sample.value = Some(value);
                         sample.state = State::Valid;
                         sample.detail.clear();
                     }
                     Ok(_) => {
                         sample.state = State::Stale;
-                        sample.detail = "Target context changed during the read".into();
+                        sample.detail =
+                            "Target context or running state changed during the read".into();
                     }
                     Err((reason, error)) => {
                         sample.reason = reason;
@@ -159,7 +163,7 @@ impl Engine {
                 }
             }
             samples.push(sample);
-            if self.register_context() != context {
+            if self.register_context() != context || self.snapshot.state != "STOPPED" {
                 break;
             }
         }

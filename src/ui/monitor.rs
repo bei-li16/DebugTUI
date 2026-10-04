@@ -42,6 +42,8 @@ struct Sample {
     legacy: bool,
     binding: Option<Binding>,
     generation: u64,
+    session: u64,
+    frame: u32,
     channel: String,
     pub value: Option<u64>,
     pub text: String,
@@ -54,6 +56,8 @@ struct Pending {
     id: u64,
     context: Option<usize>,
     generation: u64,
+    session: u64,
+    frame: u32,
     item: Item,
     key: String,
     resolve: bool,
@@ -90,14 +94,19 @@ impl Monitor {
 }
 impl App {
     fn monitor_key(&self, key: &str) -> String {
-        format!(
+        let key = format!(
             "{}|{key}",
             self.snapshot
                 .core
                 .as_ref()
                 .map(|c| c.name.as_str())
                 .unwrap_or("single")
-        )
+        );
+        if self.project.debug.chip.is_empty() {
+            key
+        } else {
+            format!("chip:{}|{key}", self.project.debug.chip)
+        }
     }
     fn monitor_policy(&self, item: &Item) -> RefreshPolicy {
         self.project
@@ -135,6 +144,7 @@ impl App {
             _ => None,
         };
         let Some(item) = item else {
+            self.notice = "Select an addressable Watch member or readable peripheral register to configure access.".into();
             return;
         };
         let policy = self.monitor_policy(&item);
@@ -154,6 +164,55 @@ impl App {
         self.editing = false;
         self.watch_editing = false;
         self.completion.invalidate();
+    }
+    pub(super) fn memory_access_description(&self, policy: &RefreshPolicy) -> String {
+        if policy.channel.is_empty() {
+            let core = self
+                .snapshot
+                .core
+                .as_ref()
+                .map(|core| core.name.as_str())
+                .unwrap_or("selected core");
+            let endpoint = self
+                .snapshot
+                .core
+                .as_ref()
+                .map(|core| core.endpoint.as_str())
+                .unwrap_or(&self.project.target.endpoint);
+            format!("GDB {core} @ {endpoint} · stopped only")
+        } else if let Some(channel) = self
+            .project
+            .memory_access
+            .iter()
+            .find(|channel| channel.id == policy.channel)
+        {
+            format!(
+                "{} → {} @ {} · {}",
+                channel.id,
+                channel.target,
+                channel.tcl_endpoint,
+                if channel.while_running {
+                    "running + stopped"
+                } else {
+                    "stopped only"
+                }
+            )
+        } else {
+            format!("Unavailable channel: {}", policy.channel)
+        }
+    }
+    pub(super) fn access_caption(&self, pane: usize, row: usize) -> String {
+        let item = match pane {
+            1 => self.watch_monitor_item(row),
+            10 => self.peripheral_monitor_item(row),
+            _ => None,
+        };
+        self.memory_access_description(
+            &item
+                .as_ref()
+                .map(|item| self.monitor_policy(item))
+                .unwrap_or_default(),
+        )
     }
     fn monitor_channels(&self) -> Vec<(String, String)> {
         let core = self.snapshot.core.as_ref().map(|c| &c.name);
@@ -325,6 +384,8 @@ impl App {
         }
         let key = self.monitor_key(&item.key);
         let generation = self.snapshot.generation;
+        let session = self.snapshot.register_session;
+        let frame = self.snapshot.frame.level;
         let sample = self
             .monitor
             .samples
@@ -333,6 +394,8 @@ impl App {
                 legacy: false,
                 binding: item.memory.clone(),
                 generation,
+                session,
+                frame,
                 channel: policy.channel.clone(),
                 value: None,
                 text: String::new(),
@@ -341,9 +404,15 @@ impl App {
                 due: Instant::now(),
                 sampled: None,
             });
-        if sample.generation != generation && self.snapshot.state == "STOPPED" {
+        if (sample.generation != generation || sample.session != session || sample.frame != frame)
+            && self.snapshot.state == "STOPPED"
+        {
             sample.binding = item.memory.clone();
             sample.generation = generation;
+            sample.session = session;
+            sample.frame = frame;
+            sample.sampled = None;
+            sample.value = None;
         }
         if sample.channel != policy.channel {
             sample.channel = policy.channel.clone();
@@ -379,6 +448,8 @@ impl App {
             id,
             context: self.snapshot.core.as_ref().map(|c| c.index),
             generation,
+            session,
+            frame,
             item,
             key,
             resolve,
@@ -396,8 +467,12 @@ impl App {
             return false;
         }
         let pending = self.monitor.pending.take().unwrap();
+        self.pending_commands.remove(&id);
+        self.fx.response(id, error.is_none());
         if pending.context != self.snapshot.core.as_ref().map(|c| c.index)
             || pending.generation != self.snapshot.generation
+            || pending.session != self.snapshot.register_session
+            || pending.frame != self.snapshot.frame.level
         {
             return true;
         }
@@ -538,6 +613,8 @@ impl App {
                 legacy: true,
                 binding: None,
                 generation: live.generation,
+                session: self.snapshot.register_session,
+                frame: self.snapshot.frame.level,
                 channel: String::new(),
                 value: live.value,
                 text: live
@@ -561,6 +638,8 @@ impl App {
     pub(super) fn watch_sample(&self, key: &str) -> Option<(String, bool, bool)> {
         let sample = self.monitor.samples.get(&self.monitor_key(key))?;
         if sample.generation != self.snapshot.generation
+            || sample.session != self.snapshot.register_session
+            || sample.frame != self.snapshot.frame.level
             || (sample.legacy && self.snapshot.state != "RUNNING")
         {
             return None;
@@ -580,6 +659,8 @@ impl App {
                     .strip_prefix(k)
                     .is_some_and(|tail| tail.starts_with('.')))
                 && s.generation == self.snapshot.generation
+                && s.session == self.snapshot.register_session
+                && s.frame == self.snapshot.frame.level
                 && (!s.legacy || self.snapshot.state == "RUNNING")
                 && s.error.is_none()
                 && s.sampled.is_some_and(|at| {
@@ -614,7 +695,7 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App) {
         .find(|(id, _)| *id == p.policy.channel)
         .map(|(_, label)| label.as_str())
         .unwrap_or("Unavailable channel");
-    let rect = super::center(f.area(), 85, 16);
+    let rect = super::center(f.area(), 100, 20);
     theme::overlay(f, rect);
     let card = theme::card(" Memory access / refresh · Esc close ", true);
     let inner = card.inner(rect);
@@ -643,8 +724,30 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App) {
         );
         a.monitor.hits.push((hit, i));
     }
-    if inner.height > 10 {
-        f.render_widget(Paragraph::new("Tab / arrows select · Enter apply / toggle\nInterval: Delete clears, type 50..60000 ms\nOnly visible expanded values are polled.\nWatch addresses resolve while stopped; no implicit halt.").style(Style::default().fg(theme::MUTED)),Rect::new(inner.x+1,inner.y+9,inner.width.saturating_sub(2),inner.height-9));
+    if inner.height > 8 {
+        let description = format!(
+            "{}\nSource: {}",
+            a.memory_access_description(&p.policy),
+            if p.policy.channel.is_empty() {
+                "GDB connection"
+            } else {
+                &a.project.memory_access_source
+            }
+        );
+        f.render_widget(
+            Paragraph::new(description)
+                .wrap(Wrap { trim: false })
+                .style(Style::default().fg(theme::MUTED)),
+            Rect::new(
+                inner.x + 1,
+                inner.y + 8,
+                inner.width.saturating_sub(2),
+                (inner.height - 8).min(4),
+            ),
+        );
+    }
+    if inner.height > 12 {
+        f.render_widget(Paragraph::new("Tab / arrows select · Enter apply / toggle\nInterval: Delete clears, type 50..60000 ms\nOnly visible expanded values are polled.\nWatch addresses resolve while stopped; no implicit halt.").style(Style::default().fg(theme::MUTED)),Rect::new(inner.x+1,inner.y+12,inner.width.saturating_sub(2),inner.height-12));
     }
 }
 
@@ -680,6 +783,70 @@ mod tests {
     }
     fn resolved(a: &mut App, id: u64) {
         assert!(a.monitor_response(id,&json!({"address":536870912,"bits":32,"little_endian":true,"signed":false,"float":false}),None));
+    }
+    #[test]
+    fn visible_access_entry_shows_target_endpoint_and_source_without_issuing_a_read() {
+        let (mut app, (engine, requests)) = (app(), session::test_channel());
+        app.project.memory_access_source = "profile:fixture.toml".into();
+        let target = app.project.memory_access[0].target.clone();
+        let endpoint = app.project.memory_access[0].tcl_endpoint.clone();
+        app.command(Some(&engine), ":watch-access");
+        assert!(app.monitor.modal());
+        assert!(requests.try_recv().is_err());
+        let mut terminal = Terminal::new(TestBackend::new(100, 25)).unwrap();
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let text: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect();
+        assert!(text.contains(&target));
+        assert!(text.contains(&endpoint));
+        assert!(text.contains("profile:fixture.toml"));
+        app.monitor_key_event(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert!(requests.try_recv().is_err());
+    }
+    #[test]
+    fn chip_session_and_frame_boundaries_isolate_policies_and_discard_inflight_bindings() {
+        let (mut app, (engine, requests)) = (app(), session::test_channel());
+        let old = app
+            .project
+            .ui
+            .refresh
+            .remove("single|watch:counter")
+            .unwrap();
+        app.project.debug.chip = "chip-a".into();
+        let key = app.monitor_key("watch:counter");
+        app.project.ui.refresh.insert(key.clone(), old);
+        assert!(app.ensure_monitors(Some(&engine)));
+        let pending = requests.try_recv().unwrap();
+        assert_eq!(pending.method, "watch_resolve");
+        app.snapshot.register_session += 1;
+        resolved(&mut app, pending.id);
+        assert!(app.monitor.next_read.is_none());
+        assert!(!app.pending_commands.contains(&pending.id));
+        let item = app.watch_monitor_item(0).unwrap();
+        assert!(app.manual_monitor(Some(&engine), item));
+        resolved(&mut app, requests.try_recv().unwrap().id);
+        assert!(app.ensure_monitors(Some(&engine)));
+        let pending = requests.try_recv().unwrap();
+        assert_eq!(pending.method, "memory_read");
+        app.snapshot.frame.level += 1;
+        app.monitor_response(pending.id, &json!({"value":77}), None);
+        assert!(app.watch_sample("watch:counter").is_none());
+        assert!(app.pending_commands.is_empty());
+        app.project.debug.chip = "chip-b".into();
+        assert_ne!(app.monitor_key("watch:counter"), key);
+        assert!(
+            app.monitor_policy(&app.watch_monitor_item(0).unwrap())
+                .channel
+                .is_empty()
+        );
     }
     #[test]
     fn visible_watch_resolves_once_and_running_poll_never_sends_gdb_or_halt() {

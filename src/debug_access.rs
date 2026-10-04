@@ -24,13 +24,7 @@ pub(crate) struct Lease<'a> {
 static SERVICES: OnceLock<Mutex<BTreeMap<SocketAddr, Arc<Service>>>> = OnceLock::new();
 
 pub(crate) fn service(address: SocketAddr) -> Result<Arc<Service>, String> {
-    let address = match address {
-        SocketAddr::V6(address) if address.ip().to_ipv4_mapped().is_some() => SocketAddr::new(
-            address.ip().to_ipv4_mapped().unwrap().into(),
-            address.port(),
-        ),
-        address => address,
-    };
+    let address = canonical(address);
     let mut services = SERVICES
         .get_or_init(Default::default)
         .lock()
@@ -47,6 +41,16 @@ pub(crate) fn service(address: SocketAddr) -> Result<Arc<Service>, String> {
             })
         })
         .clone())
+}
+
+fn canonical(address: SocketAddr) -> SocketAddr {
+    match address {
+        SocketAddr::V6(address) if address.ip().to_ipv4_mapped().is_some() => SocketAddr::new(
+            address.ip().to_ipv4_mapped().unwrap().into(),
+            address.port(),
+        ),
+        address => address,
+    }
 }
 
 fn addresses(endpoint: &str) -> Result<Vec<SocketAddr>, String> {
@@ -88,6 +92,7 @@ pub(crate) fn for_project(project: &Project) -> Result<Vec<Arc<Service>>, String
         // session. It reports its own resolution error when actually requested.
         .filter_map(|endpoint| addresses(endpoint).ok())
         .flatten()
+        .map(canonical)
         .collect();
     // Deterministic order prevents deadlocks when a project uses several services.
     addresses.into_iter().map(service).collect()
@@ -132,6 +137,17 @@ mod tests {
     fn unique() -> (SocketAddr, std::net::TcpListener) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         (listener.local_addr().unwrap(), listener)
+    }
+
+    #[test]
+    fn ipv4_mapped_aliases_do_not_acquire_the_same_non_reentrant_service_twice() {
+        let mut project = Project::default();
+        project.registers.tcl_endpoint = "127.0.0.1:6637".into();
+        project.memory_access.push(crate::config::MemoryAccess {
+            tcl_endpoint: "[::ffff:127.0.0.1]:6637".into(),
+            ..Default::default()
+        });
+        assert_eq!(for_project(&project).unwrap().len(), 1);
     }
 
     #[test]

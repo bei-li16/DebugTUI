@@ -636,7 +636,9 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
     let local_height = if !compact && rect.height > 12 {
         let height = (rect.height / 3).clamp(5, 12);
         // Reserve the input frame's two border rows without hiding Watch values.
-        height + if height >= 8 { 2 } else { 0 } + button_height - 1 + u16::from(button_height == 3)
+        height + if height >= 8 { 2 } else { 0 } + button_height - 1
+            + u16::from(button_height == 3)
+            + u16::from(a.variable_pane == 1)
     } else {
         0
     };
@@ -697,11 +699,28 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
             f,
             a,
             Rect::new(inner.x, inner.y, inner.width, height),
-            &[("↻ Refresh selected", "peripheral-refresh")],
+            &[
+                ("Memory access", "peripheral-access"),
+                ("↻ Read", "peripheral-refresh"),
+            ],
             height,
         );
         inner.y += height;
         inner.height -= height;
+    }
+    if a.side_pane == peripherals::PANE && inner.height > 1 {
+        let selected = if a.pane == peripherals::PANE {
+            a.selection
+        } else {
+            a.selections[peripherals::PANE]
+        };
+        f.render_widget(
+            Paragraph::new(a.access_caption(peripherals::PANE, selected))
+                .style(Style::default().fg(theme::MUTED)),
+            Rect::new(inner.x, inner.y, inner.width, 1),
+        );
+        inner.y += 1;
+        inner.height -= 1;
     }
     if a.side_pane == 3 && a.register_view.enabled() && inner.height > 2 {
         let height = wrapped_height(&a.register_action_labels(), inner.width, 1)
@@ -729,17 +748,18 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     let inner = divider.inner(rect);
     f.render_widget(divider, rect);
     let watch = a.variable_pane == 1;
-    let tab_height = if inner.height >= 11 {
+    let tab_height = if inner.height >= 11 + u16::from(watch) {
         control_height(f)
     } else {
         1
     };
     let rows = Layout::vertical([
         Constraint::Length(tab_height),
+        Constraint::Length(u16::from(watch)),
         Constraint::Min(0),
         Constraint::Length(if !watch {
             0
-        } else if inner.height >= tab_height + 8 {
+        } else if inner.height >= tab_height + 8 + u16::from(watch) {
             3
         } else {
             1
@@ -769,12 +789,36 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
             theme::control(enabled, false, hovered(a, hit), theme::TEXT),
         );
     }
-    view(f, a, a.variable_pane, rows[1]);
     if watch {
-        let add_width = 9.min(rows[2].width);
+        let width = rows[1].width.min(16);
+        toolbar(
+            f,
+            a,
+            Rect::new(rows[1].x, rows[1].y, width, rows[1].height),
+            &[("Memory access", "watch-access")],
+            1,
+        );
+        let selected = if a.pane == 1 {
+            a.selection
+        } else {
+            a.selections[1]
+        };
+        f.render_widget(
+            Paragraph::new(a.access_caption(1, selected)).style(Style::default().fg(theme::MUTED)),
+            Rect::new(
+                rows[1].x + width,
+                rows[1].y,
+                rows[1].width - width,
+                rows[1].height,
+            ),
+        );
+    }
+    view(f, a, a.variable_pane, rows[2]);
+    if watch {
+        let add_width = 9.min(rows[3].width);
         a.watch_input_rect = Rect {
-            width: rows[2].width.saturating_sub(add_width),
-            ..rows[2]
+            width: rows[3].width.saturating_sub(add_width),
+            ..rows[3]
         };
         input_box(
             f,
@@ -786,10 +830,10 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
             "Tab complete · Enter add",
         );
         let hit = Rect::new(
-            rows[2].right() - add_width,
-            rows[2].y,
+            rows[3].right() - add_width,
+            rows[3].y,
             add_width,
-            rows[2].height,
+            rows[3].height,
         );
         a.watch.add_rect = hit;
         let enabled = a.pending_watch.is_none() && a.pending_task.is_none();

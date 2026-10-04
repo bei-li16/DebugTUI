@@ -40,6 +40,10 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
     if (indices.some(index => unreadableRegisters.includes(names[index]))) {
       return send(`${token}^error,msg="Register is inaccessible"`);
     }
+    if (process.env.DEBUGTUI_TEST_REGISTER_RUN_ON_READ) {
+      state = 'running';
+      send('*running,thread-id="all"');
+    }
     return done('register-values=[' + indices.map(index => `{number="${index}",value="${rawValues[names[index]] || '0x12345678'}"}`).join(',') + ']');
   }
   if (cmd === '-break-list') return done('BreakpointTable={body=[]}');
@@ -57,6 +61,12 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
     line++;
     if (pauseMode === 'already-stopped') return send(`${token}^error,msg="Inferior not executing."`);
     return done(); // Deliberately omit *stopped to exercise state reconciliation.
+  }
+  if (cmd === '-exec-interrupt --all') {
+    state = 'stopped';
+    done();
+    send(`*stopped,reason="signal-received",${frame()}`);
+    return;
   }
   if (cmd === '-target-detach' && state === 'running') return send(`${token}^error,msg="Cannot execute this command while the target is running."`);
   if (cmd === '-target-detach' || cmd === '-target-disconnect') {

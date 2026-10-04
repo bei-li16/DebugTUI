@@ -18,12 +18,13 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+mod channels;
 mod choices;
 mod devices;
 mod remap;
 use choices::{Choice, Picker};
 
-const LABELS: [&str; 17] = [
+const LABELS: [&str; 18] = [
     "Project",
     "Tools / profile",
     "Chip",
@@ -39,10 +40,11 @@ const LABELS: [&str; 17] = [
     "ELF path prefix",
     "CPU registers",
     "Register catalogue",
+    "Memory channels",
     "Start debugging",
     "Save config",
 ];
-const HINTS: [&str; 17] = [
+const HINTS: [&str; 18] = [
     "Project TOML stores launch settings, Watch and breakpoints. Selecting a file reloads all fields.\nRelative to the startup directory; default: ./debug.toml. F3: project list. F2: browse.\nEnter: type a file or directory. A directory uses its debug.toml; a missing file stays a draft until saved.",
     "Profile stores tool defaults (GDB/OpenOCD); project fields override it.\nProject owns ELF/build/Watch/exit policy. Profiles are loaded, never rewritten.\nEdit shared tools in debug-env.toml. Tool parameters are edited in that file, outside Setup. F2: select profile.",
     "Enter: choose a chip from the local device catalogue, or add a new chip.\nThe catalogue declares available core IDs and a backend; Tools / profile provides its tools.\nLegacy keeps existing single-core / [[cores]] settings. No hardware action until Start.",
@@ -58,6 +60,7 @@ const HINTS: [&str; 17] = [
     "Enter: choose an ELF directory to map to Source root. Available when Source remap is Yes.\nThe suffix below that directory is preserved. Preview shows covered files and local matches.\nSaved selection follows Source root changes. Manual [[source_map]] rules for other prefixes still apply first.",
     "Enter: choose a built-in or user CPU preset, Automatic, or the original GDB register list.\nA project catalogue file takes precedence over the CPU preset. Selection does not prove hardware or backend support.\nUser presets live in the local profiles/registers directory and are preserved during upgrades.",
     "Optional TOML architecture register catalogue. Enter: type a path. F2: browse.\nRelative paths are resolved against Project; a path inherited from Tools remains relative to that profile.\nBlank uses the selected CPU preset. Catalogue selection only changes the draft until Start.",
+    "Enter: configure the target, TCL endpoint, label and core restrictions of each memory access channel.\nRunning reads must be supported by the chosen OpenOCD bus/AP target. Core access can remain stopped-only.\nApply creates a project override; Save config or Start persists it. The tools profile is never rewritten.",
     "Start with the reviewed settings: Enter, F5 or Ctrl+R. The previous session is closed first.\nThe configuration is saved to Project before the new session starts.\nFor a new project, choose Examples to fill a starting configuration, then adjust project paths and select Tools / profile.",
     "Save config / Ctrl+S writes the draft to Project without starting GDB or connecting to hardware.\nA missing Project TOML is created; the referenced tools profile is never rewritten.\nStart also saves the configuration. Use Exit to leave without saving draft edits.",
 ];
@@ -76,12 +79,13 @@ const SOURCE_REMAP: usize = 11;
 const ELF_PREFIX: usize = 12;
 const CPU: usize = 13;
 const CATALOGUE: usize = 14;
-const START: usize = 15;
-const SAVE: usize = 16;
-const WORKSPACE: usize = 17;
-const PROJECTS: usize = 18;
-const EXAMPLES: usize = 19;
-const EXIT: usize = 20;
+const CHANNELS: usize = 15;
+const START: usize = 16;
+const SAVE: usize = 17;
+const WORKSPACE: usize = 18;
+const PROJECTS: usize = 19;
+const EXAMPLES: usize = 20;
+const EXIT: usize = 21;
 
 fn displayed_path(base: &Path, path: &Path) -> String {
     let value = relative_path(base, path);
@@ -468,6 +472,7 @@ pub struct Setup {
     picker: Option<Picker>,
     mapping: Option<remap::Mapping>,
     devices: Option<devices::Devices>,
+    channels: Option<channels::Channels>,
     action_hits: Vec<(Rect, usize)>,
     row_hits: Vec<(Rect, usize)>,
 }
@@ -509,6 +514,7 @@ impl Setup {
             picker,
             mapping: None,
             devices: None,
+            channels: None,
             action_hits: vec![],
             row_hits: vec![],
         }
@@ -547,6 +553,31 @@ impl Setup {
             Ok(_) => "Chip/core selection updated. Start applies it; Ctrl+S saves.".into(),
             Err(e) => format!("Selection saved in draft. Check Tools / profile: {e}"),
         };
+    }
+    fn channel_action(&mut self, action: channels::Action) -> Result<(), String> {
+        match action {
+            channels::Action::None => return Ok(()),
+            channels::Action::Cancel => self.channels = None,
+            channels::Action::Apply(channels) => {
+                let mut document = self.document.clone();
+                document.raw.as_table_mut().unwrap().insert(
+                    "memory_access".into(),
+                    toml::Value::try_from(channels).map_err(|e| e.to_string())?,
+                );
+                if let Err(error) = document.project() {
+                    if let Some(dialog) = &mut self.channels {
+                        dialog.message = error.clone();
+                    }
+                    return Err(error);
+                }
+                self.document = document;
+                self.channels = None;
+            }
+        }
+        self.message =
+            "Memory access draft updated. Save config persists it; Start applies it to a session."
+                .into();
+        Ok(())
     }
     fn values(&self) -> Vec<String> {
         let p = self.document.project().unwrap_or_else(|_| {
@@ -619,6 +650,7 @@ impl Setup {
                 p.registers.cpu
             },
             path(&p.registers.catalogue),
+            format!("{} channels · Enter: configure", p.memory_access.len()),
             "F5 / Enter".into(),
             "Ctrl+S / Enter".into(),
         ]
@@ -752,6 +784,10 @@ impl Setup {
         self.set_value(values[(n + if backwards { values.len() - 1 } else { 1 }) % values.len()])
     }
     pub fn paste(&mut self, text: &str) {
+        if let Some(channels) = &mut self.channels {
+            channels.paste(text);
+            return;
+        }
         if let Some(devices) = &mut self.devices {
             devices.paste(text);
             return;
@@ -781,6 +817,11 @@ impl Setup {
         }
     }
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<Launch>, String> {
+        if let Some(channels) = &mut self.channels {
+            let action = channels.key(key);
+            self.channel_action(action)?;
+            return Ok(None);
+        }
         if let Some(devices) = &mut self.devices {
             let action = devices.key(key);
             self.device_action(action);
@@ -909,6 +950,12 @@ impl Setup {
             }
             KeyCode::Enter if self.selected == CORES => {}
             KeyCode::Enter if self.selected == CPU => self.picker = Some(Picker::cpus()?),
+            KeyCode::Enter if self.selected == CHANNELS => {
+                self.channels = Some(channels::Channels::new(
+                    &self.document.project()?,
+                    self.document.raw.get("memory_access").is_some(),
+                ))
+            }
             KeyCode::Enter if matches!(self.selected, SOURCE_REMAP | ON_EXIT) => {
                 self.cycle(false)?
             }
@@ -1121,6 +1168,13 @@ impl Setup {
         if self.pending {
             return None;
         }
+        if let Some(channels) = &mut self.channels {
+            let action = channels.mouse(mouse);
+            if let Err(error) = self.channel_action(action) {
+                self.message = error;
+            }
+            return None;
+        }
         if let Some(devices) = &mut self.devices {
             let action = devices.mouse(mouse);
             self.device_action(action);
@@ -1267,6 +1321,10 @@ impl Setup {
     pub fn draw(&mut self, f: &mut Frame) {
         self.action_hits.clear();
         self.row_hits.clear();
+        if let Some(channels) = &mut self.channels {
+            channels.draw(f);
+            return;
+        }
         let screen = f.area();
         f.render_widget(Block::default().style(theme::base()), screen);
         let width = screen.width.min(122);
@@ -1759,6 +1817,54 @@ mod tests {
     }
 
     #[test]
+    fn memory_channel_edit_cancel_and_save_preserve_the_inherited_tools_file() {
+        let fixture = Fixture::new();
+        let profile = fixture.0.join("tools/debug-env.toml");
+        fs::write(&profile, "[[memory_access]]\nid='bus'\nlabel='Debug AP'\ntcl_endpoint='localhost:6666'\ntarget='bus0'\nwhile_running=true\n").unwrap();
+        let before = fs::read(&profile).unwrap();
+        let mut document = Document::empty(fixture.0.join("debug.toml"));
+        document.environment("tools/debug-env.toml");
+        let mut setup = Setup::new(document);
+        setup.selected = CHANNELS;
+        setup.key(key(KeyCode::Enter));
+        setup.key(key(KeyCode::Tab));
+        setup.key(key(KeyCode::Enter));
+        setup.key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        setup.paste("discarded-id");
+        setup.key(key(KeyCode::Enter));
+        setup.key(key(KeyCode::Esc));
+        assert!(setup.channels.is_none());
+        assert_eq!(setup.document.project().unwrap().memory_access[0].id, "bus");
+        assert!(setup.document.raw.get("memory_access").is_none());
+        setup.key(key(KeyCode::Enter));
+        for _ in 0..3 {
+            setup.key(key(KeyCode::Tab));
+        }
+        setup.key(key(KeyCode::Enter));
+        setup.key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        setup.paste("127.0.0.1:7777");
+        setup.key(key(KeyCode::Enter));
+        setup.key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+        assert!(setup.channels.is_none());
+        assert!(!setup.document.path.exists());
+        assert_eq!(
+            setup.document.project().unwrap().memory_access[0].tcl_endpoint,
+            "127.0.0.1:7777"
+        );
+        setup.save_document().unwrap();
+        assert_eq!(
+            Document::open(&setup.document.path)
+                .unwrap()
+                .project()
+                .unwrap()
+                .memory_access[0]
+                .target,
+            "bus0"
+        );
+        assert_eq!(fs::read(&profile).unwrap(), before);
+    }
+
+    #[test]
     fn source_remap_toggle_selection_round_trip_and_source_root_changes() {
         let fixture = Fixture::new();
         fs::create_dir_all(fixture.0.join("local/src")).unwrap();
@@ -1881,13 +1987,13 @@ mod tests {
         assert_eq!(setup.selected, SOURCE_REMAP);
         setup.selected = START;
         setup.key(key(KeyCode::BackTab));
-        assert_eq!(setup.selected, CATALOGUE);
+        assert_eq!(setup.selected, CHANNELS);
         // Even a stale selection or mouse hit cannot open or edit a disabled field.
         setup
             .row_hits
             .push((Rect::new(x as u16, y as u16, 1, 1), ELF_PREFIX));
         setup.mouse(click);
-        assert_eq!(setup.selected, CATALOGUE);
+        assert_eq!(setup.selected, CHANNELS);
         setup.selected = ELF_PREFIX;
         for code in [KeyCode::Enter, KeyCode::F(2), KeyCode::Left, KeyCode::Right] {
             setup.key(key(code));
@@ -2144,7 +2250,7 @@ mod tests {
             document.set("source_remap", "enabled", remap.into());
             let mut setup = Setup::new(document);
             assert_eq!(setup.selected, 0);
-            let last = CATALOGUE;
+            let last = CHANNELS;
             setup.key(key(KeyCode::Up));
             assert_eq!(setup.selected, last);
             setup.key(key(KeyCode::Down));

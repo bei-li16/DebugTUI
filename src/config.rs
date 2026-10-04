@@ -121,6 +121,8 @@ pub struct Project {
     pub live_watch: Option<LiveWatchConfig>,
     pub sync: Option<SyncConfig>,
     pub memory_access: Vec<MemoryAccess>,
+    #[serde(skip)]
+    pub memory_access_source: String,
     pub registers: crate::registers::Config,
     #[serde(skip)]
     pub path: Option<PathBuf>,
@@ -199,6 +201,41 @@ pub struct MemoryAccess {
     pub target: String,
     pub while_running: bool,
     pub cores: Vec<String>,
+}
+pub(crate) fn validate_memory_access(
+    accesses: &[MemoryAccess],
+    cores: &[Core],
+) -> Result<(), String> {
+    let mut channels = std::collections::HashSet::new();
+    for access in accesses {
+        if !crate::devices::valid_id(&access.id)
+            || !channels.insert(&access.id)
+            || [
+                &access.id,
+                &access.label,
+                &access.target,
+                &access.tcl_endpoint,
+            ]
+            .iter()
+            .any(|s| s.chars().any(char::is_control))
+            || access.target.is_empty()
+            || access.tcl_endpoint.is_empty()
+        {
+            return Err("memory_access needs unique simple ids, target and tcl_endpoint without control characters".into());
+        }
+        let mut assigned = std::collections::HashSet::new();
+        if access
+            .cores
+            .iter()
+            .any(|name| !assigned.insert(name) || !cores.iter().any(|core| &core.name == name))
+        {
+            return Err(format!(
+                "Memory access {} references an unknown or duplicate core",
+                access.id
+            ));
+        }
+    }
+    Ok(())
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -472,6 +509,7 @@ impl Project {
         profile: Option<&Path>,
         catalogue: Option<&crate::devices::Catalogue>,
     ) -> Result<Self, String> {
+        let project_channels = raw.get("memory_access").is_some();
         let base = path
             .as_ref()
             .and_then(|p| p.parent())
@@ -547,6 +585,18 @@ impl Project {
         if let Some(plan) = plan {
             plan.apply(&mut p)?;
         }
+        p.memory_access_source = if project_channels {
+            format!(
+                "project:{}",
+                path.as_deref()
+                    .map(portable_path)
+                    .unwrap_or_else(|| "inline".into())
+            )
+        } else if let Some(profile) = &selected_path {
+            format!("profile:{}", portable_path(profile))
+        } else {
+            "configuration".into()
+        };
         if let Some(profile) = selected_path {
             p.tools.root = profile.parent().unwrap().to_owned();
             p.tools.profile = profile;
@@ -674,34 +724,7 @@ impl Project {
                 }
             }
         }
-        let mut channels = std::collections::HashSet::new();
-        for access in &self.memory_access {
-            if access.id.is_empty()
-                || !channels.insert(&access.id)
-                || [
-                    &access.id,
-                    &access.label,
-                    &access.target,
-                    &access.tcl_endpoint,
-                ]
-                .iter()
-                .any(|s| s.chars().any(char::is_control))
-                || access.target.is_empty()
-                || access.tcl_endpoint.is_empty()
-            {
-                return Err("memory_access needs unique ids, target and tcl_endpoint without control characters".into());
-            }
-            if access
-                .cores
-                .iter()
-                .any(|name| !self.cores.iter().any(|c| &c.name == name))
-            {
-                return Err(format!(
-                    "Memory access {} references an unknown core",
-                    access.id
-                ));
-            }
-        }
+        validate_memory_access(&self.memory_access, &self.cores)?;
         for policy in self.ui.refresh.values() {
             if policy.interval_ms != 0 && !(50..=60000).contains(&policy.interval_ms) {
                 return Err("Refresh interval must be 0 (off) or 50..60000 ms".into());

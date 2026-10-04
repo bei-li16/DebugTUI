@@ -119,3 +119,52 @@ fn catalogue_refresh_is_on_demand_and_snapshots_retain_precise_stale_values() {
     );
     response(&engine, 7, "quit", json!({}));
 }
+
+#[test]
+fn running_notification_during_a_read_discards_the_result_and_stops_the_batch() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output = root
+        .join("artifacts")
+        .join(format!("register run race {}", std::process::id()));
+    fs::create_dir_all(&output).unwrap();
+    let transcript = output.join("commands.txt");
+    fs::write(&transcript, "").unwrap();
+    let mut project = Project::default();
+    project.gdb.executable = "node".into();
+    project.gdb.args = vec![
+        root.join("tests/mock-gdb.cjs")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    project.gdb.env.insert(
+        "DEBUGTUI_TEST_REGISTERS".into(),
+        json!(["r0", "r1"]).to_string(),
+    );
+    project
+        .gdb
+        .env
+        .insert("DEBUGTUI_TEST_REGISTER_RUN_ON_READ".into(), "1".into());
+    project.gdb.env.insert(
+        "DEBUGTUI_TEST_TRANSCRIPT".into(),
+        transcript.to_string_lossy().into_owned(),
+    );
+    project.target.endpoint = "localhost:1234".into();
+    project.session.on_exit = "disconnect".into();
+    project.registers.catalogue = root.join("profiles/registers/cortex-r52.toml");
+    let engine = session::spawn(project);
+    response(&engine, 1, "connect", json!({}));
+    let result = response(&engine, 2, "registers_read", json!({"ids":["r0", "r1"]}));
+    assert_eq!(result["samples"].as_array().unwrap().len(), 1);
+    assert_eq!(result["samples"][0]["state"], "stale");
+    assert!(result["samples"][0]["value"].is_null());
+    let commands = fs::read_to_string(&transcript).unwrap();
+    assert_eq!(
+        commands
+            .lines()
+            .filter(|command| command.starts_with("-data-list-register-values"))
+            .collect::<Vec<_>>(),
+        ["-data-list-register-values r 0"]
+    );
+    assert!(!commands.contains("-exec-interrupt"));
+    response(&engine, 3, "quit", json!({}));
+}

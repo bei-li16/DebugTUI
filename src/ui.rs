@@ -763,6 +763,8 @@ impl App {
                 self.submit(engine, name, json!({}))
             }
             "peripheral-refresh" => self.refresh_peripheral(engine),
+            "watch-access" => { self.select_pane(1); self.open_monitor(1, self.selection); }
+            "peripheral-access" => { self.select_pane(peripherals::PANE); self.open_monitor(peripherals::PANE, self.selection); }
             "select_core" | "core" => {
                 let params = match arg.parse::<usize>() {
                     Ok(index) => json!({"index":index}),
@@ -1319,6 +1321,10 @@ impl App {
         }
         match command {
             "commandlist" | "quit" | "setup" => true,
+            "watch-access" => !self.snapshot.watches.is_empty(),
+            "peripheral-access" => self
+                .peripheral_monitor_item(self.selections[peripherals::PANE])
+                .is_some(),
             "build" => {
                 self.project.has_build()
                     && matches!(

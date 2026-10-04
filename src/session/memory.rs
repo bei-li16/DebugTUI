@@ -10,7 +10,14 @@ fn integer(text: &str) -> Result<u64, String> {
         token.parse::<u64>().map_err(|e| e.to_string())
     }
 }
+
 impl Engine {
+    pub(super) fn memory_channels(&self) -> Result<Json, String> {
+        let core = self.project.preference_core.as_deref().unwrap_or("default");
+        Ok(
+            json!({"core":core,"source":self.project.memory_access_source,"channels":self.project.memory_access.iter().map(|access| json!({"configuration":access,"available_for_core":access.cores.is_empty() || access.cores.iter().any(|name| name == core),"while_running_declared":access.while_running})).collect::<Vec<_>>()}),
+        )
+    }
     pub(super) fn read_memory_channel(&mut self, p: &Json) -> Result<Json, String> {
         let channel = p["channel"].as_str().unwrap_or("");
         if channel.is_empty() {
@@ -92,12 +99,12 @@ impl Engine {
         self.log(
             "diagnostic",
             format!(
-                "Memory [{channel}] target={} address=0x{address:x} bits={bits} value=0x{value:x}",
-                access.target
+                "Memory [{channel}] target={} endpoint={} source={} address=0x{address:x} bits={bits} value=0x{value:x}",
+                access.target, access.tcl_endpoint, self.project.memory_access_source
             ),
         );
         Ok(
-            json!({"value":value,"address":address,"bits":bits,"channel":channel,"state":self.snapshot.state}),
+            json!({"value":value,"raw":crate::registers::RawValue::from_integer(u128::from(value),bits as u16)?,"address":address,"bits":bits,"channel":channel,"target":access.target,"endpoint":access.tcl_endpoint,"source":self.project.memory_access_source,"state":self.snapshot.state,"atomic":false}),
         )
     }
 
@@ -191,5 +198,70 @@ impl Engine {
         })();
         let _ = self.mi(&format!("-var-delete {}", mi::quote(&root)));
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    #[test]
+    fn bus_read_reports_exact_64bit_value_and_actual_route_without_halt_or_target_selection() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = listener.local_addr().unwrap().to_string();
+        let mut project = Project {
+            memory_access_source: "profile:fixture.toml".into(),
+            ..Default::default()
+        };
+        project.memory_access.push(crate::config::MemoryAccess {
+            id: "ap".into(),
+            target: "bus0".into(),
+            tcl_endpoint: endpoint.clone(),
+            while_running: true,
+            ..Default::default()
+        });
+        let (events, _) = mpsc::sync_channel(512);
+        let mut engine = Engine::new(project, events, Arc::new(AtomicBool::new(false)));
+        engine.snapshot.state = "RUNNING".into();
+        let listed = engine.memory_channels().unwrap();
+        assert_eq!(listed["source"], "profile:fixture.toml");
+        assert_eq!(listed["channels"][0]["available_for_core"], true);
+        let worker = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut packet = vec![];
+            let mut byte = [0];
+            loop {
+                stream.read_exact(&mut byte).unwrap();
+                if byte[0] == 0x1a {
+                    break;
+                }
+                packet.push(byte[0]);
+            }
+            stream
+                .write_all(b"__DEBUGTUI_RPC__0:0x76543210 0xfedcba98\x1a")
+                .unwrap();
+            String::from_utf8(packet).unwrap()
+        });
+        let result = engine
+            .read_memory_channel(
+                &json!({"channel":"ap","address":536870912,"bits":64,"little_endian":true}),
+            )
+            .unwrap();
+        assert_eq!(result["raw"]["hex"], "0xfedcba9876543210");
+        assert_eq!(result["target"], "bus0");
+        assert_eq!(result["endpoint"], endpoint);
+        assert_eq!(result["state"], "RUNNING");
+        assert_eq!(result["atomic"], false);
+        let command = worker.join().unwrap();
+        assert!(command.contains("read_memory 0x20000000 32 2"));
+        assert!(
+            !command.contains("halt")
+                && !command.contains("targets")
+                && !command.contains("target current")
+        );
     }
 }

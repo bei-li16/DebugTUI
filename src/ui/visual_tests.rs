@@ -16,7 +16,13 @@ fn theme_preserves_hit_areas_focus_and_execution_context() {
     a.snapshot.state = "STOPPED".into();
     for (w, h) in [(45, 12), (80, 24), (120, 36), (180, 50)] {
         let t = terminal(&mut a, w, h);
-        assert_eq!(a.action_hits.len(), if h == 12 { 7 } else { 13 });
+        assert_eq!(
+            a.action_hits
+                .iter()
+                .filter(|(_, command)| *command != "watch-access")
+                .count(),
+            if h == 12 { 7 } else { 13 }
+        );
         assert!(a.source_rect.height > 0);
         for (hit, _) in &a.action_hits {
             assert!(hit.right() <= w && hit.bottom() <= h);
@@ -149,6 +155,7 @@ fn wide_workspace_aligns_project_core_search_and_shared_execution_toolbar() {
         assert!(
             a.action_hits
                 .iter()
+                .filter(|(_, command)| *command != "watch-access")
                 .all(|(hit, _)| hit.bottom() <= a.source_rect.y)
         );
         let source_tab = a.pane_hits.iter().find(|(_, pane)| *pane == 0).unwrap().0;
