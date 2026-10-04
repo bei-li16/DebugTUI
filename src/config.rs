@@ -124,6 +124,7 @@ pub struct Project {
     #[serde(skip)]
     pub memory_access_source: String,
     pub registers: crate::registers::Config,
+    pub writes: crate::writes::Config,
     #[serde(skip)]
     pub path: Option<PathBuf>,
     #[serde(skip)]
@@ -583,6 +584,7 @@ impl Project {
                         | "sync"
                         | "memory_access"
                         | "registers"
+                        | "writes"
                         | "multicore"
                         | "backend"
                         | "backends"
@@ -654,6 +656,7 @@ impl Project {
     }
     pub fn validate(&self) -> Result<(), String> {
         self.registers.validate()?;
+        self.writes.validate(&self.memory_access, &self.cores)?;
         if std::iter::once(&self.source_remap.from)
             .chain(&self.source_remap.aliases)
             .chain(self.source_map.iter().map(|map| &map.from))

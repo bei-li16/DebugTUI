@@ -6,15 +6,22 @@ use crate::{
 };
 use std::{collections::BTreeMap, path::PathBuf, sync::atomic::AtomicU64};
 
-const MAX_DRAFTS: usize = 128;
-const DRAFT_LIFETIME: Duration = Duration::from_secs(600);
-static NEXT_DRAFT: AtomicU64 = AtomicU64::new(1);
+pub(super) const MAX_DRAFTS: usize = 128;
+pub(super) const DRAFT_LIFETIME: Duration = Duration::from_secs(600);
+pub(super) static NEXT_DRAFT: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Default)]
-pub(super) struct Drafts(BTreeMap<String, Draft>);
+pub(super) struct Drafts(
+    BTreeMap<String, Draft>,
+    pub(super) BTreeMap<String, super::memory_writes::Draft>,
+);
 impl Drafts {
     pub(super) fn clear(&mut self) {
         self.0.clear();
+        self.1.clear();
+    }
+    pub(super) fn len(&self) -> usize {
+        self.0.len() + self.1.len()
     }
 }
 struct Draft {
@@ -36,7 +43,7 @@ impl Engine {
         }
         Ok(())
     }
-    fn write_thread(&mut self) -> Result<String, String> {
+    pub(super) fn write_thread(&mut self) -> Result<String, String> {
         self.stopped()?;
         let response = self.mi("-thread-info")?;
         let threads = response
@@ -58,6 +65,9 @@ impl Engine {
         Ok(selected)
     }
     pub(super) fn preview_write(&mut self, p: &Json) -> Result<Json, String> {
+        if matches!(p["target"]["kind"].as_str(), Some("memory" | "peripheral")) {
+            return self.preview_memory_write(p);
+        }
         self.stopped()?;
         if self.cancellation.load(Ordering::Relaxed) {
             return Err("Write preview cancelled".into());
@@ -108,7 +118,7 @@ impl Engine {
         self.write_drafts.0.retain(|_, draft| {
             draft.created.elapsed() < DRAFT_LIFETIME && draft.context == expected
         });
-        if self.write_drafts.0.len() >= MAX_DRAFTS {
+        if self.write_drafts.len() >= MAX_DRAFTS {
             return Err("Too many outstanding write drafts; cancel unused drafts".into());
         }
         let services = crate::debug_access::for_project(&self.project)?;
@@ -182,7 +192,8 @@ impl Engine {
     }
     pub(super) fn cancel_write(&mut self, p: &Json) -> Result<Json, String> {
         let token = p["draft"].as_str().ok_or("Write draft ID required")?;
-        let removed = self.write_drafts.0.remove(token).is_some();
+        let removed = self.write_drafts.0.remove(token).is_some()
+            | self.write_drafts.1.remove(token).is_some();
         Ok(
             json!({"draft":token,"outcome":if removed {json!(Outcome::NotSent)} else {Json::Null},"cancelled":removed,
             "detail":if removed {"Draft cancelled before sending"} else {"No pending draft; a sent write cannot be withdrawn"}}),
@@ -210,6 +221,9 @@ impl Engine {
     }
     pub(super) fn apply_write(&mut self, p: &Json) -> Result<Json, String> {
         let token = p["draft"].as_str().ok_or("Write draft ID required")?;
+        if self.write_drafts.1.contains_key(token) {
+            return self.apply_memory_write(token);
+        }
         let Some(draft) = self.write_drafts.0.remove(token) else {
             return Ok(
                 json!({"draft":token,"outcome":Outcome::NotSent,"error":"No pending write draft; preview again","code":"draft_expired"}),
@@ -319,6 +333,15 @@ impl Engine {
             },
         };
         result["outcome"] = json!(outcome);
+        self.finish_write(&mut result);
+        Ok(result)
+    }
+    pub(super) fn finish_write(&mut self, result: &mut Json) {
+        self.invalidate_written_views();
+        result["context_after"] = json!(self.register_context());
+        self.log("write", serde_json::to_string(&result).unwrap_or_default());
+    }
+    pub(super) fn invalidate_written_views(&mut self) {
         // Even an unknown result may have changed storage. Invalidate every overlapping view
         // rather than publishing a guessed command value as a fresh target sample.
         self.write_drafts.clear();
@@ -340,9 +363,6 @@ impl Engine {
         self.snapshot.stack.clear();
         self.snapshot.assembly.clear();
         self.refresh_pending = self.snapshot.state == "STOPPED";
-        result["context_after"] = json!(self.register_context());
         self.publish();
-        self.log("write", serde_json::to_string(&result).unwrap_or_default());
-        Ok(result)
     }
 }

@@ -475,7 +475,7 @@ temporary = false
 
 ### CPU 寄存器
 
-**System Regs** 从 GDB 动态获取寄存器名称、编号和值，暂停后更新；寄存器是否可见取决于 GDB 和目标描述。当前是寄存器列表，不是自动按 ARM TRM 展开的系统寄存器浏览器，也没有通用的寄存器写入 UI。CP15/EL2/MPU、banked 或向量寄存器是否可读，必须由调试后端提供，不能通过导入外设 SVD 自动补齐。
+**System Regs** 从 GDB 动态获取寄存器名称、编号和值，暂停后更新；寄存器是否可见取决于 GDB 和目标描述。配置 CPU 目录后提供分组、字段和按需读取；已适配的 Core writer 可经 Edit value 编辑。CP15/EL2/MPU、banked 或向量寄存器是否可读，必须由调试后端提供，不能通过导入外设 SVD 自动补齐。
 
 可用 `gdb.registers` 指定自动读取的寄存器名称，默认空列表读取所有命名寄存器。已有 THA6206 验证中，复位初态自动读取 VFP 的 d/s 寄存器曾引发 OpenOCD `DSCR.ERR`；参考工程因此配置 `registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc", "cpsr"]`。这样保留通用寄存器和程序状态的自动刷新；浮点寄存器可在固件完成初始化后通过 GDB Console 按需读取，或调整列表。程序不会伪造被排除寄存器的值；不存在的寄存器名称会报错。
 
@@ -499,7 +499,7 @@ SVD 解析器静态编译进 EXE，不增加运行时环境。SVD 文件按工�
 
 Memory 默认读取 `$sp`；可在 Console 输入 `:memory 0x20000000 256` 查看指定地址的 256 字节。Asm 按当前 `$pc` 或 `:disasm EXPR` 请求反汇编，停止/切换栈帧后按需更新。读取错误会显示原因，`:refresh` 可重试。
 
-当前 Memory 面板使用选中核的 GDB 读取，不等同于 Watch / Peripherals 的逐项总线通道设置；运行中默认保留暂停快照。Memory / Peripherals 主要用于查看，不提供通用的写入编辑器。
+Memory 可选择地址范围、字节数及实际通道；运行中默认保留暂停快照。Memory / Peripherals 的 Edit value 使用共同预览和写入流程，写权限需独立配置，详见下方写入说明。
 
 ### 开发分支的访问入口（尚未发布）
 
@@ -702,9 +702,21 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 开发分支新增的 Core 寄存器编辑尚未进入 v0.9.3 release。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。
 
-修改输入必须重新预览；切核、帧、运行、重连或换 ELF 后旧草稿不可应用。Scope All 仍只写当前核心。`verified` 表示按有效掩码回读一致，`accepted` 表示后端已受理但没有完成安全验证，`mismatch` 表示回读不符，`unknown` 表示可能已写入而无法确定结果；不自动重试、回滚或重放。发送后关闭编辑窗口不会撤回操作。PC/SP 改动会使源码、栈、Locals、反汇编等视图失效并重新读取；这不是通用的目标恢复操作。
+修改输入必须重新预览；切核、帧、运行、重连或换 ELF 后旧草稿不可应用。Core writer 的 Scope All 仍只写当前核心；共享区域只执行一次所属 owner 的写入。`verified` 表示按有效掩码回读一致，`accepted` 表示后端已受理但没有完成安全验证，`mismatch` 表示回读不符，`unknown` 表示可能已写入而无法确定结果；不自动重试、回滚或重放。发送后关闭编辑窗口不会撤回操作。PC/SP 改动会使源码、栈、Locals、反汇编等视图失效并重新读取；这不是通用的目标恢复操作。
 
-未声明独立 writer 的对象可查看原因，当前 CPSR、系统／银行／浮点寄存器及变量、RAM／MMIO 写入仍在开发。数值规划器支持 128 位，并不表示 GDB 整数 writer 能写 128 位向量；完整范围与验证限制见 [开发进度](docs/registers-development-status.md)。
+未声明独立 writer 的对象可查看原因，当前 CPSR、系统／银行／浮点寄存器及变量 writer 仍在开发。RAM 和 8/16/32 位 SVD MMIO writer 的声明方式与限制见下方。数值规划器支持 128 位，并不表示 GDB 整数 writer 能写 128 位向量；完整范围与验证限制见 [开发进度](docs/registers-development-status.md)。
+
+### 声明 RAM 与外设写入区域（开发分支）
+
+参考 [区域模板](profiles/write-regions.toml.example) 配置 `[[writes.regions]]`。必须声明地址区间（`end` 不包含）、`kind`（ram/flash/mmio）、`channel`（空字符串为当前核心 GDB）、`scope`、允许的 `widths` 及必要的 `little_endian`。RAM 字节 writer 还要求 `byte_writable=true` 与允许 8 位访问；读取通道配置不会授予写权限。按芯片手册核对模板地址和 target 后再使用。
+
+在 Memory 或 Peripherals 选择 **Edit value**，或按 **e**。Memory 可修改字面地址和 1–4096 字节范围；Bytes 输入按地址递增顺序，例如 `12 34 56 78`。标量采用区域声明的字节序，并检查宽度和对齐；不接受会执行函数、赋值或解引用的地址表达式。Flash 提示使用 Download，未知区域或从 RAM 入口访问 MMIO 均拒绝。
+
+Peripherals 使用加载的 SVD 的实际寄存器地址、字段权限和特殊写语义。先在 Memory access 选择已声明的 TCL 通道；当前 writer 只执行单个对齐 8/16/32 位 `target write_memory`，64 位 MMIO 及 GDB MMIO writer 尚未适配。TCL 区域需列出 owner 对应的物理 CPU `halted_targets`；AP 的状态不能替代 CPU 暂停证明。布局字节序来自区域声明或 SVD，实际总线 target 字节序通过 `cget -endian` 查询并转换。[OpenOCD target 命令](https://openocd.org/doc/html/CPU-Configuration.html)
+
+RO 权限不会被 override 开放。只有目标手册确认保留位、RO 写效果或稳定验证掩码时，才添加 `[[writes.svd_overrides]]`。普通字段修改保留事务内新鲜读取的邻接 RW 位；无关 W1C/W0C 位使用不动作值。WO 或读副作用寄存器可执行不需要读取的写入，但不会自动回读；后端受理后显示 accepted。缺少一次写／解锁规则时拒绝。
+
+所有写入要求暂停，RAM/MMIO 仍绑定当前帧但无需物理 frame 0。共享 chip/cluster owner 要求协调器确认相关核心暂停；Scope All 仅执行一次该 owner 写入，共享写入会使其他核心的缓存与草稿失效。服务锁只防止 DebugTUI 命令交错，不保证外部调试器、多主设备或多字节访问的原子性。错误后不自动重试或恢复旧值。
 
 源码使用 Rust 2024 edition；构建需安装能编译当前锁定依赖的 Rust 工具链及 Windows 原生链接器。GNU 构建可用 `DEBUGTUI_GCC_DIR` 指定工具目录。Node 用于分发和部分测试，完整功能验收还需要 PowerShell 7、本机 GCC/GDB；这些不是最终用户启动 EXE 的依赖。
 

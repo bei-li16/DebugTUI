@@ -2,6 +2,10 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04，尚未发布）
 
+RAM／MMIO writer 批次：250 项单元测试、19 项本地集成测试通过，2 项既有外部环境测试 ignored；严格 Clippy 通过。新增 64 位地址／4096 字节边界及两侧哨兵、声明 RAM／Flash／MMIO 区域拒绝规则、字节序、非零帧、权限变化、回读不符及发送后错误无重试。实际 TCP TCL 软件夹具验证一个 MMIO 字访问、布局／AP 大小端转换、保留位、邻接 W1C 中性值、WO 和读副作用对象无回读、物理 CPU 状态及 Apply 重新查询字节序。共享 owner 不能由 JSON 伪造 peer 状态；All scope 不广播写入，其他核心缓存与草稿失效。
+
+`scripts/test-memory-write-hardware.cjs` 默认 4 项 skipped、零目标连接；通过实际 DebugTUI 可执行文件及 MI 软件夹具执行全部 5 阶段（含关闭），原工程保持不变，RAM 与哨兵明确恢复；报告 `board_tests_executed=false`。本批未执行上板测试。当前本地 ARM GDB 只读探测确认 `data-write-memory-bytes` 存在、`may-write-memory=on`，不作为目标写权限证明。MMIO、缓存一致性及其余延后上板案例仍需补足。
+
 写入后续批次：247 项单元测试、10 项本地集成测试通过，2 项既有外部环境测试 ignored；严格 Clippy 通过。新增 SVD 写元数据／枚举／约束继承、精确数值及混合特殊位规划、Core 的真实 MI 预览／应用／取消和独立 writer 校验。Ratatui 用例覆盖当前选中行、键鼠、45×12 窄窗口、迟到预览、错误保留输入及发送失败；双核 Scope All 只发一次当前核写入，切核／帧／线程／权限／重连均拒绝旧草稿，发送后超时／断连不自动重试或回写旧值。
 
 准备 `scripts/test-register-write-hardware.cjs`，默认四项 skipped、零目标连接；Core 流程在 `--software-fixture` 模式验证成功并恢复普通工作寄存器，报告明确 `board_tests_executed=false`。首次软件运行发现退出时无变化也重写工程；已修正，最终原工程 SHA256 保持不变。新增 F26 软件证据；完整 TODO 的其他 writer、读取能力、延后上板用例和发布交付仍待完成，尚未更改当前正式版本或安装包。

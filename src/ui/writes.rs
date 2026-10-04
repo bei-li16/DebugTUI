@@ -21,6 +21,27 @@ struct Popup {
     preview: Option<Value>,
     detail: String,
     expired: bool,
+    address: String,
+    count: String,
+}
+impl Popup {
+    fn memory(&self) -> bool {
+        self.candidate.target["kind"] == "memory"
+    }
+    fn physical(&self) -> bool {
+        self.candidate.target["kind"] == "register"
+    }
+    fn fields(&self) -> usize {
+        if self.memory() { 7 } else { 5 }
+    }
+    fn text(&mut self) -> Option<&mut String> {
+        match self.field {
+            0 => Some(&mut self.input.text),
+            5 if self.memory() => Some(&mut self.address),
+            6 if self.memory() => Some(&mut self.count),
+            _ => None,
+        }
+    }
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Stage {
@@ -47,18 +68,22 @@ impl Editor {
 }
 impl App {
     pub(super) fn open_edit_value(&mut self) {
-        if self.pane != 3 {
-            self.notice = "Select a System Regs object before editing.".into();
+        if !matches!(self.pane, 3 | 4 | 10) {
+            self.notice =
+                "Select a System Regs, Memory or Peripherals object before editing.".into();
             return;
         }
         if self.write_editor.pending.is_some() {
             self.notice = "Waiting for the outstanding edit response.".into();
             return;
         }
-        let candidate = match self
-            .register_view
-            .edit_candidate(self.selected(3), &self.register_context())
-        {
+        let candidate = match match self.pane {
+            4 => Ok(self.memory_edit_candidate()),
+            10 => self.peripheral_edit_candidate(),
+            _ => self
+                .register_view
+                .edit_candidate(self.selected(3), &self.register_context()),
+        } {
             Ok(c) => c,
             Err(error) => {
                 self.notice = error;
@@ -70,10 +95,18 @@ impl App {
             .clone()
             .unwrap_or_else(|| "Enter a value, then Preview. Preview never sends a write.".into());
         let input = Input {
-            kind: InputKind::Unsigned,
+            kind: if candidate.target["kind"] == "memory" {
+                InputKind::Bytes
+            } else {
+                InputKind::Unsigned
+            },
             text: candidate.value.clone(),
             little_endian: None,
         };
+        let address = candidate.target["address"]
+            .as_str()
+            .unwrap_or("")
+            .to_owned();
         self.write_editor.popup = Some(Popup {
             candidate,
             context: self.register_context(),
@@ -82,6 +115,8 @@ impl App {
             preview: None,
             detail: reason,
             expired: false,
+            address,
+            count: "1".into(),
         });
     }
     pub(super) fn write_snapshot(&mut self, next: &Snapshot) {
@@ -171,13 +206,13 @@ impl App {
             || popup.expired
             || self.demo
             || self.snapshot.state != "STOPPED"
-            || popup.context.frame != 0
+            || (popup.physical() && popup.context.frame != 0)
         {
             popup.detail = popup
                 .candidate
                 .reason
                 .clone()
-                .unwrap_or_else(|| "A current stopped physical frame 0 is required.".into());
+                .unwrap_or_else(|| "A current stopped context is required; core registers also require physical frame 0.".into());
             return;
         }
         if engine.is_none() {
@@ -186,6 +221,20 @@ impl App {
         }
         let id = self.next_id;
         let (stage, draft, method, params) = if field == 2 {
+            if popup.memory() {
+                let Some(count) = popup
+                    .count
+                    .parse::<u16>()
+                    .ok()
+                    .filter(|n| (1..=4096).contains(n))
+                else {
+                    popup.detail = "Memory byte count must be 1..4096.".into();
+                    return;
+                };
+                popup.candidate.bits = count * 8;
+                popup.candidate.target["address"] = json!(popup.address);
+                popup.candidate.target["bits"] = json!(popup.candidate.bits);
+            }
             let params = json!({"target":popup.candidate.target,"selection":popup.candidate.selection,"input":popup.input,"context":popup.context});
             self.invalidate_write_preview();
             (Stage::Preview, None, "write_preview", params)
@@ -257,14 +306,18 @@ impl App {
                 error.into()
             } else {
                 format!(
-                    "{}\nOwner: {} · {} @ {}\nMask: {} · fresh read: {}\nApply sends this draft once.",
+                    "{}\nOwner: {} · {} @ {}\nMask/range: {} · fresh read: {}\nApply sends this draft once.",
                     result["warning"].as_str().unwrap_or(""),
                     result["owner"].as_str().unwrap_or("?"),
                     result["channel"].as_str().unwrap_or("?"),
                     result["endpoint"].as_str().unwrap_or("?"),
                     result["plan"]["selected_mask"]["hex"]
                         .as_str()
-                        .unwrap_or("?"),
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| format!(
+                            "{} bytes at {}",
+                            result["plan"]["byte_count"], result["address"]
+                        )),
                     result["plan"]["needs_fresh_read"]
                 )
             };
@@ -295,8 +348,10 @@ impl App {
         };
         match key.code {
             KeyCode::Esc => self.write_action(4, engine),
-            KeyCode::Tab | KeyCode::Down => popup.field = (popup.field + 1) % 5,
-            KeyCode::BackTab | KeyCode::Up => popup.field = (popup.field + 4) % 5,
+            KeyCode::Tab | KeyCode::Down => popup.field = (popup.field + 1) % popup.fields(),
+            KeyCode::BackTab | KeyCode::Up => {
+                popup.field = (popup.field + popup.fields() - 1) % popup.fields()
+            }
             KeyCode::Enter => {
                 let field = popup.field;
                 self.write_action(if field == 0 { 2 } else { field }, engine);
@@ -309,24 +364,42 @@ impl App {
             }
             KeyCode::Char('u')
                 if key.modifiers.contains(KeyModifiers::CONTROL)
-                    && popup.field == 0
+                    && matches!(popup.field, 0 | 5 | 6)
                     && self.write_editor.pending.is_none() =>
             {
-                popup.input.text.clear();
+                if let Some(text) = popup.text() {
+                    text.clear();
+                }
                 self.invalidate_write_preview();
             }
-            KeyCode::Backspace if popup.field == 0 && self.write_editor.pending.is_none() => {
-                popup.input.text.pop();
+            KeyCode::Backspace
+                if matches!(popup.field, 0 | 5 | 6) && self.write_editor.pending.is_none() =>
+            {
+                if let Some(text) = popup.text() {
+                    text.pop();
+                }
                 self.invalidate_write_preview();
             }
             KeyCode::Char(c)
-                if popup.field == 0
+                if matches!(popup.field, 0 | 5 | 6)
                     && key.modifiers.is_empty()
                     && !c.is_control()
-                    && popup.input.text.len() + c.len_utf8() <= 1024
                     && self.write_editor.pending.is_none() =>
             {
-                popup.input.text.push(c);
+                let limit = if popup.field == 5 {
+                    256
+                } else if popup.field == 6 {
+                    4
+                } else if popup.memory() {
+                    16384
+                } else {
+                    1024
+                };
+                if let Some(text) = popup.text()
+                    && text.len() + c.len_utf8() <= limit
+                {
+                    text.push(c);
+                }
                 self.invalidate_write_preview();
             }
             _ => {}
@@ -337,10 +410,21 @@ impl App {
         let Some(popup) = &mut self.write_editor.popup else {
             return false;
         };
-        if popup.field == 0 && self.write_editor.pending.is_none() {
+        if matches!(popup.field, 0 | 5 | 6) && self.write_editor.pending.is_none() {
+            let limit = if popup.field == 5 {
+                256
+            } else if popup.field == 6 {
+                4
+            } else if popup.memory() {
+                16384
+            } else {
+                1024
+            };
             for c in text.chars().filter(|c| !c.is_control()) {
-                if popup.input.text.len() + c.len_utf8() <= 1024 {
-                    popup.input.text.push(c);
+                if let Some(text) = popup.text()
+                    && text.len() + c.len_utf8() <= limit
+                {
+                    text.push(c);
                 }
             }
             self.invalidate_write_preview();
@@ -360,7 +444,7 @@ impl App {
                 .copied()
         {
             self.write_editor.popup.as_mut().unwrap().field = field;
-            if field != 0 {
+            if matches!(field, 1..=4) {
                 self.write_action(field, engine);
             }
         }
@@ -391,12 +475,14 @@ pub(super) fn draw(f: &mut UiFrame, app: &mut App) {
     } else {
         popup.input.text.clone()
     };
-    let labels = [
+    let mut labels = vec![
         format!("Value: {input}"),
         format!(
             "Input: {:?}{}",
             popup.input.kind,
-            if popup.input.kind == InputKind::Bytes {
+            if popup.input.kind == InputKind::Bytes && popup.memory() {
+                " · address order"
+            } else if popup.input.kind == InputKind::Bytes {
                 if popup.input.little_endian == Some(true) {
                     " LE · ←/→ change order"
                 } else {
@@ -410,7 +496,11 @@ pub(super) fn draw(f: &mut UiFrame, app: &mut App) {
         "Apply".into(),
         "Cancel".into(),
     ];
-    let rows = usize::from(inner.height.min(5));
+    if popup.memory() {
+        labels.push(format!("Address: {}", popup.address));
+        labels.push(format!("Byte count: {}", popup.count));
+    }
+    let rows = usize::from(inner.height.min(labels.len() as u16));
     let first = popup.field.saturating_sub(rows.saturating_sub(1));
     for (field, label) in labels.iter().enumerate().skip(first).take(rows) {
         let hit = Rect::new(inner.x, inner.y + (field - first) as u16, inner.width, 1);
@@ -418,7 +508,7 @@ pub(super) fn draw(f: &mut UiFrame, app: &mut App) {
             && !popup.expired
             && !app.demo
             && app.snapshot.state == "STOPPED"
-            && popup.context.frame == 0
+            && (!popup.physical() || popup.context.frame == 0)
             && app.write_editor.pending.is_none();
         let disabled =
             field == 2 && !available || field == 3 && (!available || popup.preview.is_none());
@@ -433,7 +523,7 @@ pub(super) fn draw(f: &mut UiFrame, app: &mut App) {
         app.write_editor.hits.push((hit, field));
     }
     if inner.height > rows as u16 {
-        f.render_widget(Paragraph::new(format!("{} · {} bits · owner {} · core scope\n{}\nCtrl+U clears the input. Editing invalidates the preview.", popup.candidate.title, popup.candidate.bits, popup.context.core, popup.detail)).wrap(Wrap { trim: false }).style(Style::default().fg(theme::MUTED)), Rect::new(inner.x, inner.y + rows as u16, inner.width, inner.height - rows as u16));
+        f.render_widget(Paragraph::new(format!("{} · {} bits · selected core {}\n{}\nCtrl+U clears the input. Editing invalidates the preview.", popup.candidate.title, popup.candidate.bits, popup.context.core, popup.detail)).wrap(Wrap { trim: false }).style(Style::default().fg(theme::MUTED)), Rect::new(inner.x, inner.y + rows as u16, inner.width, inner.height - rows as u16));
     }
 }
 
@@ -649,5 +739,45 @@ mod tests {
         app.write_editor.popup.as_mut().unwrap().field = 0;
         app.write_paste("1");
         assert_eq!(app.write_editor.popup.as_ref().unwrap().input.text, "421");
+    }
+    #[test]
+    fn memory_editor_edits_literal_address_count_and_address_order_bytes_on_nonzero_frame() {
+        let mut app = app();
+        app.select_pane(4);
+        app.snapshot.frame.level = 2;
+        let (engine, requests) = session::test_channel();
+        app.open_edit_value();
+        app.write_editor.popup.as_mut().unwrap().field = 5;
+        app.write_key(
+            KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+            Some(&engine),
+        );
+        app.write_paste("0x100000001");
+        app.write_editor.popup.as_mut().unwrap().field = 6;
+        app.write_key(
+            KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+            Some(&engine),
+        );
+        app.write_paste("4");
+        app.write_editor.popup.as_mut().unwrap().field = 0;
+        app.write_paste("12 34 56 78");
+        app.write_action(2, Some(&engine));
+        let preview = requests.try_recv().unwrap();
+        assert_eq!(preview.method, "write_preview");
+        assert_eq!(preview.params["target"]["address"], "0x100000001");
+        assert_eq!(preview.params["target"]["bits"], 32);
+        assert_eq!(preview.params["input"]["kind"], "bytes");
+        assert_eq!(preview.params["context"]["frame"], 2);
+        let context = app.register_context();
+        app.write_response(preview.id,&json!({"draft":"ram-draft","context":context,"owner":"chip:fixture","plan":{"byte_count":4}}),None);
+        app.write_editor.popup.as_mut().unwrap().field = 5;
+        app.write_paste("0");
+        assert!(app.write_editor.popup.as_ref().unwrap().preview.is_none());
+        assert!(app.flush_write_cancels(Some(&engine)));
+        assert_eq!(requests.try_recv().unwrap().method, "write_cancel");
+        let mut terminal = Terminal::new(TestBackend::new(45, 12)).unwrap();
+        app.write_editor.popup.as_mut().unwrap().field = 6;
+        terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+        assert!(app.write_editor.hits.iter().any(|(_, i)| *i == 6));
     }
 }

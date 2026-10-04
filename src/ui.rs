@@ -1064,7 +1064,7 @@ impl App {
         }
         match key.code {
             KeyCode::Char('f') if key.modifiers.is_empty() => self.open_format(None),
-            KeyCode::Char('e') if key.modifiers.is_empty() && self.pane == 3 => {
+            KeyCode::Char('e') if key.modifiers.is_empty() && matches!(self.pane, 3 | 4 | 10) => {
                 self.open_edit_value()
             }
             KeyCode::F(2) => self.open_setup(),
@@ -1338,7 +1338,7 @@ impl App {
                 };
         }
         match command {
-            "edit-value" => self.pane == 3,
+            "edit-value" => matches!(self.pane, 3 | 4 | 10),
             "commandlist" | "quit" | "setup" => true,
             "watch-access" => !self.snapshot.watches.is_empty(),
             "memory-access" => true,

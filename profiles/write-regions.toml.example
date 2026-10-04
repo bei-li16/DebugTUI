@@ -1,0 +1,40 @@
+# Copy into the project/environment only after checking the actual memory map.
+# These addresses and targets are examples, not THA6206 write authorization.
+# End is exclusive. Empty channel selects the current core's GDB connection.
+[[writes.regions]]
+id = "fixture-ram"
+kind = "ram"
+start = "0x20000000"
+end = "0x20001000"
+widths = [8, 16, 32, 64, 128]
+byte_writable = true
+little_endian = true
+scope = "core"
+
+# Explicit classification prevents raw RAM writes from entering Flash.
+[[writes.regions]]
+id = "flash"
+kind = "flash"
+start = "0x08000000"
+end = "0x08100000"
+widths = [8, 32]
+
+# Requires a matching [[memory_access]] id, actual SVD, and CPU target names.
+# Do not use the AP target itself as proof that CPUs are halted.
+[[writes.regions]]
+id = "fixture-mmio"
+kind = "mmio"
+start = "0x40000000"
+end = "0x40000100"
+channel = "ap"
+scope = "chip"
+widths = [8, 16, 32]
+little_endian = true
+halted_targets = ["chip.cpu0", "chip.cpu1"]
+
+# Only add these rules when confirmed by the actual device register manual.
+# Overrides do not grant writes to RO fields or remove SVD read side effects.
+[[writes.svd_overrides]]
+register = "FIXTURE.CONTROL"
+reserved = "preserve"
+read_only_write = "ignored"

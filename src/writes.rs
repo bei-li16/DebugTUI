@@ -3,6 +3,8 @@
 use crate::registers::{RawValue, Segment};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
+mod memory;
+pub use memory::{Config, MemoryKind, Region, SvdOverride, memory_bytes};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

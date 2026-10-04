@@ -44,6 +44,17 @@ impl MemoryView {
 }
 
 impl App {
+    pub(super) fn memory_edit_candidate(&self) -> writes::Candidate {
+        let range = self.memory_range();
+        writes::Candidate {
+            target: json!({"kind":"memory","address":range.address,"bits":8,"channel":self.memory_channel()}),
+            selection: crate::writes::Selection::Register,
+            title: "RAM · literal address and byte count".into(),
+            bits: 8,
+            value: String::new(),
+            reason: None,
+        }
+    }
     pub(super) fn memory_snapshot(&mut self, next: &Snapshot) {
         let owner_changed = next.core.as_ref().map(|core| (&core.name, core.index))
             != self

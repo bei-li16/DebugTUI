@@ -20,6 +20,7 @@ use std::{
 
 mod breakpoints;
 mod memory;
+mod memory_writes;
 mod registers;
 mod symbols;
 mod watch;
@@ -197,6 +198,9 @@ pub struct Request {
     pub method: String,
     #[serde(default)]
     pub params: Json,
+    /// Supplied only by the coordinator, never accepted from a headless client.
+    #[serde(skip)]
+    pub(crate) write_peers: Vec<CoreStatus>,
 }
 impl Request {
     pub fn is_quit(&self) -> bool {
@@ -213,6 +217,7 @@ impl Request {
             id,
             method: method.into(),
             params,
+            write_peers: vec![],
         }
     }
 }
@@ -416,6 +421,7 @@ struct Engine {
     register_session: u64,
     register_access_fault: Option<String>,
     write_drafts: writes::Drafts,
+    write_peers: Vec<CoreStatus>,
     exiting: bool,
     job: Option<crate::process::Job>,
     cancellation: Arc<AtomicBool>,
@@ -570,6 +576,7 @@ impl Engine {
             register_session: registers::new_session(),
             register_access_fault: None,
             write_drafts: Default::default(),
+            write_peers: vec![],
             exiting: false,
             job: None,
             cancellation,
@@ -634,7 +641,9 @@ impl Engine {
             }
             match requests.recv_timeout(Duration::from_millis(20)) {
                 Ok(request) => {
+                    self.write_peers = request.write_peers;
                     let result = self.execute(&request.method, &request.params);
+                    self.write_peers.clear();
                     if let Err(error) = &result
                         && !matches!(request.method.as_str(), "complete" | "symbols")
                     {
@@ -1720,6 +1729,10 @@ impl Engine {
             "memory_dump" => self.read_memory_dump(p),
             "write_preview" => self.preview_write(p),
             "write_apply" => self.apply_write(p),
+            "write_invalidate" => {
+                self.invalidate_written_views();
+                Ok(json!({"invalidated":true}))
+            }
             "write_cancel" => self.cancel_write(p),
             "write_discard" => {
                 self.write_drafts.clear();

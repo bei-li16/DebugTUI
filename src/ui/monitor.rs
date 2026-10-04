@@ -93,7 +93,7 @@ impl Monitor {
     }
 }
 impl App {
-    fn monitor_key(&self, key: &str) -> String {
+    pub(super) fn monitor_key(&self, key: &str) -> String {
         let key = format!(
             "{}|{key}",
             self.snapshot

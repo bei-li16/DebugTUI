@@ -129,7 +129,7 @@ fn transact_unlocked(stream: &mut TcpStream, command: &str) -> Result<String, St
                     break;
                 }
                 buf.push(byte[0]);
-                if buf.len() > 8192 {
+                if buf.len() > 32768 {
                     return Err("TCL response too large".into());
                 }
             }

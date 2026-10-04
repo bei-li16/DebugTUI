@@ -68,6 +68,10 @@ UNC 目录边界及别名由 Rust 测试覆盖；GDB 对不可达网络主机的
 
 ## 2026-09-27 新增用例：45 项
 
+开发分支的 `tests/write_access.rs` 还覆盖声明 RAM 范围的边界／哨兵、64 位地址、4096 字节、非零帧、GDB 写权限与结果状态，以及真实 TCP TCL MMIO 的物理 CPU 暂停、大小端、保留位、RO、W1C、WO、读副作用及单字访问。共享 owner 只接受协调器内部核心状态，不接受 JSON peer 声明；All scope 不广播。
+
+`node scripts/test-memory-write-hardware.cjs` 默认只准备四个 skipped 用例，不连接目标。运行专用 RAM 夹具示例：`node scripts/test-memory-write-hardware.cjs --run --binary target/release/debugtui.exe --project PATH --core core0 --fixture-function ram_write_fixture --address 0x20000004 --bytes 12345678`；AP 路由另加 `--channel ap`。工程需声明正确区域及暂停相关核心。成功写入后独立读取范围和两侧哨兵，再显式恢复；不自动运行／停核／复位，也不在未知或不符结果后回滚。`--software-fixture` 保留软件层标识，不能作为上板证据。
+
 以下计数是带稳定 ID 的验收场景数，不是 JSONL 请求数；其中硬件 18 项包含两个默认不执行的选项。既有 Rust 和 GDB 专项测试继续由统一入口调用，不重复计入新增数。
 
 | 文件 | ID | 数量 | 检查 |

@@ -355,6 +355,42 @@ impl Peripherals {
     }
 }
 impl App {
+    pub(super) fn peripheral_edit_candidate(&self) -> Result<writes::Candidate, String> {
+        let device = self
+            .peripherals
+            .device
+            .as_ref()
+            .ok_or("Load an SVD before editing")?;
+        let row = self.selected(PANE);
+        let (p, r) = self
+            .peripherals
+            .selected_register(row)
+            .ok_or("Select a register or field")?;
+        let peripheral = &device.peripherals[p];
+        let register = &peripheral.registers[r];
+        let selection = match self.peripherals.rows[row] {
+            Row::Field(_, _, i) => crate::writes::Selection::Field {
+                name: register.fields[i].name.clone(),
+            },
+            _ => crate::writes::Selection::Register,
+        };
+        let key = format!("svd:{}:{}.{}", device.name, peripheral.name, register.name);
+        let channel = self
+            .project
+            .ui
+            .refresh
+            .get(&self.monitor_key(&key))
+            .map(|p| p.channel.clone())
+            .unwrap_or_default();
+        Ok(writes::Candidate {
+            target: json!({"kind":"peripheral","peripheral":peripheral.name,"register":register.name,"channel":channel}),
+            selection,
+            title: format!("{}.{}", peripheral.name, register.name),
+            bits: register.bits as u16,
+            value: String::new(),
+            reason: None,
+        })
+    }
     pub(super) fn peripheral_monitor_item(&self, row: usize) -> Option<monitor::Item> {
         let device = self.peripherals.device.as_ref()?;
         let (p, r) = self.peripherals.selected_register(row)?;

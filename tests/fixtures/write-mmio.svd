@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<device schemaVersion="1.3">
+  <name>MMIOFixture</name><version>1</version><description>Software-only bus word fixture</description>
+  <addressUnitBits>8</addressUnitBits><width>32</width><size>32</size><access>read-write</access>
+  <peripherals><peripheral><name>PORT</name><baseAddress>0x40000000</baseAddress><registers>
+    <register><name>MIXED</name><addressOffset>0</addressOffset><fields>
+      <field><name>RW</name><bitOffset>0</bitOffset><bitWidth>8</bitWidth></field>
+      <field><name>FLAG</name><bitOffset>8</bitOffset><bitWidth>8</bitWidth><modifiedWriteValues>oneToClear</modifiedWriteValues></field>
+      <field><name>RO</name><bitOffset>16</bitOffset><bitWidth>8</bitWidth><access>read-only</access></field>
+    </fields></register>
+    <register><name>WO</name><addressOffset>4</addressOffset><access>write-only</access></register>
+    <register><name>READ_CLEAR</name><addressOffset>8</addressOffset><readAction>clear</readAction></register>
+    <register><name>WIDE</name><addressOffset>16</addressOffset><size>64</size></register>
+  </registers></peripheral></peripherals>
+</device>

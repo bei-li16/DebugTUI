@@ -583,6 +583,25 @@ impl Coordinator {
                 }
                 let mut b = self.batch.take().unwrap();
                 b.waiting = None;
+                if ok
+                    && b.current_method == "write_apply"
+                    && matches!(result["scope"].as_str(), Some("chip" | "cluster"))
+                    && result["outcome"].as_str().is_some_and(|o| o != "not_sent")
+                {
+                    // FIFO invalidation precedes any later edit on a peer worker. Conservatively
+                    // discard every peer's overlapping caches and drafts after a shared write.
+                    for peer in 0..self.engines.len() {
+                        if peer != i {
+                            let id = self.next_id;
+                            self.next_id += 1;
+                            let _ = self.engines[peer].handle.send(Request::new(
+                                id,
+                                "write_invalidate",
+                                json!({}),
+                            ));
+                        }
+                    }
+                }
                 if ok && matches!(b.current_method.as_str(), "run" | "continue") {
                     self.engines[i].launched = true;
                 }
@@ -770,10 +789,11 @@ impl Coordinator {
                             .saturating_mul(20)
                             .max(30_000)
                     };
-                    match self.engines[i]
-                        .handle
-                        .send(Request::new(id, &method, params))
-                    {
+                    let mut worker_request = Request::new(id, &method, params);
+                    if matches!(method.as_str(), "write_preview" | "write_apply") {
+                        worker_request.write_peers = self.statuses();
+                    }
+                    match self.engines[i].handle.send(worker_request) {
                         Ok(()) => {
                             b.current_method = method;
                             b.waiting =

@@ -685,7 +685,11 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
             f,
             a,
             Rect::new(inner.x, inner.y, inner.width, height),
-            &[(access, "memory-access"), ("↻ Read", "memory-refresh")],
+            &[
+                (access, "memory-access"),
+                ("↻ Read", "memory-refresh"),
+                ("Edit value", "edit-value"),
+            ],
             1,
         );
         inner.y += height;
@@ -731,6 +735,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
             &[
                 ("Memory access", "peripheral-access"),
                 ("↻ Read", "peripheral-refresh"),
+                ("Edit value", "edit-value"),
             ],
             height,
         );
