@@ -9,6 +9,10 @@ use serde_json::{Value, json};
 use std::{fs, path::PathBuf, time::Duration};
 #[path = "write_access/float_cases.rs"]
 mod float_cases;
+#[path = "write_access/reference_cases.rs"]
+mod reference_cases;
+#[path = "write_access/wide_cases.rs"]
+mod wide_cases;
 
 fn fixture(label: &str, flags: &[(&str, &str)]) -> (Project, PathBuf) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -338,6 +342,57 @@ fn variable_assignments(transcript: &PathBuf) -> Vec<String> {
         .filter(|l| l.starts_with("-var-assign "))
         .map(str::to_owned)
         .collect()
+}
+fn deferred_typed_variable_driver(mut project: Project, transcript: &PathBuf, input: Value) {
+    project.version = 2;
+    let directory = transcript.parent().unwrap();
+    let config = directory.join("typed-project.toml");
+    fs::write(&config, toml::to_string_pretty(&project).unwrap()).unwrap();
+    let case = directory.join("typed-case.json");
+    fs::write(&case,json!({"frame":0,"frame_function":"main","target":{"kind":"variable","pane":"watch","expression":"counter"},"probe":"counter","path_expression":"counter","input":input,"little_endian":true,"owner":"core:default","scope":"core","sentinels":["before","after"]}).to_string()).unwrap();
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let output = std::process::Command::new("node")
+        .arg(root.join("scripts/test-variable-write-hardware.cjs"))
+        .args([
+            "--run",
+            "--software-fixture",
+            "--binary",
+            env!("CARGO_BIN_EXE_debugtui"),
+            "--project",
+        ])
+        .arg(config)
+        .args(["--core", "default", "--fixture-function", "main", "--case"])
+        .arg(case)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(
+        stdout.contains("\"passed\":5,\"failed\":0,\"skipped\":0"),
+        "{stdout}"
+    );
+    let report_directory = stdout
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("RESULT ")
+                .and_then(|s| s.split_once("} ").map(|(_, d)| PathBuf::from(d)))
+        })
+        .unwrap();
+    let report: Value =
+        serde_json::from_str(&fs::read_to_string(report_directory.join("report.json")).unwrap())
+            .unwrap();
+    assert_eq!(report["board_tests_executed"], false);
+    assert_eq!(
+        variable_assignments(transcript).len(),
+        2,
+        "one assignment and one verified explicit restoration"
+    );
+    assert!(memory_writes(transcript).is_empty());
 }
 #[test]
 fn variable_drafts_use_typed_assignment_cancel_replay_and_nonzero_frame() {

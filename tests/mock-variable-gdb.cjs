@@ -3,6 +3,7 @@
 let calls=process.env.DEBUGTUI_TEST_VARIABLE_CALLS_OFF?'off':'on', inspections=0, serial=0, written=false, value=42n;
 const objects=new Set();
 const env=process.env;
+const typeExpression=(env.DEBUGTUI_TEST_VARIABLE_TYPE||'').trim().endsWith('&')?'__typeof__(*(&(counter)))':'__typeof__(counter)';
 const store=memory=>{const base=BigInt(env.DEBUGTUI_TEST_VARIABLE_ADDRESS||'0x100000004');for(let i=0;i<4;i++)memory.set(base+BigInt(i),Number((BigInt.asUintN(32,value)>>BigInt(i*8))&255n));};
 module.exports.initialize=store;
 module.exports.handle=(cmd,{done,error,running,stopped,memory})=>{
@@ -29,8 +30,8 @@ module.exports.handle=(cmd,{done,error,running,stopped,memory})=>{
     const address=inspections>1&&env.DEBUGTUI_TEST_VARIABLE_ADDRESS_CHANGE?'0x100000008':env.DEBUGTUI_TEST_VARIABLE_ADDRESS||'0x100000004';
     done(`value="${address}"`);return true;
   }
-  if(cmd==='-data-evaluate-expression "((__typeof__(counter))-1) < ((__typeof__(counter))0)"'){
-    done(`value="${env.DEBUGTUI_TEST_VARIABLE_TYPE==='int'?'1':'0'}"`);return true;
+  if(cmd===`-data-evaluate-expression "((${typeExpression})-1) < ((${typeExpression})0)"`){
+    done(`value="${(env.DEBUGTUI_TEST_VARIABLE_TYPE||'').replace(/\s*&+$/,'')==='int'?'1':'0'}"`);return true;
   }
   if(cmd==='-var-create - * "counter"'){
     const name='var'+(++serial);objects.add(name);done(`name="${name}",numchild="0",type="unsigned int",value="${value}"`);return true;
@@ -49,10 +50,13 @@ module.exports.handle=(cmd,{done,error,running,stopped,memory})=>{
     if(written&&env.DEBUGTUI_TEST_VARIABLE_VERIFY_ERROR){error('Variable readback unavailable');return true;}
     done(`value="${env.DEBUGTUI_TEST_VARIABLE_OPTIMIZED?'<optimized out>':'0x'+BigInt.asUintN(32,value).toString(16)}"`);return true;
   }
-  match=/^-var-assign "(var\d+)" "\(__typeof__\(counter\)\)\((0x[0-9a-f]+|-?\d+)\)"$/.exec(cmd);
+  match=/^-var-assign "(var\d+)" (".*")$/.exec(cmd);
   if(match){
+    const expression=JSON.parse(match[2]),prefix=`(${typeExpression})`;
+    const literal=expression.startsWith(prefix)?/^\((0x[0-9a-f]+|-?\d+)\)$/.exec(expression.slice(prefix.length)):null;
+    if(!literal){error('Unsupported typed scalar assignment');return true;}
     if(!objects.has(match[1])||calls!=='off'){error('Unbound variable or function calls enabled');return true;}
-    written=true;value=env.DEBUGTUI_TEST_VARIABLE_MISMATCH?0n:BigInt(match[2]);
+    written=true;value=env.DEBUGTUI_TEST_VARIABLE_MISMATCH?0n:BigInt(literal[1]);
     store(memory);
     const failure=env.DEBUGTUI_TEST_VARIABLE_WRITE_ERROR;
     if(failure==='closed'){process.exit(7);return true;}

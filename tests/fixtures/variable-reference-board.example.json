@@ -1,0 +1,12 @@
+{
+  "frame": 0,
+  "frame_function": "debug_reference_fixture",
+  "target": {"kind": "variable", "pane": "watch", "expression": "reference_value", "path": [], "channel": "gdb"},
+  "probe": "reference_cells.value",
+  "path_expression": "reference_value",
+  "input": {"kind": "unsigned", "text": "0x89abcdef"},
+  "little_endian": true,
+  "owner": "core:core0",
+  "scope": "core",
+  "sentinels": ["reference_cells.before", "reference_cells.after", "reference_fixture_calls"]
+}

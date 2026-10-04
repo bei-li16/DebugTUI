@@ -1,5 +1,6 @@
 //! Typed MI assignment accepts literal values and a restricted C lvalue grammar.
 use super::*;
+mod members;
 
 /// No function calls, casts, arithmetic, assignment, debugger variables or dynamic indices.
 /// Parentheses and dereferences are allowed; GDB function calls are separately disabled.
@@ -117,22 +118,34 @@ impl ScalarType {
     pub(crate) fn type_signature(raw_type: &str) -> Result<String, String> {
         let mut signature = String::new();
         let mut depth = 0usize;
+        let mut templates = 0usize;
         for c in raw_type.chars() {
             match c {
-                '{' => depth += 1,
-                '}' => depth = depth.checked_sub(1).ok_or("Malformed expanded type")?,
-                _ if depth == 0 => signature.push(c),
+                '<' if depth == 0 => templates += 1,
+                '>' if depth == 0 && templates > 0 => templates -= 1,
+                '{' if templates == 0 => depth += 1,
+                '}' if templates == 0 => {
+                    depth = depth.checked_sub(1).ok_or("Malformed expanded type")?
+                }
+                _ if depth == 0 && templates == 0 => signature.push(c),
                 _ => {}
             }
         }
-        if depth != 0 {
+        if depth != 0 || templates != 0 {
             return Err("Incomplete expanded type".into());
         }
         Ok(signature)
     }
     pub fn validate_type(raw_type: &str) -> Result<(bool, bool, bool), String> {
         let signature = Self::type_signature(raw_type)?;
-        let raw_type = signature.as_str();
+        // C++ references bind to their referred storage. Strip only the outer
+        // declarator; qualifiers of the referred value still restrict writes.
+        let signature = signature.trim();
+        let raw_type = signature
+            .strip_suffix("&&")
+            .or_else(|| signature.strip_suffix('&'))
+            .unwrap_or(signature)
+            .trim_end();
         let compact = raw_type.split_whitespace().collect::<Vec<_>>();
         let pointee = raw_type.rfind('*');
         let top = if let Some(index) = pointee {
@@ -147,7 +160,7 @@ impl ScalarType {
             return Err("Const or volatile storage needs its own declared write semantics".into());
         }
         if raw_type.contains('&') || raw_type.contains('[') || raw_type.contains('(') {
-            return Err("Reference, array or function-pointer writer is not adapted".into());
+            return Err("Array or function-pointer writer is not adapted".into());
         }
         let pointer = pointee.is_some();
         if !pointer
@@ -165,6 +178,13 @@ impl ScalarType {
         Ok((pointer, float, boolean))
     }
     pub fn assignment(&self, input: &Input) -> Result<(RawValue, String), String> {
+        self.assignment_with_type(input, None)
+    }
+    pub(crate) fn assignment_with_type(
+        &self,
+        input: &Input,
+        gdb_type: Option<&str>,
+    ) -> Result<(RawValue, String), String> {
         if !matches!(self.bits, 8 | 16 | 32 | 64 | 128) {
             return Err("Typed scalar width is unsupported".into());
         }
@@ -220,8 +240,10 @@ impl ScalarType {
                 format!("{value:e}")
             }
         } else if self.bits == 128 {
+            let gdb_type =
+                gdb_type.ok_or("128-bit typed assignment needs the actual GDB object type")?;
             format!(
-                "(((unsigned __int128)0x{:x} << 64) | (unsigned __int128)0x{:x})",
+                "((({gdb_type})0x{:x} << 64) | ({gdb_type})0x{:x})",
                 n >> 64,
                 n as u64
             )
@@ -237,12 +259,13 @@ impl ScalarType {
         Ok((raw, expression))
     }
     pub fn requires_literal_probe(&self, raw: &RawValue) -> bool {
-        self.float
-            && match (raw.bits, raw.integer()) {
-                (32, Ok(n)) => n & 0x7f800000 == 0x7f800000,
-                (64, Ok(n)) => n & 0x7ff0000000000000 == 0x7ff0000000000000,
-                _ => false,
-            }
+        self.bits == 128
+            || (self.float
+                && match (raw.bits, raw.integer()) {
+                    (32, Ok(n)) => n & 0x7f800000 == 0x7f800000,
+                    (64, Ok(n)) => n & 0x7ff0000000000000 == 0x7ff0000000000000,
+                    _ => false,
+                })
     }
 }
 
@@ -263,6 +286,22 @@ mod tests {
         assert!(ScalarType::validate_type("struct P { int *p; } * const").is_err());
         assert!(ScalarType::validate_type("int (* const)(void)").is_err());
         assert!(ScalarType::validate_type("struct P { int value;").is_err());
+        assert_eq!(
+            ScalarType::validate_type("unsigned int &").unwrap(),
+            (false, false, false)
+        );
+        assert_eq!(
+            ScalarType::validate_type("double &&").unwrap(),
+            (false, true, false)
+        );
+        assert_eq!(
+            ScalarType::validate_type("const int * &").unwrap(),
+            (true, false, false)
+        );
+        assert!(ScalarType::validate_type("const int &").is_err());
+        assert!(ScalarType::validate_type("volatile int &").is_err());
+        assert!(ScalarType::validate_type("int * const &").is_err());
+        assert!(ScalarType::validate_type("int &&&").is_err());
     }
     #[test]
     fn typed_lvalues_allow_nested_members_and_reject_side_effects_and_injection() {
@@ -348,12 +387,14 @@ mod tests {
             signed: false,
             ..signed.clone()
         };
+        let wide_input = Input {
+            kind: InputKind::Unsigned,
+            text: u128::MAX.to_string(),
+            ..input.clone()
+        };
+        assert!(wide.assignment(&wide_input).is_err());
         let literal = wide
-            .assignment(&Input {
-                kind: InputKind::Unsigned,
-                text: u128::MAX.to_string(),
-                ..input.clone()
-            })
+            .assignment_with_type(&wide_input, Some("__typeof__(value)"))
             .unwrap();
         assert_eq!(literal.0.integer().unwrap(), u128::MAX);
         assert!(literal.1.contains("<< 64"));

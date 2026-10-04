@@ -1,0 +1,12 @@
+{
+  "frame": 0,
+  "frame_function": "debug_reference_fixture",
+  "target": {"kind": "variable", "pane": "watch", "expression": "wide_value", "path": [0, 1], "channel": "gdb"},
+  "probe": "wide_value.value",
+  "path_expression": "(wide_value).value",
+  "input": {"kind": "unsigned", "text": "0xfedcba98765432100123456789abcdef"},
+  "little_endian": true,
+  "owner": "core:core0",
+  "scope": "core",
+  "sentinels": ["wide_value.before", "wide_value.after", "reference_fixture_calls"]
+}

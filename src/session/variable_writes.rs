@@ -12,11 +12,21 @@ mod literals;
 struct Metadata {
     expression: String,
     type_name: String,
+    reference: bool,
     scalar: ScalarType,
     address: Option<String>,
     region: Option<String>,
     owner: String,
     scope: Scope,
+}
+impl Metadata {
+    fn assignment_type(&self) -> String {
+        if self.reference {
+            format!("__typeof__(*(&({})))", self.expression)
+        } else {
+            format!("__typeof__({})", self.expression)
+        }
+    }
 }
 struct Storage {
     address: Option<String>,
@@ -48,7 +58,7 @@ impl Engine {
         raw: &RawValue,
         assignment: &str,
     ) -> Result<RawValue, String> {
-        let expression = format!("(__typeof__({}))({assignment})", metadata.expression);
+        let expression = format!("({})({assignment})", metadata.assignment_type());
         let created = self.mi(&format!("-var-create - * {}", mi::quote(&expression)))?;
         let name = created.data.string("name");
         if name.is_empty() {
@@ -70,13 +80,23 @@ impl Engine {
         metadata: &Metadata,
         input: &Input,
     ) -> Result<(RawValue, Assignment), String> {
-        let (raw, assignment) = metadata.scalar.assignment(input)?;
+        // A GDB may know a DWARF 128-bit type while rejecting the compiler's
+        // spelling. Only the validated object supplies this type expression.
+        let (raw, assignment) = metadata
+            .scalar
+            .assignment_with_type(input, Some(&metadata.assignment_type()))?;
         if !metadata.scalar.requires_literal_probe(&raw) {
             return Ok((raw, Assignment::Expression(assignment)));
         }
         let observed = self.check_variable_literal(metadata, &raw, &assignment)?;
         if observed == raw {
             return Ok((raw, Assignment::Expression(assignment)));
+        }
+        if !metadata.scalar.float {
+            return Err(format!(
+                "GDB 128-bit literal mismatch: requested {}, observed {}; no write sent",
+                raw.hex, observed.hex
+            ));
         }
         self.with_exact_float_literal(metadata, &raw, |_, _| Ok(()))?;
         Ok((raw, Assignment::ExactFloatBits))
@@ -300,8 +320,20 @@ impl Engine {
             .data
             .string("path_expr");
         variable_lvalue(&expression)?;
+        if let Some((parent, field)) = ScalarType::member_parent(&expression)? {
+            let parent_type = self.variable_type(&parent)?;
+            ScalarType::validate_member(&parent_type, &field)?;
+        }
         let type_name = self.variable_type(&expression)?;
         let (pointer, float, boolean) = ScalarType::validate_type(&type_name)?;
+        let reference = ScalarType::type_signature(&type_name)?
+            .trim_end()
+            .ends_with('&');
+        let assignment_type = if reference {
+            format!("__typeof__(*(&({expression})))")
+        } else {
+            format!("__typeof__({expression})")
+        };
         if !pointer && node.string("numchild").parse::<usize>().unwrap_or(0) > 0 {
             return Err("Select a scalar member of the aggregate".into());
         }
@@ -317,9 +349,7 @@ impl Engine {
             let value = self
                 .mi(&format!(
                     "-data-evaluate-expression {}",
-                    mi::quote(&format!(
-                        "((__typeof__({expression}))-1) < ((__typeof__({expression}))0)"
-                    ))
+                    mi::quote(&format!("(({assignment_type})-1) < (({assignment_type})0)"))
                 ))?
                 .data
                 .string("value");
@@ -330,6 +360,11 @@ impl Engine {
             }
         };
         let storage = self.variable_storage(&expression, bytes, Some(bits), context)?;
+        if reference && storage.address.is_none() {
+            return Err(
+                "Reference writer requires the actual referent's declared RAM address".into(),
+            );
+        }
         self.variable_raw(&name, bits)?;
         if self.register_context() != *context || self.snapshot.state != "STOPPED" {
             return Err("Variable context changed while resolving its type/storage".into());
@@ -337,6 +372,7 @@ impl Engine {
         Ok(Metadata {
             expression,
             type_name,
+            reference,
             scalar: ScalarType {
                 bits,
                 signed,
@@ -547,8 +583,7 @@ impl Engine {
                         if engine.variable_context(&draft.context)? != draft.thread {
                             return Err("Variable thread changed during literal inspection".into());
                         }
-                        let expression =
-                            format!("(__typeof__({}))({assignment})", metadata.expression);
+                        let expression = format!("({})({assignment})", metadata.assignment_type());
                         sent = true;
                         outcome = Outcome::Unknown;
                         engine.mi(&format!(
