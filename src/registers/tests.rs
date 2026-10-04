@@ -1,6 +1,35 @@
 use super::*;
 
 #[test]
+fn selector_command_requires_an_explicit_matching_mrc_family() {
+    for (mrc, mcr, valid) in [
+        ("", "", true),
+        ("arm mrc", "", true),
+        ("arm mrc", "arm mcr", true),
+        ("aarch64 mrc", "aarch64 mcr", true),
+        ("", "arm mcr", false),
+        ("arm mrc", "aarch64 mcr", false),
+        ("aarch64 mrc", "arm mcr", false),
+        ("arm mrc", "arm mcr; resume", false),
+    ] {
+        let config = Config {
+            cp15_command: mrc.into(),
+            selector_command: mcr.into(),
+            ..Default::default()
+        };
+        assert_eq!(config.validate().is_ok(), valid, "{mrc}/{mcr}");
+        let copy: Config = toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert_eq!(copy.selector_command, mcr);
+    }
+    assert!(
+        toml::from_str::<Config>("cp15_command='arm mrc'")
+            .unwrap()
+            .selector_command
+            .is_empty()
+    );
+}
+
+#[test]
 fn a_user_cpu_preset_overrides_builtins_and_invalid_overrides_do_not_fall_back() {
     let directory =
         std::env::temp_dir().join(format!("debugtui-user-registers-{}", std::process::id()));

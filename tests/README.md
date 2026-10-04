@@ -6,6 +6,8 @@
 
 Windows 完整验收需要 Rust 工具链、Node.js、npm、PowerShell 7 (`pwsh` 在 PATH)、本机 GCC 和 GDB。终端用例需要支持 ConPTY 的 Windows 10 1809 或更新版本。测试不依赖额外 Node 包。
 
+选择器的软件集成测试另需带标准 `tkinter` 的 Python：`python -c "import tkinter; print(tkinter.Tcl().eval('info patchlevel'))"` 应返回 Tcl 版本，测试不会创建 GUI 或连接板卡。可用 `DEBUGTUI_TEST_PYTHON` 指定实际 Python EXE。`node scripts/test-register-selectors-hardware.cjs` 默认生成 skipped；只有显式 `--run --project FILE --core NAME --case JSON --binary FILE` 才连接所声明的暂停夹具。示例值需要换成实际固件证据，具体前提见 [选择器说明](../USER_GUIDE.md#读取-mpupmu-选择器组开发分支) 和 [验证记录](../TESTING.md)。
+
 ```powershell
 ./scripts/build.ps1
 node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe `

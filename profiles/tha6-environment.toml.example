@@ -5,6 +5,12 @@ executable = "./gdb/arm-none-eabi-gdb.exe"
 args = ["-x", "${profile_dir}/gdb.cfg"]
 init = ["maintenance set dwarf unwind off", "set remotetimeout 10"]
 registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc", "cpsr"]
+# Optional project-level system register settings are documented in USER_GUIDE.
+# Use [registers], independently of the gdb.registers name list above:
+# cpu="cortex-r52", tcl_endpoint="127.0.0.1:6666", cp15_command="arm mrc".
+# Add selector_command="arm mcr" only after verifying this actual backend;
+# declare [registers.targets] with the physical target name for each core.
+# These are examples, not a verified THA6 OpenOCD target/command mapping.
 [service]
 enabled = true
 command = "./openocd/bin/openocd.exe"

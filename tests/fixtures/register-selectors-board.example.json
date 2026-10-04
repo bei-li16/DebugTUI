@@ -1,0 +1,12 @@
+{
+  "frame_function": "debug_selector_fixture",
+  "expected_midr": "0x411fd134",
+  "stable_registers": ["cpsr", "sctlr", "hsctlr", "pmcr"],
+  "peer_core": "core1",
+  "control_scope": "all",
+  "requests": [
+    {"kind":"mpu_el1", "index":23, "expected":["0x2017001f", "0x2017ffcf"]},
+    {"kind":"mpu_el2", "index":19, "expected":["0x2013001f", "0x2013ffcf"]},
+    {"kind":"pmu", "index":3, "expected":["0x00140011", "0xf123ab03"]}
+  ]
+}

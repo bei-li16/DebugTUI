@@ -74,7 +74,7 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 48] = [
+const COMMANDS: [&str; 49] = [
     "edit-value",
     "cores",
     "core NAME_OR_INDEX",
@@ -119,6 +119,7 @@ const COMMANDS: [&str; 48] = [
     "elf PATH",
     "refresh",
     "register-probe",
+    "register-bank-read",
     "peripheral-refresh",
     "build",
     "help",
@@ -760,6 +761,7 @@ impl App {
             "register-filter" => self.filter_registers(),
             "register-definitions" => self.toggle_register_definitions(),
             "register-probe" => self.probe_registers(engine),
+            "register-bank-read" => self.read_register_bank(engine),
             "scope" => self.submit(engine, "control_scope", json!({"scope":arg})),
             "scope-toggle" => self.submit(engine, "control_scope", json!({"scope":if self.group_control() { "core" } else { "all" }})),
             "appearance" => self.open_appearance(),
@@ -1386,7 +1388,9 @@ impl App {
                 !self.snapshot.state.starts_with("STARTING") && self.snapshot.state != "CONNECTING"
             }
             "pause" => self.snapshot.state == "RUNNING",
-            "register-probe" => self.register_view.enabled() && self.snapshot.state == "STOPPED",
+            "register-probe" | "register-bank-read" => {
+                self.register_view.enabled() && self.snapshot.state == "STOPPED"
+            }
             "register-search" | "register-filter" | "register-definitions" => {
                 self.register_view.enabled()
             }

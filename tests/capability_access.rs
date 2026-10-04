@@ -563,7 +563,8 @@ fn target_scoped_tcl_probe_uses_exact_mrcs_and_quarantines_failed_restoration() 
                 assert!(
                     script.contains("targets \"cpu0\"; if {[\"cpu0\" curstate] ne \"halted\"}")
                 );
-                assert!(script.contains("catch {targets $__dt_old}"));
+                assert!(script.contains("catch {targets $__dt_old;"));
+                assert!(script.contains("if {[target current] ne $__dt_old}"));
                 assert!(
                     script.contains(&format!("arm mrc {}", encodings[index])),
                     "{script}"

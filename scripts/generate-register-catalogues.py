@@ -88,6 +88,9 @@ def generate(cpu, m_profile=False):
         for bank in [0,1]:
             for n,minimum in [(1,6),(2,7),(3,7)]:
                 reg(f"icc_ap{bank}r{n}","gic",kind="cp15",params=dict(cp=15,op1=0,crn=12,crm=8+bank,op2=(4 if bank==0 else 0)+n),conditions=[("icc.physical.prebits",minimum)])
+        for n in range(4):
+            for typename,crm in [("pmevcntr",8),("pmevtyper",12)]:
+                reg(f"{typename}{n}","pmu",kind="cp15",params=dict(cp=15,op1=0,crn=14,crm=crm,op2=n),conditions=[("pmu.counters",n+1)])
     group("vfp","Floating point","simd")
     for n in range(16 if m_profile else 32):
         reg(f"d{n}","vfp",bits=64,conditions=[("vfp.d_registers",n+1)])

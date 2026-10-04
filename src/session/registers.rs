@@ -376,7 +376,7 @@ impl Engine {
             .ok_or_else(|| (Reason::Unknown, format!("GDB did not return {name}")))?;
         RawValue::parse(&value.string("value"), bits).map_err(|error| (Reason::Unknown, error))
     }
-    fn register_tcl(&mut self, operation: &str) -> Result<String, (Reason, String)> {
+    pub(super) fn register_tcl(&mut self, operation: &str) -> Result<String, (Reason, String)> {
         if let Some(error) = &self.register_access_fault {
             return Err((
                 Reason::TransportError,
@@ -403,7 +403,7 @@ impl Engine {
         // OpenOCD cannot dispatch another client's command between these statements.
         let target = crate::live_watch::word(target);
         let script = format!(
-            "set __dt_old [target current]; set __dt_rc [catch {{targets {target}; if {{[{target} curstate] ne \"halted\"}} {{error \"Physical core is not halted\"}}; {operation}}} __dt_result]; set __dt_restore [catch {{targets $__dt_old}} __dt_restore_error]; if {{$__dt_restore}} {{error \"Target restoration failed: $__dt_restore_error\"}}; if {{$__dt_rc}} {{error $__dt_result}}; set __dt_result"
+            "set __dt_old [target current]; set __dt_rc [catch {{targets {target}; if {{[{target} curstate] ne \"halted\"}} {{error \"Physical core is not halted\"}}; {operation}}} __dt_result]; set __dt_restore [catch {{targets $__dt_old; if {{[target current] ne $__dt_old}} {{error \"Target restore readback mismatch\"}}}} __dt_restore_error]; if {{$__dt_restore}} {{error \"Target restoration failed: $__dt_restore_error\"}}; if {{$__dt_rc}} {{error $__dt_result}}; set __dt_result"
         );
         let mut stream = crate::live_watch::connect(&endpoint)
             .map_err(|error| (Reason::TransportError, error))?;
@@ -411,6 +411,7 @@ impl Engine {
             Ok(value) => Ok(value),
             Err(error) => {
                 if error.contains("Target restoration failed")
+                    || error.contains("Selector restoration failed")
                     || !error.starts_with("TCL command failed")
                 {
                     self.register_access_fault = Some(error.clone());

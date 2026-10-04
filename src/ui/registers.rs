@@ -10,6 +10,7 @@ pub(super) const ACTIONS: &[(&str, &str)] = &[
     ("Group", "register-filter"),
     ("Target / All", "register-definitions"),
     ("Probe caps", "register-probe"),
+    ("Read bank", "register-bank-read"),
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,6 +31,7 @@ pub(super) struct RegisterView {
     previous: BTreeMap<(String, String), Sample>,
     attempts: BTreeSet<(u64, u64, String, u32, String)>,
     pending: Option<(u64, Context)>,
+    bank_pending: Option<[String; 2]>,
     probe_pending: Option<(u64, Context)>,
     query: String,
     search_original: String,
@@ -116,6 +118,7 @@ impl RegisterView {
             previous: BTreeMap::new(),
             attempts: BTreeSet::new(),
             pending: None,
+            bank_pending: None,
             probe_pending: None,
             query: String::new(),
             search_original: String::new(),
@@ -252,6 +255,55 @@ impl RegisterView {
 }
 
 impl App {
+    pub(super) fn read_register_bank(&mut self, engine: Option<&EngineHandle>) {
+        if self.demo
+            || engine.is_none()
+            || self.snapshot.state != "STOPPED"
+            || self.register_view.pending.is_some()
+            || self.register_view.probe_pending.is_some()
+        {
+            return;
+        }
+        let Some(index) = self.register_view.register_index(self.selected(3)) else {
+            return;
+        };
+        let id = &self.register_view.catalogue.as_ref().unwrap().registers[index].id;
+        let Some((kind, index)) = crate::registers::selector::register_selection(id) else {
+            self.notice =
+                "Select an indexed MPU region or PMU event counter to read its bank.".into();
+            return;
+        };
+        let context = self.register_context();
+        if context.frame != 0
+            || self
+                .snapshot
+                .register_probe
+                .as_ref()
+                .is_none_or(|p| p.context != context)
+        {
+            self.notice =
+                "Probe this physical core at frame 0 before reading a selector bank.".into();
+            return;
+        }
+        if self.project.registers.selector_command.is_empty() {
+            self.notice =
+                "A verified selector MCR command must be declared; direct Read remains available."
+                    .into();
+            return;
+        }
+        let request_id = self.next_id;
+        self.register_view.pending = Some((request_id, context.clone()));
+        self.register_view.bank_pending = Some(kind.ids(index));
+        self.submit(
+            engine,
+            "registers_select",
+            json!({"context":context,"kind":kind,"index":index}),
+        );
+        if !self.pending_commands.contains(&request_id) {
+            self.register_view.pending = None;
+            self.register_view.bank_pending = None;
+        }
+    }
     pub(super) fn sync_register_capabilities(&mut self) {
         let facts = self
             .snapshot
@@ -597,12 +649,52 @@ impl App {
             return false;
         }
         self.register_view.pending = None;
+        let bank = self.register_view.bank_pending.take();
         self.pending_commands.remove(&id);
         self.fx.response(id, error.is_none());
         if context != self.register_context() {
             return true;
         }
         if let Some(error) = error {
+            if let Some(ids) = bank {
+                for id in ids {
+                    let key = (format!("core:{}", context.core), id.clone());
+                    let previous = self.register_view.values.get(&key).cloned();
+                    let mut sample = previous.clone().unwrap_or_else(|| Sample {
+                        id: id.clone(),
+                        state: State::Unavailable,
+                        implementation: Implementation::Unknown,
+                        reason: crate::registers::Reason::Unknown,
+                        detail: String::new(),
+                        value: None,
+                        owner: Some(key.0.clone()),
+                        context: context.clone(),
+                        timestamp_ms: 0,
+                        source: "selector".into(),
+                    });
+                    sample.state = State::Unavailable;
+                    sample.context = context.clone();
+                    sample.reason = if error.contains("synchronization unsupported") {
+                        crate::registers::Reason::ReaderUnsupported
+                    } else {
+                        crate::registers::Reason::Unknown
+                    };
+                    sample.detail = match previous {
+                        Some(old) if old.value.is_some() => {
+                            format!("{error}; last sample at {} ms", old.timestamp_ms)
+                        }
+                        _ => error.into(),
+                    };
+                    self.register_view.values.insert(key, sample);
+                    self.register_view.attempts.insert((
+                        context.session,
+                        context.generation,
+                        context.core.clone(),
+                        context.frame,
+                        id,
+                    ));
+                }
+            }
             self.notice = format!("Register read: {error}");
             return true;
         }
@@ -987,6 +1079,82 @@ mod tests {
         app.probe_registers(Some(&engine));
         assert!(requests.try_recv().is_err());
         assert!(app.notice.contains("frame 0"));
+    }
+    #[test]
+    fn selector_action_is_single_flight_and_failure_marks_only_its_pair_unavailable() {
+        let mut app = app();
+        let (engine, requests) = engine();
+        app.register_view.open.insert("system".into());
+        app.register_view.open.insert("mpu_el1".into());
+        app.register_view.rebuild();
+        app.selection = app.register_view.rows.iter().position(|row| matches!(row,
+            Row::Register(i, _) if app.register_view.catalogue.as_ref().unwrap().registers[*i].id == "prbar23")).unwrap();
+        app.command(Some(&engine), ":register-bank-read");
+        assert!(requests.try_recv().is_err());
+        assert!(app.notice.contains("Probe"));
+        app.snapshot.register_probe = Some(crate::registers::capabilities::Probe {
+            context: app.register_context(),
+            thread: "1".into(),
+            identity: None,
+            facts: BTreeMap::new(),
+            samples: vec![],
+            gdb_names: vec![],
+            notes: vec![],
+        });
+        app.command(Some(&engine), ":register-bank-read");
+        assert!(requests.try_recv().is_err());
+        assert!(app.notice.contains("MCR"));
+        app.project.registers.selector_command = "arm mcr".into();
+        for id in ["r0", "prbar23", "prlar23"] {
+            app.register_view.values.insert(
+                ("core:default".into(), id.into()),
+                sample(&app, id, "0x1234"),
+            );
+        }
+        app.command(Some(&engine), ":register-bank-read");
+        let request = requests.try_recv().unwrap();
+        assert_eq!(request.method, "registers_select");
+        assert_eq!(request.params["kind"], "mpu_el1");
+        assert_eq!(request.params["index"], 23);
+        app.command(Some(&engine), ":register-bank-read");
+        assert!(requests.try_recv().is_err());
+        app.register_response(
+            request.id,
+            &json!({}),
+            Some("data failed; selector restored"),
+        );
+        for id in ["prbar23", "prlar23"] {
+            let value = &app.register_view.values[&("core:default".into(), id.into())];
+            assert_eq!(value.state, State::Unavailable);
+            assert_eq!(value.value.as_ref().unwrap().hex, "0x00001234");
+            assert!(value.detail.contains("last sample at 23 ms"));
+        }
+        assert_eq!(
+            app.register_view.values[&("core:default".into(), "r0".into())].state,
+            State::Valid
+        );
+        assert!(app.register_view.bank_pending.is_none());
+        assert!(app.pending_commands.is_empty());
+        assert!(requests.try_recv().is_err());
+    }
+    #[test]
+    fn a_late_selector_failure_cannot_damage_another_physical_stop() {
+        let mut app = app();
+        let original = sample(&app, "prbar1", "0x42");
+        let key = ("core:default".into(), "prbar1".into());
+        app.register_view
+            .values
+            .insert(key.clone(), original.clone());
+        app.register_view.pending = Some((44, app.register_context()));
+        app.register_view.bank_pending = Some(crate::registers::selector::Kind::MpuEl1.ids(1));
+        app.pending_commands.insert(44);
+        app.snapshot.generation += 1;
+        app.register_response(44, &json!({}), Some("previous stop error"));
+        let stored = &app.register_view.values[&key];
+        assert_eq!(stored.state, original.state);
+        assert_eq!(stored.context, original.context);
+        assert!(app.register_view.bank_pending.is_none());
+        assert!(app.pending_commands.is_empty());
     }
     #[test]
     fn late_capability_probe_response_cannot_change_another_stop_frame_or_session() {

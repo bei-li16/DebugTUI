@@ -710,6 +710,29 @@ Log 保留逐项原始值、读取来源、错误和能力解码依据。EL1 MPU
 
 Headless 先调用 `registers_list` 获取 `context`，再用 `registers_probe` 传入相同的 `context`。响应含 `probe.samples`、带寄存器及通道来源的 `probe.facts`、实际 MIDR 解码、GDB 可见名称、说明及有效 worker 的工具路径声明。路径声明不等于真实服务器版本／哈希证明。多核 Snapshot 的 `register_generation` 用于寄存器上下文，`generation` 仍表示协调器刷新版本。
 
+### 读取 MPU／PMU 选择器组（开发分支）
+
+普通 **Read** 继续使用 PRBARn／PRLARn、PMEVCNTRn／PMEVTYPERn 的直接索引通道。需要选择器通道时，在暂停物理核心的 frame 0 先 **Probe caps**，选中对应区域／事件计数器，再点击 **Read bank** 或执行 `:register-bank-read`。Scope All 仍只操作当前核心。区域索引必须小于实际 MPUIR／HMPUIR 数量；当前适配 R52 的 16／20／24 区域和最多 4 个 32 位 PMU 事件计数器，EL2 要求 Hyp。选择 PMU index 31 读取计数器不受支持，但保存的 PMSELR=31 可以原样恢复。
+
+工程需显式配置经过实际 OpenOCD 构建核对的命令对，例如：
+
+```toml
+[registers]
+cpu = "cortex-r52"
+tcl_endpoint = "127.0.0.1:6666"
+cp15_command = "arm mrc"
+selector_command = "arm mcr"
+[registers.targets]
+core0 = "core.0"
+core1 = "core.1"
+```
+
+`selector_command` 默认空，`arm`／`aarch64` 命令对不能混用；target 必须是实际物理核心名称。官方 [OpenOCD 命令文档](https://openocd.org/doc/html/Architecture-and-Core-Commands.html) 定义 `arm mcr` 的值为最后一个参数，命令存在本身不证明当前后端已支持 R52。不要直接把示例中的 endpoint／target 当作板级映射。
+
+一个 TCL 请求内保存 target 和原选择器，核对实际 MIDR／数量及暂停状态，选择索引、同步、读取成对值，再恢复并回读原选择器及 target。同步只使用 R52 实现的旧 CP15ISB，并要求预先观测到当前 SCTLR／HSCTLR.CP15BEN 已设置；未设置时在首次 MCR 前拒绝，程序不会打开该位。该状态下仍可尝试普通直接 **Read**；完整支持需要后端提供经过验证的 ISB 路径。读取不修改区域配置、事件类型或计数值，也不使能／清空 PMU。
+
+Headless 使用 `registers_select`，参数为当前 `context`、`kind`（`mpu_el1`／`mpu_el2`／`pmu`）及 `index`。响应保留 saved／restored、同步说明、成对原始样本、实际 target；MPU 另返回基址、包含末地址的限址、使能、AP／XN／SH 和 AttrIndex。AttrIndex 尚未结合 MAIR 解码完整内存类型，SH 的含义注明 Normal memory。普通错误只使本次成对值不可用，旧值保留时间说明；身份／数量变化废弃能力缓存。选择器／target 恢复失败或结果未知使共享通道进入 FAULT，显式重连前不继续访问。该路径经过实际 Tcl 软件夹具验证，尚未上板。
+
 ### 编辑 Core 寄存器（开发分支）
 
 开发分支新增的 Core 寄存器编辑尚未进入 v0.9.3 release。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。

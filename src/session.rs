@@ -23,6 +23,7 @@ mod capabilities;
 mod memory;
 mod memory_writes;
 mod registers;
+mod selectors;
 mod symbols;
 mod variable_writes;
 mod watch;
@@ -1578,6 +1579,7 @@ impl Engine {
             "status" => Ok(serde_json::to_value(&self.snapshot).unwrap()),
             "registers_list" => self.registers_list(),
             "registers_probe" => self.probe_register_capabilities(p),
+            "registers_select" => self.read_selected_registers(p),
             "registers_read" => self.read_registers(p),
             "memory_channels" => self.memory_channels(),
             "complete" => {

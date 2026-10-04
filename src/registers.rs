@@ -9,6 +9,7 @@ use std::{
 
 pub const MAX_CATALOGUE_BYTES: u64 = 4 * 1024 * 1024;
 pub mod capabilities;
+pub mod selector;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -23,6 +24,8 @@ pub struct Config {
     pub targets: BTreeMap<String, String>,
     /// Explicit backend command, verified for the configured OpenOCD build.
     pub cp15_command: String,
+    /// Opt-in MCR used only for adapted, saved/restored selector transactions.
+    pub selector_command: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -69,6 +72,17 @@ impl Config {
     pub fn validate(&self) -> Result<(), String> {
         if !matches!(self.cp15_command.as_str(), "" | "arm mrc" | "aarch64 mrc") {
             return Err("registers.cp15_command must be arm mrc or aarch64 mrc".into());
+        }
+        if !self.selector_command.is_empty()
+            && !matches!(
+                (self.cp15_command.as_str(), self.selector_command.as_str()),
+                ("arm mrc", "arm mcr") | ("aarch64 mrc", "aarch64 mcr")
+            )
+        {
+            return Err(
+                "registers.selector_command must explicitly match the verified MRC command family"
+                    .into(),
+            );
         }
         if self.tcl_endpoint.chars().any(char::is_control)
             || self.targets.iter().any(|(core, target)| {

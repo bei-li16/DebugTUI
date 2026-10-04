@@ -3956,6 +3956,110 @@ access_condition = "Halted physical core; access depends on current EL, traps an
 fact = "icc.physical.prebits"
 min = 7
 
+[[registers]]
+id = "pmevcntr0"
+name = "PMEVCNTR0"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "PMEVCNTR0 in the pmu register group."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 8, op2 = 0 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "pmu.counters"
+min = 1
+
+[[registers]]
+id = "pmevtyper0"
+name = "PMEVTYPER0"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "PMEVTYPER0 in the pmu register group."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 12, op2 = 0 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "pmu.counters"
+min = 1
+
+[[registers]]
+id = "pmevcntr1"
+name = "PMEVCNTR1"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "PMEVCNTR1 in the pmu register group."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 8, op2 = 1 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "pmu.counters"
+min = 2
+
+[[registers]]
+id = "pmevtyper1"
+name = "PMEVTYPER1"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "PMEVTYPER1 in the pmu register group."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 12, op2 = 1 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "pmu.counters"
+min = 2
+
+[[registers]]
+id = "pmevcntr2"
+name = "PMEVCNTR2"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "PMEVCNTR2 in the pmu register group."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 8, op2 = 2 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "pmu.counters"
+min = 3
+
+[[registers]]
+id = "pmevtyper2"
+name = "PMEVTYPER2"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "PMEVTYPER2 in the pmu register group."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 12, op2 = 2 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "pmu.counters"
+min = 3
+
+[[registers]]
+id = "pmevcntr3"
+name = "PMEVCNTR3"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "PMEVCNTR3 in the pmu register group."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 8, op2 = 3 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "pmu.counters"
+min = 4
+
+[[registers]]
+id = "pmevtyper3"
+name = "PMEVTYPER3"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "PMEVTYPER3 in the pmu register group."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 12, op2 = 3 }
+access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+[[registers.conditions]]
+fact = "pmu.counters"
+min = 4
+
 [[groups]]
 id = "vfp"
 name = "Floating point"
