@@ -1773,6 +1773,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     }
     formats::popup(f, a);
     registers::draw_mpu(f, a);
+    registers::draw_status(f, a);
     monitor::draw(f, a);
     memory::draw(f, a);
     writes::draw(f, a);

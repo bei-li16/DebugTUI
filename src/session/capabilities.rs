@@ -36,6 +36,7 @@ impl Engine {
             .iter()
             .map(|s| s.acquire(false))
             .collect::<Result<Vec<_>, _>>()?;
+        self.check_register_read_cancelled()?;
         let thread = self.write_thread()?;
         let frame = self.mi("-stack-info-frame")?;
         if frame
@@ -45,16 +46,15 @@ impl Engine {
         {
             return Err("GDB selected frame is not physical frame 0".into());
         }
-        self.snapshot.register_probe = None;
+        // Replace current evidence only on a complete probe. Physical faults
+        // and context changes still invalidate it through their normal guards.
         let mut probe=Probe {context:context.clone(),thread,identity:None,facts:BTreeMap::new(),samples:vec![],gdb_names:vec![],notes:vec![
             "GDB names prove visibility only; unspecified widths and unprobed classes remain unknown".into(),
             "FPU presence, FPEXC.EN, banked-register and genuine MRRC capabilities are not inferred from CPACR or a read failure".into(),
             "Identity/MPU/GIC/VFP decoding uses Cortex-R52 TRM 100026_0104_01_en §§4.3, 10.3, 16.5–16.6 and DDI 0568 D1.3; target responses retained separately".into()]};
         let mut values = BTreeMap::new();
         for &id in PROBE_IDS {
-            if self.cancellation.load(Ordering::Relaxed) {
-                return Err("Capability probe cancelled".into());
-            }
+            self.check_register_read_cancelled()?;
             let register = catalogue
                 .register(id)
                 .ok_or_else(|| format!("Built-in probe register missing: {id}"))?;
@@ -153,6 +153,7 @@ impl Engine {
             probe.samples.push(sample);
             probe.decode();
             if self.register_context() != context || self.snapshot.state != "STOPPED" {
+                self.snapshot.register_probe = None;
                 return Err("Context changed; discarded capability probe".into());
             }
             if self.register_access_fault.is_some() {
@@ -190,8 +191,10 @@ impl Engine {
             || self.register_context() != context
             || self.snapshot.state != "STOPPED"
         {
+            self.snapshot.register_probe = None;
             return Err("Physical GDB thread/frame changed; discarded capability probe".into());
         }
+        self.check_register_read_cancelled()?;
         self.store_register_samples(&probe.samples, &catalogue);
         self.snapshot.register_probe = Some(probe.clone());
         for line in probe.report_lines() {

@@ -124,10 +124,14 @@ impl App {
                 popup.scroll = 0;
                 popup.error = None;
                 popup.pending = None;
+                self.cancel_register_read();
             }
             1 => self.probe_registers(engine),
             2 => self.request_mpu_regions(engine),
-            _ => self.register_view.mpu_popup = None,
+            _ => {
+                self.cancel_register_read();
+                self.register_view.mpu_popup = None;
+            }
         }
     }
     pub(in crate::ui) fn mpu_key(&mut self, key: KeyEvent, engine: Option<&EngineHandle>) -> bool {
@@ -135,7 +139,10 @@ impl App {
             return false;
         };
         match key.code {
-            KeyCode::Esc => self.register_view.mpu_popup = None,
+            KeyCode::Esc => {
+                self.cancel_register_read();
+                self.register_view.mpu_popup = None;
+            }
             KeyCode::Tab | KeyCode::Right => popup.button = (popup.button + 1) % 4,
             KeyCode::BackTab | KeyCode::Left => popup.button = (popup.button + 3) % 4,
             KeyCode::Up => popup.scroll = popup.scroll.saturating_sub(1),
@@ -269,7 +276,7 @@ fn content(view: &View) -> Vec<String> {
     lines.extend(view.notes.iter().cloned());
     lines
 }
-fn wrap(lines: Vec<String>, width: usize) -> Vec<Line<'static>> {
+pub(super) fn wrap(lines: Vec<String>, width: usize) -> Vec<Line<'static>> {
     use unicode_width::UnicodeWidthChar;
     let mut result = vec![];
     for line in lines {

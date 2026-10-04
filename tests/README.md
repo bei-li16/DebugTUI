@@ -4,6 +4,8 @@
 
 ## 统一运行
 
+寄存器状态分类与取消的软件证据包含 `src/ui/registers/status/tests.rs`、`tests/register_cancel.rs`、`tests/selector_access/cancel_cases.rs`。后两者使用实际 worker／MI 管道及真实 Tcl 控制流，覆盖最后一项丢弃、已知恢复／未知结果、MPU／VFP 和 Scope All；不连接板卡。人工环境 case 见 [状态与取消](cases/register-status-cancel.md)，全部未执行。
+
 寄存器显示／偏好回归包含 Rust 纯值与 Ratatui 测试，以及 `tests/register_display.rs` 调用的 `scripts/test-register-display.cjs`。后者启动两个实际 DebugTUI 进程，并发合并不同核心的配置，检查旧全局设置不会覆盖新视图、无效请求不写文件和无调试器访问；不需要 Python 或板卡。可单独运行 `node scripts/test-register-display.cjs --binary target/debug/debugtui.exe`。
 
 Windows 完整验收需要 Rust 工具链、Node.js、npm、PowerShell 7 (`pwsh` 在 PATH)、本机 GCC 和 GDB。终端用例需要支持 ConPTY 的 Windows 10 1809 或更新版本。测试不依赖额外 Node 包。

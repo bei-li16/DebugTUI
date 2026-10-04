@@ -74,7 +74,7 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 50] = [
+const COMMANDS: [&str; 52] = [
     "edit-value",
     "cores",
     "core NAME_OR_INDEX",
@@ -119,6 +119,8 @@ const COMMANDS: [&str; 50] = [
     "elf PATH",
     "refresh",
     "register-probe",
+    "register-cancel",
+    "register-status",
     "register-bank-read",
     "mpu",
     "peripheral-refresh",
@@ -694,6 +696,9 @@ impl App {
             return;
         }
         let request = Request::new(self.next_id, method, params);
+        if request.is_register_read() {
+            self.register_view.read_request = Some(request.clone());
+        }
         self.next_id += 1;
         if method == "download" {
             self.confirm = Some(request);
@@ -764,6 +769,8 @@ impl App {
             "register-filter" => self.filter_registers(engine),
             "register-definitions" => self.toggle_register_definitions(engine),
             "register-probe" => self.probe_registers(engine),
+            "register-cancel" => { self.cancel_register_read(); }
+            "register-status" => self.open_register_status(),
             "register-bank-read" => self.read_register_bank(engine),
             "mpu" => self.open_mpu_view(arg),
             "scope" => self.submit(engine, "control_scope", json!({"scope":arg})),
@@ -961,7 +968,8 @@ impl App {
             }
             return false;
         }
-        if self.mpu_key(key, engine)
+        if self.register_status_key(key)
+            || self.mpu_key(key, engine)
             || self.write_key(key, engine)
             || self.memory_key_event(key, engine)
             || self.monitor_key_event(key, engine)
@@ -1396,6 +1404,8 @@ impl App {
             "register-probe" | "register-bank-read" => {
                 self.register_view.enabled() && self.snapshot.state == "STOPPED"
             }
+            "register-cancel" => self.register_read_pending(),
+            "register-status" => self.register_view.enabled(),
             "register-search" | "register-filter" | "register-definitions" => {
                 self.register_view.enabled()
             }
@@ -1509,7 +1519,8 @@ impl App {
             return;
         }
         let point = (mouse.column, mouse.row).into();
-        if self.mpu_mouse(mouse, engine)
+        if self.register_status_mouse(mouse)
+            || self.mpu_mouse(mouse, engine)
             || self.write_mouse(mouse, engine)
             || self.memory_mouse(mouse, engine)
             || self.monitor_mouse(mouse, engine)

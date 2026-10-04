@@ -95,6 +95,7 @@ impl Engine {
             .map(|s| s.acquire(false))
             .collect::<Result<Vec<_>, _>>()?;
         let result = (|| -> Result<Json, String> {
+            self.check_register_read_cancelled()?;
             let thread = self.mpu_physical_context()?;
             if thread != probe.thread {
                 return Err("Actual physical GDB thread changed since capability probe".into());
@@ -130,9 +131,7 @@ impl Engine {
             }
             let mut samples = vec![];
             for id in &ids {
-                if self.cancellation.load(Ordering::Relaxed) {
-                    return Err("MPU read cancelled".into());
-                }
+                self.check_register_read_cancelled()?;
                 if self.register_context() != request.context || self.snapshot.state != "STOPPED" {
                     return Err("Physical MPU context changed; samples discarded".into());
                 }
@@ -190,6 +189,7 @@ impl Engine {
             }
             let view =
                 View::from_samples(request.bank, u64::from(count), &request.context, &samples)?;
+            self.check_register_read_cancelled()?;
             self.store_register_samples(&samples, &catalogue);
             self.log(
                 "mpu",
@@ -203,7 +203,11 @@ impl Engine {
                 json!({"context":request.context,"view":view,"samples":samples,"read":true,"source":"current physical core, direct indexed MPU reads; selectors unchanged; sequential sample"}),
             )
         })();
-        if result.is_err() {
+        let cancelled = result
+            .as_ref()
+            .err()
+            .is_some_and(|e| e.starts_with("Register read cancelled;"));
+        if result.is_err() && !cancelled {
             self.snapshot.register_probe = None;
             for sample in &mut self.snapshot.register_samples {
                 sample.stale();

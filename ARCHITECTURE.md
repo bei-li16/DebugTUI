@@ -2,6 +2,8 @@
 
 ## 寄存器与内存访问开发分支（尚未发布）
 
+`ui/registers/status.rs` shares row classification with expanded-row counts, excludes fields and groups, and requires current stopped context/owner for Valid. Its scrollable popup keeps complete selected-object reasons, raw provenance and sample time accessible. A local skipped-serde `Request` cancellation token passes through the coordinator only for register reads. Workers check between complete operations and before publication; MI/Tcl restoration is never interrupted by this token. Cancelled batches preserve old samples and cannot mask unknown restoration or broadcast to peer cores. See [status and cancellation](docs/register-read-status-and-cancel.md).
+
 `registers.rs` 定义版本化目录、读取路由、位域、精确原始值、实现条件及显式 core/cluster/chip 归属；`session/registers.rs` 按请求读取，错误按条目隔离。`ui/registers.rs` 展示分组树并只请求当前可见条目。旧 `Snapshot.registers` 保留，新增样本包含来源、原因、状态和上下文；目录或读取失败不证明硬件缺失。
 
 `launch/channels.rs` 编辑项目的 `memory_access` 草稿，不改写继承的工具 profile。配置加载记录实际来源。`ui/monitor.rs` 的 Watch／外设策略按芯片、核心和条目保存，绑定及迟到响应检查会话、停止代次和栈帧；Watch 地址仍由 GDB 在暂停时解析。

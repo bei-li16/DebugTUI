@@ -21,6 +21,8 @@ use std::{
 static NEXT: AtomicU64 = AtomicU64::new(1);
 #[path = "selector_access/banked_cases.rs"]
 mod banked_cases;
+#[path = "selector_access/cancel_cases.rs"]
+mod cancel_cases;
 #[path = "selector_access/mpu_cases.rs"]
 mod mpu_cases;
 #[path = "selector_access/mrrc_cases.rs"]
@@ -31,6 +33,7 @@ struct Fixture {
     project: Project,
     transcript: PathBuf,
     state: Arc<Mutex<Value>>,
+    cancel_on_transaction: Arc<Mutex<Option<Request>>>,
     stop: Arc<AtomicBool>,
     worker: Option<std::thread::JoinHandle<()>>,
 }
@@ -59,6 +62,8 @@ fn fixture(fault: &'static str) -> Fixture {
     listener.set_nonblocking(true).unwrap();
     let state = Arc::new(Mutex::new(json!({})));
     let captured = state.clone();
+    let cancel_on_transaction = Arc::new(Mutex::new(None::<Request>));
+    let cancelling = cancel_on_transaction.clone();
     let stop = Arc::new(AtomicBool::new(false));
     let stopping = stop.clone();
     // Start one interpreter before clients connect. Importing tkinter per MRC
@@ -122,6 +127,24 @@ fn fixture(fault: &'static str) -> Fixture {
                 .and_then(Value::as_str)
                 .unwrap_or(fault);
             let input = json!({"script":script,"state":current,"fault":active_fault});
+            // Cancellation arrives after the worker submitted its atomic Tcl
+            // request. Execute the entire real Tcl flow, including restoration.
+            {
+                let mut pending = cancelling.lock().unwrap();
+                if pending
+                    .as_ref()
+                    .is_some_and(|request| match request.method.as_str() {
+                        "registers_select" => script.contains("arm mcr"),
+                        "registers_mpu" => script.contains("arm mrc"),
+                        "registers_read" => {
+                            script.contains("aarch64 vfp") || script.contains("aarch64 banked")
+                        }
+                        _ => false,
+                    })
+                {
+                    pending.take().unwrap().cancel_read();
+                }
+            }
             writeln!(tcl_input, "{input}").unwrap();
             tcl_input.flush().unwrap();
             let mut response = String::new();
@@ -179,6 +202,7 @@ fn fixture(fault: &'static str) -> Fixture {
         project,
         transcript,
         state,
+        cancel_on_transaction,
         stop,
         worker: Some(worker),
     }

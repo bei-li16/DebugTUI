@@ -22,6 +22,8 @@ impl Engine {
             .map(|service| service.acquire(false))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| (Reason::TransportError, error))?;
+        self.check_register_read_cancelled()
+            .map_err(|error| (Reason::Unknown, error))?;
         let thread = self
             .write_thread()
             .map_err(|error| (Reason::AccessRestricted, error))?;

@@ -61,6 +61,7 @@ impl Engine {
             .iter()
             .map(|s| s.acquire(false))
             .collect::<Result<Vec<_>, _>>()?;
+        self.check_register_read_cancelled()?;
         let thread = self.write_thread()?;
         let frame = self.mi("-stack-info-frame")?;
         if thread != probe.thread
@@ -96,6 +97,7 @@ impl Engine {
                 {
                     self.snapshot.register_probe = None;
                 }
+                self.check_register_read_cancelled()?;
                 let reason = if error.contains("selector synchronization unsupported")
                     || error.contains("adapter protocol unsupported")
                 {
@@ -159,6 +161,7 @@ impl Engine {
             evidence.synchronization =
                 "Genuine ISB via debugtui-armv8-1; selector restore readback verified".into();
         }
+        self.check_register_read_cancelled()?;
         let final_thread = self.write_thread()?;
         let final_frame = self.mi("-stack-info-frame")?;
         if final_thread != thread
@@ -207,6 +210,7 @@ impl Engine {
                 source: format!("openocd:selector:{target}:{}:{}", plan.selector, plan.index),
             })
             .collect();
+        self.check_register_read_cancelled()?;
         self.store_register_samples(&samples, &Catalogue::builtin("cortex-r52")?);
         self.log(
             "selector",

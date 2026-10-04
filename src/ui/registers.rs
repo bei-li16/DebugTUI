@@ -3,11 +3,15 @@ use super::*;
 use crate::registers::{Catalogue, Context, Implementation, Sample, State};
 use std::collections::{BTreeMap, BTreeSet};
 mod mpu;
+mod status;
 pub(super) use mpu::draw as draw_mpu;
+pub(super) use status::draw as draw_status;
 
 pub(super) const ACTIONS: &[(&str, &str)] = &[
     ("Edit value", "edit-value"),
     ("↻ Read", "register-refresh"),
+    ("Cancel read", "register-cancel"),
+    ("Status", "register-status"),
     ("Find", "register-search"),
     ("Group", "register-filter"),
     ("Target / All", "register-definitions"),
@@ -36,12 +40,15 @@ pub(super) struct RegisterView {
     pending: Option<(u64, Context)>,
     bank_pending: Option<[String; 2]>,
     probe_pending: Option<(u64, Context)>,
+    pub(super) read_request: Option<Request>,
+    status_popup: Option<status::Popup>,
     query: String,
     search_original: String,
     pub(super) searching: bool,
     filter: usize,
     all_definitions: bool,
     facts: BTreeMap<String, u64>,
+    runtime_absent: BTreeSet<String>,
     pub(super) preference_scope: String,
     display_formats: BTreeMap<String, crate::registers::display::Format>,
     mpu_popup: Option<mpu::Popup>,
@@ -126,12 +133,15 @@ impl RegisterView {
             pending: None,
             bank_pending: None,
             probe_pending: None,
+            read_request: None,
+            status_popup: None,
             query: String::new(),
             search_original: String::new(),
             searching: false,
             filter: 0,
             all_definitions: false,
             facts: project.registers.facts.clone(),
+            runtime_absent: BTreeSet::new(),
             preference_scope: String::new(),
             display_formats: BTreeMap::new(),
             mpu_popup: None,
@@ -144,7 +154,9 @@ impl RegisterView {
     }
     fn matches(&self, index: usize) -> bool {
         let register = &self.catalogue.as_ref().unwrap().registers[index];
-        (self.all_definitions || register.implementation(&self.facts).0 != Implementation::No)
+        (self.all_definitions
+            || (register.implementation(&self.facts).0 != Implementation::No
+                && !self.runtime_absent.contains(&register.id)))
             && (self.query.is_empty()
                 || format!("{} {} {}", register.name, register.description, register.id)
                     .to_lowercase()
@@ -269,6 +281,104 @@ impl RegisterView {
 }
 
 impl App {
+    fn sync_register_absence(&mut self) {
+        let context = self.register_context();
+        let absent = self
+            .register_view
+            .catalogue
+            .as_ref()
+            .map(|c| {
+                c.registers
+                    .iter()
+                    .enumerate()
+                    .filter(|(index, _)| {
+                        self.register_view
+                            .sample(&self.project, &context, *index)
+                            .is_some_and(|s| {
+                                self.snapshot.state == "STOPPED"
+                                    && s.applies(
+                                        &context,
+                                        self.register_view
+                                            .owner(&self.project, &context, *index)
+                                            .as_deref(),
+                                    )
+                                    && (s.implementation == Implementation::No
+                                        || s.reason
+                                            == crate::registers::Reason::HardwareNotImplemented)
+                            })
+                    })
+                    .map(|(_, r)| r.id.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        if self.register_view.runtime_absent != absent {
+            self.register_view.runtime_absent = absent;
+            self.register_view.rebuild();
+            self.selections[3] = self
+                .selected(3)
+                .min(self.register_view.rows.len().saturating_sub(1));
+            if self.pane == 3 {
+                self.selection = self.selections[3];
+            }
+        }
+    }
+    pub(super) fn register_read_pending(&self) -> bool {
+        self.register_view.pending.is_some() || self.register_view.probe_pending.is_some()
+    }
+    pub(super) fn cancel_register_read(&mut self) -> bool {
+        if !self.register_read_pending() {
+            return false;
+        }
+        if let Some(request) = &self.register_view.read_request {
+            request.cancel_read();
+            if let Some((_, context)) = self
+                .register_view
+                .pending
+                .as_ref()
+                .or(self.register_view.probe_pending.as_ref())
+            {
+                let ids: Vec<String> = if request.method == "registers_probe" {
+                    crate::registers::capabilities::PROBE_IDS
+                        .iter()
+                        .map(|id| (*id).into())
+                        .collect()
+                } else if let Some(ids) = &self.register_view.bank_pending {
+                    ids.to_vec()
+                } else {
+                    vec![]
+                };
+                for id in ids {
+                    self.register_view.attempts.insert((
+                        context.session,
+                        context.generation,
+                        context.core.clone(),
+                        context.frame,
+                        id,
+                    ));
+                }
+            }
+            self.notice =
+                "Cancelling register read; waiting for the current transaction to finish.".into();
+        }
+        true
+    }
+    fn finish_register_read(&mut self, id: u64) -> bool {
+        if self
+            .register_view
+            .read_request
+            .as_ref()
+            .is_some_and(|r| r.id == id)
+        {
+            return self
+                .register_view
+                .read_request
+                .take()
+                .unwrap()
+                .read_cancel
+                .load(std::sync::atomic::Ordering::Relaxed);
+        }
+        false
+    }
     pub(super) fn sync_register_preferences(&mut self) {
         let Some(catalogue) = &self.register_view.catalogue else {
             return;
@@ -610,8 +720,15 @@ impl App {
             return false;
         }
         self.register_view.probe_pending = None;
+        let cancelled = self.finish_register_read(id);
         self.pending_commands.remove(&id);
-        self.fx.response(id, error.is_none());
+        self.fx.response(id, error.is_none() && !cancelled);
+        if cancelled {
+            self.notice = error
+                .unwrap_or("Register read cancelled; late results discarded.")
+                .into();
+            return true;
+        }
         if context != self.register_context() || self.snapshot.state != "STOPPED" {
             return true;
         }
@@ -724,6 +841,7 @@ impl App {
         }
         let mut changed = false;
         match key.code {
+            KeyCode::Esc if self.cancel_register_read() => {}
             KeyCode::Enter | KeyCode::Char(' ') => {
                 changed = self.register_view.toggle(self.selected(3), None);
             }
@@ -735,6 +853,7 @@ impl App {
             KeyCode::Char('s') => self.start_register_search(),
             KeyCode::Char('v') => self.filter_registers(engine),
             KeyCode::Char('a') => self.toggle_register_definitions(engine),
+            KeyCode::Char('t') => self.open_register_status(),
             _ => return false,
         }
         self.selection = self
@@ -824,8 +943,10 @@ impl App {
         self.request_registers(engine, vec![id], true)
     }
     pub(super) fn ensure_registers(&mut self, engine: Option<&EngineHandle>) -> bool {
+        self.sync_register_absence();
         if self.side_pane != 3
             || self.register_view.mpu_popup.is_some()
+            || self.register_view.status_popup.is_some()
             || !self.register_view.enabled()
             || self.register_view.pending.is_some()
             || self.register_view.probe_pending.is_some()
@@ -845,6 +966,7 @@ impl App {
             let register = &catalogue.registers[index];
             let implementation = register.implementation(&self.register_view.facts).0;
             if register.auto_read(implementation)
+                && !self.register_view.runtime_absent.contains(&register.id)
                 && (register.conditions.is_empty() || implementation == Implementation::Yes)
                 && !self.register_view.attempts.contains(&(
                     context.session,
@@ -872,10 +994,24 @@ impl App {
             return false;
         }
         self.register_view.pending = None;
+        let cancelled = self.finish_register_read(id);
         let bank = self.register_view.bank_pending.take();
-        self.mpu_read_response(id, error);
+        self.mpu_read_response(
+            id,
+            if cancelled {
+                error.or(Some("Register read cancelled; new results discarded."))
+            } else {
+                error
+            },
+        );
         self.pending_commands.remove(&id);
-        self.fx.response(id, error.is_none());
+        self.fx.response(id, error.is_none() && !cancelled);
+        if cancelled {
+            self.notice = error
+                .unwrap_or("Register read cancelled; late results discarded.")
+                .into();
+            return true;
+        }
         if context != self.register_context() {
             return true;
         }
@@ -1018,6 +1154,7 @@ impl App {
     }
     pub(super) fn draw_registers(&mut self, f: &mut UiFrame, rect: Rect) {
         self.sync_register_preferences();
+        self.sync_register_absence();
         if let Some(error) = &self.register_view.error {
             theme::empty(f, rect, "Register catalogue error", error);
             return;
@@ -1044,8 +1181,23 @@ impl App {
             Rect::new(rect.x, rect.y, rect.width, 1),
         );
         let details_height = if rect.height >= 7 { 2 } else { 0 };
-        let height = rect.height.saturating_sub(1 + details_height);
-        self.view_rects[3] = Rect::new(rect.x, rect.y + 1, rect.width, height);
+        let summary_height = u16::from(rect.height >= 4);
+        if summary_height > 0 {
+            let counts = self.register_view.counts(
+                &self.project,
+                &context,
+                self.snapshot.state == "STOPPED",
+            );
+            f.render_widget(
+                Paragraph::new(counts.compact()).style(Style::default().fg(theme::MUTED)),
+                Rect::new(rect.x, rect.y + 1, rect.width, 1),
+            );
+        }
+        let rows_y = rect.y + 1 + summary_height;
+        let height = rect
+            .height
+            .saturating_sub(1 + summary_height + details_height);
+        self.view_rects[3] = Rect::new(rect.x, rows_y, rect.width, height);
         let mut lines = Vec::new();
         for (row_index, row) in self
             .register_view
@@ -1077,12 +1229,12 @@ impl App {
                 Row::Register(index, depth) | Row::Field(index, _, depth) => {
                     let register = &catalogue.registers[*index];
                     let sample = self.register_view.sample(&self.project, &context, *index);
-                    let owner = self.register_view.owner(&self.project, &context, *index);
-                    let current = sample.is_some_and(|sample| {
-                        sample.state == State::Valid
-                            && sample.applies(&context, owner.as_deref())
-                            && self.snapshot.state == "STOPPED"
-                    });
+                    let current = self.register_view.category(
+                        &self.project,
+                        &context,
+                        *index,
+                        self.snapshot.state == "STOPPED",
+                    ) == status::Category::Valid;
                     let field = if let Row::Field(_, field, _) = row {
                         Some(&register.fields[*field])
                     } else {
@@ -1106,26 +1258,16 @@ impl App {
                             .map(|name| format!("{value} ({name})"))
                             .unwrap_or(value)
                     });
-                    let state = if !register.access.readable() {
-                        "Write only".into()
-                    } else if register.implementation(&self.register_view.facts).0
-                        == Implementation::No
-                    {
-                        "Not implemented".into()
-                    } else {
-                        sample
-                            .map(|sample| {
-                                format!(
-                                    "{:?}",
-                                    if sample.state == State::Valid && !current {
-                                        State::Stale
-                                    } else {
-                                        sample.state
-                                    }
-                                )
-                            })
-                            .unwrap_or_else(|| "Not read".into())
-                    };
+                    let state = self
+                        .register_view
+                        .category(
+                            &self.project,
+                            &context,
+                            *index,
+                            self.snapshot.state == "STOPPED",
+                        )
+                        .label()
+                        .to_string();
                     let name = field
                         .map(|field| field.name.as_str())
                         .unwrap_or(&register.name);
@@ -1135,7 +1277,7 @@ impl App {
                             *depth * 2 + 5 + unicode_width::UnicodeWidthStr::width(name);
                         item.rect = Rect::new(
                             rect.x.saturating_add(prefix_width as u16),
-                            rect.y + 1 + (row_index - self.view_tops[3]) as u16,
+                            rows_y + (row_index - self.view_tops[3]) as u16,
                             rect.width.saturating_sub(prefix_width as u16),
                             1,
                         );
@@ -1193,7 +1335,7 @@ impl App {
         }
         f.render_widget(
             Paragraph::new(lines),
-            Rect::new(rect.x, rect.y + 1, rect.width, height),
+            Rect::new(rect.x, rows_y, rect.width, height),
         );
         if details_height > 0 {
             let detail = if let Some(index) = self.register_view.register_index(self.selected(3)) {
@@ -1218,13 +1360,25 @@ impl App {
                     register.scope,
                     owner,
                     sample
-                        .map(|sample| sample.detail.as_str())
-                        .unwrap_or(&register.access_condition),
+                        .map(|sample| format!(
+                            "{} · {} · {}",
+                            self.register_view
+                                .category(
+                                    &self.project,
+                                    &context,
+                                    index,
+                                    self.snapshot.state == "STOPPED"
+                                )
+                                .label(),
+                            sample.source,
+                            sample.detail
+                        ))
+                        .unwrap_or_else(|| register.access_condition.clone()),
                     description
                 )
             } else {
                 format!(
-                    "{} · {} · {} entries\nEnter/Space expand · r read · s find · v group · a target/all",
+                    "{} · {} · {} entries\nEnter/Space expand · r read · Esc cancel · t status · s find · v group · a target/all",
                     catalogue.cpu,
                     self.register_view.source,
                     catalogue.registers.len()
@@ -1250,7 +1404,7 @@ mod tests {
     use super::*;
     use crate::registers::{RawValue, Reason};
     use std::sync::{Arc, atomic::AtomicBool, mpsc};
-    fn app() -> App {
+    pub(super) fn app() -> App {
         let mut project = Project::default();
         project.registers.catalogue =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("profiles/registers/cortex-r52.toml");
@@ -1262,7 +1416,7 @@ mod tests {
         app.view_rects[3] = Rect::new(0, 0, 80, 5);
         app
     }
-    fn engine() -> (EngineHandle, mpsc::Receiver<Request>) {
+    pub(super) fn engine() -> (EngineHandle, mpsc::Receiver<Request>) {
         let (commands, requests) = mpsc::channel();
         let (_, events) = mpsc::sync_channel(512);
         (
@@ -1274,7 +1428,7 @@ mod tests {
             requests,
         )
     }
-    fn sample(app: &App, id: &str, value: &str) -> Sample {
+    pub(super) fn sample(app: &App, id: &str, value: &str) -> Sample {
         Sample {
             id: id.into(),
             state: State::Valid,

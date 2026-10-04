@@ -214,6 +214,9 @@ pub struct Request {
     /// Supplied only by the coordinator, never accepted from a headless client.
     #[serde(skip)]
     pub(crate) write_peers: Vec<CoreStatus>,
+    /// Local request cancellation; never interrupts transport or restoration.
+    #[serde(skip)]
+    pub(crate) read_cancel: Arc<AtomicBool>,
 }
 impl Request {
     pub fn is_quit(&self) -> bool {
@@ -231,7 +234,20 @@ impl Request {
             method: method.into(),
             params,
             write_peers: vec![],
+            read_cancel: Arc::new(AtomicBool::new(false)),
         }
+    }
+    /// Cancel a register read/probe/selector/MPU request through a retained clone.
+    /// The current transaction completes before results are discarded. This
+    /// does not cancel writes, other requests, or the debugging session.
+    pub fn cancel_read(&self) {
+        self.read_cancel.store(true, Ordering::Relaxed);
+    }
+    pub(crate) fn is_register_read(&self) -> bool {
+        matches!(
+            self.method.as_str(),
+            "registers_read" | "registers_probe" | "registers_select" | "registers_mpu"
+        )
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -439,6 +455,7 @@ struct Engine {
     exiting: bool,
     job: Option<crate::process::Job>,
     cancellation: Arc<AtomicBool>,
+    read_cancel: Arc<AtomicBool>,
 }
 impl Engine {
     fn project_task(&mut self, kind: &'static str) -> Result<Json, String> {
@@ -595,6 +612,7 @@ impl Engine {
             exiting: false,
             job: None,
             cancellation,
+            read_cancel: Arc::new(AtomicBool::new(false)),
         }
     }
     fn emit(&self, event: Event) {
@@ -662,9 +680,15 @@ impl Engine {
             }
             match requests.recv_timeout(Duration::from_millis(20)) {
                 Ok(request) => {
+                    self.read_cancel = if request.is_register_read() {
+                        request.read_cancel.clone()
+                    } else {
+                        Arc::new(AtomicBool::new(false))
+                    };
                     self.write_peers = request.write_peers;
                     let result = self.execute(&request.method, &request.params);
                     self.write_peers.clear();
+                    self.read_cancel = Arc::new(AtomicBool::new(false));
                     if let Err(error) = &result
                         && !matches!(request.method.as_str(), "complete" | "symbols")
                     {
@@ -1545,6 +1569,12 @@ impl Engine {
         }
     }
     fn execute(&mut self, method: &str, p: &Json) -> Result<Json, String> {
+        if matches!(
+            method,
+            "registers_read" | "registers_probe" | "registers_select" | "registers_mpu"
+        ) {
+            self.check_register_read_cancelled()?;
+        }
         let text = |key: &str| {
             p.get(key)
                 .and_then(Json::as_str)

@@ -2,6 +2,8 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04–05，尚未发布）
 
+2026-10-05 状态与取消批次：308 项单元、83 项集成通过，2 项 ignored；严格 Clippy 通过。实际 worker／MI 与真实 Tcl 验证取消后整批丢弃、末项丢弃、旧样本／Probe 保留、selector 仍恢复、未知恢复仍 FAULT、直接 MPU／VFP 以及 Scope All 当前 worker 隔离；九项 Ratatui 状态／计数／说明与取消测试通过。统一 runner 的 `--only unit` 记录为 `artifacts/functional-1791150195450-fbd63962/report.json`，F24 42 个模式全部有通过证据；其余 20 suites skipped。上板与实际终端视觉用例 [已准备但未执行](tests/cases/register-status-cancel.md)，不能把软件测试记为该验收完成。
+
 2026-10-05 VFP 批次：专用 Hyp VFP 通道、十五项能力采样、D16/D32 与 S/D/Q 共享物理 pair 已接入。生产 C 事务覆盖 63 个故障点、R0/R1 恢复、完整 DSPSR／FPEXC／HCPTR 变化拒绝、未使能与安全权限拒绝；Windows/Linux 全新目录构建和真实离线协议／参数／状态检查通过。REG-H03 默认 4 skipped；实际二进制双核软件驱动的 D32、D16、未使能、TCP10 受限四种流程各 5 阶段通过，独立 GNU Arm 固件钩子编译通过。没有执行上板测试；EL1/Guest 合法 VFP 读取和其他 TODO 缺口仍保留。完整测试和打包记录见 [开发进度](docs/registers-development-status.md)。
 
 2026-10-05 MPU／MAIR 批次：完整测试通过 288 项单元测试、53 项集成测试，另 2 项既有环境测试 ignored；严格 Clippy 通过。新增全部 256 种 MAIR 编码、各实现数量的直接索引计划、EL1／EL2 控制与权限、MAIR 两半独立失败、跨核心／停止点／帧隔离、原始失败值保留、宽窄 Ratatui 键鼠和手工读取测试。真实 worker／TCP／Tcl 软件测试覆盖完整区域、不可用项目、身份／数量／实际模式变化前拒绝、末尾模式变化丢弃整批及旧值过期、目录末项重定向前拒绝、EL2 数量为零、恢复失败隔离和 Scope All 当前物理核心。

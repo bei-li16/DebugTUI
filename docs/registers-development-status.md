@@ -2,6 +2,8 @@
 
 本文件记录开发分支上的实际实现，配合 [开发 TODO](registers-development-todo.md) 使用。当前仍是未发布的开发版本；下述软件验证不能作为芯片或 OpenOCD 实板能力证明。
 
+2026-10-05 状态与取消批次：补齐 Total／Shown／当前 Valid、可读定义和八类状态计数；字段／折叠不重复计数，完整错误／来源／时间可键鼠滚动访问。当前单项硬件缺失也参与 Target 筛选，All 中不自动试读。读取／Probe／MPU／selector 采用独立请求取消标记，原子事务仍完整恢复，整批新结果丢弃，旧样本保留；Scope All 只取消当前 worker，恢复未知仍 FAULT。完整回归 308 单元、83 集成通过，2 ignored；严格 Clippy 通过。`artifacts/functional-1791150195450-fbd63962/report.json` 的 unit suite 通过，F24 的 42 个模式均有证据，其余 20 suites skipped。REG-205/206/211 的软件要求已核对；实际 PowerShell／VS Code 视觉验收和 [人工环境 case](../tests/cases/register-status-cancel.md) 未执行。完整 DDI 0568 的 HCPTR、调试态 FP 陷阱和 DCPS2 UNKNOWN 状态核对见 [方案限制](register-read-status-and-cancel.md)；EL1／Guest VFP 仍未完成。未上板、安装、推送或发布。
+
 2026-10-05 VFP 批次：接入显式 `vfp_command` 和独立协议，Hyp 物理 DSPSR／MIDR／HCPTR 验证后读 VMRS 与 D pair；未改模式或 FPU 控制。依据 R52 TRM §§16.5–16.6 和完整 DDI 0568 D1.3，SP-only D16 与 DP/NEON D32 分开适配，Single／Double／Quad 的 S/D/Q 共用一次物理 pair，保留全部 128 位。十五项 Probe 新增 FPSID、MVFR0/1/2 和实际 FPEXC.EN；未使能、未实现、未知特性和访问受限分别记录。生产 C 事务覆盖 63 个故障点，物理 R0/R1 恢复回读，以及完整 DSPSR／HCPTR／FPEXC 变化拒绝。完整 Cargo 回归 299 单元、76 集成通过，2 ignored；严格 Clippy 通过，F24 的 34 个模式有实际通过证据。REG-H03 默认 4 skipped；实际二进制双核软件驱动的 D32、D16、未使能、TCP10 受限四种流程各 5 阶段通过，独立 GNU Arm 采样钩子编译通过。自检修复 REG-H02/H03 对汇编无类型参考数组的 GDB 读取，显式指针表达式通过真实 GCC/GDB 高位原始字验证。Windows/Linux 新目录后端构建、原生协议／参数／状态检查和 Windows 9 项包检查通过，源码 ZIP 的四个固定提交解压／对象／独立 clone 回读通过；记录在 `artifacts/openocd-adapter-windows-vfp/summary.json` 和 `artifacts/functional-1791147270982-4af639a5/report.json`。合法 EL1/Guest/User VFP 读取、R52+ 实际身份、完整 TODO 和最终安装发布仍未完成；未执行上板，未推送或发布。
 
 2026-10-05 银行批次：接入专用 banked reader 和独立后端协议，内置目录的 23 个银行不再回退旧 mode-switch DPM。依据本地完整 DDI 0568A.c 架构补充，当前银行用普通 MOV／MRS，其他银行只用合法 banked MRS；读取物理 DSPSR 保存的完整停止 CPSR／MIDR、保存恢复回读 R0，并复核全部 DSPSR 位，包括 T／IT。User 和非 Hyp 的 Hyp 银行安全拒绝，未知 R52+ 身份不猜测；实际帧／线程变化丢弃值，结果不确定停用共享通道。Linux 一键脚本和 Windows 脚本各完成全新目录构建，原生生产事务／协议／参数／状态检查通过；C 测试覆盖 20 个故障点。Cargo 回归为 294 单元、66 集成、2 ignored，严格 Clippy 通过。REG-H02 默认 4 skipped；实际二进制在双核软件模型的 Hyp 基线／User 拒绝流程各 5 阶段通过，独立采样钩子 8 个模式汇编通过。未执行上板测试；VFP、完整能力／写入／界面验收及最终安装发布仍待完成。
@@ -67,7 +69,7 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 |---|---|---|
 | REG-001–008 | 显式当前核 Probe、原始 MIDR/数量/GIC 事实、已配置 MRC/银行路径、隔离的软件多核响应；固定 Windows MRRC/ISB 后端与依赖、候选源码/运行包；`capabilities.rs`、`tests/capability_access.rs` | 完整运行工具身份与实际安装对应、GDB 目标描述及各类位宽、FPU/Timer 和 R52+ 差异、完整能力矩阵、最终 tools/profile 整合及安装升级 |
 | REG-101–110 | 严格目录、精确原始值/字段/别名、逐项 reader、上下文/owner、CPU/目录 Setup、内置与用户目录、三态条件；`registers.rs`、`tests/register_access.rs`、覆盖矩阵 F24 | 对最新完整交付范围重新验证 EXE/ZIP/npm 安装升级与客户目录保留；各新增类别的身份/条件/别名适配仍需完成 |
-| REG-201–211 | 树、字段、列、说明、搜索、按需批次、目标/定义切换、逐核格式与隔离偏好、MPU 总览；`src/ui/registers.rs` 及显示/MPU 测试 | 目录总数/当前显示/本次有效值及各状态分类计数尚未全部呈现；Reader unsupported 的可见分类、完整读取取消和 PowerShell/VS Code 宽窄中文/对比度视觉验收需补足 |
+| REG-201–211 | 树、字段、列、说明、搜索、逐核偏好、MPU 总览；新增总数/显示/当前有效/分类计数、完整原因弹窗、实际缺失筛选、请求取消及恢复／Scope All 软件证据；REG-205/206/211 已核对 | REG-208 的实际 PowerShell/VS Code 宽窄中文/对比度视觉验收未执行；阶段内其余条目及全部目标类别仍需完整验收，不以软件缓冲截图代替终端验收 |
 | REG-301–308 | R52 目录、32 位 MRC、直接 EL1/EL2 MPU 与 MAIR、保存/恢复选择器、故障隔离与完整服务锁；真实 ISB／MRRC 和专用银行后端的新目录构建与离线验证；REG-H02 驱动与 8 模式钩子；`session/banked.rs` 及银行事务测试；Hyp VFP/FPSCR 与 MVFR/FPEXC、D16/D32 别名、REG-H03 四类软件用例 | 合法 EL1/Guest/User 读取、更多模式延后用例及未知 R52+ 身份仍未完成 |
 | REG-401–408 | Timer/PMU/GIC 部分目录、PMU 数量与直接/选择器读取、物理/虚拟 GIC 能力分离和 AP 条件软件夹具；Windows MRRC 候选构建/命令检查 | 完整 Timer 权限/一致性适配，完整 GIC/Debug/STM 类别及显式板级映射，Bao EL2/Guest 场景及全部延后驱动 |
 | REG-501–506 | 软件回归、严格 Clippy、F24–F26 覆盖来源和限制、增量用户手册/开发记录/示例 | 全部延后案例与原功能回归，完整架构/环境/mcal-vsconfig 配套文档，最终升版、产物/profile 一致性、安装升级、非主分支推送与 Release |

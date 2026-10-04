@@ -12,6 +12,20 @@ pub(super) fn new_session() -> u64 {
 }
 
 impl Engine {
+    // Check only between complete operations. The MI/Tcl transport keeps using
+    // the session's exit flag so cancellation cannot skip selector restoration.
+    pub(super) fn check_register_read_cancelled(&self) -> Result<(), String> {
+        if self.read_cancel.load(Ordering::Relaxed) || self.cancellation.load(Ordering::Relaxed) {
+            if let Some(fault) = &self.register_access_fault {
+                return Err(format!("Register read outcome unknown; reconnect: {fault}"));
+            }
+            return Err(
+                "Register read cancelled; current transaction completed, new results discarded"
+                    .into(),
+            );
+        }
+        Ok(())
+    }
     pub(super) fn invalidate_register_samples(&mut self) {
         let context = self.register_context();
         if self
@@ -103,9 +117,7 @@ impl Engine {
         let mut values = BTreeMap::new();
         let mut samples = Vec::new();
         for id in ids {
-            if self.cancellation.load(Ordering::Relaxed) {
-                return Err("Register read cancelled".into());
-            }
+            self.check_register_read_cancelled()?;
             let register = catalogue.register(id).unwrap();
             let (implementation, evidence) =
                 register.implementation(&self.effective_register_facts());
@@ -186,6 +198,7 @@ impl Engine {
                 break;
             }
         }
+        self.check_register_read_cancelled()?;
         self.store_register_samples(&samples, &catalogue);
         self.publish();
         Ok(json!({"context":context,"samples":samples}))
@@ -244,6 +257,8 @@ impl Engine {
         catalogue: &Catalogue,
         values: &mut BTreeMap<String, RawValue>,
     ) -> Result<RawValue, (Reason, String)> {
+        self.check_register_read_cancelled()
+            .map_err(|error| (Reason::Unknown, error))?;
         if let Some(value) = values.get(&register.id) {
             return Ok(value.clone());
         }
@@ -400,6 +415,8 @@ impl Engine {
                     format!("GDB target description does not expose {name}"),
                 )
             })?;
+        self.check_register_read_cancelled()
+            .map_err(|error| (Reason::Unknown, error))?;
         let response = self
             .mi(&format!("-data-list-register-values r {index}"))
             .map_err(|error| (Reason::Unknown, error))?;
@@ -416,6 +433,8 @@ impl Engine {
         RawValue::parse(&value.string("value"), bits).map_err(|error| (Reason::Unknown, error))
     }
     pub(super) fn register_tcl(&mut self, operation: &str) -> Result<String, (Reason, String)> {
+        self.check_register_read_cancelled()
+            .map_err(|error| (Reason::Unknown, error))?;
         if let Some(error) = &self.register_access_fault {
             return Err((
                 Reason::TransportError,
