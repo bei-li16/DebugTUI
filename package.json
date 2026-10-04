@@ -10,7 +10,7 @@
   "cpu": ["x64"],
   "license": "SEE LICENSE IN LICENSE",
   "bin": { "debugtui": "bin/debugtui.exe" },
-  "files": ["bin/", "profiles/", "licenses/", "THIRD_PARTY_NOTICES.md", "README.md", "ARCHITECTURE.md", "TESTING.md", "PUBLISHING.md", "LICENSE", "NOTICE", "debug.toml.example"],
+  "files": ["bin/", "profiles/", "licenses/", "THIRD_PARTY_NOTICES.md", "README.md", "USER_GUIDE.md", "ARCHITECTURE.md", "TESTING.md", "PUBLISHING.md", "LICENSE", "NOTICE", "debug.toml.example"],
   "scripts": {
     "postinstall": "node profiles/install.cjs",
     "build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Release",

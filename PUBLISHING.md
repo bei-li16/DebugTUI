@@ -79,7 +79,7 @@ npm.cmd publish $tgz --dry-run --access public --registry=https://registry.npmjs
 .\scripts\test-npm.ps1
 ```
 
-构建环境参见 README。开发者需要 Rust 和链接器，最终 npm 用户不需要这些构建工具。构建变更涉及调试链路时，另运行 README 中的实板测试。
+构建环境参见 [使用指南](USER_GUIDE.md#开发与验证)。开发者需要 Rust 和链接器，最终 npm 用户不需要这些构建工具。构建变更涉及调试链路时，按 [测试说明](https://github.com/bei-li16/DebugTUI/blob/main/tests/README.md) 选择对应实板回归。
 
 ## 3. 正式发布
 
