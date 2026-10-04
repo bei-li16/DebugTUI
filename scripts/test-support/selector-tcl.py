@@ -47,6 +47,24 @@ def evaluate(data):
         state['trace'].append([name, op, *args])
         if not cpu or cpu['status'] != 'halted':
             return (1, 'physical target is not halted')
+        if op == 'debugtui_adapter':
+            return (0, 'old-adapter' if fault == 'adapter_mismatch' else
+                    'debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault')
+        if op == 'isb':
+            if args:
+                return (1, 'genuine ISB takes no operands')
+            barriers += 1
+            if fault == 'genuine_isb_fault' and barriers == 2:
+                cpu['status'] = 'unknown'
+                return (1, 'Core state restoration failed: fixture ISB outcome unknown')
+            return (0, '')
+        if op == 'mrrc':
+            if len(args) != 3:
+                return (1, 'MRRC requires cp/op1/CRm')
+            if fault == 'mrrc_fault':
+                cpu['status'] = 'unknown'
+                return (1, 'Core state restoration failed: fixture MRRC outcome unknown')
+            return (0, '0xfedcba9876543210' if name == 'cpu0' else '0x81234567abcdef01')
         encoding = ' '.join(args[:5])
         selector = {'15 0 6 2 1': 'prselr', '15 4 6 2 1': 'hprselr',
                     '15 0 9 12 5': 'pmselr'}.get(encoding)
@@ -81,7 +99,9 @@ def evaluate(data):
                   '15 0 1 0 0': cpu['sync'], '15 4 1 0 0': cpu['sync'],
                   '15 0 10 2 0': cpu.get('mair0', 0xff440400), '15 0 10 2 1': cpu.get('mair1', 0xff440400),
                   '15 4 10 2 0': cpu.get('hmair0', 0xff440400), '15 4 10 2 1': cpu.get('hmair1', 0xff440400),
-                  '15 4 1 1 0': cpu.get('hcr', 1), '15 4 6 1 1': (1 << cpu['el2_count']) - 1}
+                  '15 4 1 1 0': cpu.get('hcr', 1), '15 4 6 1 1': (1 << cpu['el2_count']) - 1,
+                  '15 0 14 2 1': 0, '15 0 14 3 1': 0, '15 4 14 2 1': 0,
+                  '15 0 14 0 0': 100000000, '15 0 14 1 0': 0, '15 4 14 1 0': 0}
         if encoding in scalar:
             value = scalar[encoding]
             if fault == 'no_sync' and encoding in ('15 0 1 0 0', '15 4 1 0 0'):

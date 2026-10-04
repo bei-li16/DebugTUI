@@ -94,6 +94,7 @@ fn transact_with_policy(
     let result = transact_unlocked(stream, command);
     if let Err(error) = &result
         && (error.contains("Target restoration failed")
+            || error.contains("Core state restoration failed")
             || (uncertain_on_transport_error
                 && !error.starts_with("TCL command failed")
                 && !command.contains('\x1a')))

@@ -1,0 +1,14 @@
+{
+  "software_example": true,
+  "frame_function": "debugtui_timer_board_fixture",
+  "expected_midr": "0x411fd134",
+  "evidence_source": "Replace with separately built firmware samples and startup CVAL evidence; software values are not board evidence",
+  "control_scope": "all",
+  "peer_core": "core1",
+  "stable_registers": ["cpsr", "sctlr", "hsctlr", "cntp_ctl", "cntv_ctl", "cnthp_ctl", "prselr", "hprselr", "pmselr"],
+  "stable64": [{"id": "cntp_cval", "expected": "0xfedcba9876543210"}],
+  "counters": [
+    {"id": "cntpct", "reference": "debugtui_timer_reference_cntpct", "max_delta_ticks": "100000000000", "require_progress": true},
+    {"id": "cntvct", "reference": "debugtui_timer_reference_cntvct", "max_delta_ticks": "100000000000", "require_progress": true}
+  ]
+}

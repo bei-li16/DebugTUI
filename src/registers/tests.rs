@@ -1,6 +1,52 @@
 use super::*;
 
 #[test]
+fn mrrc_and_genuine_isb_configuration_is_explicit_and_strict() {
+    let old: Config = toml::from_str("cp15_command='arm mrc'").unwrap();
+    assert!(old.cp15_64_command.is_empty() && old.isb_command.is_empty());
+    for command in ["arm mrrc", "aarch64 mrc", "aarch64 mrrc; resume"] {
+        assert!(
+            Config {
+                cp15_64_command: command.into(),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
+        );
+    }
+    let valid = Config {
+        cp15_command: "aarch64 mrc".into(),
+        selector_command: "aarch64 mcr".into(),
+        cp15_64_command: "aarch64 mrrc".into(),
+        isb_command: "aarch64 isb".into(),
+        ..Default::default()
+    };
+    assert!(valid.validate().is_ok());
+    let copy: Config = toml::from_str(&toml::to_string(&valid).unwrap()).unwrap();
+    assert_eq!(copy.cp15_64_command, valid.cp15_64_command);
+    assert_eq!(copy.isb_command, valid.isb_command);
+    for isb in ["arm isb", "aarch64 isb; halt"] {
+        assert!(
+            Config {
+                isb_command: isb.into(),
+                ..valid.clone()
+            }
+            .validate()
+            .is_err()
+        );
+    }
+    assert!(
+        Config {
+            cp15_command: "arm mrc".into(),
+            selector_command: "arm mcr".into(),
+            ..valid
+        }
+        .validate()
+        .is_err()
+    );
+}
+
+#[test]
 fn selector_command_requires_an_explicit_matching_mrc_family() {
     for (mrc, mcr, valid) in [
         ("", "", true),

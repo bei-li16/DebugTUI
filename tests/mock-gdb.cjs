@@ -116,6 +116,11 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   if (cmd === '-break-list') return done('BreakpointTable={body=[]}');
   const evaluateRegister = /^-data-evaluate-expression "\$(r(?:[0-9]|1[0-2]))"$/.exec(cmd);
   if (evaluateRegister && names.includes(evaluateRegister[1])) return done(`value="${rawValues[evaluateRegister[1]] || '0x12345678'}"`);
+  if (process.env.DEBUGTUI_TEST_EXPRESSION_VALUES && cmd.startsWith('-data-evaluate-expression ')) {
+    const values = JSON.parse(process.env.DEBUGTUI_TEST_EXPRESSION_VALUES);
+    const expression = JSON.parse(cmd.slice('-data-evaluate-expression '.length));
+    if (Object.hasOwn(values, expression)) return done(`value=${JSON.stringify(values[expression])}`);
+  }
   if (cmd.startsWith('-data-read-memory-bytes ') && process.env.DEBUGTUI_TEST_MEMORY_BLOCKS) {
     if (process.env.DEBUGTUI_TEST_MEMORY_RUN_ON_READ) {
       state = 'running'; send('*running,thread-id="all"');

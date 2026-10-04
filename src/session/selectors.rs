@@ -44,9 +44,10 @@ impl Engine {
             .value;
         let mode = probe.raw("cpsr").ok_or("Physical CPSR mode is not known")? & 31;
         let plan = Plan::new(request.kind, request.index, count, mode)?;
-        let operation = plan.script(
+        let operation = plan.script_with_sync(
             &self.project.registers.cp15_command,
             &self.project.registers.selector_command,
+            &self.project.registers.isb_command,
         )?;
         let target = self
             .project
@@ -95,7 +96,9 @@ impl Engine {
                 {
                     self.snapshot.register_probe = None;
                 }
-                let reason = if error.contains("selector synchronization unsupported") {
+                let reason = if error.contains("selector synchronization unsupported")
+                    || error.contains("adapter protocol unsupported")
+                {
                     Reason::ReaderUnsupported
                 } else {
                     reason
@@ -137,7 +140,7 @@ impl Engine {
                 return Err(format!("Selector read {reason:?}: {error}"));
             }
         };
-        let evidence = match plan.parse(&raw) {
+        let mut evidence = match plan.parse(&raw) {
             Ok(evidence) => evidence,
             Err(error) => {
                 self.register_access_fault = Some(error.clone());
@@ -152,6 +155,10 @@ impl Engine {
                 return Err(format!("Selector outcome unknown; reconnect: {error}"));
             }
         };
+        if !self.project.registers.isb_command.is_empty() {
+            evidence.synchronization =
+                "Genuine ISB via debugtui-armv8-1; selector restore readback verified".into();
+        }
         let final_thread = self.write_thread()?;
         let final_frame = self.mi("-stack-info-frame")?;
         if final_thread != thread

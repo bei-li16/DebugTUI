@@ -1,0 +1,422 @@
+diff --git a/src/target/Makefile.am b/src/target/Makefile.am
+index 3d855ab..51deb21 100644
+--- a/src/target/Makefile.am
++++ b/src/target/Makefile.am
+@@ -187,6 +187,7 @@ ARC_SRC = \
+ 	%D%/armv7m_trace.h \
+ 	%D%/armv8.h \
+ 	%D%/armv8_dpm.h \
++	%D%/armv8_debugtui.h \
+ 	%D%/armv8_opcodes.h \
+ 	%D%/armv8_cache.h \
+ 	%D%/avrt.h \
+diff --git a/src/target/aarch64.c b/src/target/aarch64.c
+index 19ab923..c110dc8 100644
+--- a/src/target/aarch64.c
++++ b/src/target/aarch64.c
+@@ -3154,6 +3154,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+ 		command_print(CMD, "%s: not an ARM", target_name(target));
+ 		return ERROR_FAIL;
+ 	}
++	if (!arm->arch_info || !is_armv8(arm->arch_info) || !arm->dpm) {
++		command_print(CMD, "%s: not an ARMv8 DPM target", target_name(target));
++		return ERROR_FAIL;
++	}
+ 
+ 	if (target->state != TARGET_HALTED) {
+ 		command_print(CMD, "Error: [%s] not halted", target_name(target));
+@@ -3212,16 +3216,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+ 
+ 		/* NOTE: parameters reordered! */
+ 		/* ARMV4_5_MCR(cpnum, op1, 0, crn, crm, op2) */
+-		int retval = arm->mcr(target, cpnum, op1, op2, crn, crm, value);
+-		if (retval != ERROR_OK)
++		int retval = armv8_dpm_debugtui_mrc_mcr(arm->dpm,
++			ARMV4_5_MCR(cpnum, op1, 0, crn, crm, op2), true, &value);
++		if (retval != ERROR_OK) {
++			target->state = TARGET_UNKNOWN;
++			command_print(CMD, "Core state restoration failed: DebugTUI MCR outcome unknown; reconnect/reset required");
+ 			return retval;
++		}
+ 	} else {
+ 		value = 0;
+ 		/* NOTE: parameters reordered! */
+ 		/* ARMV4_5_MRC(cpnum, op1, 0, crn, crm, op2) */
+-		int retval = arm->mrc(target, cpnum, op1, op2, crn, crm, &value);
+-		if (retval != ERROR_OK)
++		int retval = armv8_dpm_debugtui_mrc_mcr(arm->dpm,
++			ARMV4_5_MRC(cpnum, op1, 0, crn, crm, op2), false, &value);
++		if (retval != ERROR_OK) {
++			target->state = TARGET_UNKNOWN;
++			command_print(CMD, "Core state restoration failed: DebugTUI MRC outcome unknown; reconnect/reset required");
+ 			return retval;
++		}
+ 
+ 		command_print(CMD, "0x%" PRIx32, value);
+ 	}
+@@ -3229,7 +3241,74 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+ 	return ERROR_OK;
+ }
+ 
++COMMAND_HANDLER(aarch64_debugtui_adapter_command)
++{
++	if (CMD_ARGC != 0)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	command_print(CMD, "debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault");
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(aarch64_debugtui_access_command)
++{
++	bool mrrc = strcmp(CMD_NAME, "mrrc") == 0;
++	if (CMD_ARGC != (mrrc ? 3 : 0))
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	unsigned int cp = 0, op1 = 0, crm = 0;
++	if (mrrc) {
++		COMMAND_PARSE_NUMBER(uint, CMD_ARGV[0], cp);
++		COMMAND_PARSE_NUMBER(uint, CMD_ARGV[1], op1);
++		COMMAND_PARSE_NUMBER(uint, CMD_ARGV[2], crm);
++		if (cp > 15 || op1 > 15 || crm > 15)
++			return ERROR_COMMAND_ARGUMENT_INVALID;
++	}
++	struct target *target = get_current_target(CMD_CTX);
++	if (!target || !target_was_examined(target))
++		return ERROR_TARGET_NOT_EXAMINED;
++	struct arm *arm = target_to_arm(target);
++	if (!is_arm(arm) || !arm->arch_info || !is_armv8(arm->arch_info) || !arm->dpm)
++		return ERROR_FAIL;
++	if (target->state != TARGET_HALTED)
++		return ERROR_TARGET_NOT_HALTED;
++	if (mrrc && arm->core_state == ARM_STATE_AARCH64)
++		return ERROR_COMMAND_ARGUMENT_INVALID;
++	uint64_t value = 0;
++	int retval = mrrc ? armv8_dpm_debugtui_mrrc(arm->dpm, cp, op1, crm, &value) :
++		armv8_dpm_debugtui_isb(arm->dpm);
++	if (retval != ERROR_OK) {
++		/* Never present an uncertain instruction/restore as an ordinary missing
++		 * register. No additional injected instruction or automatic retry. */
++		target->state = TARGET_UNKNOWN;
++		command_print(CMD, "Core state restoration failed: DebugTUI adapter outcome unknown; reconnect/reset required");
++		return retval;
++	}
++	if (mrrc)
++		command_print(CMD, "0x%016" PRIx64, value);
++	return ERROR_OK;
++}
++
+ static const struct command_registration aarch64_exec_command_handlers[] = {
++	{
++		.name = "debugtui_adapter",
++		.mode = COMMAND_ANY,
++		.handler = aarch64_debugtui_adapter_command,
++		.help = "report the DebugTUI ARMv8 register adapter protocol without target access",
++		.usage = "",
++	},
++	{
++		.name = "mrrc",
++		.mode = COMMAND_EXEC,
++		.handler = aarch64_debugtui_access_command,
++		.help = "read one AArch32 64-bit coprocessor register; preserve and verify physical R0/R1",
++		.usage = "cpnum op1 CRm",
++	},
++	{
++		.name = "isb",
++		.mode = COMMAND_EXEC,
++		.handler = aarch64_debugtui_access_command,
++		.help = "execute a genuine ISB instruction on the halted current core",
++		.usage = "",
++	},
+ 	{
+ 		.name = "cache_info",
+ 		.handler = aarch64_handle_cache_info_command,
+diff --git a/src/target/armv8_debugtui.h b/src/target/armv8_debugtui.h
+new file mode 100644
+index 0000000..9e0dde2
+--- /dev/null
++++ b/src/target/armv8_debugtui.h
+@@ -0,0 +1,96 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_H
++#define OPENOCD_TARGET_ARMV8_DEBUGTUI_H
++
++#include <stdint.h>
++#include <stdbool.h>
++#include "arm_opcodes.h"
++
++/* Transport-independent transaction, also compiled by the fault-injection test.
++ * A failed transfer stops immediately: exception state/transport completion is
++ * unknown, so neither a speculative rollback nor automatic retry is safe. */
++struct armv8_debugtui_io {
++	void *context;
++	int (*read_gpr)(void *context, unsigned int reg, uint32_t *value);
++	int (*write_gpr)(void *context, unsigned int reg, uint32_t value);
++	int (*execute)(void *context, uint32_t opcode);
++};
++
++static inline bool armv8_debugtui_mrrc_encoding_valid(unsigned int cp,
++	unsigned int op1, unsigned int crm)
++{
++	return cp <= 15 && op1 <= 15 && crm <= 15;
++}
++
++static inline int armv8_debugtui_mrc_mcr_transfer(const struct armv8_debugtui_io *io,
++	uint32_t opcode, bool write, uint32_t *value)
++{
++	uint32_t saved, result = 0, restored;
++	int retval = io->read_gpr(io->context, 0, &saved);
++	if (retval != 0)
++		return retval;
++	if (write) {
++		retval = io->write_gpr(io->context, 0, *value);
++		if (retval != 0)
++			return retval;
++	}
++	retval = io->execute(io->context, opcode);
++	if (retval != 0)
++		return retval;
++	if (!write) {
++		retval = io->read_gpr(io->context, 0, &result);
++		if (retval != 0)
++			return retval;
++	}
++	retval = io->write_gpr(io->context, 0, saved);
++	if (retval != 0)
++		return retval;
++	retval = io->read_gpr(io->context, 0, &restored);
++	if (retval != 0)
++		return retval;
++	if (restored != saved)
++		return -1;
++	if (!write)
++		*value = result;
++	return 0;
++}
++
++static inline int armv8_debugtui_mrrc_transfer(const struct armv8_debugtui_io *io,
++	unsigned int cp, unsigned int op1, unsigned int crm, uint64_t *value)
++{
++	uint32_t saved[2], result[2], restored[2];
++	int retval;
++
++	/* Read physical scratch values, including any changes from earlier debugger
++	 * commands. Do not substitute logical register-cache values. */
++	for (unsigned int i = 0; i < 2; i++) {
++		retval = io->read_gpr(io->context, i, &saved[i]);
++		if (retval != 0)
++			return retval;
++	}
++	retval = io->execute(io->context, ARMV5_T_MRRC(cp, op1, 0, 1, crm));
++	if (retval != 0)
++		return retval;
++	for (unsigned int i = 0; i < 2; i++) {
++		retval = io->read_gpr(io->context, i, &result[i]);
++		if (retval != 0)
++			return retval;
++	}
++	/* R0 is restored last, then both registers are physically read back. */
++	for (unsigned int i = 2; i > 0; i--) {
++		retval = io->write_gpr(io->context, i - 1, saved[i - 1]);
++		if (retval != 0)
++			return retval;
++	}
++	for (unsigned int i = 0; i < 2; i++) {
++		retval = io->read_gpr(io->context, i, &restored[i]);
++		if (retval != 0)
++			return retval;
++		if (restored[i] != saved[i])
++			return -1;
++	}
++	*value = ((uint64_t)result[1] << 32) | result[0];
++	return 0;
++}
++
++#endif
+diff --git a/src/target/armv8_dpm.c b/src/target/armv8_dpm.c
+index 508ec97..f31253b 100644
+--- a/src/target/armv8_dpm.c
++++ b/src/target/armv8_dpm.c
+@@ -16,6 +16,7 @@
+ #include "breakpoints.h"
+ #include "target_type.h"
+ #include "armv8_opcodes.h"
++#include "armv8_debugtui.h"
+ 
+ #include "helper/time_support.h"
+ 
+@@ -194,8 +195,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
+ 	return ERROR_OK;
+ }
+ 
+-static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+-	uint32_t opcode, uint32_t *p_dscr)
++static int dpmv8_exec_opcode_checked(struct arm_dpm *dpm,
++	uint32_t opcode, uint32_t *p_dscr, bool recover_exception)
+ {
+ 	struct armv8_common *armv8 = dpm->arm->arch_info;
+ 	uint32_t dscr = dpm->dscr;
+@@ -203,6 +204,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+ 
+ 	if (p_dscr)
+ 		dscr = *p_dscr;
++	if (!recover_exception && (dscr & (DSCR_ERR | DSCR_SYS_ERROR_PEND)))
++		return ERROR_FAIL;
+ 
+ 	/* Wait for InstrCompl bit to be set */
+ 	long long then = timeval_ms();
+@@ -249,9 +252,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+ 
+ 	if (dscr & DSCR_ERR) {
+ 		LOG_ERROR("Opcode 0x%08" PRIx32 ", DSCR.ERR=1, DSCR.EL=%i", opcode, dpm->last_el);
+-		armv8_dpm_handle_exception(dpm, true);
++		if (recover_exception)
++			armv8_dpm_handle_exception(dpm, true);
+ 		retval = ERROR_FAIL;
+ 	}
++	if (!recover_exception && (dscr & DSCR_SYS_ERROR_PEND))
++		retval = ERROR_FAIL;
+ 
+ 	if (p_dscr)
+ 		*p_dscr = dscr;
+@@ -259,6 +265,126 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+ 	return retval;
+ }
+ 
++static int dpmv8_exec_opcode(struct arm_dpm *dpm,
++	uint32_t opcode, uint32_t *p_dscr)
++{
++	return dpmv8_exec_opcode_checked(dpm, opcode, p_dscr, true);
++}
++
++struct dpmv8_debugtui_context {
++	struct arm_dpm *dpm;
++	uint32_t execution_state;
++};
++
++static int dpmv8_debugtui_execute(void *context, uint32_t opcode)
++{
++	struct dpmv8_debugtui_context *io = context;
++	/* Do not run the legacy exception recovery/mode switch for this access. */
++	int retval = dpmv8_exec_opcode_checked(io->dpm, opcode, NULL, false);
++	if (retval == ERROR_OK &&
++		(io->dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE)) != io->execution_state)
++		return ERROR_FAIL;
++	return retval;
++}
++
++static int dpmv8_debugtui_read_gpr(void *context, unsigned int reg, uint32_t *value)
++{
++	struct dpmv8_debugtui_context *io = context;
++	int retval = dpmv8_debugtui_execute(context, ARMV4_5_MCR(14, 0, reg, 0, 5, 0));
++	if (retval != ERROR_OK)
++		return retval;
++	return dpmv8_read_dcc(io->dpm->arm->arch_info, value, &io->dpm->dscr);
++}
++
++static int dpmv8_debugtui_write_gpr(void *context, unsigned int reg, uint32_t value)
++{
++	struct dpmv8_debugtui_context *io = context;
++	int retval = dpmv8_write_dcc(io->dpm->arm->arch_info, value);
++	if (retval != ERROR_OK)
++		return retval;
++	return dpmv8_debugtui_execute(context, ARMV4_5_MRC(14, 0, reg, 0, 5, 0));
++}
++
++static int dpmv8_debugtui_prepare(struct arm_dpm *dpm)
++{
++	struct armv8_common *armv8 = dpm->arm->arch_info;
++	uint32_t prsr;
++	int retval = mem_ap_read_atomic_u32(armv8->debug_ap,
++		armv8->debug_base + CPUV8_DBG_PRSR, &prsr);
++	if (retval != ERROR_OK)
++		return retval;
++	if (!(prsr & PRSR_HALT))
++		return ERROR_TARGET_NOT_HALTED;
++	return dpm->prepare(dpm);
++}
++
++int armv8_dpm_debugtui_mrrc(struct arm_dpm *dpm, unsigned int cp,
++	unsigned int op1, unsigned int crm, uint64_t *value)
++{
++	if (!armv8_debugtui_mrrc_encoding_valid(cp, op1, crm))
++		return ERROR_COMMAND_ARGUMENT_INVALID;
++	int retval = dpmv8_debugtui_prepare(dpm);
++	if (retval != ERROR_OK)
++		return retval;
++	if (armv8_dpm_get_core_state(dpm) == ARM_STATE_AARCH64)
++		return ERROR_FAIL;
++	struct dpmv8_debugtui_context context = {
++		.dpm = dpm,
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++	};
++	struct armv8_debugtui_io io = {
++		.context = &context,
++		.read_gpr = dpmv8_debugtui_read_gpr,
++		.write_gpr = dpmv8_debugtui_write_gpr,
++		.execute = dpmv8_debugtui_execute,
++	};
++	retval = armv8_debugtui_mrrc_transfer(&io, cp, op1, crm, value);
++	if (retval != ERROR_OK)
++		return retval;
++	return dpm->finish(dpm);
++}
++
++int armv8_dpm_debugtui_mrc_mcr(struct arm_dpm *dpm, uint32_t opcode,
++	bool write, uint32_t *value)
++{
++	int retval = dpmv8_debugtui_prepare(dpm);
++	if (retval != ERROR_OK)
++		return retval;
++	if (armv8_dpm_get_core_state(dpm) == ARM_STATE_AARCH64)
++		return ERROR_FAIL;
++	struct dpmv8_debugtui_context context = {
++		.dpm = dpm,
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++	};
++	struct armv8_debugtui_io io = {
++		.context = &context,
++		.read_gpr = dpmv8_debugtui_read_gpr,
++		.write_gpr = dpmv8_debugtui_write_gpr,
++		.execute = dpmv8_debugtui_execute,
++	};
++	retval = armv8_debugtui_mrc_mcr_transfer(&io, opcode, write, value);
++	if (retval != ERROR_OK)
++		return retval;
++	return dpm->finish(dpm);
++}
++
++int armv8_dpm_debugtui_isb(struct arm_dpm *dpm)
++{
++	int retval = dpmv8_debugtui_prepare(dpm);
++	if (retval != ERROR_OK)
++		return retval;
++	struct dpmv8_debugtui_context context = {
++		.dpm = dpm,
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++	};
++	uint32_t opcode = armv8_dpm_get_core_state(dpm) == ARM_STATE_AARCH64 ?
++		ARMV8_ISB : ARMV8_ISB_SY_T1;
++	retval = dpmv8_debugtui_execute(&context, opcode);
++	if (retval != ERROR_OK)
++		return retval;
++	return dpm->finish(dpm);
++}
++
+ static int dpmv8_instr_execute(struct arm_dpm *dpm, uint32_t opcode)
+ {
+ 	return dpmv8_exec_opcode(dpm, opcode, NULL);
+diff --git a/src/target/armv8_dpm.h b/src/target/armv8_dpm.h
+index 19b33da..0ec6a1a 100644
+--- a/src/target/armv8_dpm.h
++++ b/src/target/armv8_dpm.h
+@@ -23,6 +23,11 @@ struct armv8_common;
+  */
+ int armv8_dpm_setup(struct arm_dpm *dpm);
+ int armv8_dpm_initialize(struct arm_dpm *dpm);
++int armv8_dpm_debugtui_mrrc(struct arm_dpm *dpm, unsigned int cp,
++	unsigned int op1, unsigned int crm, uint64_t *value);
++int armv8_dpm_debugtui_isb(struct arm_dpm *dpm);
++int armv8_dpm_debugtui_mrc_mcr(struct arm_dpm *dpm, uint32_t opcode,
++	bool write, uint32_t *value);
+ 
+ int armv8_dpm_read_current_registers(struct arm_dpm *dpm);
+ int armv8_dpm_modeswitch(struct arm_dpm *dpm, enum arm_mode mode);

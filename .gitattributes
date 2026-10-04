@@ -10,3 +10,5 @@ licenses/** -text -whitespace
 THIRD_PARTY_NOTICES.md -whitespace
 # Preserve the vendor SVD byte-for-byte, including its original whitespace.
 resources/svd/**/*.svd -text -whitespace
+# Unified patches intentionally preserve a space on blank context lines.
+tools/openocd-adapter/*.patch text eol=lf -whitespace

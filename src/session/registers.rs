@@ -124,7 +124,13 @@ impl Engine {
                 owner,
                 context: context.clone(),
                 timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
-                source: route_name(register),
+                source: if matches!(register.reader, Reader::Cp15_64 { .. })
+                    && !self.project.registers.cp15_64_command.is_empty()
+                {
+                    format!("openocd:{}", self.project.registers.cp15_64_command)
+                } else {
+                    route_name(register)
+                },
             };
             if implementation == Implementation::No {
                 sample.state = State::Unsupported;
@@ -282,10 +288,37 @@ impl Engine {
                 RawValue::parse(&text, register.bits)
                     .map_err(|error| (Reason::TransportError, error))?
             }
-            Reader::Cp15_64 { .. } => {
+            Reader::Cp15_64 { cp, op1, crm } => {
                 // A named GDB register may already provide a genuine MRRC-backed value.
                 // Never synthesize a 64-bit system register from unrelated 32-bit MRC reads.
-                self.gdb_register_value(&register.id, register.bits)?
+                if self.project.registers.cp15_64_command.is_empty() {
+                    self.gdb_register_value(&register.id, register.bits)?
+                } else {
+                    let command = format!(
+                        "if {{[catch {{aarch64 debugtui_adapter}} __dt_adapter] || $__dt_adapter ne \"{}\"}} {{error \"MRRC adapter protocol unsupported\"}}; {} {cp} {op1} {crm}",
+                        crate::registers::OPENOCD_ADAPTER_PROTOCOL,
+                        self.project.registers.cp15_64_command
+                    );
+                    let text = self.register_tcl(&command).map_err(|(reason, error)| {
+                        if error.contains("adapter protocol unsupported") {
+                            (Reason::ReaderUnsupported, error)
+                        } else {
+                            (reason, error)
+                        }
+                    })?;
+                    let text = text.trim();
+                    if text.len() != 18
+                        || !text.starts_with("0x")
+                        || !text[2..].bytes().all(|b| b.is_ascii_hexdigit())
+                    {
+                        return Err((
+                            Reason::ReaderUnsupported,
+                            "MRRC adapter must return exactly 16 hexadecimal digits".into(),
+                        ));
+                    }
+                    RawValue::parse(text, register.bits)
+                        .map_err(|error| (Reason::TransportError, error))?
+                }
             }
             Reader::Backend { name } => {
                 let text = self.register_tcl(&format!(
@@ -412,6 +445,7 @@ impl Engine {
             Err(error) => {
                 if error.contains("Target restoration failed")
                     || error.contains("Selector restoration failed")
+                    || error.contains("Core state restoration failed")
                     || !error.starts_with("TCL command failed")
                 {
                     self.register_access_fault = Some(error.clone());
@@ -621,5 +655,72 @@ mod tests {
         engine.reg_names = vec!["r0".into(), String::new(), "pc".into()];
         let result = engine.read_registers(&json!({"ids":["cntpct"]})).unwrap();
         assert_eq!(result["samples"][0]["reason"], "reader_unsupported");
+    }
+    #[test]
+    fn explicit_mrrc_requires_full_width_and_preserves_high_bits_with_exact_source() {
+        for (reply, expected) in [
+            (
+                "__DEBUGTUI_RPC__0:0xfedcba9876543210\x1a",
+                Some("0xfedcba9876543210"),
+            ),
+            (
+                "__DEBUGTUI_RPC__0:0x0000000000000001\x1a",
+                Some("0x0000000000000001"),
+            ),
+            ("__DEBUGTUI_RPC__0:0x76543210\x1a", None),
+            ("__DEBUGTUI_RPC__0:0x00000000000000zz\x1a", None),
+        ] {
+            let mut engine = engine();
+            engine.project.registers.cp15_64_command = "aarch64 mrrc".into();
+            let (endpoint, worker) = server(reply);
+            engine.project.registers.tcl_endpoint = endpoint;
+            let result = engine
+                .read_registers(&json!({"ids":["cntpct"],"manual":true}))
+                .unwrap();
+            let sample = &result["samples"][0];
+            assert_eq!(sample["source"], "openocd:aarch64 mrrc");
+            if let Some(expected) = expected {
+                assert_eq!(sample["state"], "valid");
+                assert_eq!(sample["value"]["hex"], expected);
+                assert_eq!(sample["value"]["bits"], 64);
+            } else {
+                assert_eq!(sample["reason"], "reader_unsupported");
+                assert!(sample["value"].is_null());
+            }
+            let packet = worker.join().unwrap();
+            assert_eq!(packet.matches("aarch64 mrrc 15 0 14").count(), 1);
+            assert!(packet.contains("aarch64 debugtui_adapter"));
+            assert!(!packet.contains("aarch64 mrc "));
+            assert!(engine.register_access_fault.is_none());
+        }
+    }
+    #[test]
+    fn mrrc_uncertain_core_state_fault_stops_the_channel_and_shared_gdb_access() {
+        let mut engine = engine();
+        engine.project.registers.cp15_64_command = "aarch64 mrrc".into();
+        let (endpoint, worker) =
+            server("__DEBUGTUI_RPC__1:Core state restoration failed: outcome unknown\x1a");
+        engine.project.registers.tcl_endpoint = endpoint;
+        let result = engine
+            .read_registers(&json!({"ids":["cntpct"],"manual":true}))
+            .unwrap();
+        worker.join().unwrap();
+        assert_eq!(result["samples"][0]["reason"], "transport_error");
+        assert!(engine.register_access_fault.is_some());
+        assert!(
+            engine
+                .mi("-exec-continue")
+                .unwrap_err()
+                .contains("reconnect")
+        );
+        let again = engine
+            .read_registers(&json!({"ids":["cntpct"],"manual":true}))
+            .unwrap();
+        assert!(
+            again["samples"][0]["detail"]
+                .as_str()
+                .unwrap()
+                .contains("reconnect")
+        );
     }
 }

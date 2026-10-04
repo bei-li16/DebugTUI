@@ -8,6 +8,8 @@ use std::{
 };
 
 pub const MAX_CATALOGUE_BYTES: u64 = 4 * 1024 * 1024;
+pub const OPENOCD_ADAPTER_PROTOCOL: &str =
+    "debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault";
 pub mod capabilities;
 pub mod display;
 pub mod mpu;
@@ -26,8 +28,12 @@ pub struct Config {
     pub targets: BTreeMap<String, String>,
     /// Explicit backend command, verified for the configured OpenOCD build.
     pub cp15_command: String,
+    /// Genuine MRRC from the pinned, explicitly selected ARMv8 adapter.
+    pub cp15_64_command: String,
     /// Opt-in MCR used only for adapted, saved/restored selector transactions.
     pub selector_command: String,
+    /// Genuine ISB; empty retains the guarded legacy CP15ISB route.
+    pub isb_command: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -74,6 +80,19 @@ impl Config {
     pub fn validate(&self) -> Result<(), String> {
         if !matches!(self.cp15_command.as_str(), "" | "arm mrc" | "aarch64 mrc") {
             return Err("registers.cp15_command must be arm mrc or aarch64 mrc".into());
+        }
+        if !matches!(self.cp15_64_command.as_str(), "" | "aarch64 mrrc") {
+            return Err("registers.cp15_64_command must be aarch64 mrrc".into());
+        }
+        if !self.isb_command.is_empty()
+            && (self.isb_command != "aarch64 isb"
+                || self.cp15_command != "aarch64 mrc"
+                || self.selector_command != "aarch64 mcr")
+        {
+            return Err(
+                "registers.isb_command requires aarch64 isb with the matching MRC/MCR family"
+                    .into(),
+            );
         }
         if !self.selector_command.is_empty()
             && !matches!(

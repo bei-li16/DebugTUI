@@ -1,0 +1,20 @@
+{
+  "source": "https://github.com/openocd-org/openocd",
+  "revision": "d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e",
+  "jimtcl_revision": "d5243a25c488dfe751ef218828f13516e04ea2ba",
+  "protocol": "debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault",
+  "patch": "0001-debugtui-armv8-register-adapter.patch",
+  "patch_sha256": "2be543869e57368651a1bfa58fc68325c07218359dc1be86a48fa753862c952a",
+  "patched_sources_sha256": {
+    "src/target/Makefile.am": "023248aca0853d814bf0cd661cf35fba7b93f797562f4e4e50e50c5ae039ec41",
+    "src/target/aarch64.c": "db46c0bb09716e431fb616767dd475f50ab28d3be3f45b748dfbb6685f1659b7",
+    "src/target/armv8_dpm.c": "6fc214e4ca8ed64dfba2f6185987bb09f7ca53f280c1bc2de30fc53f803d8319",
+    "src/target/armv8_dpm.h": "fa71a5eb5269e7970b77bf4006da07f9da60ec0d7fb8daff9d104009dcfd4169",
+    "src/target/armv8_debugtui.h": "4571b23076bda7cb0dd458ffc2c83bf2489694a5900f2e731b1c356737dc267e"
+  },
+  "board_support_verified": false,
+  "installed_xpack_binary_equivalent": false,
+  "windows_backend_build_verified": false,
+  "linux_backend_build_verified": true,
+  "linux_candidate_sha256": "80f2c574531855a50c6e4f52e9760d1603a296c3d8cca1579cbd995bfe245bd5"
+}

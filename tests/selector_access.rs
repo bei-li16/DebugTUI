@@ -21,6 +21,8 @@ use std::{
 static NEXT: AtomicU64 = AtomicU64::new(1);
 #[path = "selector_access/mpu_cases.rs"]
 mod mpu_cases;
+#[path = "selector_access/mrrc_cases.rs"]
+mod mrrc_cases;
 struct Fixture {
     project: Project,
     transcript: PathBuf,

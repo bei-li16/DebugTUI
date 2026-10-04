@@ -122,11 +122,17 @@ impl Plan {
         })
     }
     pub fn script(&self, mrc: &str, mcr: &str) -> Result<String, String> {
+        self.script_with_sync(mrc, mcr, "")
+    }
+    pub fn script_with_sync(&self, mrc: &str, mcr: &str, isb: &str) -> Result<String, String> {
         if !matches!(
             (mrc, mcr),
             ("arm mrc", "arm mcr") | ("aarch64 mrc", "aarch64 mcr")
         ) {
             return Err("Explicit verified MRC/MCR command pair required".into());
+        }
+        if !isb.is_empty() && (isb != "aarch64 isb" || mrc != "aarch64 mrc") {
+            return Err("Genuine ISB requires the verified aarch64 adapter command family".into());
         }
         let Self {
             selector_encoding: s,
@@ -153,21 +159,38 @@ impl Plan {
         } else {
             "15 0 1 0 0"
         };
-        // CP15ISB is used only after observing the controlling SCTLR.CP15BEN.
+        // Legacy CP15ISB requires CP15BEN. The explicit adapter executes genuine
+        // ISB, verifies its protocol and tests the barrier before changing state.
         // Inaccessible/disabled barriers stop before any selector MCR. The original
         // selector is validated before it can become a restoration operand.
+        let (guard, barrier) = if isb.is_empty() {
+            (
+                format!(
+                    "if {{([{mrc} {control}] & 32) == 0}} {{error \"CP15ISB not enabled; selector synchronization unsupported\"}}"
+                ),
+                format!("{mcr} 15 0 7 5 4 0"),
+            )
+        } else {
+            (
+                format!(
+                    "if {{[catch {{aarch64 debugtui_adapter}} __dt_adapter] || $__dt_adapter ne \"{}\"}} {{error \"ISB adapter protocol unsupported\"}}; {isb}",
+                    super::OPENOCD_ADAPTER_PROTOCOL
+                ),
+                isb.into(),
+            )
+        };
         Ok(format!(
             "set __dts_changed 0; set __dts_saved 0; set __dts_rc [catch {{\
             set __dts_midr [{mrc} 15 0 0 0 0]; if {{($__dts_midr & 0xff0ffff0) != 0x410fd130}} {{error \"Physical MIDR is not an adapted R52\"}}; \
             set __dts_n [expr {{([{mrc} {c}] >> {count_shift}) & {count_mask}}}]; if {{$__dts_n != {count}}} {{error \"Physical capability count changed\"}}; \
-            if {{([{mrc} {control}] & 32) == 0}} {{error \"CP15ISB not enabled; selector synchronization unsupported\"}}; \
+            {guard}; \
             set __dts_old [{mrc} {s}]; if {{($__dts_old & ~{selector_mask}) != 0 || {original_limit}}} {{error \"Original selector is outside the known restoration range\"}}; set __dts_saved 1; \
-            if {{$__dts_old != {index}}} {{set __dts_changed 1; {mcr} {s} {index}; {mcr} 15 0 7 5 4 0}}; \
+            if {{$__dts_old != {index}}} {{set __dts_changed 1; {mcr} {s} {index}; {barrier}}}; \
             if {{[{mrc} {s}] != {index}}} {{error \"Selector did not select the requested object\"}}; \
             set __dts_a [{mrc} {a}]; set __dts_b [{mrc} {b}]; \
             }} __dts_value]; \
             if {{$__dts_saved}} {{set __dts_restore [catch {{\
-            if {{$__dts_changed}} {{{mcr} {s} $__dts_old; {mcr} 15 0 7 5 4 0}}; \
+            if {{$__dts_changed}} {{{mcr} {s} $__dts_old; {barrier}}}; \
             set __dts_now [{mrc} {s}]; if {{$__dts_now != $__dts_old}} {{error \"Selector restore readback mismatch\"}} \
             }} __dts_restore_error]; if {{$__dts_restore}} {{error \"Selector restoration failed: $__dts_restore_error\"}}}}; \
             if {{$__dts_rc}} {{error $__dts_value}}; \
@@ -302,6 +325,29 @@ mod tests {
         for forbidden in ["core_state", "resume", "; halt", "15 0 9 12 0 1", "FPEXC"] {
             assert!(!script.contains(forbidden));
         }
+    }
+    #[test]
+    fn genuine_isb_checks_adapter_before_selecting_and_does_not_require_cp15ben() {
+        let p = Plan::new(Kind::Pmu, 3, 4, 0x1a).unwrap();
+        let script = p
+            .script_with_sync("aarch64 mrc", "aarch64 mcr", "aarch64 isb")
+            .unwrap();
+        assert!(script.contains(super::super::OPENOCD_ADAPTER_PROTOCOL));
+        assert!(
+            script.find("aarch64 debugtui_adapter").unwrap()
+                < script.find("set __dts_old").unwrap()
+        );
+        assert!(script.contains("aarch64 mcr 15 0 9 12 5 3; aarch64 isb"));
+        assert!(script.contains("aarch64 mcr 15 0 9 12 5 $__dts_old; aarch64 isb"));
+        assert!(!script.contains("& 32") && !script.contains("15 0 7 5 4 0"));
+        assert!(
+            p.script_with_sync("arm mrc", "arm mcr", "aarch64 isb")
+                .is_err()
+        );
+        assert!(
+            p.script_with_sync("aarch64 mrc", "aarch64 mcr", "aarch64 isb; resume")
+                .is_err()
+        );
     }
     #[test]
     fn mpu_pair_decodes_inclusive_limit_permissions_and_disabled_invalid_range() {
