@@ -54,7 +54,15 @@ pub(super) fn tag(base: Radix) -> &'static str {
     }
 }
 #[derive(Clone)]
+pub(super) struct RegisterBinding {
+    pub scope: String,
+    pub object: String,
+    pub bits: u16,
+    pub field: bool,
+}
+#[derive(Clone)]
 pub(super) struct Item {
+    pub register: Option<RegisterBinding>,
     pub rect: Rect,
     pub pane: usize,
     pub row: usize,
@@ -62,6 +70,33 @@ pub(super) struct Item {
     pub name: String,
     pub raw: String,
     pub default: Radix,
+}
+impl Item {
+    fn choices(&self) -> Vec<(crate::registers::display::Format, String)> {
+        if let Some(register) = &self.register {
+            crate::registers::display::choices(register.bits, register.field)
+        } else {
+            BASES
+                .iter()
+                .map(|(radix, label)| {
+                    (
+                        crate::registers::display::Format::Unsigned { radix: *radix },
+                        (*label).into(),
+                    )
+                })
+                .collect()
+        }
+    }
+    fn preview(&self, format: crate::registers::display::Format) -> Option<String> {
+        if let Some(register) = &self.register {
+            let raw = crate::registers::RawValue::parse(&self.raw, register.bits).ok()?;
+            format.render(&raw).ok()
+        } else if let crate::registers::display::Format::Unsigned { radix } = format {
+            number(&self.raw, radix)
+        } else {
+            None
+        }
+    }
 }
 #[derive(Default)]
 pub(super) struct Formats {
@@ -100,7 +135,12 @@ impl App {
         if let Some(engine) = engine {
             let id = self.next_id;
             self.next_id += 1;
-            match engine.send(Request::new(id, "ui_preferences", json!(self.project.ui))) {
+            let mut preferences = json!(self.project.ui);
+            preferences
+                .as_object_mut()
+                .unwrap()
+                .remove("register_views");
+            match engine.send(Request::new(id, "ui_preferences", preferences)) {
                 Ok(()) => {
                     self.formats.pending_save.insert(id);
                 }
@@ -130,10 +170,18 @@ impl App {
                 .cloned()
         });
         if let Some(item) = item {
-            self.formats.index = BASES
+            let current = item
+                .register
+                .as_ref()
+                .map(|register| self.register_display_format(&register.object))
+                .unwrap_or(crate::registers::display::Format::Unsigned {
+                    radix: self.base_for(&item.key, item.default),
+                });
+            self.formats.index = item
+                .choices()
                 .iter()
-                .position(|(b, _)| *b == self.base_for(&item.key, item.default))
-                .unwrap_or(2);
+                .position(|(format, _)| *format == current)
+                .unwrap_or(0);
             self.formats.popup = Some(item);
             self.editing = false;
             self.watch_editing = false;
@@ -160,6 +208,7 @@ impl App {
                 .into_iter()
                 .nth(row * self.memory_columns())?;
             return Some(Item {
+                register: None,
                 rect: Rect::default(),
                 pane,
                 row,
@@ -177,6 +226,7 @@ impl App {
         };
         let v = vars.get(if pane == 3 { row } else { row / 2 })?;
         Some(Item {
+            register: None,
             rect: Rect::default(),
             pane,
             row,
@@ -198,10 +248,25 @@ impl App {
     }
     pub(super) fn apply_format(&mut self, engine: Option<&EngineHandle>) {
         if let Some(item) = self.formats.popup.take() {
-            let base = BASES[self.formats.index].0;
-            self.project.ui.formats.insert(item.key, base);
-            self.notice = format!("{} · {} display", item.name, tag(base));
-            self.save_ui(engine);
+            let Some((format, label)) = item.choices().get(self.formats.index).cloned() else {
+                return;
+            };
+            if let Some(register) = &item.register {
+                if register.scope != self.register_view.preference_scope {
+                    return;
+                }
+                self.notice = format!("{} · {label}", item.name);
+                self.set_register_display_format(
+                    &register.scope,
+                    register.object.clone(),
+                    format,
+                    engine,
+                );
+            } else if let crate::registers::display::Format::Unsigned { radix } = format {
+                self.project.ui.formats.insert(item.key, radix);
+                self.notice = format!("{} · {} display", item.name, tag(radix));
+                self.save_ui(engine);
+            }
         }
     }
     pub(super) fn format_key(&mut self, key: KeyEvent, engine: Option<&EngineHandle>) -> bool {
@@ -234,8 +299,14 @@ impl App {
                     self.open_monitor(item.pane, item.row);
                 }
             }
-            KeyCode::Up | KeyCode::BackTab => self.formats.index = (self.formats.index + 3) % 4,
-            KeyCode::Down | KeyCode::Tab => self.formats.index = (self.formats.index + 1) % 4,
+            KeyCode::Up | KeyCode::BackTab => {
+                let n = self.formats.popup.as_ref().unwrap().choices().len();
+                self.formats.index = (self.formats.index + n - 1) % n;
+            }
+            KeyCode::Down | KeyCode::Tab => {
+                let n = self.formats.popup.as_ref().unwrap().choices().len();
+                self.formats.index = (self.formats.index + 1) % n;
+            }
             KeyCode::Enter => self.apply_format(engine),
             _ => {}
         }
@@ -377,6 +448,7 @@ impl App {
             };
             let hit = Rect::new(rect.x, rect.y + (row - start) as u16, rect.width, 1);
             let item = Item {
+                register: None,
                 rect: hit,
                 pane,
                 row,
@@ -459,6 +531,7 @@ impl App {
                     break;
                 }
                 let item = Item {
+                    register: None,
                     rect: Rect::new(x, y, 12.min(rect.right() - x), 1),
                     pane: 4,
                     row,
@@ -515,7 +588,8 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
         f.render_widget(Paragraph::new(format!("Glyphs: {}\nCopper / graphite · no target polling\nSettings saved to this project's [ui] section.",if a.project.ui.unicode {"Unicode"} else {"ASCII"})).style(Style::default().fg(theme::MUTED)).wrap(Wrap{trim:false}),Rect::new(inner.x+1,inner.y+6,inner.width.saturating_sub(2),inner.height.saturating_sub(6)));
     }
     if let Some(item) = a.formats.popup.clone() {
-        let r = center(f.area(), 100, 17);
+        let options = item.choices();
+        let r = center(f.area(), 100, if item.register.is_some() { 23 } else { 17 });
         theme::overlay(f, r);
         let card = theme::card(" Number format · Enter apply · Esc close ", true);
         let inner = card.inner(r);
@@ -524,15 +598,31 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
             Paragraph::new(item.name.clone()).style(Style::default().fg(theme::ACCENT)),
             Rect::new(inner.x + 1, inner.y, inner.width.saturating_sub(2), 1),
         );
-        for (i, (_, label)) in BASES.iter().enumerate() {
+        let menu_rows = if item.register.is_some() {
+            inner.height.saturating_sub(5).min(11)
+        } else {
+            4.min(inner.height.saturating_sub(3))
+        };
+        let top = a
+            .formats
+            .index
+            .saturating_sub(usize::from(menu_rows.saturating_sub(1)))
+            .min(options.len().saturating_sub(usize::from(menu_rows)));
+        for (screen, (i, (_, label))) in options
+            .iter()
+            .enumerate()
+            .skip(top)
+            .take(usize::from(menu_rows))
+            .enumerate()
+        {
             let hit = Rect::new(
                 inner.x + 1,
-                inner.y + 2 + i as u16,
+                inner.y + 2 + screen as u16,
                 inner.width.saturating_sub(2),
                 1,
             );
             f.render_widget(
-                Paragraph::new(*label).style(theme::selected(i == a.formats.index)),
+                Paragraph::new(label.clone()).style(theme::selected(i == a.formats.index)),
                 hit,
             );
             a.formats.menu_hits.push((hit, i));
@@ -547,14 +637,39 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
             );
             a.formats.refresh_rect = hit;
         }
-        let preview=number(&item.raw,BASES[a.formats.index].0).unwrap_or_else(||format!("{}\n\nNot a scalar integer. Natural display is retained; watch an individual member to format it.",item.raw));
+        let selected = options
+            .get(a.formats.index)
+            .map(|(format, _)| *format)
+            .unwrap_or_default();
+        let preview = item.preview(selected).unwrap_or_else(|| format!("{}\n\nNot a scalar integer. Natural display is retained; watch an individual member to format it.", item.raw));
+        let preview_y = if item.register.is_some() {
+            4 + menu_rows
+        } else {
+            7
+        };
+        if item.register.is_some() {
+            f.render_widget(
+                Paragraph::new(format!(
+                    "{}/{} · ↑↓ select · lane 0 = low bits",
+                    a.formats.index + 1,
+                    options.len()
+                ))
+                .style(Style::default().fg(theme::MUTED)),
+                Rect::new(
+                    inner.x + 1,
+                    inner.y + 2 + menu_rows,
+                    inner.width.saturating_sub(2),
+                    1,
+                ),
+            );
+        }
         f.render_widget(
             Paragraph::new(preview).wrap(Wrap { trim: false }),
             Rect::new(
                 inner.x + 1,
-                inner.y + 7,
+                inner.y + preview_y,
                 inner.width.saturating_sub(2),
-                inner.height.saturating_sub(7),
+                inner.height.saturating_sub(preview_y),
             ),
         );
     }

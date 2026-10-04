@@ -1549,8 +1549,12 @@ impl Engine {
         };
         match method {
             "ui_preferences" => {
-                let ui: crate::config::Ui =
+                let mut ui: crate::config::Ui =
                     serde_json::from_value(p.clone()).map_err(|e| e.to_string())?;
+                if !ui.register_views.is_empty() {
+                    return Err("Use register_preferences to update one register view".into());
+                }
+                ui.register_views = self.project.ui.register_views.clone();
                 if ui
                     .refresh
                     .values()
@@ -1561,9 +1565,28 @@ impl Engine {
                 for range in ui.memory.values() {
                     range.validate()?;
                 }
+                crate::config::validate_register_views(&ui.register_views)?;
                 let saved = self.project.save_ui(&ui)?;
                 self.project.ui = ui;
                 Ok(json!({"saved":saved}))
+            }
+            "register_preferences" => {
+                #[derive(Deserialize)]
+                #[serde(deny_unknown_fields)]
+                struct ViewRequest {
+                    scope: String,
+                    preferences: crate::registers::display::Preferences,
+                }
+                let view: ViewRequest =
+                    serde_json::from_value(p.clone()).map_err(|e| e.to_string())?;
+                let saved = self
+                    .project
+                    .save_register_view(&view.scope, &view.preferences)?;
+                self.project
+                    .ui
+                    .register_views
+                    .insert(view.scope.clone(), view.preferences);
+                Ok(json!({"saved":saved,"scope":view.scope}))
             }
             "connect" => self.connect(),
             "reconnect" => {

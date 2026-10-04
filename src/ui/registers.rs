@@ -39,6 +39,8 @@ pub(super) struct RegisterView {
     filter: usize,
     all_definitions: bool,
     facts: BTreeMap<String, u64>,
+    pub(super) preference_scope: String,
+    display_formats: BTreeMap<String, crate::registers::display::Format>,
 }
 impl RegisterView {
     pub(super) fn edit_candidate(
@@ -126,6 +128,8 @@ impl RegisterView {
             filter: 0,
             all_definitions: false,
             facts: project.registers.facts.clone(),
+            preference_scope: String::new(),
+            display_formats: BTreeMap::new(),
         };
         view.rebuild();
         view
@@ -211,22 +215,27 @@ impl RegisterView {
             self.append_group(root, 0);
         }
     }
-    fn toggle(&mut self, row: usize, expand: Option<bool>) {
+    fn toggle(&mut self, row: usize, expand: Option<bool>) -> bool {
         let Some(row) = self.rows.get(row).cloned() else {
-            return;
+            return false;
         };
         let catalogue = self.catalogue.as_ref().unwrap();
         let (set, id) = match row {
             Row::Group(index, _) => (&mut self.open, catalogue.groups[index].id.clone()),
-            Row::Register(index, _) => (&mut self.fields, catalogue.registers[index].id.clone()),
-            Row::Field(_, _, _) => return,
+            Row::Register(index, _) if !catalogue.registers[index].fields.is_empty() => {
+                (&mut self.fields, catalogue.registers[index].id.clone())
+            }
+            _ => return false,
         };
-        if expand.unwrap_or(!set.contains(&id)) {
-            set.insert(id);
+        let changed = if expand.unwrap_or(!set.contains(&id)) {
+            set.insert(id)
         } else {
-            set.remove(&id);
+            set.remove(&id)
+        };
+        if changed {
+            self.rebuild();
         }
-        self.rebuild();
+        changed
     }
     fn register_index(&self, row: usize) -> Option<usize> {
         match self.rows.get(row)? {
@@ -255,6 +264,198 @@ impl RegisterView {
 }
 
 impl App {
+    pub(super) fn sync_register_preferences(&mut self) {
+        let Some(catalogue) = &self.register_view.catalogue else {
+            return;
+        };
+        let mut context = self.register_context();
+        if self.snapshot.core.is_none()
+            && let Some(core) = self.project.cores.first()
+        {
+            context.core = core.name.clone();
+        }
+        let chip = if self.project.debug.chip.is_empty() {
+            let endpoint = self
+                .snapshot
+                .core
+                .as_ref()
+                .map(|core| core.endpoint.as_str())
+                .or_else(|| {
+                    self.project
+                        .cores
+                        .first()
+                        .map(|core| core.endpoint.as_str())
+                })
+                .unwrap_or(&self.project.target.endpoint);
+            format!("unidentified:{}:{endpoint}", self.project.target.mode)
+        } else {
+            self.project.debug.chip.clone()
+        };
+        let scope = serde_json::to_string(&(
+            &chip,
+            &context.core,
+            &catalogue.cpu,
+            &catalogue.architecture,
+            &self.register_view.source,
+            catalogue.version,
+        ))
+        .unwrap();
+        if scope == self.register_view.preference_scope {
+            return;
+        }
+        let migrate = self.project.ui.register_views.is_empty();
+        let mut preferences = self
+            .project
+            .ui
+            .register_views
+            .get(&scope)
+            .cloned()
+            .filter(|p| p.validate().is_ok())
+            .unwrap_or_default();
+        preferences
+            .open
+            .retain(|id| catalogue.groups.iter().any(|group| &group.id == id));
+        preferences
+            .fields
+            .retain(|id| catalogue.register(id).is_some_and(|r| !r.fields.is_empty()));
+        preferences.formats.retain(|object, format| {
+            let Ok((id, field)) = serde_json::from_str::<(String, Option<String>)>(object) else {
+                return false;
+            };
+            let Some(register) = catalogue.register(&id) else {
+                return false;
+            };
+            let bits = if let Some(field) = &field {
+                let Some(field) = register.fields.iter().find(|f| &f.name == field) else {
+                    return false;
+                };
+                field.segments.iter().map(|segment| segment.width).sum()
+            } else {
+                register.bits
+            };
+            crate::registers::display::choices(bits, field.is_some())
+                .iter()
+                .any(|(choice, _)| choice == format)
+        });
+        if migrate {
+            for (index, register) in catalogue.registers.iter().enumerate() {
+                let Some(owner) = self.register_view.owner(&self.project, &context, index) else {
+                    continue;
+                };
+                for field in std::iter::once(None).chain(register.fields.iter().map(Some)) {
+                    let name = field
+                        .map(|field| format!("{}.{}", register.name, field.name))
+                        .unwrap_or_else(|| register.name.clone());
+                    let key = format!(
+                        "register:{}:{}:{}:{name}",
+                        self.project.debug.chip, catalogue.cpu, owner
+                    );
+                    let legacy = format!("register:{}", register.id);
+                    if let Some(radix) = self.project.ui.formats.get(&key).or_else(|| {
+                        if field.is_none() {
+                            self.project.ui.formats.get(&legacy)
+                        } else {
+                            None
+                        }
+                    }) {
+                        let object =
+                            serde_json::to_string(&(&register.id, field.map(|field| &field.name)))
+                                .unwrap();
+                        preferences.formats.entry(object).or_insert(
+                            crate::registers::display::Format::Unsigned { radix: *radix },
+                        );
+                    }
+                }
+            }
+        }
+        self.project
+            .ui
+            .register_views
+            .insert(scope.clone(), preferences.clone());
+        self.register_view.preference_scope = scope;
+        self.register_view.open = preferences.open;
+        self.register_view.fields = preferences.fields;
+        self.register_view.filter = usize::from(preferences.filter);
+        self.register_view.all_definitions = preferences.all_definitions;
+        self.register_view.query = preferences.query;
+        self.register_view.display_formats = preferences.formats;
+        self.register_view.searching = false;
+        if self
+            .formats
+            .popup
+            .as_ref()
+            .is_some_and(|item| item.register.is_some())
+        {
+            self.formats.popup = None;
+        }
+        self.register_view.rebuild();
+        self.view_tops[3] = 0;
+        self.selections[3] = 0;
+        if self.pane == 3 {
+            self.selection = 0;
+        }
+    }
+    pub(super) fn save_register_preferences(&mut self, engine: Option<&EngineHandle>) {
+        let preferences = crate::registers::display::Preferences {
+            open: self.register_view.open.clone(),
+            fields: self.register_view.fields.clone(),
+            filter: self.register_view.filter as u8,
+            all_definitions: self.register_view.all_definitions,
+            query: self.register_view.query.clone(),
+            formats: self.register_view.display_formats.clone(),
+        };
+        if let Err(error) = preferences.validate() {
+            self.notice = error;
+            return;
+        }
+        let scope = self.register_view.preference_scope.clone();
+        if scope.is_empty() {
+            return;
+        }
+        self.project
+            .ui
+            .register_views
+            .insert(scope.clone(), preferences.clone());
+        if let Some(engine) = engine {
+            let id = self.next_id;
+            self.next_id += 1;
+            match engine.send(Request::new(
+                id,
+                "register_preferences",
+                json!({"scope":scope,"preferences":preferences}),
+            )) {
+                Ok(()) => {
+                    self.formats.pending_save.insert(id);
+                }
+                Err(error) => {
+                    self.notice = format!("Cannot save register display preferences: {error}")
+                }
+            }
+        }
+    }
+    pub(super) fn register_display_format(
+        &self,
+        object: &str,
+    ) -> crate::registers::display::Format {
+        self.register_view
+            .display_formats
+            .get(object)
+            .copied()
+            .unwrap_or_default()
+    }
+    pub(super) fn set_register_display_format(
+        &mut self,
+        scope: &str,
+        object: String,
+        format: crate::registers::display::Format,
+        engine: Option<&EngineHandle>,
+    ) {
+        if scope != self.register_view.preference_scope {
+            return;
+        }
+        self.register_view.display_formats.insert(object, format);
+        self.save_register_preferences(engine);
+    }
     pub(super) fn read_register_bank(&mut self, engine: Option<&EngineHandle>) {
         if self.demo
             || engine.is_none()
@@ -468,17 +669,19 @@ impl App {
         self.register_view.search_original = self.register_view.query.clone();
         self.register_view.searching = true;
     }
-    pub(super) fn filter_registers(&mut self) {
+    pub(super) fn filter_registers(&mut self, engine: Option<&EngineHandle>) {
         self.register_view.filter = (self.register_view.filter + 1) % 4;
         self.register_view.rebuild();
         self.selection = 0;
         self.view_tops[3] = 0;
+        self.save_register_preferences(engine);
     }
-    pub(super) fn toggle_register_definitions(&mut self) {
+    pub(super) fn toggle_register_definitions(&mut self, engine: Option<&EngineHandle>) {
         self.register_view.all_definitions = !self.register_view.all_definitions;
         self.register_view.rebuild();
         self.selection = 0;
         self.view_tops[3] = 0;
+        self.save_register_preferences(engine);
     }
     pub(super) fn register_key(&mut self, key: KeyEvent, engine: Option<&EngineHandle>) -> bool {
         if !self.register_view.enabled() {
@@ -490,7 +693,10 @@ impl App {
                     self.register_view.query = self.register_view.search_original.clone();
                     self.register_view.searching = false;
                 }
-                KeyCode::Enter => self.register_view.searching = false,
+                KeyCode::Enter => {
+                    self.register_view.searching = false;
+                    self.save_register_preferences(engine);
+                }
                 KeyCode::Backspace => {
                     self.register_view.query.pop();
                 }
@@ -510,26 +716,34 @@ impl App {
         if !key.modifiers.is_empty() {
             return false;
         }
+        let mut changed = false;
         match key.code {
             KeyCode::Enter | KeyCode::Char(' ') => {
-                self.register_view.toggle(self.selected(3), None)
+                changed = self.register_view.toggle(self.selected(3), None);
             }
-            KeyCode::Left => self.register_view.toggle(self.selected(3), Some(false)),
-            KeyCode::Right => self.register_view.toggle(self.selected(3), Some(true)),
+            KeyCode::Left => changed = self.register_view.toggle(self.selected(3), Some(false)),
+            KeyCode::Right => changed = self.register_view.toggle(self.selected(3), Some(true)),
             KeyCode::Char('r') => {
                 self.refresh_register(engine);
             }
             KeyCode::Char('s') => self.start_register_search(),
-            KeyCode::Char('v') => self.filter_registers(),
-            KeyCode::Char('a') => self.toggle_register_definitions(),
+            KeyCode::Char('v') => self.filter_registers(engine),
+            KeyCode::Char('a') => self.toggle_register_definitions(engine),
             _ => return false,
         }
         self.selection = self
             .selection
             .min(self.register_view.rows.len().saturating_sub(1));
+        if changed {
+            self.save_register_preferences(engine);
+        }
         true
     }
-    pub(super) fn register_mouse(&mut self, mouse: MouseEvent) -> bool {
+    pub(super) fn register_mouse(
+        &mut self,
+        mouse: MouseEvent,
+        engine: Option<&EngineHandle>,
+    ) -> bool {
         let rect = self.view_rects[3];
         if self.side_pane != 3
             || !self.register_view.enabled()
@@ -548,8 +762,10 @@ impl App {
         let depth = match self.register_view.rows[row] {
             Row::Group(_, d) | Row::Register(_, d) | Row::Field(_, _, d) => d,
         };
-        if mouse.column <= rect.x.saturating_add((depth * 2 + 2) as u16) {
-            self.register_view.toggle(row, None);
+        if mouse.column <= rect.x.saturating_add((depth * 2 + 2) as u16)
+            && self.register_view.toggle(row, None)
+        {
+            self.save_register_preferences(engine);
         }
         true
     }
@@ -762,16 +978,24 @@ impl App {
         let owner = self.register_view.owner(&self.project, &context, index)?;
         let sample = self.register_view.sample(&self.project, &context, index)?;
         let raw = sample.value.as_ref()?;
-        let (name, raw) = if let Row::Field(_, field, _) = self.register_view.rows[row] {
+        let (name, raw, field_name) = if let Row::Field(_, field, _) = self.register_view.rows[row]
+        {
             let field = &register.fields[field];
             (
                 format!("{}.{}", register.name, field.name),
-                field.extract(raw).ok()?.hex,
+                field.extract(raw).ok()?,
+                Some(field.name.as_str()),
             )
         } else {
-            (register.name.clone(), raw.hex.clone())
+            (register.name.clone(), raw.clone(), None)
         };
         Some(formats::Item {
+            register: Some(formats::RegisterBinding {
+                scope: self.register_view.preference_scope.clone(),
+                object: serde_json::to_string(&(&register.id, field_name)).ok()?,
+                bits: raw.bits,
+                field: field_name.is_some(),
+            }),
             rect: Rect::default(),
             pane: 3,
             row,
@@ -780,11 +1004,12 @@ impl App {
                 self.project.debug.chip, catalogue.cpu, owner, name
             ),
             name,
-            raw,
+            raw: raw.hex,
             default: crate::config::Radix::Hex,
         })
     }
     pub(super) fn draw_registers(&mut self, f: &mut UiFrame, rect: Rect) {
+        self.sync_register_preferences();
         if let Some(error) = &self.register_view.error {
             theme::empty(f, rect, "Register catalogue error", error);
             return;
@@ -861,19 +1086,17 @@ impl App {
                             field.map_or_else(|| Some(raw.clone()), |field| field.extract(raw).ok())
                         });
                     let value = raw.as_ref().map(|raw| {
+                        let object =
+                            serde_json::to_string(&(&register.id, field.map(|field| &field.name)))
+                                .unwrap();
+                        let value = self
+                            .register_display_format(&object)
+                            .render(raw)
+                            .unwrap_or_else(|_| raw.hex.clone());
                         field
                             .and_then(|field| field.enum_name(raw))
-                            .map(str::to_owned)
-                            .unwrap_or_else(|| {
-                                self.register_format_item(row_index)
-                                    .and_then(|item| {
-                                        formats::number(
-                                            &raw.hex,
-                                            self.base_for(&item.key, item.default),
-                                        )
-                                    })
-                                    .unwrap_or_else(|| raw.hex.clone())
-                            })
+                            .map(|name| format!("{value} ({name})"))
+                            .unwrap_or(value)
                     });
                     let state = if !register.access.readable() {
                         "Write only".into()
@@ -1056,6 +1279,203 @@ mod tests {
             timestamp_ms: 23,
             source: format!("gdb:{id}"),
         }
+    }
+    #[test]
+    fn register_view_preferences_migrate_once_and_restore_by_chip_core_and_catalogue() {
+        let mut project = app().project;
+        project.ui.register_views.clear();
+        project.debug.chip = "chip-A".into();
+        project
+            .ui
+            .formats
+            .insert("register:r0".into(), crate::config::Radix::Decimal);
+        let mut app = App::new(project, false);
+        let object = serde_json::to_string(&("r0", Option::<String>::None)).unwrap();
+        assert_eq!(
+            app.register_display_format(&object),
+            crate::registers::display::Format::Unsigned {
+                radix: crate::config::Radix::Decimal
+            }
+        );
+        app.register_view.open.insert("simd".into());
+        app.register_view.fields.insert("cpsr".into());
+        app.register_view.filter = 3;
+        app.register_view.all_definitions = true;
+        app.register_view.query = "cpsr".into();
+        app.save_register_preferences(None);
+        let core0_scope = app.register_view.preference_scope.clone();
+        app.snapshot.core = Some(crate::session::CoreStatus {
+            index: 1,
+            name: "core1".into(),
+            endpoint: "localhost:3334".into(),
+            state: "STOPPED".into(),
+        });
+        app.sync_register_preferences();
+        assert_ne!(app.register_view.preference_scope, core0_scope);
+        assert_eq!(
+            app.register_display_format(&object),
+            crate::registers::display::Format::default()
+        );
+        assert_eq!(app.register_view.filter, 0);
+        app.snapshot.core = None;
+        app.sync_register_preferences();
+        assert!(app.register_view.open.contains("simd"));
+        assert!(app.register_view.fields.contains("cpsr"));
+        assert_eq!(app.register_view.query, "cpsr");
+        assert_eq!(app.register_view.filter, 3);
+        assert!(app.register_view.all_definitions);
+        let source = app.register_view.source.clone();
+        app.register_view.source = "user:other-register-catalogue.toml".into();
+        app.sync_register_preferences();
+        assert_eq!(
+            app.register_display_format(&object),
+            crate::registers::display::Format::default()
+        );
+        app.register_view.source = source;
+        app.project.debug.chip = "chip-B".into();
+        app.sync_register_preferences();
+        assert_eq!(app.register_view.filter, 0);
+        assert_eq!(
+            app.register_display_format(&object),
+            crate::registers::display::Format::default()
+        );
+        app.project.debug.chip = "chip-A".into();
+        app.sync_register_preferences();
+        assert_eq!(app.register_view.preference_scope, core0_scope);
+        let serialized = toml::to_string(&app.project).unwrap();
+        let reloaded: Project = toml::from_str(&serialized).unwrap();
+        let app = App::new(reloaded, false);
+        assert_eq!(app.register_view.preference_scope, core0_scope);
+        assert_eq!(app.register_view.filter, 3);
+        assert_eq!(app.register_view.query, "cpsr");
+    }
+    #[test]
+    fn register_float_vector_menu_uses_keyboard_mouse_and_never_reads_or_changes_samples() {
+        let mut app = app();
+        let (engine, requests) = engine();
+        app.register_view.open = app
+            .register_view
+            .catalogue
+            .as_ref()
+            .unwrap()
+            .groups
+            .iter()
+            .map(|g| g.id.clone())
+            .collect();
+        app.register_view.rebuild();
+        let mut value = sample(&app, "d0", "0x0");
+        value.value = Some(RawValue::parse("0x800000003f800000", 64).unwrap());
+        let before = value.value.clone();
+        app.register_view
+            .values
+            .insert(("core:default".into(), "d0".into()), value);
+        app.selection = app.register_view.rows.iter().position(|row|matches!(row, Row::Register(i,_) if app.register_view.catalogue.as_ref().unwrap().registers[*i].id=="d0")).unwrap();
+        app.open_format(None);
+        let format = crate::registers::display::Format::Vector {
+            lane_bits: 32,
+            interpretation: crate::registers::display::Lane::Float,
+        };
+        let selected = crate::registers::display::choices(64, false)
+            .iter()
+            .position(|(f, _)| *f == format)
+            .unwrap();
+        for _ in 0..selected {
+            app.format_key(
+                KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+                Some(&engine),
+            );
+        }
+        for (width, height) in [(100, 28), (44, 12)] {
+            let mut terminal =
+                ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();
+            terminal.draw(|f| formats::popup(f, &mut app)).unwrap();
+            let text = terminal
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|c| c.symbol())
+                .collect::<String>();
+            assert!(text.contains("32-bit float"), "{width}x{height}: {text}");
+            assert!(text.contains("-0.0"), "{width}x{height}: {text}");
+        }
+        assert!(requests.try_recv().is_err());
+        let hit = app
+            .formats
+            .menu_hits
+            .iter()
+            .find(|(_, i)| *i == selected)
+            .unwrap()
+            .0;
+        app.mouse(
+            MouseEvent {
+                kind: MouseEventKind::Down(event::MouseButton::Left),
+                column: hit.x,
+                row: hit.y,
+                modifiers: KeyModifiers::NONE,
+            },
+            Some(&engine),
+        );
+        let request = requests.try_recv().unwrap();
+        assert_eq!(request.method, "register_preferences");
+        let object = serde_json::to_string(&("d0", Option::<String>::None)).unwrap();
+        assert_eq!(app.register_display_format(&object), format);
+        assert_eq!(
+            app.register_view.values[&("core:default".into(), "d0".into())].value,
+            before
+        );
+        assert!(requests.try_recv().is_err());
+        app.open_format(None);
+        app.format_key(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert!(requests.try_recv().is_err());
+        app.open_format(None);
+        app.project.debug.chip = "another-chip".into();
+        app.sync_register_preferences();
+        assert!(app.formats.popup.is_none());
+        assert!(requests.try_recv().is_err());
+    }
+    #[test]
+    fn expanded_groups_and_committed_search_save_only_view_preferences() {
+        let mut app = app();
+        let (engine, requests) = engine();
+        app.selection = 0;
+        app.register_key(
+            KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert_eq!(requests.try_recv().unwrap().method, "register_preferences");
+        app.register_key(
+            KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert!(requests.try_recv().is_err());
+        app.start_register_search();
+        app.register_key(
+            KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE),
+            Some(&engine),
+        );
+        app.register_key(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        assert!(app.register_view.query.is_empty());
+        assert!(requests.try_recv().is_err());
+        app.start_register_search();
+        app.register_key(
+            KeyEvent::new(KeyCode::Char('p'), KeyModifiers::NONE),
+            Some(&engine),
+        );
+        app.register_key(
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        let request = requests.try_recv().unwrap();
+        assert_eq!(request.method, "register_preferences");
+        assert_eq!(request.params["preferences"]["query"], "p");
+        assert!(requests.try_recv().is_err());
     }
     #[test]
     fn capability_probe_is_explicit_single_flight_and_uses_physical_stop_generation() {
@@ -1282,7 +1702,7 @@ mod tests {
             row: 0,
             modifiers: KeyModifiers::NONE,
         };
-        assert!(app.register_mouse(mouse));
+        assert!(app.register_mouse(mouse, None));
         assert!(!app.register_view.open.contains("core"));
         assert!(app.pending_commands.is_empty());
     }
@@ -1302,7 +1722,7 @@ mod tests {
                 .count(),
             1
         );
-        app.toggle_register_definitions();
+        app.toggle_register_definitions(None);
         assert_eq!(
             app.register_view
                 .rows

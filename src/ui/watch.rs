@@ -266,6 +266,7 @@ impl App {
         });
         let node = nodes.get(row / 2).filter(|v| !v.more)?;
         Some(formats::Item {
+            register: None,
             rect: Rect::default(),
             pane,
             row,
@@ -319,6 +320,7 @@ impl App {
                 1,
             );
             let mut item = formats::Item {
+                register: None,
                 rect: hit,
                 pane,
                 row,

@@ -2,6 +2,12 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04，尚未发布）
 
+显示与偏好批次：完整 `cargo test --locked --quiet` 通过 282 项单元测试、44 项集成测试，另 2 项既有环境测试 ignored；`cargo clippy --locked --all-targets -- -D warnings` 通过。覆盖 1–128 位整数边界、IEEE 负零／无穷／带载荷 NaN／次正规数、向量分量次序、实际 Ratatui 宽窄布局及键鼠、取消、搜索提交、芯片／核心／目录隔离与旧偏好迁移。测试不连接板卡，显示格式测试不证明真实 VFP 后端能力。
+
+`node scripts/test-register-display.cjs --binary target/debug/debugtui.exe` 使用两个独立的实际 DebugTUI 进程和故意不存在的 GDB 路径，六阶段通过：并发保存不同核心、旧全局设置保留双方记录、无效输入不修改文件、目标上下文及 MI 无访问、两客户端退出。用例发现并修复 Windows 跨进程保存导致的配置覆盖及部分 TOML 写入：保存现使用独占句柄、重新合并最新配置和原子替换。既有 capability TCP 夹具的接收连接也显式改为阻塞模式，避免 Windows 非阻塞状态继承引起的超时失败。
+
+本批开发结果先保留本地；按用户更新后的交付要求，完整 TODO 开发、测试和自检完成后才统一推送非主分支并发布 Release。
+
 选择器批次：完整测试通过 273 项单元测试、43 项集成测试，另 2 项既有环境测试 ignored；严格 Clippy 通过。新增实际 Tcl 8.6／worker／TCP 软件测试：EL1／EL2 MPU 和 PMU 的原选择器／target 保存、索引边界、成对读取及恢复；MCR 已接受后报错、ISB 错误、恢复写／回读／屏障失败分别覆盖。恢复未知时 FAULT 且不重试，普通失败的旧值标不可用，数量变化清除 Probe；双核 Scope All 只改当前物理核心。界面显式操作、单个在途请求和迟到错误隔离也有测试。
 
 `node scripts/test-register-selectors-hardware.cjs` 默认 4 skipped，不连接目标。显式 `--run --project FILE --core NAME --case JSON --binary FILE` 才运行 REG-H04／REG-H06 的选择器子集；`tests/fixtures/register-selectors-board.example.json` 的地址／值来自软件模型，必须替换为实际专用固件的独立证据，并填写 CPU 修订、暂停函数、实际区域数量及可选另一核心。钩子 `register-selectors-board.c` 不修改 MPU／PMU／CP15BEN；计数器案例要求固件已暂停计数（PMCR.E=0），脚本不会配置固件。每个成对值同时对照声明值和独立直接索引读取，逐次确认所有选择器／控制寄存器及原工程未变。实际二进制＋MI／真实 Tcl 软件夹具通过 5 阶段；报告 `board_tests_executed=false`，上板未执行。真实 OpenOCD／CP15BEN 未设置时的 ISB 路径、MAIR 内存类型及完整区域视图仍待验收。

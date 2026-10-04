@@ -9,6 +9,7 @@ use std::{
 
 pub const MAX_CATALOGUE_BYTES: u64 = 4 * 1024 * 1024;
 pub mod capabilities;
+pub mod display;
 pub mod selector;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

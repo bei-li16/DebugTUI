@@ -7,6 +7,90 @@ use std::{
 // All per-core workers merge their preferences into the same project file.
 pub(crate) static PREFERENCE_WRITE: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+struct PreferenceGuard {
+    _thread: std::sync::MutexGuard<'static, ()>,
+    #[cfg(windows)]
+    file: Option<fs::File>,
+    #[cfg(windows)]
+    lock_path: PathBuf,
+}
+#[cfg(windows)]
+impl Drop for PreferenceGuard {
+    fn drop(&mut self) {
+        // A newly acquired share_mode(0) handle prevents another owner's cleanup
+        // from deleting this file. A crashed process leaves no live OS lock.
+        self.file.take();
+        let _ = fs::remove_file(&self.lock_path);
+    }
+}
+fn preference_guard(path: &Path) -> Result<PreferenceGuard, String> {
+    let guard = PREFERENCE_WRITE.lock().map_err(|e| e.to_string())?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        let lock_path = fs::canonicalize(path)
+            .map_err(|e| e.to_string())?
+            .with_extension("debugtui-preferences.lock");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            match fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .share_mode(0)
+                .open(&lock_path)
+            {
+                Ok(file) => {
+                    return Ok(PreferenceGuard {
+                        _thread: guard,
+                        file: Some(file),
+                        lock_path,
+                    });
+                }
+                Err(error)
+                    if matches!(error.raw_os_error(), Some(32 | 33))
+                        && std::time::Instant::now() < deadline =>
+                {
+                    std::thread::park_timeout(std::time::Duration::from_millis(5));
+                }
+                Err(error) => return Err(format!("Lock preferences {}: {error}", path.display())),
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Ok(PreferenceGuard { _thread: guard })
+    }
+}
+fn publish_preferences(path: &Path, raw: &toml::Value) -> Result<(), String> {
+    use std::io::Write;
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let text = toml::to_string_pretty(raw).map_err(|e| e.to_string())?;
+    let temporary = path.with_extension(format!(
+        "debugtui-preferences-{}-{}.tmp",
+        std::process::id(),
+        SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    let result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+            .map_err(|e| e.to_string())?;
+        file.write_all(text.as_bytes())
+            .and_then(|_| file.sync_all())
+            .map_err(|e| e.to_string())?;
+        drop(file);
+        fs::rename(&temporary, path).map_err(|e| e.to_string())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+
 /// Legacy location strings remain valid; detailed records retain disabled and data breakpoints.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -182,6 +266,7 @@ pub struct Ui {
     pub formats: BTreeMap<String, Radix>,
     pub refresh: BTreeMap<String, RefreshPolicy>,
     pub memory: BTreeMap<String, MemoryRange>,
+    pub register_views: BTreeMap<String, crate::registers::display::Preferences>,
 }
 impl Default for Ui {
     fn default() -> Self {
@@ -191,8 +276,24 @@ impl Default for Ui {
             formats: BTreeMap::new(),
             refresh: BTreeMap::new(),
             memory: BTreeMap::new(),
+            register_views: BTreeMap::new(),
         }
     }
+}
+pub(crate) fn validate_register_views(
+    views: &BTreeMap<String, crate::registers::display::Preferences>,
+) -> Result<(), String> {
+    if views.len() > 256
+        || views.keys().any(|scope| {
+            scope.is_empty() || scope.len() > 4096 || scope.chars().any(char::is_control)
+        })
+    {
+        return Err("Invalid register preference scope".into());
+    }
+    for view in views.values() {
+        view.validate()?;
+    }
+    Ok(())
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -756,6 +857,7 @@ impl Project {
             }
         }
         validate_memory_access(&self.memory_access, &self.cores)?;
+        validate_register_views(&self.ui.register_views)?;
         for range in self.ui.memory.values() {
             range.validate()?;
         }
@@ -903,7 +1005,7 @@ impl Project {
         let Some(path) = &self.path else {
             return Ok(());
         };
-        let _guard = PREFERENCE_WRITE.lock().map_err(|e| e.to_string())?;
+        let _guard = preference_guard(path)?;
         let mut raw = read_toml(path)?;
         let root = raw.as_table_mut().ok_or("Project must be a TOML table")?;
         let table = if let Some(name) = &self.preference_core
@@ -945,36 +1047,123 @@ impl Project {
             "breakpoints".into(),
             toml::Value::try_from(breakpoints).map_err(|e| e.to_string())?,
         );
-        fs::write(
-            path,
-            toml::to_string_pretty(&raw).map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())
+        publish_preferences(path, &raw)
     }
     /// Serialized by the session worker; merge with the latest project, never a tools profile.
     pub fn save_ui(&self, ui: &Ui) -> Result<bool, String> {
         let Some(path) = &self.path else {
             return Ok(false);
         };
-        let _guard = PREFERENCE_WRITE.lock().map_err(|e| e.to_string())?;
+        let _guard = preference_guard(path)?;
         let mut raw = read_toml(path)?;
+        let register_views = raw
+            .get("ui")
+            .and_then(|ui| ui.get("register_views"))
+            .cloned();
+        let mut ui_value = toml::Value::try_from(ui).map_err(|e| e.to_string())?;
+        if let Some(register_views) = register_views {
+            let views: BTreeMap<String, crate::registers::display::Preferences> = register_views
+                .clone()
+                .try_into()
+                .map_err(|e| e.to_string())?;
+            validate_register_views(&views)?;
+            ui_value
+                .as_table_mut()
+                .unwrap()
+                .insert("register_views".into(), register_views);
+        }
         raw.as_table_mut()
             .ok_or("Project must be a TOML table")?
-            .insert(
-                "ui".into(),
-                toml::Value::try_from(ui).map_err(|e| e.to_string())?,
-            );
-        fs::write(
-            path,
-            toml::to_string_pretty(&raw).map_err(|e| e.to_string())?,
-        )
-        .map_err(|e| e.to_string())?;
+            .insert("ui".into(), ui_value);
+        publish_preferences(path, &raw)?;
+        Ok(true)
+    }
+    /// Merge just one catalogue/chip/core view under the same preferences lock.
+    pub fn save_register_view(
+        &self,
+        scope: &str,
+        preferences: &crate::registers::display::Preferences,
+    ) -> Result<bool, String> {
+        validate_register_views(&BTreeMap::from([(scope.to_owned(), preferences.clone())]))?;
+        let Some(path) = &self.path else {
+            return Ok(false);
+        };
+        let _guard = preference_guard(path)?;
+        let mut raw = read_toml(path)?;
+        let table = raw
+            .as_table_mut()
+            .ok_or("Project must be a TOML table")?
+            .entry("ui")
+            .or_insert_with(|| toml::Value::Table(Default::default()))
+            .as_table_mut()
+            .ok_or("UI must be a TOML table")?
+            .entry("register_views")
+            .or_insert_with(|| toml::Value::Table(Default::default()))
+            .as_table_mut()
+            .ok_or("Register views must be a TOML table")?;
+        if table.len() >= 256 && !table.contains_key(scope) {
+            return Err("Too many register preference scopes".into());
+        }
+        table.insert(
+            scope.into(),
+            toml::Value::try_from(preferences).map_err(|e| e.to_string())?,
+        );
+        publish_preferences(path, &raw)?;
         Ok(true)
     }
 }
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn scoped_register_preferences_merge_concurrent_clients_and_preserve_root_ui() {
+        let base = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("artifacts")
+            .join(format!("register-preferences-{}", std::process::id()));
+        fs::create_dir_all(&base).unwrap();
+        let path = base.join("project.toml");
+        fs::write(&path, "version=1\n[target]\nmode='local'\n[ui]\nanimations='full'\n[ui.formats]\n'watch:counter'='binary'\n").unwrap();
+        let project = Project::load(&path).unwrap();
+        let scope0 = "[\"THA6\",\"core0\",\"cortex-r52\"]";
+        let scope1 = "[\"THA6\",\"core1\",\"cortex-r52\"]";
+        let mut view0 = crate::registers::display::Preferences {
+            filter: 3,
+            ..Default::default()
+        };
+        view0.formats.insert(
+            "[\"d0\",null]".into(),
+            crate::registers::display::Format::Float { bits: 64 },
+        );
+        let view1 = crate::registers::display::Preferences {
+            filter: 2,
+            all_definitions: true,
+            ..Default::default()
+        };
+        std::thread::scope(|threads| {
+            let first = threads.spawn(|| project.save_register_view(scope0, &view0).unwrap());
+            let second = threads.spawn(|| project.save_register_view(scope1, &view1).unwrap());
+            assert!(first.join().unwrap() && second.join().unwrap());
+        });
+        let loaded = Project::load(&path).unwrap();
+        assert_eq!(loaded.ui.register_views[scope0], view0);
+        assert_eq!(loaded.ui.register_views[scope1], view1);
+        assert_eq!(loaded.ui.animations, Motion::Full);
+        assert_eq!(loaded.ui.formats["watch:counter"], Radix::Binary);
+        // This client predates both scoped updates; saving general settings must
+        // not replace the newer scope records with its stale/empty map.
+        let mut stale_ui = project.ui.clone();
+        stale_ui.unicode = false;
+        assert!(project.save_ui(&stale_ui).unwrap());
+        let loaded = Project::load(&path).unwrap();
+        assert_eq!(loaded.ui.register_views[scope0], view0);
+        assert_eq!(loaded.ui.register_views[scope1], view1);
+        assert!(!loaded.ui.unicode);
+        let before = fs::read(&path).unwrap();
+        assert!(project.save_register_view("", &view0).is_err());
+        view0.filter = 255;
+        assert!(project.save_register_view(scope0, &view0).is_err());
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
     #[test]
     fn generic_modes() {
         let mut p = Project::default();

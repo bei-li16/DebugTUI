@@ -455,6 +455,7 @@ impl App {
             a.log("[demo] Terminal UI preview; commands will not access hardware.".into());
             a.notice = "DEMO — Tab switches panels; Ctrl+P opens commands; q exits".into();
         }
+        a.sync_register_preferences();
         a
     }
     fn log(&mut self, text: String) {
@@ -537,6 +538,7 @@ impl App {
                     self.hide_source();
                 }
                 self.snapshot = *snapshot;
+                self.sync_register_preferences();
                 self.sync_register_capabilities();
             }
             Event::Log {
@@ -758,8 +760,8 @@ impl App {
             "edit-value" => self.open_edit_value(),
             "register-refresh" => { self.refresh_register(engine); }
             "register-search" => self.start_register_search(),
-            "register-filter" => self.filter_registers(),
-            "register-definitions" => self.toggle_register_definitions(),
+            "register-filter" => self.filter_registers(engine),
+            "register-definitions" => self.toggle_register_definitions(engine),
             "register-probe" => self.probe_registers(engine),
             "register-bank-read" => self.read_register_bank(engine),
             "scope" => self.submit(engine, "control_scope", json!({"scope":arg})),
@@ -1580,7 +1582,7 @@ impl App {
             if self.watch_mouse(mouse, engine) {
                 return;
             }
-            if self.register_mouse(mouse) {
+            if self.register_mouse(mouse, engine) {
                 return;
             }
             if self.format_mouse(mouse, engine) {

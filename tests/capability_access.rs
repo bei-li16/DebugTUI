@@ -537,6 +537,7 @@ fn target_scoped_tcl_probe_uses_exact_mrcs_and_quarantines_failed_restoration() 
                         Err(e) => panic!("TCL fixture accept: {e}"),
                     }
                 };
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(5)))
                     .unwrap();

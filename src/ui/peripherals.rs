@@ -459,6 +459,7 @@ impl App {
             value = value.map(|v| f.value(v));
         }
         Some(formats::Item {
+            register: None,
             rect: Rect::default(),
             pane: PANE,
             row,
@@ -728,6 +729,7 @@ impl App {
             let live = key.as_ref().is_some_and(|key| self.monitor_fresh(key));
             if let Some(key) = key {
                 let item = formats::Item {
+                    register: None,
                     rect: hit,
                     pane: PANE,
                     row: index,

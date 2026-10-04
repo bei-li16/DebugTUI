@@ -493,6 +493,42 @@ mod tests {
         assert!(engine.read_registers(&json!({"ids":["sctlr"]})).is_err());
     }
     #[test]
+    fn register_display_preferences_require_no_gdb_and_validate_before_persistence() {
+        let mut engine = engine();
+        engine.snapshot.state = "RUNNING".into();
+        let context = engine.register_context();
+        let preferences = crate::registers::display::Preferences::default();
+        assert_eq!(
+            engine
+                .execute(
+                    "register_preferences",
+                    &json!({"scope":"chip/core/catalogue","preferences":preferences})
+                )
+                .unwrap()["saved"],
+            false
+        );
+        assert_eq!(engine.snapshot.state, "RUNNING");
+        assert_eq!(engine.register_context(), context);
+        assert!(
+            engine
+                .execute(
+                    "register_preferences",
+                    &json!({"scope":"","preferences":preferences})
+                )
+                .is_err()
+        );
+        assert!(
+            engine
+                .execute(
+                    "register_preferences",
+                    &json!({"scope":"chip/core/catalogue","preferences":{"filter":200}})
+                )
+                .is_err()
+        );
+        assert!(engine.execute("register_preferences", &json!({"scope":"chip/core/catalogue","preferences":preferences,"command":"continue"})).is_err());
+        assert_eq!(engine.project.ui.register_views.len(), 1);
+    }
+    #[test]
     fn cp15_routes_physical_core_and_restores_target_in_one_packet() {
         let mut engine = engine();
         let (endpoint, worker) = server("__DEBUGTUI_RPC__0:0x12345678\x1a");

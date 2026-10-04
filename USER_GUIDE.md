@@ -700,6 +700,16 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 ## 开发与验证
 
+### 寄存器显示格式与视图偏好（开发分支）
+
+在 System Regs 选择已经读取的寄存器或字段，按 `f` 或右键打开格式菜单。整数支持十六进制、无符号十进制、二进制、八进制和有符号十进制，精确保留最多 128 位。32／64 位整寄存器还可按 IEEE 浮点显示；负零、无穷和带原始位载荷的 NaN 单独显示，极小或极大的有限值使用科学计数法。宽寄存器可选择 8／16／32／64 位向量分量，浮点分量仅有 32／64 位；lane 0 始终对应最低有效位。字段只提供整数格式，枚举同时显示数值与名称。
+
+方向键或 Tab／Shift+Tab 选择格式，Enter 应用，Esc 取消；菜单支持鼠标及窄窗口滚动。格式只解释现有原始位，不读取目标、不使能 FPU，也不修改样本。可选格式不表示 GDB／OpenOCD 已支持读取相应浮点或向量寄存器。
+
+展开的组和字段、筛选、目标／全部定义选择、已提交的搜索和格式保存到项目 `ui.register_views`。偏好按芯片、实际核心、CPU、架构和目录来源／版本隔离；未知芯片另绑定连接地址。搜索输入按 Enter 才保存，Esc 取消；旧进制偏好仅在首次建立视图时迁移。没有项目路径时只保留本次会话，保存失败显示错误。
+
+Headless 使用 `register_preferences`，提交 `scope` 和单个 `preferences`：`open`／`fields` 为 ID 列表，`filter` 为 0–3，另有 `all_definitions`、`query` 和 `formats`。格式对象使用 `kind`：`unsigned` 加 `radix`，`signed`，`float` 加 `bits`，或 `vector` 加 `lane_bits`／`interpretation`；格式键为 JSON 编码的 `[register_id, field_name_or_null]`。`scope` 为 JSON 编码的 `[chip, core, cpu, architecture, catalogue_source, catalogue_version]`。普通 `ui_preferences` 保留已保存的寄存器视图并拒绝整张非空 `register_views` 替换；Windows 客户端通过独占文件句柄协调保存，重新合并最新配置后原子替换文件。
+
 ### 读取当前核心能力（开发分支）
 
 配置 R52 寄存器目录后，在暂停核心的物理 frame 0 点击 System Regs 的 **Probe caps**，或执行 `:register-probe`。这会显式采样 CPSR、MIDR、ID_PFR1、ID_DFR0、MPUIR、HMPUIR、CPACR、PMCR、ICC_CTLR 和 ICH_VTR 中当前身份及权限允许的项目。连接、切核和下次暂停不会自动执行这项探测。实际 MIDR 目前只识别 Arm Cortex-R52 的 D13 编码；其他型号、尚未适配的 R52+ 身份或无法读取的身份保留 Unknown，并停止扩展探测。
