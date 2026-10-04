@@ -109,7 +109,9 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
       state = 'running';
       send('*running,thread-id="all"');
     }
-    return done('register-values=[' + indices.map(index => `{number="${index}",value="${rawValues[names[index]] || '0x12345678'}"}`).join(',') + ']');
+    const overrideFile = process.env.DEBUGTUI_TEST_REGISTER_VALUES_FILE;
+    const overrides = overrideFile && fs.existsSync(overrideFile) ? JSON.parse(fs.readFileSync(overrideFile, 'utf8')) : {};
+    return done('register-values=[' + indices.map(index => `{number="${index}",value="${overrides[names[index]] || rawValues[names[index]] || '0x12345678'}"}`).join(',') + ']');
   }
   if (cmd === '-break-list') return done('BreakpointTable={body=[]}');
   const evaluateRegister = /^-data-evaluate-expression "\$(r(?:[0-9]|1[0-2]))"$/.exec(cmd);

@@ -2,6 +2,8 @@
 use super::*;
 use crate::registers::{Catalogue, Context, Implementation, Sample, State};
 use std::collections::{BTreeMap, BTreeSet};
+mod mpu;
+pub(super) use mpu::draw as draw_mpu;
 
 pub(super) const ACTIONS: &[(&str, &str)] = &[
     ("Edit value", "edit-value"),
@@ -11,6 +13,7 @@ pub(super) const ACTIONS: &[(&str, &str)] = &[
     ("Target / All", "register-definitions"),
     ("Probe caps", "register-probe"),
     ("Read bank", "register-bank-read"),
+    ("MPU regions", "mpu"),
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -41,6 +44,7 @@ pub(super) struct RegisterView {
     facts: BTreeMap<String, u64>,
     pub(super) preference_scope: String,
     display_formats: BTreeMap<String, crate::registers::display::Format>,
+    mpu_popup: Option<mpu::Popup>,
 }
 impl RegisterView {
     pub(super) fn edit_candidate(
@@ -130,6 +134,7 @@ impl RegisterView {
             facts: project.registers.facts.clone(),
             preference_scope: String::new(),
             display_formats: BTreeMap::new(),
+            mpu_popup: None,
         };
         view.rebuild();
         view
@@ -380,6 +385,7 @@ impl App {
         self.register_view.query = preferences.query;
         self.register_view.display_formats = preferences.formats;
         self.register_view.searching = false;
+        self.register_view.mpu_popup = None;
         if self
             .formats
             .popup
@@ -819,6 +825,7 @@ impl App {
     }
     pub(super) fn ensure_registers(&mut self, engine: Option<&EngineHandle>) -> bool {
         if self.side_pane != 3
+            || self.register_view.mpu_popup.is_some()
             || !self.register_view.enabled()
             || self.register_view.pending.is_some()
             || self.register_view.probe_pending.is_some()
@@ -866,6 +873,7 @@ impl App {
         }
         self.register_view.pending = None;
         let bank = self.register_view.bank_pending.take();
+        self.mpu_read_response(id, error);
         self.pending_commands.remove(&id);
         self.fx.response(id, error.is_none());
         if context != self.register_context() {

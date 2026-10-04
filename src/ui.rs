@@ -74,7 +74,7 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 49] = [
+const COMMANDS: [&str; 50] = [
     "edit-value",
     "cores",
     "core NAME_OR_INDEX",
@@ -120,6 +120,7 @@ const COMMANDS: [&str; 49] = [
     "refresh",
     "register-probe",
     "register-bank-read",
+    "mpu",
     "peripheral-refresh",
     "build",
     "help",
@@ -764,6 +765,7 @@ impl App {
             "register-definitions" => self.toggle_register_definitions(engine),
             "register-probe" => self.probe_registers(engine),
             "register-bank-read" => self.read_register_bank(engine),
+            "mpu" => self.open_mpu_view(arg),
             "scope" => self.submit(engine, "control_scope", json!({"scope":arg})),
             "scope-toggle" => self.submit(engine, "control_scope", json!({"scope":if self.group_control() { "core" } else { "all" }})),
             "appearance" => self.open_appearance(),
@@ -959,7 +961,8 @@ impl App {
             }
             return false;
         }
-        if self.write_key(key, engine)
+        if self.mpu_key(key, engine)
+            || self.write_key(key, engine)
             || self.memory_key_event(key, engine)
             || self.monitor_key_event(key, engine)
         {
@@ -1396,6 +1399,7 @@ impl App {
             "register-search" | "register-filter" | "register-definitions" => {
                 self.register_view.enabled()
             }
+            "mpu" => self.register_view.enabled(),
             "register-refresh" => {
                 self.register_view.enabled()
                     && self.snapshot.state == "STOPPED"
@@ -1505,7 +1509,8 @@ impl App {
             return;
         }
         let point = (mouse.column, mouse.row).into();
-        if self.write_mouse(mouse, engine)
+        if self.mpu_mouse(mouse, engine)
+            || self.write_mouse(mouse, engine)
             || self.memory_mouse(mouse, engine)
             || self.monitor_mouse(mouse, engine)
         {

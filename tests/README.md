@@ -47,6 +47,8 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --only c
 
 ## 开发分支寄存器与内存夹具
 
+MPU／MAIR 使用 `registers::mpu::tests`、`ui::registers::mpu::tests` 和 `tests/selector_access/mpu_cases.rs`。软件 TCP 夹具提前启动 Python，以 JSONL 复用解释器执行真实 Tcl；没有扩大生产连接超时。延后驱动 `node scripts/test-mpu-regions-hardware.cjs` 默认 4 skipped，实际运行需 `--run --project FILE --core NAME --case JSON --binary FILE`，见 `tests/fixtures/mpu-regions-board.example.json` 与只读固件钩子 `mpu-regions-board.c`。板级期望必须独立填写所有区域与 MAIR；软件示例只能配合 `--software-fixture`。
+
 `tests/register_access.rs` 在 Windows 下启动隔离的 Node MI 夹具，验证目录模式连接不自动扫描寄存器、稀疏索引、逐项失败、精确 64 位值和异步 RUNNING 结果失效；同时检查连续内存块、64 位地址和 Scope All 下只读取选中核心。`src/session/memory.rs` 的 TCP 夹具检查显式 target／endpoint、地址序字节及无效请求在连接前拒绝；UI 单元测试检查各档布局、取消不保存、策略隔离和迟到响应丢弃。
 
 ```powershell

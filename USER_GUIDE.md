@@ -741,7 +741,19 @@ core1 = "core.1"
 
 一个 TCL 请求内保存 target 和原选择器，核对实际 MIDR／数量及暂停状态，选择索引、同步、读取成对值，再恢复并回读原选择器及 target。同步只使用 R52 实现的旧 CP15ISB，并要求预先观测到当前 SCTLR／HSCTLR.CP15BEN 已设置；未设置时在首次 MCR 前拒绝，程序不会打开该位。该状态下仍可尝试普通直接 **Read**；完整支持需要后端提供经过验证的 ISB 路径。读取不修改区域配置、事件类型或计数值，也不使能／清空 PMU。
 
-Headless 使用 `registers_select`，参数为当前 `context`、`kind`（`mpu_el1`／`mpu_el2`／`pmu`）及 `index`。响应保留 saved／restored、同步说明、成对原始样本、实际 target；MPU 另返回基址、包含末地址的限址、使能、AP／XN／SH 和 AttrIndex。AttrIndex 尚未结合 MAIR 解码完整内存类型，SH 的含义注明 Normal memory。普通错误只使本次成对值不可用，旧值保留时间说明；身份／数量变化废弃能力缓存。选择器／target 恢复失败或结果未知使共享通道进入 FAULT，显式重连前不继续访问。该路径经过实际 Tcl 软件夹具验证，尚未上板。
+Headless 使用 `registers_select`，参数为当前 `context`、`kind`（`mpu_el1`／`mpu_el2`／`pmu`）及 `index`。响应保留 saved／restored、同步说明、成对原始样本、实际 target；MPU 另返回基址、包含末地址的限址、使能、AP／XN／SH 和 AttrIndex。该单个选择器事务只返回 AttrIndex；完整 MAIR 解释见 MPU regions 总览。SH 的含义注明 Normal memory。普通错误只使本次成对值不可用，旧值保留时间说明；身份／数量变化废弃能力缓存。选择器／target 恢复失败或结果未知使共享通道进入 FAULT，显式重连前不继续访问。该路径经过实际 Tcl 软件夹具验证，尚未上板。
+
+### MPU 区域与内存属性总览（开发分支）
+
+在 System Regs 点击 **MPU regions**，或使用 `:mpu el1`／`:mpu el2` 打开当前核心的区域总览。打开窗口、滚动和切换 EL1／EL2 只显示已有采样。方向键、PageUp／PageDown、Home／End 或滚轮浏览，Tab／Shift+Tab 选择底部按钮；`b` 切换组、`p` 显式 Probe、`r` 显式 Read、Esc 关闭。
+
+先在暂停核心的物理 frame 0 执行 Probe，再选择 **Read**。批次重新检查实际 GDB 线程／帧、CPSR 模式、MIDR 和 MPUIR／HMPUIR 数量，然后读取全部已实现的直接 PRBARn／PRLARn 或 HPRBARn／HPRLARn，以及相应 MAIR、SCTLR／HSCTLR；EL2 另显示 HCR 和 HPRENR。数量、身份、模式或上下文变化时丢弃结果并要求重新 Probe。读前验证整组目录编码，整个批次持有服务锁，不修改选择器或控制寄存器；Scope All 仍只读取当前物理核心。未实现的 EL2 MPU 不访问区域或 MAIR。
+
+每个区域显示 64 字节对齐的基址、包含末地址的限址、区域使能、AP、XN、SH 字段和 MAIR AttrIndex。MAIR 解码区分 Device 四种属性、Normal 的内外缓存策略及读／写分配提示，并保留 UNPREDICTABLE 编码。R52 忽略 transient 提示；SH 字段的解码适用于 Normal memory，Device 与 Normal non-cacheable 的实现行为另有说明。全局 MPU 开关与背景区开关分别来自对应 SCTLR／HSCTLR，不把区域 EN 当作全局使能。
+
+失败项目逐项显示原因及原始证据；缺失、过期或其他核心的数据不会参与地址／属性推导。一个 MAIR 寄存器不可读不影响使用另一个 MAIR 的区域。总览解释配置，读取为暂停状态下的顺序采样，不保证架构原子性，也不替代给定地址经过 EL1／EL2 组合后实际权限的判定。
+
+Headless 使用 `registers_mpu`，参数为当前 `context`、`bank`（`el1`／`el2`）和可选 `read`。默认 `read=false` 仅解释当前缓存，不发送调试器请求；`read=true` 执行上述直接读取并返回 `samples`、`view` 与实际 owner。接口不支持通过用户目录把 MPU 固定动作重定向到有副作用的条目或共享 owner。
 
 ### 编辑 Core 寄存器（开发分支）
 

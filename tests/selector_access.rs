@@ -8,7 +8,7 @@ use debugtui::{
 use serde_json::{Value, json};
 use std::{
     fs,
-    io::{Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     net::TcpListener,
     path::PathBuf,
     process::{Command, Stdio},
@@ -19,6 +19,8 @@ use std::{
     time::{Duration, Instant},
 };
 static NEXT: AtomicU64 = AtomicU64::new(1);
+#[path = "selector_access/mpu_cases.rs"]
+mod mpu_cases;
 struct Fixture {
     project: Project,
     transcript: PathBuf,
@@ -53,6 +55,28 @@ fn fixture(fault: &'static str) -> Fixture {
     let captured = state.clone();
     let stop = Arc::new(AtomicBool::new(false));
     let stopping = stop.clone();
+    // Start one interpreter before clients connect. Importing tkinter per MRC
+    // can exceed the real 500 ms TCP deadline under parallel test load.
+    let mut command =
+        Command::new(std::env::var("DEBUGTUI_TEST_PYTHON").unwrap_or_else(|_| "python".into()));
+    use std::os::windows::process::CommandExt;
+    command.creation_flags(0x08000000);
+    let mut process = command
+        .arg(root.join("scripts/test-support/selector-tcl.py"))
+        .arg("--jsonl")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(fs::File::create(directory.join("tcl-stderr.txt")).unwrap())
+        .spawn()
+        .unwrap();
+    let mut tcl_input = process.stdin.take().unwrap();
+    let mut tcl_output = BufReader::new(process.stdout.take().unwrap());
+    let mut ready = String::new();
+    tcl_output.read_line(&mut ready).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Value>(&ready).unwrap()["ready"],
+        true
+    );
     let worker = std::thread::spawn(move || {
         while !stopping.load(Ordering::Relaxed) {
             let mut stream = match listener.accept() {
@@ -92,31 +116,11 @@ fn fixture(fault: &'static str) -> Fixture {
                 .and_then(Value::as_str)
                 .unwrap_or(fault);
             let input = json!({"script":script,"state":current,"fault":active_fault});
-            let mut command = Command::new(
-                std::env::var("DEBUGTUI_TEST_PYTHON").unwrap_or_else(|_| "python".into()),
-            );
-            use std::os::windows::process::CommandExt;
-            command.creation_flags(0x08000000);
-            let mut process = command
-                .arg(root.join("scripts/test-support/selector-tcl.py"))
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()
-                .unwrap();
-            process
-                .stdin
-                .take()
-                .unwrap()
-                .write_all(&serde_json::to_vec(&input).unwrap())
-                .unwrap();
-            let result = process.wait_with_output().unwrap();
-            assert!(
-                result.status.success(),
-                "{}",
-                String::from_utf8_lossy(&result.stderr)
-            );
-            let result: Value = serde_json::from_slice(&result.stdout).unwrap();
+            writeln!(tcl_input, "{input}").unwrap();
+            tcl_input.flush().unwrap();
+            let mut response = String::new();
+            tcl_output.read_line(&mut response).unwrap();
+            let result: Value = serde_json::from_str(&response).unwrap();
             *captured.lock().unwrap() = result["state"].clone();
             let code = if result["ok"] == true { 0 } else { 1 };
             let response = format!(
@@ -131,6 +135,8 @@ fn fixture(fault: &'static str) -> Fixture {
             stream.write_all(response.as_bytes()).unwrap();
             stream.write_all(&[0x1a]).unwrap();
         }
+        drop(tcl_input);
+        assert!(process.wait().unwrap().success());
     });
     let mut project = Project::default();
     project.gdb.executable = "node".into();

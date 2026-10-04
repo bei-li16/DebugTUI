@@ -1,6 +1,12 @@
 # DebugTUI 验证记录
 
-## 寄存器与显式内存通道开发分支（2026-10-04，尚未发布）
+## 寄存器与显式内存通道开发分支（2026-10-04–05，尚未发布）
+
+2026-10-05 MPU／MAIR 批次：完整测试通过 288 项单元测试、53 项集成测试，另 2 项既有环境测试 ignored；严格 Clippy 通过。新增全部 256 种 MAIR 编码、各实现数量的直接索引计划、EL1／EL2 控制与权限、MAIR 两半独立失败、跨核心／停止点／帧隔离、原始失败值保留、宽窄 Ratatui 键鼠和手工读取测试。真实 worker／TCP／Tcl 软件测试覆盖完整区域、不可用项目、身份／数量／实际模式变化前拒绝、末尾模式变化丢弃整批及旧值过期、目录末项重定向前拒绝、EL2 数量为零、恢复失败隔离和 Scope All 当前物理核心。
+
+完整并发回归曾发现 Python／tkinter 每次 MRC 启动导致软件夹具超过实际 TCP 500 ms 超时。夹具现先启动并复用一个 Python 解释器，经 JSONL 为每个请求执行原有真实 Tcl 控制流，生产超时保持原值。修复后完整回归和严格 Clippy 通过。
+
+`node scripts/test-mpu-regions-hardware.cjs` 默认 4 skipped，不访问目标；显式 `--run --project FILE --core NAME --case JSON --binary FILE` 才执行 REG-H04 的完整 MPU／MAIR 子集。示例 `tests/fixtures/mpu-regions-board.example.json` 包含全部 24 个 EL1 和 20 个 EL2 软件区域，实际板卡需替换全部原始值、MAIR、CPU 修订与独立证据来源，并去掉 `software_example` 标记。固件钩子 `mpu-regions-board.c` 不设置 MPU 或选择器；主机 GCC 严格编译检查通过，不能作为 ARM 目标构建证明。实际 DebugTUI 二进制＋MI／Tcl 双核软件夹具的 5 阶段通过，核对当前／peer 控制、选择器、工程文件及所有区域；报告 `board_tests_executed=false`。未执行上板测试。
 
 显示与偏好批次：完整 `cargo test --locked --quiet` 通过 282 项单元测试、44 项集成测试，另 2 项既有环境测试 ignored；`cargo clippy --locked --all-targets -- -D warnings` 通过。覆盖 1–128 位整数边界、IEEE 负零／无穷／带载荷 NaN／次正规数、向量分量次序、实际 Ratatui 宽窄布局及键鼠、取消、搜索提交、芯片／核心／目录隔离与旧偏好迁移。测试不连接板卡，显示格式测试不证明真实 VFP 后端能力。
 

@@ -1772,6 +1772,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         source_text::popup(f, a);
     }
     formats::popup(f, a);
+    registers::draw_mpu(f, a);
     monitor::draw(f, a);
     memory::draw(f, a);
     writes::draw(f, a);
