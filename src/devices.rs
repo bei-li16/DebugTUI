@@ -15,6 +15,8 @@ pub const DEFAULTS: &str = include_str!("../profiles/devices.toml");
 pub struct Device {
     pub cores: Vec<u32>,
     pub backend: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cpu: String,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -67,6 +69,9 @@ pub fn valid_id(id: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c))
 }
 pub fn validate_device(name: &str, device: &Device) -> Result<(), String> {
+    if !device.cpu.is_empty() && !valid_id(&device.cpu.replace('+', "plus")) {
+        return Err("CPU catalogue association must be a simple identifier".into());
+    }
     if !valid_id(name) || !valid_id(&device.backend) {
         return Err("Chip/backend names use 1-64 letters, digits, '.', '-' or '_'".into());
     }
@@ -92,6 +97,7 @@ pub fn parse_ids(text: &str) -> Result<Vec<u32>, String> {
         &Device {
             cores: ids.clone(),
             backend: "generic".into(),
+            cpu: String::new(),
         },
     )?;
     Ok(ids)
@@ -126,6 +132,7 @@ impl Catalogue {
             &Device {
                 cores: selection.cores.clone(),
                 backend: device.backend.clone(),
+                cpu: String::new(),
             },
         )?;
         if selection.cores.iter().any(|id| !device.cores.contains(id)) {
@@ -195,6 +202,10 @@ fn publish(path: &Path, text: &str) -> Result<(), String> {
     result.map_err(|e| format!("Save catalogue {}: {e}", path.display()))
 }
 pub fn ensure_at(path: &Path) -> Result<(), String> {
+    // Built-ins live in the executable. Leave this directory empty so future
+    // upgrades can update defaults without replacing customer overrides.
+    fs::create_dir_all(path.parent().unwrap_or(Path::new(".")).join("registers"))
+        .map_err(|error| format!("Initialize register extension directory: {error}"))?;
     if path.is_file() {
         Catalogue::load(path)?;
         return Ok(());
@@ -319,6 +330,7 @@ pub fn resolve(
         let device = Device {
             cores: vec![0],
             backend: "generic".into(),
+            cpu: String::new(),
         };
         if [&*environment, &*raw].iter().any(|value| {
             let mut expanded = (*value).clone();
@@ -340,6 +352,28 @@ pub fn resolve(
     };
     catalogue.selection(&selection)?;
     let device = &catalogue.devices[&selection.chip];
+    let defaults = Catalogue::parse(DEFAULTS)?;
+    let cpu = if device.cpu.is_empty() {
+        defaults
+            .devices
+            .get(&selection.chip)
+            .map(|device| device.cpu.as_str())
+            .unwrap_or_default()
+    } else {
+        &device.cpu
+    };
+    if !cpu.is_empty() {
+        let registers = raw
+            .as_table_mut()
+            .ok_or("Project must be a table")?
+            .entry("registers")
+            .or_insert_with(|| toml::Value::Table(Default::default()))
+            .as_table_mut()
+            .ok_or("registers must be a table")?;
+        if !registers.contains_key("cpu") && !registers.contains_key("catalogue") {
+            registers.insert("cpu".into(), toml::Value::String(cpu.into()));
+        }
+    }
     let group = backends
         .as_ref()
         .and_then(|v| v.get(&device.backend))
@@ -367,6 +401,7 @@ pub fn resolve(
                 | "session"
                 | "sync"
                 | "memory_access"
+                | "registers"
                 | "multicore"
                 | "core_targets"
         ) {
@@ -591,6 +626,47 @@ mod tests {
         );
     }
     #[test]
+    fn cpu_association_priority_and_register_extensions_survive_upgrade() {
+        let fixture = Fixture::new();
+        let path = fixture.0.join("devices.toml");
+        ensure_at(&path).unwrap();
+        let extensions = fixture.0.join("registers");
+        assert_eq!(fs::read_dir(&extensions).unwrap().count(), 0);
+        let custom = extensions.join("customer.toml");
+        fs::write(&custom, "customer register data").unwrap();
+        let before = fs::read(&path).unwrap();
+        ensure_at(&path).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), before);
+        assert_eq!(
+            fs::read_to_string(&custom).unwrap(),
+            "customer register data"
+        );
+        let mut catalogue = Catalogue::parse(DEFAULTS).unwrap();
+        catalogue.devices.get_mut("tha6206").unwrap().cpu.clear();
+        let base: toml::Value =
+            toml::from_str("version=3\n[debug]\nchip='tha6206'\ncores=[0]\n").unwrap();
+        let environment: toml::Value =
+            toml::from_str("backend='tha6'\n[core_targets.\"0\"]\nendpoint='localhost:3333'\n")
+                .unwrap();
+        let mut raw = base.clone();
+        resolve(&mut environment.clone(), &mut raw, Some(&catalogue)).unwrap();
+        assert_eq!(raw["registers"]["cpu"].as_str(), Some("cortex-r52"));
+        catalogue.devices.get_mut("tha6206").unwrap().cpu = "cortex-m4".into();
+        let mut raw = base.clone();
+        resolve(&mut environment.clone(), &mut raw, Some(&catalogue)).unwrap();
+        assert_eq!(raw["registers"]["cpu"].as_str(), Some("cortex-m4"));
+        let mut raw = base.clone();
+        raw.as_table_mut().unwrap().insert(
+            "registers".into(),
+            toml::from_str::<toml::Value>("cpu='cortex-r52+'\n").unwrap(),
+        );
+        resolve(&mut environment.clone(), &mut raw, Some(&catalogue)).unwrap();
+        assert_eq!(raw["registers"]["cpu"].as_str(), Some("cortex-r52+"));
+        raw["registers"]["cpu"] = "".into();
+        resolve(&mut environment.clone(), &mut raw, Some(&catalogue)).unwrap();
+        assert_eq!(raw["registers"]["cpu"].as_str(), Some(""));
+    }
+    #[test]
     fn catalogue_install_upgrade_add_and_concurrent_writes_preserve_user_entries() {
         let fixture = Fixture::new();
         let path = fixture.0.join("devices.toml");
@@ -602,6 +678,7 @@ mod tests {
             Device {
                 cores: vec![0],
                 backend: "generic".into(),
+                cpu: String::new(),
             },
         )
         .unwrap();
@@ -619,7 +696,8 @@ mod tests {
                 "S32K144",
                 Device {
                     cores: vec![1],
-                    backend: "other".into()
+                    backend: "other".into(),
+                    cpu: String::new(),
                 }
             )
             .is_err()
@@ -635,6 +713,7 @@ mod tests {
                         Device {
                             cores: vec![2, 0],
                             backend: "generic".into(),
+                            cpu: String::new(),
                         },
                     )
                     .unwrap()
@@ -718,6 +797,7 @@ mod tests {
             Device {
                 cores: vec![0],
                 backend: "generic".into(),
+                cpu: String::new(),
             },
         );
         fs::write(

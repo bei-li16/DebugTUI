@@ -201,6 +201,10 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
         a.draw_peripherals(f, rect);
         return;
     }
+    if pane == 3 && a.register_view.enabled() {
+        a.draw_registers(f, rect);
+        return;
+    }
     if let Some(error) = &a.view_errors[pane] {
         f.render_widget(
             Paragraph::new(format!("{error}\n\n:refresh retries this view."))
@@ -695,6 +699,19 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
             Rect::new(inner.x, inner.y, inner.width, height),
             &[("↻ Refresh selected", "peripheral-refresh")],
             height,
+        );
+        inner.y += height;
+        inner.height -= height;
+    }
+    if a.side_pane == 3 && a.register_view.enabled() && inner.height > 2 {
+        let height = wrapped_height(&a.register_action_labels(), inner.width, 1)
+            .min(inner.height.saturating_sub(2));
+        toolbar(
+            f,
+            a,
+            Rect::new(inner.x, inner.y, inner.width, height),
+            registers::ACTIONS,
+            1,
         );
         inner.y += height;
         inner.height -= height;

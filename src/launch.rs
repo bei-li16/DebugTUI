@@ -23,7 +23,7 @@ mod devices;
 mod remap;
 use choices::{Choice, Picker};
 
-const LABELS: [&str; 15] = [
+const LABELS: [&str; 17] = [
     "Project",
     "Tools / profile",
     "Chip",
@@ -37,10 +37,12 @@ const LABELS: [&str; 15] = [
     "SVD file",
     "Source remap",
     "ELF path prefix",
+    "CPU registers",
+    "Register catalogue",
     "Start debugging",
     "Save config",
 ];
-const HINTS: [&str; 15] = [
+const HINTS: [&str; 17] = [
     "Project TOML stores launch settings, Watch and breakpoints. Selecting a file reloads all fields.\nRelative to the startup directory; default: ./debug.toml. F3: project list. F2: browse.\nEnter: type a file or directory. A directory uses its debug.toml; a missing file stays a draft until saved.",
     "Profile stores tool defaults (GDB/OpenOCD); project fields override it.\nProject owns ELF/build/Watch/exit policy. Profiles are loaded, never rewritten.\nEdit shared tools in debug-env.toml. Tool parameters are edited in that file, outside Setup. F2: select profile.",
     "Enter: choose a chip from the local device catalogue, or add a new chip.\nThe catalogue declares available core IDs and a backend; Tools / profile provides its tools.\nLegacy keeps existing single-core / [[cores]] settings. No hardware action until Start.",
@@ -54,6 +56,8 @@ const HINTS: [&str; 15] = [
     "Optional CMSIS-SVD XML file describing peripheral registers and fields; it is not an ELF or source file.\nExample: ./.vscode/THA6206/tha6206.svd, relative to Project. F2: browse.\nChoose the device's matching SVD. Blank disables peripheral descriptions, not CPU debugging.",
     "Enter / Left / Right: enable or disable source path remapping for all cores.\nEnabling opens an offline ELF directory scan using the selected GDB; no board connection.\nNo disables ELF path prefix selection and editing; saved mapping rules are retained.",
     "Enter: choose an ELF directory to map to Source root. Available when Source remap is Yes.\nThe suffix below that directory is preserved. Preview shows covered files and local matches.\nSaved selection follows Source root changes. Manual [[source_map]] rules for other prefixes still apply first.",
+    "Enter: choose a built-in or user CPU preset, Automatic, or the original GDB register list.\nA project catalogue file takes precedence over the CPU preset. Selection does not prove hardware or backend support.\nUser presets live in the local profiles/registers directory and are preserved during upgrades.",
+    "Optional TOML architecture register catalogue. Enter: type a path. F2: browse.\nRelative paths are resolved against Project; a path inherited from Tools remains relative to that profile.\nBlank uses the selected CPU preset. Catalogue selection only changes the draft until Start.",
     "Start with the reviewed settings: Enter, F5 or Ctrl+R. The previous session is closed first.\nThe configuration is saved to Project before the new session starts.\nFor a new project, choose Examples to fill a starting configuration, then adjust project paths and select Tools / profile.",
     "Save config / Ctrl+S writes the draft to Project without starting GDB or connecting to hardware.\nA missing Project TOML is created; the referenced tools profile is never rewritten.\nStart also saves the configuration. Use Exit to leave without saving draft edits.",
 ];
@@ -70,12 +74,14 @@ const LOG_DIR: usize = 9;
 const SVD: usize = 10;
 const SOURCE_REMAP: usize = 11;
 const ELF_PREFIX: usize = 12;
-const START: usize = 13;
-const SAVE: usize = 14;
-const WORKSPACE: usize = 15;
-const PROJECTS: usize = 16;
-const EXAMPLES: usize = 17;
-const EXIT: usize = 18;
+const CPU: usize = 13;
+const CATALOGUE: usize = 14;
+const START: usize = 15;
+const SAVE: usize = 16;
+const WORKSPACE: usize = 17;
+const PROJECTS: usize = 18;
+const EXAMPLES: usize = 19;
+const EXIT: usize = 20;
 
 fn displayed_path(base: &Path, path: &Path) -> String {
     let value = relative_path(base, path);
@@ -551,6 +557,7 @@ impl Setup {
                 &mut preview.program.elf,
                 &mut preview.program.source_root,
                 &mut preview.program.svd,
+                &mut preview.registers.catalogue,
             ] {
                 if !path.as_os_str().is_empty() {
                     *path = absolute(self.document.base(), path);
@@ -606,6 +613,12 @@ impl Setup {
             } else {
                 format!("{} -> Source root", p.source_remap.from)
             },
+            if p.registers.cpu.is_empty() {
+                "GDB target description".into()
+            } else {
+                p.registers.cpu
+            },
+            path(&p.registers.catalogue),
             "F5 / Enter".into(),
             "Ctrl+S / Enter".into(),
         ]
@@ -665,12 +678,17 @@ impl Setup {
                     doc.set_path("session", "log_dir", &path);
                 }
             }
-            SVD => {
+            SVD | CATALOGUE => {
+                let (section, key) = if self.selected == SVD {
+                    ("program", "svd")
+                } else {
+                    ("registers", "catalogue")
+                };
                 if value.is_empty() {
-                    doc.set("program", "svd", "".into());
+                    doc.set(section, key, "".into());
                 } else {
                     let path = absolute(doc.base(), Path::new(value));
-                    doc.set_path("program", "svd", &path);
+                    doc.set_path(section, key, &path);
                 }
             }
             _ => {}
@@ -871,7 +889,12 @@ impl Setup {
             KeyCode::Down => self.move_selection(false, true),
             KeyCode::BackTab => self.move_selection(true, false),
             KeyCode::Tab => self.move_selection(false, false),
-            KeyCode::F(2) if matches!(self.selected, 0 | 1 | ELF | SOURCE | LOG_DIR | SVD) => {
+            KeyCode::F(2)
+                if matches!(
+                    self.selected,
+                    0 | 1 | ELF | SOURCE | LOG_DIR | SVD | CATALOGUE
+                ) =>
+            {
                 self.open_browser()?;
             }
             KeyCode::Left | KeyCode::Right => self.cycle(key.code == KeyCode::Left)?,
@@ -885,6 +908,7 @@ impl Setup {
                 )?);
             }
             KeyCode::Enter if self.selected == CORES => {}
+            KeyCode::Enter if self.selected == CPU => self.picker = Some(Picker::cpus()?),
             KeyCode::Enter if matches!(self.selected, SOURCE_REMAP | ON_EXIT) => {
                 self.cycle(false)?
             }
@@ -921,7 +945,7 @@ impl Setup {
             } else {
                 self.document.base()
             },
-            matches!(self.selected, 0 | 1),
+            matches!(self.selected, 0 | 1 | CATALOGUE),
         )?);
         Ok(())
     }
@@ -981,6 +1005,11 @@ impl Setup {
         let Some(choice) = self.picker.as_ref().and_then(|p| p.choices.get(p.selected)) else {
             return Ok(());
         };
+        let selection = if matches!(choice, Choice::Cpu { .. }) {
+            CPU
+        } else {
+            0
+        };
         let (document, message) = match choice {
             Choice::Project(path) => (
                 Document::open(path)?,
@@ -1016,13 +1045,31 @@ impl Setup {
                     "Example applied to draft. Review project paths and Tools / profile; Ctrl+S saves. No file written yet.",
                 )
             }
+            Choice::Cpu { id, .. } => {
+                let mut document = self.document.clone();
+                if let Some(id) = id {
+                    document.set("registers", "cpu", id.clone().into());
+                    document.set("registers", "catalogue", "".into());
+                } else if let Some(registers) = document
+                    .raw
+                    .get_mut("registers")
+                    .and_then(toml::Value::as_table_mut)
+                {
+                    registers.remove("cpu");
+                    registers.remove("catalogue");
+                }
+                (
+                    document,
+                    "Register catalogue selection applied to draft. Start applies; Ctrl+S saves.",
+                )
+            }
         };
         document.project()?;
         self.document = document;
         self.message = message.into();
         self.picker = None;
         self.editor = None;
-        self.selected = 0;
+        self.selected = selection;
         Ok(())
     }
     fn commit_editor(&mut self) -> Result<(), String> {
@@ -1183,6 +1230,24 @@ impl Setup {
         }
         if let Some(mapping) = &self.mapping {
             return mapping.help();
+        }
+        if self.picker.is_none() && matches!(self.selected, CPU | CATALOGUE) {
+            let source = self
+                .document
+                .project()
+                .and_then(|project| project.registers.load())
+                .map(|catalogue| {
+                    catalogue
+                        .map(|(catalogue, source)| {
+                            format!("Source: {source}; CPU: {}", catalogue.cpu)
+                        })
+                        .unwrap_or_else(|| "Source: GDB target description".into())
+                })
+                .unwrap_or_else(|error| format!("Catalogue error: {error}"));
+            return format!(
+                "{}: {}\n{source}",
+                LABELS[self.selected], HINTS[self.selected]
+            );
         }
         if let Some(picker) = &self.picker {
             return picker
@@ -1620,6 +1685,80 @@ mod tests {
     }
 
     #[test]
+    fn cpu_choice_and_catalogue_browsing_are_drafts_preserve_profiles_and_show_the_source() {
+        let fixture = Fixture::new();
+        let profile = fixture.0.join("tools/debug-env.toml");
+        fs::write(&profile, "[registers]\ncatalogue='preset.toml'\n").unwrap();
+        fs::write(
+            fixture.0.join("tools/preset.toml"),
+            include_str!("../profiles/registers/cortex-m4.toml"),
+        )
+        .unwrap();
+        fs::write(
+            fixture.0.join("r52.toml"),
+            include_str!("../profiles/registers/cortex-r52.toml"),
+        )
+        .unwrap();
+        let before = fs::read(&profile).unwrap();
+        let mut document = Document::empty(fixture.0.join("debug.toml"));
+        document.environment("tools/debug-env.toml");
+        let mut setup = Setup::new(document);
+        setup.selected = CPU;
+        assert!(setup.help_text().contains("preset.toml"));
+        setup.key(key(KeyCode::Enter));
+        assert!(setup.picker.is_some());
+        setup.key(key(KeyCode::Esc));
+        assert!(
+            setup
+                .document
+                .project()
+                .unwrap()
+                .registers
+                .catalogue
+                .ends_with("tools/preset.toml")
+        );
+        setup.key(key(KeyCode::Enter));
+        setup.picker.as_mut().unwrap().selected = 1;
+        setup.key(key(KeyCode::Enter));
+        assert!(
+            setup
+                .document
+                .project()
+                .unwrap()
+                .registers
+                .load()
+                .unwrap()
+                .is_none()
+        );
+        assert!(setup.help_text().contains("Source: GDB target description"));
+        assert!(!setup.document.path.exists());
+        setup.selected = CATALOGUE;
+        setup.open_browser().unwrap();
+        assert!(setup.browser.as_ref().unwrap().toml_only);
+        setup.choose_path(&fixture.0.join("r52.toml")).unwrap();
+        assert_eq!(
+            setup.document.raw["registers"]["catalogue"].as_str(),
+            Some("r52.toml")
+        );
+        assert!(setup.help_text().contains("CPU: cortex-r52"));
+        setup.save_document().unwrap();
+        let reloaded = Document::open(&setup.document.path).unwrap();
+        assert_eq!(
+            reloaded
+                .project()
+                .unwrap()
+                .registers
+                .load()
+                .unwrap()
+                .unwrap()
+                .0
+                .cpu,
+            "cortex-r52"
+        );
+        assert_eq!(fs::read(&profile).unwrap(), before);
+    }
+
+    #[test]
     fn source_remap_toggle_selection_round_trip_and_source_root_changes() {
         let fixture = Fixture::new();
         fs::create_dir_all(fixture.0.join("local/src")).unwrap();
@@ -1734,21 +1873,21 @@ mod tests {
         assert_eq!(setup.selected, 0);
         setup.selected = SOURCE_REMAP;
         setup.key(key(KeyCode::Down));
-        assert_eq!(setup.selected, 0);
+        assert_eq!(setup.selected, CPU);
         setup.selected = SOURCE_REMAP;
         setup.key(key(KeyCode::Tab));
-        assert_eq!(setup.selected, START);
+        assert_eq!(setup.selected, CPU);
         setup.key(key(KeyCode::Up));
-        assert_eq!(setup.selected, 0);
+        assert_eq!(setup.selected, SOURCE_REMAP);
         setup.selected = START;
         setup.key(key(KeyCode::BackTab));
-        assert_eq!(setup.selected, SOURCE_REMAP);
+        assert_eq!(setup.selected, CATALOGUE);
         // Even a stale selection or mouse hit cannot open or edit a disabled field.
         setup
             .row_hits
             .push((Rect::new(x as u16, y as u16, 1, 1), ELF_PREFIX));
         setup.mouse(click);
-        assert_eq!(setup.selected, SOURCE_REMAP);
+        assert_eq!(setup.selected, CATALOGUE);
         setup.selected = ELF_PREFIX;
         for code in [KeyCode::Enter, KeyCode::F(2), KeyCode::Left, KeyCode::Right] {
             setup.key(key(code));
@@ -2005,7 +2144,7 @@ mod tests {
             document.set("source_remap", "enabled", remap.into());
             let mut setup = Setup::new(document);
             assert_eq!(setup.selected, 0);
-            let last = if remap { ELF_PREFIX } else { SOURCE_REMAP };
+            let last = CATALOGUE;
             setup.key(key(KeyCode::Up));
             assert_eq!(setup.selected, last);
             setup.key(key(KeyCode::Down));

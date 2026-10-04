@@ -148,6 +148,9 @@ impl App {
         if pane == 1 {
             return self.watch_item(row);
         }
+        if pane == 3 && self.register_view.enabled() {
+            return self.register_format_item(row);
+        }
         if pane == 10 {
             return self.peripheral_format_item(row);
         }

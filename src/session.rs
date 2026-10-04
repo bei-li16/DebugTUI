@@ -20,6 +20,7 @@ use std::{
 
 mod breakpoints;
 mod memory;
+mod registers;
 mod symbols;
 mod watch;
 pub(crate) use symbols::Symbol;
@@ -141,11 +142,15 @@ pub struct Snapshot {
     pub locals: Vec<Variable>,
     pub watches: Vec<Variable>,
     pub registers: Vec<Variable>,
+    #[serde(default)]
+    pub register_samples: Vec<crate::registers::Sample>,
     pub breakpoints: Vec<Breakpoint>,
     pub files: Vec<String>,
     pub assembly: Vec<String>,
     pub memory: Vec<String>,
     pub generation: u64,
+    #[serde(default)]
+    pub register_session: u64,
     pub async_supported: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core: Option<CoreStatus>,
@@ -171,11 +176,13 @@ impl Default for Snapshot {
             locals: vec![],
             watches: vec![],
             registers: vec![],
+            register_samples: vec![],
             breakpoints: vec![],
             files: vec![],
             assembly: vec![],
             memory: vec![],
             generation: 0,
+            register_session: 0,
             async_supported: false,
             core: None,
             cores: vec![],
@@ -404,6 +411,9 @@ struct Engine {
     unresolved_breakpoints: Vec<Breakpoint>,
     breakpoint_groups: std::collections::HashMap<String, String>,
     reg_names: Vec<String>,
+    register_catalogue: Result<Option<(crate::registers::Catalogue, String)>, String>,
+    register_session: u64,
+    register_access_fault: Option<String>,
     exiting: bool,
     job: Option<crate::process::Job>,
     cancellation: Arc<AtomicBool>,
@@ -533,6 +543,7 @@ impl Engine {
         })
     }
     fn new(project: Project, events: SyncSender<Event>, cancellation: Arc<AtomicBool>) -> Self {
+        let register_catalogue = project.registers.load();
         let watch_names = project.watch.clone();
         let saved_breakpoints = project.breakpoints.clone();
         Self {
@@ -553,6 +564,9 @@ impl Engine {
             unresolved_breakpoints: vec![],
             breakpoint_groups: Default::default(),
             reg_names: vec![],
+            register_catalogue,
+            register_session: registers::new_session(),
+            register_access_fault: None,
             exiting: false,
             job: None,
             cancellation,
@@ -568,6 +582,7 @@ impl Engine {
     }
     fn state(&mut self, state: &str) {
         self.snapshot.state = state.into();
+        self.invalidate_register_samples();
         self.publish();
     }
     fn log(&mut self, channel: &str, text: impl Into<String>) {
@@ -692,6 +707,7 @@ impl Engine {
                         );
                     }
                     self.refresh_pending = true;
+                    self.invalidate_register_samples();
                     self.publish();
                 } else if matches!(r.kind, '~' | '@' | '&') {
                     let internal = r.kind == '@' && self.rpc_echo.internal(r.data.text());
@@ -727,6 +743,15 @@ impl Engine {
         }
     }
     fn request(&mut self, command: &str, timeout: Duration) -> Result<Record, String> {
+        let services = crate::debug_access::for_project(&self.project)?;
+        let cleanup = matches!(
+            command,
+            "-gdb-exit" | "-target-disconnect" | "-target-detach"
+        );
+        let mut leases = services
+            .iter()
+            .map(|service| service.acquire(cleanup))
+            .collect::<Result<Vec<_>, _>>()?;
         let gdb = self.gdb.as_mut().ok_or("Not connected")?;
         gdb.token += 1;
         let token = gdb.token;
@@ -739,6 +764,9 @@ impl Engine {
             self.flush_logs();
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
+                for lease in &mut leases {
+                    lease.quarantine("GDB request timed out; target state is unknown");
+                }
                 self.state("FAULT");
                 return Err(format!(
                     "GDB request timed out; reconnect to recover: {command}"
@@ -936,7 +964,12 @@ impl Engine {
             return Err("A session already exists. Disconnect before reconnecting.".into());
         }
         self.project.prepare()?;
+        crate::debug_access::recover(&self.project)?;
+        self.register_session = registers::new_session();
+        self.register_access_fault = None;
+        self.register_catalogue = self.project.registers.load();
         self.snapshot = Snapshot::default();
+        self.snapshot.register_session = self.register_session;
         self.reg_names.clear();
         self.refresh_pending = false;
         if self.job.is_none() {
@@ -1235,6 +1268,7 @@ impl Engine {
             }
             self.snapshot.frame = frame;
         }
+        self.invalidate_register_samples();
         if let Ok(r) = self.mi("-stack-list-frames 0 31") {
             self.snapshot.stack = r
                 .data
@@ -1273,53 +1307,61 @@ impl Engine {
                 .unwrap_or_default();
         }
         self.refresh_watches();
-        if let Ok(names) = self.mi("-data-list-register-names") {
-            self.reg_names = names
-                .data
-                .field("register-names")
-                .map(|v| v.items().iter().map(|x| x.text().to_owned()).collect())
-                .unwrap_or_default();
-        }
-        let indices = register_indices(&self.reg_names, &self.project.gdb.registers)?;
-        if !indices.is_empty() {
-            let cmd = format!(
-                "-data-list-register-values x {}",
-                indices
-                    .iter()
-                    .map(|i| i.to_string())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            );
-            if let Ok(r) = self.mi(&cmd) {
-                let old = self.snapshot.registers.clone();
-                self.snapshot.registers = r
+        // Catalogue mode reads only what the UI/headless client explicitly asks
+        // for. Preserve the original dynamic GDB list for projects without one.
+        if matches!(self.register_catalogue, Ok(None)) {
+            if let Ok(names) = self.mi("-data-list-register-names") {
+                self.reg_names = names
                     .data
-                    .field("register-values")
-                    .map(|v| {
-                        v.items()
-                            .iter()
-                            .map(|r| {
-                                let name = self
-                                    .reg_names
-                                    .get(r.string("number").parse::<usize>().unwrap_or(usize::MAX))
-                                    .cloned()
-                                    .unwrap_or_default();
-                                let value = r.string("value");
-                                let changed = old
-                                    .iter()
-                                    .find(|x| x.name == name)
-                                    .is_some_and(|x| x.value != value);
-                                Variable {
-                                    name,
-                                    value,
-                                    changed,
-                                    error: false,
-                                    ..Default::default()
-                                }
-                            })
-                            .collect()
-                    })
+                    .field("register-names")
+                    .map(|v| v.items().iter().map(|x| x.text().to_owned()).collect())
                     .unwrap_or_default();
+            }
+            let indices = register_indices(&self.reg_names, &self.project.gdb.registers)?;
+            if !indices.is_empty() {
+                let cmd = format!(
+                    "-data-list-register-values x {}",
+                    indices
+                        .iter()
+                        .map(|i| i.to_string())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+                if let Ok(r) = self.mi(&cmd) {
+                    let old = self.snapshot.registers.clone();
+                    self.snapshot.registers = r
+                        .data
+                        .field("register-values")
+                        .map(|v| {
+                            v.items()
+                                .iter()
+                                .map(|r| {
+                                    let name = self
+                                        .reg_names
+                                        .get(
+                                            r.string("number")
+                                                .parse::<usize>()
+                                                .unwrap_or(usize::MAX),
+                                        )
+                                        .cloned()
+                                        .unwrap_or_default();
+                                    let value = r.string("value");
+                                    let changed = old
+                                        .iter()
+                                        .find(|x| x.name == name)
+                                        .is_some_and(|x| x.value != value);
+                                    Variable {
+                                        name,
+                                        value,
+                                        changed,
+                                        error: false,
+                                        ..Default::default()
+                                    }
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                }
             }
         }
         self.refresh_breakpoints()?;
@@ -1471,6 +1513,8 @@ impl Engine {
                 result
             }
             "status" => Ok(serde_json::to_value(&self.snapshot).unwrap()),
+            "registers_list" => self.registers_list(),
+            "registers_read" => self.read_registers(p),
             "complete" => {
                 self.inactive()?;
                 let input = text("text");

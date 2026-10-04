@@ -2,6 +2,8 @@
 const fs = require('node:fs');
 const readline = require('node:readline');
 const names = JSON.parse(process.env.DEBUGTUI_TEST_REGISTERS);
+const rawValues = JSON.parse(process.env.DEBUGTUI_TEST_REGISTER_VALUES || '{}');
+const unreadableRegisters = JSON.parse(process.env.DEBUGTUI_TEST_REGISTER_ERRORS || '[]');
 const transcript = process.env.DEBUGTUI_TEST_TRANSCRIPT;
 let state = 'ready';
 let line = 10;
@@ -32,6 +34,13 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   if (cmd.startsWith('-data-list-register-values x ')) {
     const indices = cmd.slice('-data-list-register-values x '.length).split(' ').map(Number);
     return done('register-values=[' + indices.map(i => `{number="${i}",value="0x100000008"}`).join(',') + ']');
+  }
+  if (cmd.startsWith('-data-list-register-values r ')) {
+    const indices = cmd.slice('-data-list-register-values r '.length).split(' ').map(Number);
+    if (indices.some(index => unreadableRegisters.includes(names[index]))) {
+      return send(`${token}^error,msg="Register is inaccessible"`);
+    }
+    return done('register-values=[' + indices.map(index => `{number="${index}",value="${rawValues[names[index]] || '0x12345678'}"}`).join(',') + ']');
   }
   if (cmd === '-break-list') return done('BreakpointTable={body=[]}');
   if (cmd === '-interpreter-exec console "delete breakpoints"') return done();

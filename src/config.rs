@@ -121,6 +121,7 @@ pub struct Project {
     pub live_watch: Option<LiveWatchConfig>,
     pub sync: Option<SyncConfig>,
     pub memory_access: Vec<MemoryAccess>,
+    pub registers: crate::registers::Config,
     #[serde(skip)]
     pub path: Option<PathBuf>,
     #[serde(skip)]
@@ -418,6 +419,13 @@ fn expand(value: &mut toml::Value, directory: &str) {
     }
 }
 fn resolve_launch_paths(value: &mut toml::Value, base: &Path) {
+    if let Some(toml::Value::String(path)) = value
+        .get_mut("registers")
+        .and_then(|section| section.get_mut("catalogue"))
+        && !path.is_empty()
+    {
+        *path = portable_path(&absolute(base, Path::new(path)));
+    }
     for (section, executable) in [("gdb", "executable"), ("service", "command")] {
         if let Some(table) = value.get_mut(section).and_then(toml::Value::as_table_mut) {
             for key in [executable, "cwd"] {
@@ -508,6 +516,7 @@ impl Project {
                         | "session"
                         | "sync"
                         | "memory_access"
+                        | "registers"
                         | "multicore"
                         | "backend"
                         | "backends"
@@ -566,6 +575,7 @@ impl Project {
         Ok(p)
     }
     pub fn validate(&self) -> Result<(), String> {
+        self.registers.validate()?;
         if std::iter::once(&self.source_remap.from)
             .chain(&self.source_remap.aliases)
             .chain(self.source_map.iter().map(|map| &map.from))
@@ -1018,6 +1028,66 @@ mod tests {
         assert!(p.cores.is_empty());
         assert!(p.live_watch.is_none());
         assert!(p.sync.is_none());
+    }
+    #[test]
+    fn register_catalogue_paths_follow_the_declaring_profile_or_project() {
+        let base = env::temp_dir().join(format!("debugtui-register-paths-{}", std::process::id()));
+        fs::create_dir_all(base.join("tools/registers")).unwrap();
+        fs::write(
+            base.join("tools/registers/profile.toml"),
+            include_str!("../profiles/registers/cortex-m4.toml"),
+        )
+        .unwrap();
+        fs::write(
+            base.join("local-registers.toml"),
+            include_str!("../profiles/registers/cortex-r52.toml"),
+        )
+        .unwrap();
+        let profile = base.join("tools/debug-env.toml");
+        fs::write(
+            &profile,
+            "[registers]\ncpu='cortex-m4'\ncatalogue='registers/profile.toml'\n",
+        )
+        .unwrap();
+        let profile_before = fs::read(&profile).unwrap();
+        let path = base.join("debug.toml");
+        fs::write(&path, "version=2\n[tools]\nprofile='tools/debug-env.toml'\n[registers]\ncatalogue='local-registers.toml'\n").unwrap();
+        let project = Project::load(&path).unwrap();
+        assert_eq!(
+            project.registers.catalogue,
+            base.join("local-registers.toml")
+        );
+        assert_eq!(
+            project.registers.load().unwrap().unwrap().0.cpu,
+            "cortex-r52"
+        );
+        project
+            .save_preferences(vec!["counter".into()], vec![])
+            .unwrap();
+        assert_eq!(fs::read(&profile).unwrap(), profile_before);
+        fs::write(
+            &path,
+            "version=2\n[tools]\nprofile='tools/debug-env.toml'\n",
+        )
+        .unwrap();
+        let inherited = Project::load(&path).unwrap();
+        assert_eq!(
+            inherited.registers.catalogue,
+            base.join("tools/registers/profile.toml")
+        );
+        fs::write(&path, "[registers]\nunknown_setting=true\n").unwrap();
+        assert!(Project::load(&path).is_err());
+        for file in [
+            &path,
+            &profile,
+            &base.join("local-registers.toml"),
+            &base.join("tools/registers/profile.toml"),
+        ] {
+            fs::remove_file(file).unwrap();
+        }
+        fs::remove_dir(base.join("tools/registers")).unwrap();
+        fs::remove_dir(base.join("tools")).unwrap();
+        fs::remove_dir(base).unwrap();
     }
     #[test]
     fn environment_memory_channels_are_portable_and_validate_core_restrictions() {

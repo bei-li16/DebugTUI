@@ -8,6 +8,7 @@ backend = "tha6"
 [devices.tha6206]
 cores = [0, 1]
 backend = "tha6"
+cpu = "cortex-r52"
 
 [devices.tha6412]
 cores = [0, 1, 2, 3]
@@ -16,3 +17,4 @@ backend = "tha6"
 [devices.stm32f429]
 cores = [0]
 backend = "stm32f4"
+cpu = "cortex-m4"

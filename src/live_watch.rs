@@ -17,6 +17,7 @@ use std::{
 };
 
 pub(crate) fn connect(endpoint: &str) -> Result<TcpStream, String> {
+    crate::debug_access::check_endpoint(endpoint)?;
     let addresses = endpoint
         .to_socket_addrs()
         .map_err(|e| format!("Invalid TCL endpoint {endpoint}: {e}"))?;
@@ -71,6 +72,38 @@ impl RpcEcho {
     }
 }
 pub(crate) fn transact(stream: &mut TcpStream, command: &str) -> Result<String, String> {
+    transact_with_policy(stream, command, true)
+}
+
+/// Only for generated, target-specific read_memory commands. A broken read
+/// connection may reconnect without making the shared service state uncertain.
+pub(crate) fn read_only_transaction(
+    stream: &mut TcpStream,
+    command: &str,
+) -> Result<String, String> {
+    transact_with_policy(stream, command, false)
+}
+
+fn transact_with_policy(
+    stream: &mut TcpStream,
+    command: &str,
+    uncertain_on_transport_error: bool,
+) -> Result<String, String> {
+    let service = crate::debug_access::service(stream.peer_addr().map_err(|e| e.to_string())?)?;
+    let mut lease = service.acquire(false)?;
+    let result = transact_unlocked(stream, command);
+    if let Err(error) = &result
+        && (error.contains("Target restoration failed")
+            || (uncertain_on_transport_error
+                && !error.starts_with("TCL command failed")
+                && !command.contains('\x1a')))
+    {
+        lease.quarantine(error);
+    }
+    result
+}
+
+fn transact_unlocked(stream: &mut TcpStream, command: &str) -> Result<String, String> {
     if command.contains('\x1a') {
         return Err("TCL command contains a frame terminator".into());
     }
@@ -202,7 +235,7 @@ pub fn spawn(
                         symbol.address,
                         symbol.size * 8
                     );
-                    let text = transact(stream.as_mut().unwrap(), &command)?;
+                    let text = read_only_transaction(stream.as_mut().unwrap(), &command)?;
                     let value = parse_value(&text)
                         .ok_or_else(|| format!("Invalid memory value for {name}: {text}"))?;
                     // Deliver every successful sample, including unchanged values,

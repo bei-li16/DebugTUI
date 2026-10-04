@@ -135,6 +135,7 @@ impl Devices {
                     let device = Device {
                         cores: crate::devices::parse_ids(&fields[1].text)?,
                         backend: fields[2].text.trim().to_owned(),
+                        cpu: String::new(),
                     };
                     crate::devices::add(&self.path, &name, device)?;
                     self.catalogue = Catalogue::load(&self.path)?;

@@ -8,6 +8,11 @@ pub(super) enum Choice {
         description: String,
         raw: toml::Value,
     },
+    Cpu {
+        id: Option<String>,
+        label: String,
+        description: String,
+    },
 }
 
 impl Choice {
@@ -19,6 +24,7 @@ impl Choice {
                 .to_string_lossy()
                 .into(),
             Self::Example { label, .. } => label.clone(),
+            Self::Cpu { label, .. } => label.clone(),
         }
     }
 
@@ -31,6 +37,9 @@ impl Choice {
             Self::Example { description, .. } => format!(
                 "{description}\nEnter / click applies this example to the draft; review project paths and Tools / profile.\nReplaces project draft settings; retains current tools unless another profile is selected. Save config or Start writes the file."
             ),
+            Self::Cpu { description, .. } => format!(
+                "{description}\nApplies to the project draft. Save config or Start persists it; no hardware access."
+            ),
         }
     }
 }
@@ -42,6 +51,51 @@ pub(super) struct Picker {
 }
 
 impl Picker {
+    pub fn cpus() -> Result<Self, String> {
+        let mut choices = vec![
+            Choice::Cpu { id: None, label: "Automatic / inherit profile and chip association".into(), description: "Remove project CPU and catalogue overrides. A user chip association takes precedence over the built-in association.".into() },
+            Choice::Cpu { id: Some(String::new()), label: "GDB target description only".into(), description: "Use the original dynamic GDB register list without an architecture catalogue.".into() },
+        ];
+        for cpu in ["cortex-m4", "cortex-r52", "cortex-r52+"] {
+            choices.push(Choice::Cpu { id: Some(cpu.into()), label: cpu.into(), description: format!("Use the {cpu} register catalogue. User presets with this name override the embedded default; the catalogue does not prove hardware or reader support.") });
+        }
+        let directory = crate::devices::catalogue_path()?
+            .parent()
+            .unwrap()
+            .join("registers");
+        if directory.is_dir() {
+            let mut presets: Vec<_> = fs::read_dir(&directory)
+                .map_err(|e| e.to_string())?
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| {
+                    path.is_file()
+                        && path
+                            .extension()
+                            .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+                })
+                .filter_map(|path| {
+                    path.file_stem()
+                        .and_then(|name| name.to_str())
+                        .map(str::to_owned)
+                })
+                .filter(|cpu| {
+                    crate::devices::valid_id(&cpu.replace('+', "plus"))
+                        && !["cortex-m4", "cortex-r52", "cortex-r52+"].contains(&cpu.as_str())
+                })
+                .collect();
+            presets.sort();
+            for cpu in presets {
+                choices.push(Choice::Cpu { id: Some(cpu.clone()), label: format!("{cpu} / user"), description: format!("Load {}. A broken preset reports its error and does not silently select another catalogue.", directory.join(format!("{cpu}.toml")).display()) });
+            }
+        }
+        Ok(Self {
+            title: "CPU / register catalogue",
+            choices,
+            selected: 0,
+        })
+    }
+
     pub fn projects(directory: &Path) -> Result<Self, String> {
         let mut paths = fs::read_dir(directory)
             .map_err(|e| format!("Project directory: {e}"))?
@@ -162,6 +216,13 @@ fn is_project_file(path: &Path) -> bool {
         .ok()
         .and_then(|text| toml::from_str::<toml::Value>(text.trim_start_matches('\u{feff}')).ok())
         .is_some_and(|raw| {
+            // Register/device catalogues have their own version field but are
+            // not projects. Keep them out of initial project discovery.
+            if raw.get("registers").is_some_and(toml::Value::is_array)
+                || raw.get("devices").is_some()
+            {
+                return false;
+            }
             [
                 "program",
                 "tools",

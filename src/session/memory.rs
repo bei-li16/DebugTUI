@@ -1,6 +1,6 @@
 //! Read-only memory access with explicit transport and running-state capability.
 use super::*;
-use crate::live_watch::{connect, transact, word};
+use crate::live_watch::{connect, read_only_transaction as transact, word};
 
 fn integer(text: &str) -> Result<u64, String> {
     let token = text.split_whitespace().next().unwrap_or("");

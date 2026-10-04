@@ -57,6 +57,7 @@ mod highlight;
 mod live_watch_tests;
 mod monitor;
 mod peripherals;
+mod registers;
 mod render;
 mod search;
 mod source_tabs;
@@ -221,6 +222,7 @@ pub struct App {
     launch: Option<Launch>,
     snapshot: Snapshot,
     peripherals: peripherals::Peripherals,
+    register_view: registers::RegisterView,
     pane: usize,
     main_pane: usize,
     side_pane: usize,
@@ -295,6 +297,7 @@ impl App {
             setup: None,
             launch: None,
             peripherals: peripherals::Peripherals::load(&project.program.svd),
+            register_view: registers::RegisterView::load(&project),
             project,
             snapshot: Snapshot::default(),
             pane: 0,
@@ -547,6 +550,9 @@ impl App {
                 result,
                 error,
             } => {
+                if self.register_response(id, &result, error.as_deref()) {
+                    return false;
+                }
                 if self.symbol_response(id, &result, error.as_deref()) {
                     return false;
                 }
@@ -724,6 +730,10 @@ impl App {
         let arg = arg.trim();
         let unquote = |s: &str| s.trim().trim_matches('"').to_string();
         match name {
+            "register-refresh" => { self.refresh_register(engine); }
+            "register-search" => self.start_register_search(),
+            "register-filter" => self.filter_registers(),
+            "register-definitions" => self.toggle_register_definitions(),
             "scope" => self.submit(engine, "control_scope", json!({"scope":arg})),
             "scope-toggle" => self.submit(engine, "control_scope", json!({"scope":if self.group_control() { "core" } else { "all" }})),
             "appearance" => self.open_appearance(),
@@ -1020,11 +1030,17 @@ impl App {
         }
         let workspace_shortcut = matches!(key.code, KeyCode::F(_))
             || (key.code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL));
+        if self.register_view.searching && !workspace_shortcut && self.register_key(key, engine) {
+            return false;
+        }
         if self.input_active() && !workspace_shortcut {
             self.input_key(key, engine);
             return false;
         }
         if self.pane == 6 && !self.console_view.focused && self.break_panel_key(key, engine) {
+            return false;
+        }
+        if self.pane == 3 && !self.console_view.focused && self.register_key(key, engine) {
             return false;
         }
         match key.code {
@@ -1197,6 +1213,9 @@ impl App {
         if self.snapshot.state == "STOPPED" && self.ensure_peripherals(engine) {
             return true;
         }
+        if self.snapshot.state == "STOPPED" && self.ensure_registers(engine) {
+            return true;
+        }
         let mut panes = vec![];
         if self.source_rect.width > 0 {
             panes.push(self.main_pane);
@@ -1321,6 +1340,14 @@ impl App {
                 !self.snapshot.state.starts_with("STARTING") && self.snapshot.state != "CONNECTING"
             }
             "pause" => self.snapshot.state == "RUNNING",
+            "register-search" | "register-filter" | "register-definitions" => {
+                self.register_view.enabled()
+            }
+            "register-refresh" => {
+                self.register_view.enabled()
+                    && self.snapshot.state == "STOPPED"
+                    && self.pending_commands.is_empty()
+            }
             "peripheral-refresh" => {
                 self.side_pane == peripherals::PANE
                     && self.snapshot.state == "STOPPED"
@@ -1341,6 +1368,7 @@ impl App {
             0 => self.source.len(),
             1 => watch::rows(&self.snapshot.watches).len() * 2,
             2 => self.snapshot.stack.len(),
+            3 if self.register_view.enabled() => self.register_view.rows.len(),
             3 => self.snapshot.registers.len(),
             4 => self.memory_bytes().len().div_ceil(self.memory_columns()),
             5 => self.snapshot.assembly.len(),
@@ -1496,6 +1524,9 @@ impl App {
                 return;
             }
             if self.watch_mouse(mouse, engine) {
+                return;
+            }
+            if self.register_mouse(mouse) {
                 return;
             }
             if self.format_mouse(mouse, engine) {
@@ -1808,6 +1839,7 @@ pub fn run(
                     app.monitor = monitor::Monitor::default();
                     app.core_hits.clear();
                     app.peripherals = peripherals::Peripherals::load(&project.program.svd);
+                    app.register_view = registers::RegisterView::load(&project);
                     app.document = launch.document;
                     app.setup = None;
                     app.snapshot = Snapshot::default();
