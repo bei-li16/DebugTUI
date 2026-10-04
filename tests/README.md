@@ -25,7 +25,7 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --only c
 
 ## 功能覆盖
 
-[`functional-coverage.json`](functional-coverage.json) 将软件划分为 **25 个功能组**，映射到实现文件、必需套件、Rust 测试证据及验证限制：
+[`functional-coverage.json`](functional-coverage.json) 将软件划分为 **26 个功能组**，映射到实现文件、必需套件、Rust 测试证据及验证限制：
 
 | ID | 功能 |
 |---|---|
@@ -37,6 +37,7 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --only c
 | F20–F22 | 外观/动效/键鼠/窗口尺寸、退出与清理、安装/升级/卸载/重装 |
 | F23 | 芯片目录、Setup 新增及核心选择 |
 | F24–F25 | 开发分支的寄存器目录／按需视图、Setup 与各面板的显式内存通道 |
+| F26 | 开发分支的写入规划、SVD 写元数据和 Core 的预览／应用／取消 |
 
 `automated-passed` 表示该组所列套件和单元测试证据通过，**不是代码行/分支覆盖率，也不是全部硬件和输入组合都已验收**。多核套件使用多个真实本机 GDB，不能替代多核实板；demo 终端验证实际输入和渲染，不能替代目标执行。物理拔插/断电、多小时稳定性、其他宿主/探针、系统剪贴板、颜色/字体及公共 Release 下载另行验收。具体限制保存在矩阵和每次报告中。
 
@@ -108,6 +109,19 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --hardwa
 默认不编译或烧录应用。`--allow-reset` 会复位板卡；`--allow-download` 会烧写给定 ELF，并要求同时指定 `--allow-reset`。Build/Download 的外部命令、双管道输出、失败、超时、取消和会话恢复，由既有 `tests/project_tasks.rs` 与多核套件覆盖；这不能证明用户工程的实际编译工具链成功。
 
 ## 测试实现边界
+
+开发分支写入软件用例使用 `cargo test --locked`：`writes::tests` 覆盖精度、非连续字段、枚举／约束、特殊位“不动作”值与未知规则拒绝；`ui::writes::tests` 覆盖真实 Ratatui 布局、键鼠、预览／取消、过期及错误保留输入；`tests/write_access.rs` 使用真实 worker 和严格 MI 子进程，覆盖稀疏索引、权限变化、线程／帧／核心、重连、发送后错误、超时／断连及准确结果状态。它们都不访问板卡。
+
+延后执行的 Core 写入实板用例已准备在 `scripts/test-register-write-hardware.cjs`。默认运行只生成四项 skipped 报告，没有连接或写入：
+
+```powershell
+node scripts/test-register-write-hardware.cjs
+# 环境允许时，对专用测试固件在已暂停的测试函数中运行；不在本任务中执行。
+node scripts/test-register-write-hardware.cjs --run --binary <EXE> --project <专用工程.toml> `
+  --core core0 --register r0 --fixture-function debugtui_write_test_halt
+```
+
+分别准备 MCAL／Bao 的 core0、core1、双核工程，在工作寄存器可恢复的专用测试停止点执行；驱动要求相关核心已经暂停，不自动 Pause／Run／Reset／Download。用例检查取消无写、单次应用、独立 GDB 读取、邻接寄存器不变、重复草稿不重放，以及成功后明确恢复普通工作寄存器。失败或结果未知时不会盲目恢复旧值。保留实际 EXE／工程 SHA256、owner、掩码、原始 MI 事件和逐项结果；本次仅用 `--software-fixture` 在隔离 MI 夹具运行过，报告明确 `board_tests_executed=false`。这只覆盖 WRITE-H02 的 Core 子集，不能代替其他 WRITE-H 或系统／外设 writer 实板用例。
 
 `tests/conpty.cs` 只用于测试，解析本轮 Ratatui/ConPTY 输出所需的光标和清除指令，保留完整 VT 输出供复核；它不是完整终端模拟器，不对颜色/字体做断言。测试使用自身启动的终端，避免操作用户正在使用的窗口或系统剪贴板。npm 测试使用 `artifacts/` 下的私有前缀，不替换全局已安装软件。新增脚本只清理自己启动的调试进程。
 

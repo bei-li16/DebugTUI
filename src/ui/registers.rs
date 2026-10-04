@@ -4,6 +4,7 @@ use crate::registers::{Catalogue, Context, Implementation, Sample, State};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub(super) const ACTIONS: &[(&str, &str)] = &[
+    ("Edit value", "edit-value"),
     ("↻ Read", "register-refresh"),
     ("Find", "register-search"),
     ("Group", "register-filter"),
@@ -36,6 +37,66 @@ pub(super) struct RegisterView {
     facts: BTreeMap<String, u64>,
 }
 impl RegisterView {
+    pub(super) fn edit_candidate(
+        &self,
+        row: usize,
+        context: &Context,
+    ) -> Result<super::writes::Candidate, String> {
+        let catalogue = self
+            .catalogue
+            .as_ref()
+            .ok_or("Select a register catalogue first")?;
+        let (index, field) = match self.rows.get(row) {
+            Some(Row::Register(i, _)) => (*i, None),
+            Some(Row::Field(i, f, _)) => (*i, Some(*f)),
+            _ => return Err("Select a register or field to edit".into()),
+        };
+        let register = &catalogue.registers[index];
+        let mut title = register.name.clone();
+        let mut bits = register.bits;
+        let mut value = String::new();
+        // The actual topology is checked by the engine. A sample must still match this core/frame.
+        let sample = self.values.values().find(|sample| {
+            sample.id == register.id
+                && sample.context.core == context.core
+                && sample.state == State::Valid
+                && sample.applies(context, sample.owner.as_deref())
+        });
+        let selection = if let Some(field) = field {
+            let field = &register.fields[field];
+            title.push('.');
+            title.push_str(&field.name);
+            bits = field.segments.iter().map(|s| s.width).sum();
+            if let Some(sample) = sample.and_then(|s| s.value.as_ref()) {
+                value = field.extract(sample).map(|v| v.hex).unwrap_or_default();
+            }
+            crate::writes::Selection::Field {
+                name: field.name.clone(),
+            }
+        } else {
+            if let Some(sample) = sample.and_then(|s| s.value.as_ref()) {
+                value = sample.hex.clone();
+            }
+            crate::writes::Selection::Register
+        };
+        let reason = if register.writer.is_none() || register.write.is_none() {
+            Some("No independent writer and write semantics are declared for this object.".into())
+        } else if !register.access.writable() {
+            Some("Register is read-only.".into())
+        } else if register.implementation(&self.facts).0 == Implementation::No {
+            Some("Hardware capability is explicitly absent.".into())
+        } else {
+            None
+        };
+        Ok(super::writes::Candidate {
+            target: json!({"kind":"register","id":register.id}),
+            selection,
+            title,
+            bits,
+            value,
+            reason,
+        })
+    }
     pub(super) fn load(project: &Project) -> Self {
         let (catalogue, source, error) = match project.registers.load() {
             Ok(Some((catalogue, source))) => (Some(catalogue), source, None),

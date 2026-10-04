@@ -10,7 +10,10 @@ let line = 10;
 const pauseMode = process.env.DEBUGTUI_TEST_PAUSE;
 const exitFailure = process.env.DEBUGTUI_TEST_EXIT_FAILURE;
 let interrupts = 0;
-const frame = () => `frame={level="0",addr="0x100000008",func="main",file="sample.c",line="${line}"}`;
+let frameLevel = 0;
+let registerWritten = false;
+let writerProbed = false;
+const frame = () => `frame={level="${frameLevel}",addr="0x100000008",func="main",file="sample.c",line="${line}"}`;
 const send = value => process.stdout.write(value + '\n');
 readline.createInterface({ input: process.stdin }).on('line', input => {
   const match = /^(\d+)(.*)$/.exec(input);
@@ -19,23 +22,45 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   fs.appendFileSync(transcript, cmd + '\n');
   const done = data => send(`${token}^done${data ? ',' + data : ''}`);
   if (cmd.startsWith('-gdb-set ') || cmd.startsWith('-file-exec-and-symbols ')) return done();
+  if (cmd === '-gdb-show may-write-registers') {
+    const disabled = process.env.DEBUGTUI_TEST_REGISTER_READONLY || (writerProbed && process.env.DEBUGTUI_TEST_WRITE_PERMISSION_CHANGE);
+    return done(`value="${disabled ? 'off' : 'on'}"`);
+  }
   if (cmd.startsWith('-target-select ')) {
     state = 'stopped'; send(`${token}^connected`); return;
   }
   if (cmd === '-list-target-features') return done('features=["async"]');
   if (cmd === '-thread-info') {
     if (state === 'running' && pauseMode === 'query-rejected') return send(`${token}^error,msg="Cannot execute this command while the target is running."`);
-    return done(state === 'ready' ? 'threads=[]' : `threads=[{id="1",state="${state}"}],current-thread-id="1"`);
+    const thread = writerProbed && process.env.DEBUGTUI_TEST_WRITE_THREAD_CHANGE ? '2' : '1';
+    return done(state === 'ready' ? 'threads=[]' : `threads=[{id="${thread}",state="${state}"}],current-thread-id="${thread}"`);
   }
   if (cmd === '-stack-info-frame') return state === 'stopped' ? done(frame()) : send(`${token}^error,msg="No frame"`);
   if (cmd.startsWith('-stack-list-frames')) return done(`stack=[${frame()}]`);
   if (cmd.startsWith('-stack-list-variables')) return done('variables=[{name="counter",value="42"}]');
+  if (/^-stack-select-frame \d+$/.test(cmd)) { frameLevel = Number(cmd.split(' ')[1]); return done(); }
+  if (cmd === '-info-gdb-mi-command data-write-register-values') {
+    writerProbed = true;
+    return done(`command={exists="${process.env.DEBUGTUI_TEST_NO_REGISTER_WRITER ? 'false' : 'true'}"}`);
+  }
+  if (cmd.startsWith('-data-write-register-values ')) {
+    const write = /^-data-write-register-values x (\d+) (0x[0-9a-f]+)$/.exec(cmd);
+    if (!write || !names[Number(write[1])]) return send(`${token}^error,msg="Invalid fixture write"`);
+    registerWritten = true;
+    rawValues[names[Number(write[1])]] = process.env.DEBUGTUI_TEST_WRITE_MISMATCH ? '0x00000000' : write[2];
+    if (process.env.DEBUGTUI_TEST_WRITE_ERROR === 'closed') { process.exit(7); return; }
+    if (process.env.DEBUGTUI_TEST_WRITE_ERROR === 'timeout') return;
+    if (process.env.DEBUGTUI_TEST_WRITE_ERROR === 'error') return send(`${token}^error,msg="Fixture error after target write"`);
+    if (process.env.DEBUGTUI_TEST_WRITE_RUN) { state = 'running'; send('*running,thread-id="all"'); }
+    return done();
+  }
   if (cmd === '-data-list-register-names') return done('register-names=' + JSON.stringify(names));
   if (cmd.startsWith('-data-list-register-values x ')) {
     const indices = cmd.slice('-data-list-register-values x '.length).split(' ').map(Number);
     return done('register-values=[' + indices.map(i => `{number="${i}",value="0x100000008"}`).join(',') + ']');
   }
   if (cmd.startsWith('-data-list-register-values r ')) {
+    if (registerWritten && process.env.DEBUGTUI_TEST_WRITE_VERIFY_ERROR) return send(`${token}^error,msg="Fixture readback unavailable"`);
     const indices = cmd.slice('-data-list-register-values r '.length).split(' ').map(Number);
     if (indices.some(index => unreadableRegisters.includes(names[index]))) {
       return send(`${token}^error,msg="Register is inaccessible"`);
@@ -47,6 +72,8 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
     return done('register-values=[' + indices.map(index => `{number="${index}",value="${rawValues[names[index]] || '0x12345678'}"}`).join(',') + ']');
   }
   if (cmd === '-break-list') return done('BreakpointTable={body=[]}');
+  const evaluateRegister = /^-data-evaluate-expression "\$(r(?:[0-9]|1[0-2]))"$/.exec(cmd);
+  if (evaluateRegister && names.includes(evaluateRegister[1])) return done(`value="${rawValues[evaluateRegister[1]] || '0x12345678'}"`);
   if (cmd.startsWith('-data-read-memory-bytes ') && process.env.DEBUGTUI_TEST_MEMORY_BLOCKS) {
     if (process.env.DEBUGTUI_TEST_MEMORY_RUN_ON_READ) {
       state = 'running'; send('*running,thread-id="all"');

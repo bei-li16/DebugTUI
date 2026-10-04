@@ -28,6 +28,9 @@ def generate(cpu, m_profile=False):
         params = params or {"name":id}
         route = [f"kind = {q(kind)}"] + [f"{key} = {q(value) if isinstance(value,str) else value}" for key,value in params.items()]
         lines.append("reader = { " + ", ".join(route) + " }")
+        if group == "core" and kind == "gdb" and not fields and (id in ("sp", "lr", "pc") or id.startswith("r") and id[1:].isdigit()):
+            lines.append(f'writer = {{ kind = "gdb_integer", name = {q(id)} }}')
+            lines.append('write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }')
         if effect: lines.append("read_side_effect = true")
         if kind in ("cp15", "cp15_64"):
             lines.append('access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."')

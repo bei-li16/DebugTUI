@@ -179,6 +179,14 @@ pub enum Reader {
     },
 }
 
+/// Independent of the reader; only a writer explicitly present in the catalogue is offered.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Writer {
+    /// GDB's MI writer uses LONGEST, so it cannot represent a 128-bit vector.
+    GdbInteger { name: String },
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Register {
@@ -188,6 +196,10 @@ pub struct Register {
     pub bits: u16,
     pub access: Access,
     pub reader: Reader,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub writer: Option<Writer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write: Option<crate::writes::Register>,
     #[serde(default)]
     pub scope: Scope,
     #[serde(default)]
@@ -558,6 +570,36 @@ impl Catalogue {
             }
             if !matches!(register.bits, 8 | 16 | 32 | 64 | 128) {
                 return Err(format!("Invalid width for {}", register.id));
+            }
+            match (&register.writer, &register.write) {
+                (None, None) => {}
+                (Some(Writer::GdbInteger { name }), Some(write)) => {
+                    if !identifier(name)
+                        || register.bits > 64
+                        || write.bits != register.bits
+                        || register.scope != Scope::Core
+                    {
+                        return Err(format!("Invalid GDB integer writer for {}", register.id));
+                    }
+                    write
+                        .validate()
+                        .map_err(|e| format!("Write metadata for {}: {e}", register.id))?;
+                    if !register.access.writable() {
+                        return Err(format!("Read-only register {} has a writer", register.id));
+                    }
+                    if register.read_side_effect && !write.read_side_effect {
+                        return Err(format!(
+                            "Write metadata hides read side effects for {}",
+                            register.id
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(format!(
+                        "Register {} needs both writer and write metadata",
+                        register.id
+                    ));
+                }
             }
             match &register.reader {
                 Reader::Gdb { name } | Reader::Backend { name } if !identifier(name) => {

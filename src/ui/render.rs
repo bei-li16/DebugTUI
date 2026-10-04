@@ -1246,6 +1246,7 @@ fn hint(command: &str) -> &str {
         "delete" => "Delete breakpoint by number",
         "memory" => "Read memory bytes",
         "memory-access" => "Select Memory address, byte count and channel",
+        "edit-value" => "Edit the selected value with explicit Preview, Apply and Cancel",
         "memory-refresh" => "Read the selected Memory range and channel once",
         "disasm" => "Disassemble at address (default $pc)",
         "files" => "List source files",
@@ -1745,5 +1746,6 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     formats::popup(f, a);
     monitor::draw(f, a);
     memory::draw(f, a);
+    writes::draw(f, a);
     breakpoints::popup(f, a);
 }

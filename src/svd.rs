@@ -1,6 +1,7 @@
 //! Chip descriptions only. Target access remains a generic GDB/MI operation.
+use crate::writes;
 use std::{fs, path::Path};
-use svd_parser::svd::{Access, Endian};
+use svd_parser::svd::{Access, Endian, ModifiedWriteValues, Usage, WriteConstraint};
 
 #[derive(Debug)]
 pub struct Device {
@@ -24,6 +25,7 @@ pub struct Register {
     pub readable: bool,
     pub side_effect: bool,
     pub fields: Vec<Field>,
+    pub write: writes::Register,
 }
 #[derive(Debug)]
 pub struct Field {
@@ -57,24 +59,18 @@ impl Device {
     }
     pub fn parse(xml: &str) -> Result<Self, String> {
         let config = svd_parser::Config::default()
-            .ignore_enums(true)
+            .ignore_enums(false)
             .expand(true)
             .expand_properties(true);
         let device = svd_parser::parse_with_config(xml, &config).map_err(|e| format!("{e:#}"))?;
         if device.address_unit_bits != 8 {
             return Err("SVD requires byte-addressed memory (addressUnitBits = 8)".into());
         }
-        let little_endian = Some(
-            device
-                .cpu
-                .as_ref()
-                .and_then(|cpu| match cpu.endian {
-                    Endian::Little => Some(true),
-                    Endian::Big => Some(false),
-                    _ => None,
-                })
-                .unwrap_or(true),
-        );
+        let little_endian = device.cpu.as_ref().and_then(|cpu| match cpu.endian {
+            Endian::Little => Some(true),
+            Endian::Big => Some(false),
+            _ => None,
+        });
         let mut peripherals = Vec::new();
         for peripheral in &device.peripherals {
             let mut registers = Vec::new();
@@ -86,6 +82,7 @@ impl Device {
                 let bits = r.properties.size.unwrap_or(device.width);
                 let access = r.properties.access.unwrap_or(Access::ReadWrite);
                 let mut fields = Vec::new();
+                let mut write_fields = Vec::new();
                 let mut side_effect = r.read_action.is_some();
                 for field in r.fields.iter().flatten() {
                     side_effect |= field.read_action.is_some();
@@ -102,6 +99,30 @@ impl Device {
                         offset,
                         width,
                     });
+                    let mut enums = Vec::new();
+                    for set in &field.enumerated_values {
+                        let writable = !matches!(set.usage, Some(Usage::Read));
+                        for item in &set.values {
+                            if let Some(value) = item.value {
+                                enums.push(writes::Enumeration {
+                                    name: item.name.clone(),
+                                    value: format!("0x{value:x}"),
+                                    writable,
+                                });
+                            }
+                        }
+                    }
+                    write_fields.push(writes::Field {
+                        name: field.name.clone(),
+                        segments: vec![crate::registers::Segment {
+                            offset: offset as u16,
+                            width: width as u16,
+                        }],
+                        access: field.access.map(|a| write_access(Some(a))),
+                        effect: field.modified_write_values.map(write_effect),
+                        constraint: field.write_constraint.map(write_constraint),
+                        enums,
+                    });
                 }
                 fields.sort_by_key(|f| f.offset);
                 registers.push(Register {
@@ -113,6 +134,22 @@ impl Device {
                     readable: !matches!(access, Access::WriteOnly | Access::WriteOnce),
                     side_effect,
                     fields,
+                    write: writes::Register {
+                        bits: u16::try_from(bits)
+                            .map_err(|_| "SVD write width exceeds 16-bit metadata")?,
+                        access: write_access(r.properties.access),
+                        // CMSIS-SVD specifies normal Modify semantics when this property is absent.
+                        effect: r
+                            .modified_write_values
+                            .map(write_effect)
+                            .unwrap_or(writes::Effect::Modify),
+                        constraint: r.write_constraint.map(write_constraint).unwrap_or_default(),
+                        read_side_effect: side_effect,
+                        fields: write_fields,
+                        reserved: writes::Reserved::Unknown,
+                        read_only_write: writes::ReadOnlyWrite::Unknown,
+                        verification: writes::Verification::Modified,
+                    },
                 });
             }
             registers.sort_by_key(|r| r.address);
@@ -128,6 +165,43 @@ impl Device {
             little_endian,
             peripherals,
         })
+    }
+}
+
+fn write_access(access: Option<Access>) -> writes::Access {
+    match access {
+        None => writes::Access::Unknown,
+        Some(Access::ReadOnly) => writes::Access::ReadOnly,
+        Some(Access::ReadWrite) => writes::Access::ReadWrite,
+        Some(Access::WriteOnly) => writes::Access::WriteOnly,
+        Some(Access::ReadWriteOnce) => writes::Access::ReadWriteOnce,
+        Some(Access::WriteOnce) => writes::Access::WriteOnce,
+    }
+}
+fn write_effect(effect: ModifiedWriteValues) -> writes::Effect {
+    match effect {
+        ModifiedWriteValues::Modify => writes::Effect::Modify,
+        ModifiedWriteValues::OneToClear => writes::Effect::OneToClear,
+        ModifiedWriteValues::OneToSet => writes::Effect::OneToSet,
+        ModifiedWriteValues::OneToToggle => writes::Effect::OneToToggle,
+        ModifiedWriteValues::ZeroToClear => writes::Effect::ZeroToClear,
+        ModifiedWriteValues::ZeroToSet => writes::Effect::ZeroToSet,
+        ModifiedWriteValues::ZeroToToggle => writes::Effect::ZeroToToggle,
+        ModifiedWriteValues::Clear => writes::Effect::Clear,
+        ModifiedWriteValues::Set => writes::Effect::Set,
+    }
+}
+fn write_constraint(constraint: WriteConstraint) -> writes::Constraint {
+    match constraint {
+        WriteConstraint::WriteAsRead(true) => writes::Constraint::WriteAsRead,
+        WriteConstraint::UseEnumeratedValues(true) => writes::Constraint::Enumerated,
+        WriteConstraint::WriteAsRead(false) | WriteConstraint::UseEnumeratedValues(false) => {
+            writes::Constraint::None
+        }
+        WriteConstraint::Range(range) => writes::Constraint::Range {
+            min: format!("0x{:x}", range.min),
+            max: format!("0x{:x}", range.max),
+        },
     }
 }
 
@@ -208,5 +282,50 @@ mod tests {
             .value(u64::MAX),
             u64::MAX
         );
+    }
+
+    #[test]
+    fn write_metadata_preserves_parent_field_overrides_enumerations_and_derived_registers() {
+        let device = Device::parse(include_str!("../tests/fixtures/write-metadata.svd")).unwrap();
+        assert_eq!(
+            device.little_endian, None,
+            "absence of CPU byte order is not proof of little endian"
+        );
+        let register = &device.peripherals[0].registers[0].write;
+        assert_eq!(register.access, writes::Access::ReadWrite);
+        assert_eq!(register.effect, writes::Effect::OneToClear);
+        assert_eq!(
+            register.constraint,
+            writes::Constraint::Range {
+                min: "0x1".into(),
+                max: "0x3".into()
+            }
+        );
+        let rw = &register.fields[0];
+        assert_eq!(rw.effect, Some(writes::Effect::Modify));
+        assert_eq!(rw.constraint, Some(writes::Constraint::Enumerated));
+        assert_eq!(rw.enums.len(), 3);
+        assert!(
+            !rw.enums
+                .iter()
+                .find(|v| v.name == "ReadOnlyName")
+                .unwrap()
+                .writable
+        );
+        assert!(rw.enums.iter().find(|v| v.name == "On").unwrap().writable);
+        assert_eq!(register.fields[1].effect, None);
+        assert_eq!(register.fields[1].constraint, None);
+        assert_eq!(register.fields[2].access, Some(writes::Access::ReadOnly));
+        assert_eq!(
+            register.fields[3].constraint,
+            Some(writes::Constraint::WriteAsRead)
+        );
+        let inherited = &device.peripherals[0].registers[1].write;
+        assert_eq!(inherited.effect, register.effect);
+        assert_eq!(inherited.fields[0].enums, rw.enums);
+        let wo = &device.peripherals[0].registers[2];
+        assert_eq!(wo.write.access, writes::Access::WriteOnly);
+        assert!(!wo.auto_read());
+        assert!(device.peripherals[0].registers[3].write.read_side_effect);
     }
 }

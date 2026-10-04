@@ -890,6 +890,15 @@ impl Coordinator {
                     );
                     return;
                 };
+                // Selection is an edit boundary even if the user later returns to this core.
+                // FIFO worker queues discard drafts before a subsequent preview/apply request.
+                for engine in &self.engines {
+                    let id = self.next_id;
+                    self.next_id += 1;
+                    let _ = engine
+                        .handle
+                        .send(Request::new(id, "write_discard", json!({})));
+                }
                 self.active = index;
                 self.revision += 1;
                 self.engines[index].revision = self.revision;

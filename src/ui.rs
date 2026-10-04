@@ -66,6 +66,7 @@ mod source_text;
 #[cfg(test)]
 mod visual_tests;
 mod watch;
+mod writes;
 pub use render::draw;
 use source_tabs::SourceTabs;
 use theme::section;
@@ -73,7 +74,8 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 46] = [
+const COMMANDS: [&str; 47] = [
+    "edit-value",
     "cores",
     "core NAME_OR_INDEX",
     "scope all|core",
@@ -290,6 +292,7 @@ pub struct App {
     core_hits: Vec<(Rect, usize)>,
     monitor: monitor::Monitor,
     memory_panel: memory::MemoryView,
+    write_editor: writes::Editor,
     breaks: breakpoints::Breaks,
 }
 impl App {
@@ -368,6 +371,7 @@ impl App {
             core_hits: vec![],
             monitor: Default::default(),
             memory_panel: Default::default(),
+            write_editor: Default::default(),
             breaks: Default::default(),
         };
         a.fx.mode = a.project.ui.animations;
@@ -477,6 +481,7 @@ impl App {
         match event {
             Event::LiveWatch { sample } => self.apply_live_watch(sample),
             Event::Snapshot { snapshot } => {
+                self.write_snapshot(&snapshot);
                 self.memory_snapshot(&snapshot);
                 let core_changed = snapshot.core.as_ref().map(|c| c.index)
                     != self.snapshot.core.as_ref().map(|c| c.index);
@@ -558,6 +563,9 @@ impl App {
                 result,
                 error,
             } => {
+                if self.write_response(id, &result, error.as_deref()) {
+                    return false;
+                }
                 if self.memory_response(id, &result, error.as_deref()) {
                     return false;
                 }
@@ -741,6 +749,7 @@ impl App {
         let arg = arg.trim();
         let unquote = |s: &str| s.trim().trim_matches('"').to_string();
         match name {
+            "edit-value" => self.open_edit_value(),
             "register-refresh" => { self.refresh_register(engine); }
             "register-search" => self.start_register_search(),
             "register-filter" => self.filter_registers(),
@@ -940,7 +949,10 @@ impl App {
             }
             return false;
         }
-        if self.memory_key_event(key, engine) || self.monitor_key_event(key, engine) {
+        if self.write_key(key, engine)
+            || self.memory_key_event(key, engine)
+            || self.monitor_key_event(key, engine)
+        {
             return false;
         }
         if self.break_dialog_key(key, engine) {
@@ -1052,6 +1064,9 @@ impl App {
         }
         match key.code {
             KeyCode::Char('f') if key.modifiers.is_empty() => self.open_format(None),
+            KeyCode::Char('e') if key.modifiers.is_empty() && self.pane == 3 => {
+                self.open_edit_value()
+            }
             KeyCode::F(2) => self.open_setup(),
             KeyCode::F(5) => self.submit(engine, "continue", json!({})),
             KeyCode::F(6) => self.submit(engine, "pause", json!({})),
@@ -1204,12 +1219,16 @@ impl App {
     // Fetch expensive views only when visible, once per stopped location. Responses
     // arrive through the same worker as user actions; rendering never blocks on GDB.
     fn ensure_visible_data(&mut self, engine: Option<&EngineHandle>) -> bool {
+        if self.flush_write_cancels(engine) {
+            return true;
+        }
         if self.demo
             || self.setup.is_some()
             || self.quitting
             || self.pending_view.is_some()
             || self.memory_panel.busy()
             || self.memory_panel.modal()
+            || self.write_editor.modal()
             || self.monitor.busy()
             || self.completion.busy()
             || self.symbol_search.busy()
@@ -1319,6 +1338,7 @@ impl App {
                 };
         }
         match command {
+            "edit-value" => self.pane == 3,
             "commandlist" | "quit" | "setup" => true,
             "watch-access" => !self.snapshot.watches.is_empty(),
             "memory-access" => true,
@@ -1462,7 +1482,10 @@ impl App {
             return;
         }
         let point = (mouse.column, mouse.row).into();
-        if self.memory_mouse(mouse, engine) || self.monitor_mouse(mouse, engine) {
+        if self.write_mouse(mouse, engine)
+            || self.memory_mouse(mouse, engine)
+            || self.monitor_mouse(mouse, engine)
+        {
             return;
         }
         if self.break_dialog_mouse(mouse, engine) {
@@ -1975,7 +1998,7 @@ pub fn run(
                     if let Some(setup) = &mut app.setup {
                         setup.paste(&text);
                         dirty = true;
-                    } else if app.memory_paste(&text) {
+                    } else if app.write_paste(&text) || app.memory_paste(&text) {
                         dirty = true;
                     } else if app.breaks.modal() {
                         app.break_paste(&text);

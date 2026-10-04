@@ -24,6 +24,8 @@ bits = 32
 access = "rw"
 description = "R0 in the core register group."
 reader = { kind = "gdb", name = "r0" }
+writer = { kind = "gdb_integer", name = "r0" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r1"
@@ -33,6 +35,8 @@ bits = 32
 access = "rw"
 description = "R1 in the core register group."
 reader = { kind = "gdb", name = "r1" }
+writer = { kind = "gdb_integer", name = "r1" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r2"
@@ -42,6 +46,8 @@ bits = 32
 access = "rw"
 description = "R2 in the core register group."
 reader = { kind = "gdb", name = "r2" }
+writer = { kind = "gdb_integer", name = "r2" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r3"
@@ -51,6 +57,8 @@ bits = 32
 access = "rw"
 description = "R3 in the core register group."
 reader = { kind = "gdb", name = "r3" }
+writer = { kind = "gdb_integer", name = "r3" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r4"
@@ -60,6 +68,8 @@ bits = 32
 access = "rw"
 description = "R4 in the core register group."
 reader = { kind = "gdb", name = "r4" }
+writer = { kind = "gdb_integer", name = "r4" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r5"
@@ -69,6 +79,8 @@ bits = 32
 access = "rw"
 description = "R5 in the core register group."
 reader = { kind = "gdb", name = "r5" }
+writer = { kind = "gdb_integer", name = "r5" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r6"
@@ -78,6 +90,8 @@ bits = 32
 access = "rw"
 description = "R6 in the core register group."
 reader = { kind = "gdb", name = "r6" }
+writer = { kind = "gdb_integer", name = "r6" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r7"
@@ -87,6 +101,8 @@ bits = 32
 access = "rw"
 description = "R7 in the core register group."
 reader = { kind = "gdb", name = "r7" }
+writer = { kind = "gdb_integer", name = "r7" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r8"
@@ -96,6 +112,8 @@ bits = 32
 access = "rw"
 description = "R8 in the core register group."
 reader = { kind = "gdb", name = "r8" }
+writer = { kind = "gdb_integer", name = "r8" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r9"
@@ -105,6 +123,8 @@ bits = 32
 access = "rw"
 description = "R9 in the core register group."
 reader = { kind = "gdb", name = "r9" }
+writer = { kind = "gdb_integer", name = "r9" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r10"
@@ -114,6 +134,8 @@ bits = 32
 access = "rw"
 description = "R10 in the core register group."
 reader = { kind = "gdb", name = "r10" }
+writer = { kind = "gdb_integer", name = "r10" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r11"
@@ -123,6 +145,8 @@ bits = 32
 access = "rw"
 description = "R11 in the core register group."
 reader = { kind = "gdb", name = "r11" }
+writer = { kind = "gdb_integer", name = "r11" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "r12"
@@ -132,6 +156,8 @@ bits = 32
 access = "rw"
 description = "R12 in the core register group."
 reader = { kind = "gdb", name = "r12" }
+writer = { kind = "gdb_integer", name = "r12" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "sp"
@@ -141,6 +167,8 @@ bits = 32
 access = "rw"
 description = "SP in the core register group."
 reader = { kind = "gdb", name = "sp" }
+writer = { kind = "gdb_integer", name = "sp" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "lr"
@@ -150,6 +178,8 @@ bits = 32
 access = "rw"
 description = "LR in the core register group."
 reader = { kind = "gdb", name = "lr" }
+writer = { kind = "gdb_integer", name = "lr" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "pc"
@@ -159,6 +189,8 @@ bits = 32
 access = "rw"
 description = "PC in the core register group."
 reader = { kind = "gdb", name = "pc" }
+writer = { kind = "gdb_integer", name = "pc" }
+write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }
 
 [[registers]]
 id = "xpsr"

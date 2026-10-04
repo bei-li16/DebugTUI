@@ -17,6 +17,10 @@
 - Setup 可编辑内存通道的 ID、名称、TCL endpoint、实际 target、运行时访问声明和核心限制；取消丢弃草稿，保存项目覆盖不改写继承的工具配置。Watch 和 Peripherals 均有可见的 Memory access 入口，显示实际路由及配置来源。
 - 内存监视策略按芯片、核心和条目保存；重连、切换停止点或栈帧后重新解析地址，丢弃旧绑定和迟到响应。总线读取返回精确原始值及路由信息；64 位普通内存读取明确标记为两次 32 位总线访问，不宣称原子性。
 - Memory 面板也有可见的范围／通道设置和 Read 按钮，每次读取 1–4096 字节；设置按芯片和核心保存。暂停时打开面板按当前停止点读取一次，运行时仅手动使用明确声明允许的通道。新 `memory_dump` 接口返回完整连续的字节样本和实际路由；视图检查会话、核心、停止点、栈帧、范围和通道后才接纳结果。
+- 写入规划模型保留 32/64/128 位精度、符号、浮点原始位和显式字节序；字段支持非连续位段、父权限／写语义／约束继承及覆盖、读写枚举区分。SVD 不再丢弃枚举、`modifiedWriteValues` 和 `writeConstraint`；缺少 CPU 字节序保持 unknown。规划器为无关 W1C/W0C/置位/翻转位选择“不动作”值，普通邻接 RW 位使用事务内的新鲜值；RO 写效果、保留位、一次写闩锁和不安全读取缺少证据时拒绝。特殊语义目前是软件规划器证据，尚未接入外设硬件 writer。
+- CPU 目录增加与 reader 独立的 writer／write 元数据。内置 r0–r12、SP、LR、PC 使用 GDB 整数 MI writer；暂停的物理 frame 0 才可编辑，预览及应用均查询当前线程状态和 `may-write-registers`，预览还查询实际 MI 命令是否存在及稀疏寄存器索引。GDB 14 的该 writer 使用 LONGEST，明确禁止用它写 128 位向量，不能由数值规划器支持 128 位推断实际 writer 支持。
+- `write_preview`／`write_apply`／`write_cancel` 使用服务端草稿，限制数量及有效时间，绑定会话、停止代次、核心、线程、帧和 ELF。编辑与切核／帧／Console／重连使旧草稿失效；Scope All 只写当前物理核。服务访问锁允许同一 worker 的嵌套请求，完整覆盖新鲜读取、写入和验证；超时、断连及发送后错误不重试或回写旧值。结果区分 not_sent、accepted、verified、mismatch 和 unknown，保留原始错误与掩码／路由，写后使重叠视图失效。
+- System Regs 的 Edit value 按钮、`e` 键和 `:edit-value` 打开共同编辑流程。Preview、Apply、Cancel 支持键鼠及窄窗口；修改输入废弃预览，错误保留输入，取消迟到预览会清理服务端草稿。发送后关闭不会宣称撤回；无 writer 的系统、银行、浮点和状态对象显示不可写原因。退出时 Watch／断点未变则不重写原工程，避免只读或取消用例改变原始文件。
 
 ## 当前能力边界
 
@@ -26,9 +30,23 @@
 
 ## 完整任务仍需完成的部分
 
-寄存器视图偏好持久化及浮点／向量格式；实际身份与能力采集；64 位后端能力、MPU/PMU 选择器事务和区域视图；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；变量、内存、寄存器和字段的写计划、编辑流程及特殊写语义；全部延后上板用例、完整文档和发布构建、安装、推送及 Release。不得因基础框架通过测试而把完整 TODO 或 Goal 标为完成。
+寄存器视图偏好持久化及浮点／向量格式；实际身份与能力采集；64 位后端能力、MPU/PMU 选择器事务和区域视图；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；Watch／Locals、RAM／MMIO 和字段写入的真实 writer 与跨面板编辑；系统／银行／浮点 writer、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、推送及 Release。不得因基础框架或 Core 写入通过测试而把完整 TODO 或 Goal 标为完成。
+
+## 当前 writer 矩阵
+
+| 对象 | 实际 writer 与限制 | 证据 |
+|---|---|---|
+| r0–r12、SP、LR、PC | 独立声明的 GDB 整数 writer；仅暂停、物理 frame 0、单个 owner；PC/SP 提示关联视图变化 | 真实 worker／MI 管道软件夹具；本地 ARM GDB 查询命令存在；实板未执行 |
+| CPSR/xPSR 与其他状态／系统／银行寄存器 | 尚无经适配的 writer；不由 reader 或 RW 标签开放写入 | 目录和负向请求测试 |
+| D/S/Q 与 FP 状态 | 实际 writer 尚未适配；GDB LONGEST 通路不得写 128 位向量 | GDB 14 源码、宽度拒绝测试 |
+| 普通 RAM、外设、变量与结构体成员 | 真实 writer 与面板入口仍待完成 | 不计入已交付写入类别 |
+| 混合 RW/RO/WO、W1C/W0C、枚举／保留位／一次写 | 规划器有软件夹具；缺少硬件规则明确拒绝，尚未对外声明外设写入完成 | `writes::tests`、SVD 元数据夹具；实板未执行 |
+
+GDB writer 的依据为 [GDB 14 MI 实现](https://gnu.googlesource.com/binutils-gdb/+/refs/heads/gdb-14-branch/gdb/mi/mi-main.c) 和实际工作区 ARM GDB 的 `-info-gdb-mi-command data-write-register-values`／`-gdb-show may-write-registers` 输出。SVD 继承及特殊语义依据为 [CMSIS-SVD register 规范](https://open-cmsis-pack.github.io/svd-spec/main/elem_registers.html)。这些软件依据不证明某块板卡的写权限或调试授权。
 
 ## 软件验证记录
+
+2026-10-04 Core 写入批次：247 项单元测试、10 项本地集成测试通过，2 项 ignored；严格 Clippy 通过。新增精度／特殊写规划、SVD 元数据、独立 writer、真实 UI 键鼠与窄布局、失败保留草稿、MI 单次写／取消／权限及线程变化／上下文失效／准确结果状态／无重试。实板 Core 用例默认生成 skipped；全流程通过本地 MI 夹具，报告 `board_tests_executed=false`，未执行板卡测试。其他写类别和完整 TODO 仍未验收，未升版或发布。
 
 2026-10-04：`cargo test --locked` 通过 213 项单元测试和 2 项本地集成测试，2 项依赖外部环境的既有测试保持 ignored；`cargo clippy --locked --all-targets -- -D warnings` 通过。集成夹具确认连接及停止时无额外寄存器读取、稀疏名称索引正确、单项失败不影响后续 64 位值，以及旧值在继续运行后标为 stale。服务测试覆盖并发串行化、独立服务、共享故障隔离和恢复。
 

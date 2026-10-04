@@ -1,24 +1,34 @@
 //! Coordinate access to each OpenOCD service across core workers and TCL clients.
-//! A lease covers a complete request/reply, including server-side target restoration.
+//! A lease covers a request or a complete read/write/verify transaction. Nested
+//! MI/TCL requests on the owning worker retain it until the final lease is dropped.
 use crate::config::Project;
 use std::{
     collections::{BTreeMap, BTreeSet},
+    marker::PhantomData,
     net::{SocketAddr, ToSocketAddrs},
-    sync::{Arc, Mutex, MutexGuard, OnceLock},
+    rc::Rc,
+    sync::{Arc, Condvar, Mutex, OnceLock},
+    thread::{self, ThreadId},
 };
 
 #[derive(Default)]
 struct State {
     fault: Option<String>,
+    owner: Option<ThreadId>,
+    depth: usize,
 }
 
 pub(crate) struct Service {
     address: SocketAddr,
     state: Mutex<State>,
+    available: Condvar,
 }
 
 pub(crate) struct Lease<'a> {
-    state: MutexGuard<'a, State>,
+    service: &'a Service,
+    // Ownership belongs to the worker thread, including nested MI/TCL calls.
+    // A lease must never move to another thread.
+    _not_send: PhantomData<Rc<()>>,
 }
 
 static SERVICES: OnceLock<Mutex<BTreeMap<SocketAddr, Arc<Service>>>> = OnceLock::new();
@@ -38,6 +48,7 @@ pub(crate) fn service(address: SocketAddr) -> Result<Arc<Service>, String> {
             Arc::new(Service {
                 address,
                 state: Mutex::default(),
+                available: Condvar::new(),
             })
         })
         .clone())
@@ -100,32 +111,72 @@ pub(crate) fn for_project(project: &Project) -> Result<Vec<Arc<Service>>, String
 
 pub(crate) fn recover(project: &Project) -> Result<(), String> {
     for service in for_project(project)? {
-        service.acquire(true)?.state.fault = None;
+        service.acquire(true)?.clear_fault();
     }
     Ok(())
 }
 
 impl Service {
     pub(crate) fn acquire(&self, allow_fault: bool) -> Result<Lease<'_>, String> {
-        let state = self.state.lock().map_err(|_| {
+        let mut state = self.state.lock().map_err(|_| {
             format!(
                 "OpenOCD service {} is poisoned; restart to recover",
                 self.address
             )
         })?;
-        if !allow_fault && let Some(error) = &state.fault {
-            return Err(format!(
-                "OpenOCD service {} stopped after uncertain access; reconnect to recover: {error}",
-                self.address
-            ));
+        let owner = thread::current().id();
+        loop {
+            if !allow_fault && let Some(error) = &state.fault {
+                return Err(format!(
+                    "OpenOCD service {} stopped after uncertain access; reconnect to recover: {error}",
+                    self.address
+                ));
+            }
+            if state.owner.is_none() || state.owner == Some(owner) {
+                state.depth = state
+                    .depth
+                    .checked_add(1)
+                    .ok_or("Too many nested debug transactions")?;
+                state.owner = Some(owner);
+                return Ok(Lease {
+                    service: self,
+                    _not_send: PhantomData,
+                });
+            }
+            state = self.available.wait(state).map_err(|_| {
+                format!(
+                    "OpenOCD service {} lock is poisoned; restart to recover",
+                    self.address
+                )
+            })?;
         }
-        Ok(Lease { state })
     }
 }
 
 impl Lease<'_> {
     pub(crate) fn quarantine(&mut self, error: &str) {
-        self.state.fault.get_or_insert_with(|| error.into());
+        if let Ok(mut state) = self.service.state.lock() {
+            state.fault.get_or_insert_with(|| error.into());
+        }
+    }
+    fn clear_fault(&mut self) {
+        if let Ok(mut state) = self.service.state.lock() {
+            state.fault = None;
+        }
+    }
+}
+impl Drop for Lease<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut state) = self.service.state.lock() {
+            debug_assert_eq!(state.owner, Some(thread::current().id()));
+            state.depth = state.depth.saturating_sub(1);
+            if state.depth == 0 {
+                state.owner = None;
+                self.service.available.notify_all();
+            }
+        } else {
+            self.service.available.notify_all();
+        }
     }
 }
 
@@ -140,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn ipv4_mapped_aliases_do_not_acquire_the_same_non_reentrant_service_twice() {
+    fn ipv4_mapped_aliases_do_not_acquire_the_same_service_twice() {
         let mut project = Project::default();
         project.registers.tcl_endpoint = "127.0.0.1:6637".into();
         project.memory_access.push(crate::config::MemoryAccess {
@@ -189,5 +240,43 @@ mod tests {
         project.registers.tcl_endpoint = address.to_string();
         recover(&project).unwrap();
         assert!(second.acquire(false).is_ok());
+    }
+
+    #[test]
+    fn complete_transactions_allow_nested_io_but_hold_other_workers_until_the_last_lease() {
+        let (address, _listener) = unique();
+        let service = service(address).unwrap();
+        let outer = service.acquire(false).unwrap();
+        let inner = service.acquire(false).unwrap();
+        let (started_tx, started_rx) = mpsc::channel();
+        let (done_tx, done_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let service = super::service(address).unwrap();
+            let _lease = service.acquire(false).unwrap();
+            done_tx.send(()).unwrap();
+        });
+        started_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        drop(outer);
+        assert!(done_rx.recv_timeout(Duration::from_millis(30)).is_err());
+        drop(inner);
+        done_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn faults_from_nested_io_block_the_rest_of_the_transaction_and_waiting_workers() {
+        let (address, _listener) = unique();
+        let service = service(address).unwrap();
+        let _outer = service.acquire(false).unwrap();
+        service
+            .acquire(false)
+            .unwrap()
+            .quarantine("write response lost");
+        assert!(service.acquire(false).is_err());
+        let _cleanup = service.acquire(true).unwrap();
+        drop(_cleanup);
+        drop(_outer);
+        assert!(service.acquire(false).is_err());
     }
 }

@@ -23,6 +23,7 @@ mod memory;
 mod registers;
 mod symbols;
 mod watch;
+mod writes;
 pub(crate) use symbols::Symbol;
 
 pub(crate) fn execution_alias(command: &str) -> Option<&'static str> {
@@ -414,6 +415,7 @@ struct Engine {
     register_catalogue: Result<Option<(crate::registers::Catalogue, String)>, String>,
     register_session: u64,
     register_access_fault: Option<String>,
+    write_drafts: writes::Drafts,
     exiting: bool,
     job: Option<crate::process::Job>,
     cancellation: Arc<AtomicBool>,
@@ -567,6 +569,7 @@ impl Engine {
             register_catalogue,
             register_session: registers::new_session(),
             register_access_fault: None,
+            write_drafts: Default::default(),
             exiting: false,
             job: None,
             cancellation,
@@ -581,6 +584,7 @@ impl Engine {
         });
     }
     fn state(&mut self, state: &str) {
+        self.write_drafts.clear();
         self.snapshot.state = state.into();
         self.invalidate_register_samples();
         self.publish();
@@ -660,6 +664,9 @@ impl Engine {
         self.emit(Event::Exit);
     }
     fn record(&mut self, incoming: Incoming) {
+        if matches!(&incoming, Incoming::Record(r) if r.class == "thread-selected") {
+            self.write_drafts.clear();
+        }
         match incoming {
             Incoming::Record(r) => {
                 if matches!(r.kind, '*' | '=') {
@@ -1460,9 +1467,11 @@ impl Engine {
         self.server.take();
         self.refresh_pending = false;
         self.flush_logs();
-        if let Err(e) = self
-            .project
-            .save_preferences(self.watch_names.clone(), self.saved_breakpoints.clone())
+        if (self.watch_names != self.project.watch
+            || self.saved_breakpoints != self.project.breakpoints)
+            && let Err(e) = self
+                .project
+                .save_preferences(self.watch_names.clone(), self.saved_breakpoints.clone())
         {
             self.log("error", format!("Save preferences: {e}"));
         }
@@ -1709,9 +1718,17 @@ impl Engine {
             "watch_resolve" => self.resolve_watch(p),
             "memory_read" => self.read_memory_channel(p),
             "memory_dump" => self.read_memory_dump(p),
+            "write_preview" => self.preview_write(p),
+            "write_apply" => self.apply_write(p),
+            "write_cancel" => self.cancel_write(p),
+            "write_discard" => {
+                self.write_drafts.clear();
+                Ok(json!({"discarded":true}))
+            }
             "break" | "data_break" | "delete_break" | "enable_break" | "update_break"
             | "break_apply" => self.breakpoint_command(method, p),
             "frame" => {
+                self.write_drafts.clear();
                 self.stopped()?;
                 let index = p.get("level").and_then(Json::as_u64).unwrap_or(0);
                 self.mi(&format!("-stack-select-frame {index}"))?;
@@ -1864,6 +1881,7 @@ impl Engine {
                 Ok(json!({"downloaded":true}))
             }
             "console" => {
+                self.write_drafts.clear();
                 let command = text("command");
                 let trimmed = command.trim();
                 match trimmed {
@@ -1886,6 +1904,7 @@ impl Engine {
                 Ok(json!({"result":r.data}))
             }
             "set_elf" => {
+                self.write_drafts.clear();
                 if self.gdb.is_some() {
                     return Err("Disconnect before changing ELF".into());
                 }

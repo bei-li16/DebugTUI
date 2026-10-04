@@ -700,6 +700,12 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 ## 开发与验证
 
+开发分支新增的 Core 寄存器编辑尚未进入 v0.9.3 release。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。
+
+修改输入必须重新预览；切核、帧、运行、重连或换 ELF 后旧草稿不可应用。Scope All 仍只写当前核心。`verified` 表示按有效掩码回读一致，`accepted` 表示后端已受理但没有完成安全验证，`mismatch` 表示回读不符，`unknown` 表示可能已写入而无法确定结果；不自动重试、回滚或重放。发送后关闭编辑窗口不会撤回操作。PC/SP 改动会使源码、栈、Locals、反汇编等视图失效并重新读取；这不是通用的目标恢复操作。
+
+未声明独立 writer 的对象可查看原因，当前 CPSR、系统／银行／浮点寄存器及变量、RAM／MMIO 写入仍在开发。数值规划器支持 128 位，并不表示 GDB 整数 writer 能写 128 位向量；完整范围与验证限制见 [开发进度](docs/registers-development-status.md)。
+
 源码使用 Rust 2024 edition；构建需安装能编译当前锁定依赖的 Rust 工具链及 Windows 原生链接器。GNU 构建可用 `DEBUGTUI_GCC_DIR` 指定工具目录。Node 用于分发和部分测试，完整功能验收还需要 PowerShell 7、本机 GCC/GDB；这些不是最终用户启动 EXE 的依赖。
 
 在仓库根目录按需执行：

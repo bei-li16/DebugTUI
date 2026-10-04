@@ -413,3 +413,35 @@ fn stale_sessions_generations_cores_frames_and_owner_are_rejected() {
     assert_eq!(sample.state, State::Stale);
     assert!(sample.value.is_some());
 }
+
+#[test]
+fn writers_are_independent_and_reject_width_scope_permission_and_read_effect_conflicts() {
+    let catalogue = Catalogue::builtin("cortex-r52").unwrap();
+    let r0 = catalogue.register("r0").unwrap();
+    assert!(matches!(&r0.writer, Some(Writer::GdbInteger { name }) if name == "r0"));
+    assert!(catalogue.register("sctlr").unwrap().writer.is_none());
+    assert!(catalogue.register("d0").unwrap().writer.is_none());
+    assert!(catalogue.register("cpsr").unwrap().writer.is_none());
+    for kind in 0..5 {
+        let mut invalid = catalogue.clone();
+        let reg = invalid.registers.iter_mut().find(|r| r.id == "r0").unwrap();
+        match kind {
+            0 => {
+                reg.bits = 128;
+                reg.write.as_mut().unwrap().bits = 128;
+            }
+            1 => reg.scope = Scope::Chip,
+            2 => reg.access = Access::Ro,
+            3 => reg.write = None,
+            _ => reg.read_side_effect = true,
+        }
+        assert!(invalid.validate().is_err());
+    }
+    let mut legacy = catalogue;
+    for reg in &mut legacy.registers {
+        reg.writer = None;
+        reg.write = None;
+    }
+    legacy.validate().unwrap();
+    assert!(!toml::to_string(&legacy).unwrap().contains("writer"));
+}

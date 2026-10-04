@@ -16,3 +16,4 @@ pub(crate) mod source;
 pub mod svd;
 pub(crate) mod theme;
 pub mod ui;
+pub mod writes;

@@ -320,7 +320,11 @@ impl Engine {
         values.insert(register.id.clone(), value.clone());
         Ok(value)
     }
-    fn gdb_register_value(&mut self, name: &str, bits: u16) -> Result<RawValue, (Reason, String)> {
+    pub(super) fn gdb_register_value(
+        &mut self,
+        name: &str,
+        bits: u16,
+    ) -> Result<RawValue, (Reason, String)> {
         if self.reg_names.is_empty() {
             let response = self
                 .mi("-data-list-register-names")
