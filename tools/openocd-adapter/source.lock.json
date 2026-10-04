@@ -4,18 +4,24 @@
   "jimtcl_revision": "d5243a25c488dfe751ef218828f13516e04ea2ba",
   "protocol": "debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault",
   "patch": "0001-debugtui-armv8-register-adapter.patch",
-  "patch_sha256": "2be543869e57368651a1bfa58fc68325c07218359dc1be86a48fa753862c952a",
+  "patch_sha256": "62c1a0124c4add2486aa095cb6b0af2247c78e74947f83a077537216bab17e68",
   "patched_sources_sha256": {
-    "src/target/Makefile.am": "023248aca0853d814bf0cd661cf35fba7b93f797562f4e4e50e50c5ae039ec41",
-    "src/target/aarch64.c": "db46c0bb09716e431fb616767dd475f50ab28d3be3f45b748dfbb6685f1659b7",
-    "src/target/armv8_dpm.c": "6fc214e4ca8ed64dfba2f6185987bb09f7ca53f280c1bc2de30fc53f803d8319",
-    "src/target/armv8_dpm.h": "fa71a5eb5269e7970b77bf4006da07f9da60ec0d7fb8daff9d104009dcfd4169",
-    "src/target/armv8_debugtui.h": "4571b23076bda7cb0dd458ffc2c83bf2489694a5900f2e731b1c356737dc267e"
+    "src/target/Makefile.am": "07d0f60d81fcf3f6b38c5cf013cbe70628217c468bfbd850644aa98425988a71",
+    "src/target/aarch64.c": "3717bae37b13615770b8eb4c84b5d035dd903c5f89d1ae2b00db9f26e89c7105",
+    "src/target/armv8_dpm.c": "5d351fbb06edcc04077c78b3eb5ba8704200c94f9df95a4a761690e157ba3432",
+    "src/target/armv8_dpm.h": "fd967981195be48921b0b39be16ca688edbe28f707320a1fc5f22d6f5a4d5ef4",
+    "src/target/armv8_debugtui.h": "4571b23076bda7cb0dd458ffc2c83bf2489694a5900f2e731b1c356737dc267e",
+    "src/target/armv8_debugtui_banked.h": "7403a8b3a4f13bbfc0054b8f90fddffb7a50ab49c8afcc9a39b88b6baa5fbadb"
   },
   "board_support_verified": false,
   "installed_xpack_binary_equivalent": false,
   "windows_backend_build_verified": true,
-  "windows_candidate_sha256": "06dbc62b6ddfc52ab88a95cfe608d2a76baf7410653d06f51559c323f25582ab",
   "linux_backend_build_verified": true,
-  "linux_candidate_sha256": "80f2c574531855a50c6e4f52e9760d1603a296c3d8cca1579cbd995bfe245bd5"
+  "banked_protocol": "debugtui-armv8-banked-1 mrs physical-readback no-mode-change stop-on-fault",
+  "previous_candidates": {
+    "windows_mrrc_isb_sha256": "06dbc62b6ddfc52ab88a95cfe608d2a76baf7410653d06f51559c323f25582ab",
+    "linux_mrrc_isb_sha256": "80f2c574531855a50c6e4f52e9760d1603a296c3d8cca1579cbd995bfe245bd5"
+  },
+  "windows_candidate_sha256": "0c14538d630ac6872fb8e0552f1f1e1c8959cae57e471e33b79d33331d2b87ce",
+  "linux_candidate_sha256": "ff0a0db439a66b16ad824a4094d6ff9f28033295592cf71402dd7fdd757630e3"
 }

@@ -245,6 +245,7 @@ impl Engine {
         }
         let value = match &register.reader {
             Reader::Gdb { name } => self.gdb_register_value(name, register.bits)?,
+            Reader::Banked { name } => self.read_banked_register(name)?,
             Reader::Alias { source, offset } => {
                 let parent = catalogue.register(source).ok_or_else(|| {
                     (
@@ -464,6 +465,7 @@ pub(super) fn route_name(register: &Register) -> String {
         Reader::Alias { source, .. } => format!("alias:{source}"),
         Reader::Mmio { component, .. } => format!("mmio:{component}"),
         Reader::Backend { name } => format!("openocd:{name}"),
+        Reader::Banked { name } => format!("openocd:aarch64 banked:{name}"),
         Reader::Cp15 { .. } => "openocd:cp15".into(),
         Reader::Cp15_64 { .. } => "gdb:cp15_64".into(),
     }

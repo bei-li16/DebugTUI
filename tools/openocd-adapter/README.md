@@ -15,6 +15,7 @@ cp15_command = "aarch64 mrc"
 cp15_64_command = "aarch64 mrrc"
 selector_command = "aarch64 mcr"
 isb_command = "aarch64 isb"
+banked_command = "aarch64 banked"
 tcl_endpoint = "127.0.0.1:6666"
 
 [registers.targets]
@@ -24,6 +25,10 @@ core1 = "board.cpu1"
 
 核心和 target 名称须与实际工程一致。MRRC 与真正 ISB 每次在同一个 target 事务中检查协议；没有命令或协议不符时，先返回 reader unsupported。旧工程不配置新字段时，64 位读仍使用具名 GDB 寄存器，选择器同步仍要求实际 CP15BEN 已开启。配置不能代替硬件身份、Timer 实现或权限证据，也不开启系统寄存器 writer。
 
+`aarch64 debugtui_banked_protocol` 返回独立协议 `debugtui-armv8-banked-1 mrs physical-readback no-mode-change stop-on-fault`。`aarch64 banked NAME` 按实际 CPSR／MIDR 读取 R52 的模式银行，输出固定 8 位十六进制。规则依据 Cortex-R52 TRM 100026_0104_01_en 和 Armv8-R AArch32 架构补充 DDI 0568A.c 的 BankedRegisterAccessValid／SPSRaccessValid；用户提供目录内的完整补充手册共有 356 页，26 页 DEN0130 概述不能代替这些规则。
+
+状态检查读取调试态可在各 EL 访问的 DSPSR（CP15 op1=3,c4,c5,op2=0），它保存完整停止 CPSR。普通 MRS CPSR 会屏蔽执行位，且 User 模式的模式／中断字段不能可靠使用，因此不用它来判断模式或核对完整状态。当前银行使用 MOV／普通 MRS，其他允许的银行使用 banked MRS。R52 没有 Monitor 模式，SP_hyp／SPSR_hyp 仅在当前 Hyp 通过普通访问读取；ELR_hyp 在 Hyp 可直接 banked MRS。非 Hyp 拒绝三项 Hyp 银行，User 模式读 DSPSR 后不注入 MIDR 或银行指令。只接受 Arm implementer 0x41／part D13，R52+ 未知身份返回 unsupported。每次保存／恢复／物理回读 R0，并核对前后全部 DSPSR 位，包括 T／IT；故障停止、不推测 rollback 或改写模式／FPU 控制。内置目录不再回退旧 get_reg／mode-switch DPM。自定义旧 backend reader 不具有该保证。
+
 ## 构建和软件验证
 
 在具备 Git、GCC、make、autoconf、automake、libtool 和 pkg-config 的 Unix 构建环境中执行：
@@ -32,7 +37,7 @@ core1 = "board.cpu1"
 sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 ```
 
-输出目录必须是新路径。脚本保留固定版本源码、安装目录、GPL 许可和测试报告；可追加 configure 选项选择探针及交叉工具链。USB 接口需要对应开发依赖。默认包含 dummy/remote-bitbang，关闭 J-Link 子模块。本批在 WSL Ubuntu 22.04 完成 Linux 构建与真实命令检查；上述 Linux 一键脚本的全新目录构建仍待重新执行。Windows 使用下面单独经过全新目录构建验证的脚本。
+输出目录必须是新路径。脚本保留固定版本源码、安装目录、GPL 许可和测试报告；可追加 configure 选项选择探针及交叉工具链。USB 接口需要对应开发依赖。默认包含 dummy/remote-bitbang，关闭 J-Link 子模块。本银行批次已用上述 Linux 一键脚本在全新目录完成 WSL Ubuntu 22.04 构建和真实命令检查。Windows 使用下面单独经过全新目录构建验证的脚本。
 
 检查已应用补丁的源码和后端：
 
@@ -40,9 +45,9 @@ sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 python3 tools/openocd-adapter/test.py --source PATH_TO_PINNED_SOURCE --out artifacts/openocd-adapter-tests --openocd PATH_TO_BACKEND
 ```
 
-事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对协议、帮助以及参数和状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 用 GNU Arm 汇编器独立确认 MRRC 和 Thumb ISB 编码。
+事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，另验证银行事务的 20 个故障点、R0 恢复／CPSR 变化及安全权限拒绝；严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对两项协议、帮助以及参数和全部 23 个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用 GNU Arm 汇编器独立确认 MRRC、Thumb ISB 及银行／当前寄存器编码。
 
-Linux 候选后端 SHA-256 为 `80f2c574531855a50c6e4f52e9760d1603a296c3d8cca1579cbd995bfe245bd5`，版本 `0.12.0+dev-gd3ebb8d-dirty`。dirty 来自尚未成为上游提交的适配补丁。候选产物未安装或发布，未来分发须保留源码、补丁与许可，不能把其能力写到现有 Windows 二进制上。
+本银行批次 Linux 候选后端 SHA-256 为 `ff0a0db439a66b16ad824a4094d6ff9f28033295592cf71402dd7fdd757630e3`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-04-19:50)`。dirty 来自尚未成为上游提交的适配补丁，构建时间为 UTC。上一批 MRRC／ISB 候选哈希保留在 lock 的 previous_candidates，不能用于当前补丁。候选产物未安装或发布，未来分发须保留源码、补丁与许可，不能把其能力写到现有 Windows 二进制上。
 
 ## Windows 后端、依赖和候选包
 
@@ -71,9 +76,11 @@ python tools/openocd-adapter/tests/windows-package.py --candidate G:/Build/openo
 
 原生检查先验证清单、配方和源码 ZIP，再执行生产事务测试及真实后端命令检查，核对 J-Link、CMSIS-DAP、ST-Link、FTDI 的注册，以及两份 F429 配置和 HID／USB bulk 后端能离线加载。物理配置加载在 config 阶段结束，显式 init 被拒绝；只在前面的独立事务检查中初始化进程内 dummy，不连接真实探针或打开调试端口。检查成功后才把 `native_windows_verified` 标为 true 并重新生成候选 ZIP。九项包检查包含缺失 DLL、非 PE、同大小篡改、新增 DLL、有效 ZIP 内补丁篡改和 Git 空目录遗失拒绝。
 
-Windows 候选后端 SHA-256 为 `06dbc62b6ddfc52ab88a95cfe608d2a76baf7410653d06f51559c323f25582ab`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-04-18:27)`。本批完整的新目录 Windows 构建及原生命令、依赖、配置检查通过；源码 ZIP 缓存提交回读已核对，仍不代表探针通信或 R52 实板指令执行通过。现有 `tools/bin/openocd`、依赖锁及安装未改动。最终 tools/profile 合并、安装升级和整个任务完成后的 Release 仍待完成；不能只分发运行 ZIP 而遗漏对应源码与许可。
+本银行批次 Windows 候选后端 SHA-256 为 `0c14538d630ac6872fb8e0552f1f1e1c8959cae57e471e33b79d33331d2b87ce`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-04-19:51)`，构建时间为 UTC。本批完整的新目录 Windows 构建及原生命令、依赖、配置检查通过；源码 ZIP 固定提交回读已核对，仍不代表探针通信或 R52 实板指令执行通过。现有 `tools/bin/openocd`、依赖锁及安装未改动。最终 tools/profile 合并、安装升级和整个任务完成后的 Release 仍待完成；不能只分发运行 ZIP 而遗漏对应源码与许可。
 
 ## 延后执行的物理核心用例
+
+银行 REG-H02 驱动、独立汇编钩子和逐核案例详见 [测试说明](../../tests/README.md#开发分支寄存器与内存夹具)。默认 4 skipped；Hyp／User 的实际 DebugTUI 二进制软件流程各 5 阶段通过，8 个 R52 模式的独立钩子均汇编通过，不记为上板验证。当前银行的固件样本使用普通 MOV／MRS，其他银行使用独立 GNU 指令，钩子不切换模式或改 FPU 控制；实际试验在 ready 循环暂停，确认每核存储和不可访问项。
 
 `scripts/test-register-timer-hardware.cjs` 默认输出五项 skipped，不连接。专用暂停工程须禁止连接/退出时自动运行、复位或下载，并设置 `on_exit = "disconnect"`。明确提供 `--run --binary EXE --project TOML --core NAME --case JSON` 才执行 REG-H05。`tests/fixtures/register-timer-board.example.json` 是软件占位，需替换实际 MIDR、CVAL、合理差值和独立证据，移除 `software_example` 后才能上板执行。
 

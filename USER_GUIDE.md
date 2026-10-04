@@ -720,6 +720,14 @@ Log 保留逐项原始值、读取来源、错误和能力解码依据。EL1 MPU
 
 Headless 先调用 `registers_list` 获取 `context`，再用 `registers_probe` 传入相同的 `context`。响应含 `probe.samples`、带寄存器及通道来源的 `probe.facts`、实际 MIDR 解码、GDB 可见名称、说明及有效 worker 的工具路径声明。路径声明不等于真实服务器版本／哈希证明。多核 Snapshot 的 `register_generation` 用于寄存器上下文，`generation` 仍表示协调器刷新版本。
 
+### 读取 R52 模式银行（开发分支）
+
+内置 R52／R52+ 目录的 23 个模式银行条目使用独立的 `banked` reader。工程需显式配置 `registers.banked_command = "aarch64 banked"`、TCL endpoint 和各核实际 target，并选用 [固定源码适配后端](tools/openocd-adapter/README.md)。默认空配置或协议不符返回 Reader unsupported。普通 **Read**／`registers_read` 即可读取；**Read bank** 是 MPU／PMU 选择器动作。
+
+读取只接受当前暂停核心的物理 frame 0。后端从调试态 DSPSR 读取完整停止 CPSR，以实际 MIDR 确认身份；普通 MRS CPSR 屏蔽执行状态位，不能用于这个检查。当前银行使用普通 MOV／MRS，其他银行使用架构允许的 banked MRS。它不切换模式；在 R52 的非 Hyp 模式下，Hyp 的 SP／ELR／SPSR 返回 Access restricted；User 模式在读取 DSPSR 后拒绝专用银行访问，不尝试 MIDR／banked MRS，当前用户寄存器仍在 Core 中读取。System 模式可读取其他银行。当前仅适配 Arm D13 Cortex-R52，R52+ 专用身份仍待确认。
+
+同一服务租约涵盖前后线程／帧检查和单次 target 事务；Scope All 仍只读选中核。后端保存、恢复并物理回读 R0，再核对 DSPSR 的完整停止状态一致，成功结果固定 8 位十六进制。线程／帧变化丢弃样本；恢复不确定时进入 FAULT、停用共享通道，显式重连前不重试。生产事务和实际二进制软件用例已验证；物理探针和板卡尚未验证，延后驱动见 [测试说明](tests/README.md)。银行 reader 不开放 writer 或使能 FPU。
+
 ### 读取 MPU／PMU 选择器组（开发分支）
 
 普通 **Read** 继续使用 PRBARn／PRLARn、PMEVCNTRn／PMEVTYPERn 的直接索引通道。需要选择器通道时，在暂停物理核心的 frame 0 先 **Probe caps**，选中对应区域／事件计数器，再点击 **Read bank** 或执行 `:register-bank-read`。Scope All 仍只操作当前核心。区域索引必须小于实际 MPUIR／HMPUIR 数量；当前适配 R52 的 16／20／24 区域和最多 4 个 32 位 PMU 事件计数器，EL2 要求 Hyp。选择 PMU index 31 读取计数器不受支持，但保存的 PMSELR=31 可以原样恢复。

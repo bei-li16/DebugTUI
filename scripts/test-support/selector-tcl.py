@@ -50,6 +50,30 @@ def evaluate(data):
         if op == 'debugtui_adapter':
             return (0, 'old-adapter' if fault == 'adapter_mismatch' else
                     'debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault')
+        if op == 'debugtui_banked_protocol':
+            return (0, 'old-banked-adapter' if fault == 'bank_protocol' else
+                    'debugtui-armv8-banked-1 mrs physical-readback no-mode-change stop-on-fault')
+        if op == 'banked':
+            if fault == 'bank_refusal_context_change':
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+                return (1, 'physical mode cannot access this bank', -308)
+            if fault == 'bank_unavailable':
+                return (1, 'physical mode cannot access this bank', -308)
+            if fault == 'bank_identity':
+                return (1, 'unadapted CPU identity', -300)
+            if fault == 'bank_fault':
+                cpu['status'] = 'unknown'
+                return (1, 'Core state restoration failed: fixture bank outcome unknown', -1)
+            names = ['sp_irq', 'lr_irq', 'spsr_irq', 'r8_fiq', 'r9_fiq', 'r10_fiq',
+                     'r11_fiq', 'r12_fiq', 'sp_fiq', 'lr_fiq', 'spsr_fiq', 'sp_und',
+                     'lr_und', 'spsr_und', 'sp_abt', 'lr_abt', 'spsr_abt', 'sp_svc',
+                     'lr_svc', 'spsr_svc', 'sp_hyp', 'elr_hyp', 'spsr_hyp']
+            if len(args) != 1 or args[0] not in names:
+                return (1, 'unadapted banked fixture name', -603)
+            if fault == 'bank_context_change':
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+            return (0, '0x1' if fault == 'bank_short' else
+                    f'0x{0x51000000 + names.index(args[0]) + (0x10000000 if name == "cpu1" else 0):08x}')
         if op == 'isb':
             if args:
                 return (1, 'genuine ISB takes no operands')
@@ -149,7 +173,7 @@ def evaluate(data):
         interp.createcommand(name, lambda action, name=name: state['targets'][name]['status'] if action == 'curstate' else '')
     interp.eval('''
     proc targets {name} {set r [_fixture_targets $name]; if {[lindex $r 0]} {error [lindex $r 1]}; return [lindex $r 1]}
-    proc arm {op args} {set r [_fixture_arm $op {*}$args]; if {[lindex $r 0]} {error [lindex $r 1]}; return [lindex $r 1]}
+    proc arm {op args} {set r [_fixture_arm $op {*}$args]; if {[lindex $r 0]} {if {[llength $r] == 3} {return -code error -errorcode [list OpenOCD [lindex $r 2]] [lindex $r 1]}; error [lindex $r 1]}; return [lindex $r 1]}
     proc aarch64 {op args} {return [arm $op {*}$args]}
     ''')
     try:

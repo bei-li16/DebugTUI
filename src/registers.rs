@@ -10,6 +10,7 @@ use std::{
 pub const MAX_CATALOGUE_BYTES: u64 = 4 * 1024 * 1024;
 pub const OPENOCD_ADAPTER_PROTOCOL: &str =
     "debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault";
+pub mod banked;
 pub mod capabilities;
 pub mod display;
 pub mod mpu;
@@ -30,6 +31,8 @@ pub struct Config {
     pub cp15_command: String,
     /// Genuine MRRC from the pinned, explicitly selected ARMv8 adapter.
     pub cp15_64_command: String,
+    /// State-preserving R52 banked MRS adapter; no legacy get_reg fallback.
+    pub banked_command: String,
     /// Opt-in MCR used only for adapted, saved/restored selector transactions.
     pub selector_command: String,
     /// Genuine ISB; empty retains the guarded legacy CP15ISB route.
@@ -83,6 +86,9 @@ impl Config {
         }
         if !matches!(self.cp15_64_command.as_str(), "" | "aarch64 mrrc") {
             return Err("registers.cp15_64_command must be aarch64 mrrc".into());
+        }
+        if !matches!(self.banked_command.as_str(), "" | "aarch64 banked") {
+            return Err("registers.banked_command must be aarch64 banked".into());
         }
         if !self.isb_command.is_empty()
             && (self.isb_command != "aarch64 isb"
@@ -203,6 +209,9 @@ pub enum Reader {
         crm: u8,
     },
     Backend {
+        name: String,
+    },
+    Banked {
         name: String,
     },
     Mmio {
@@ -638,6 +647,17 @@ impl Catalogue {
                 }
             }
             match &register.reader {
+                Reader::Banked { name }
+                    if !banked::valid_name(name)
+                        || register.bits != 32
+                        || register.scope != Scope::Core
+                        || register.read_side_effect =>
+                {
+                    return Err(format!(
+                        "Invalid banked register reader for {}",
+                        register.id
+                    ));
+                }
                 Reader::Gdb { name } | Reader::Backend { name } if !identifier(name) => {
                     return Err(format!("Invalid backend register name for {}", register.id));
                 }

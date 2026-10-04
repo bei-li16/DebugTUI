@@ -47,6 +47,10 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --only c
 
 ## 开发分支寄存器与内存夹具
 
+银行读取使用 `registers::banked::tests` 和 `tests/selector_access/banked_cases.rs`：覆盖全部 23 个内置银行、旧协议／配置拒绝、精确宽度、权限与身份拒绝、传输故障隔离、不重试、实际线程／帧变化和双核 Scope All 归属。`tools/openocd-adapter/test.py` 编译生产 C 银行事务，验证 20 个故障点、R0 回读、完整 DSPSR 停止状态一致（含 T／IT／模式／标志变化）和独立 GNU Arm 指令编码；真实 OpenOCD 的离线命令测试只使用进程内 dummy。
+
+延后 REG-H02 驱动 `node scripts/test-register-banked-hardware.cjs` 默认 4 skipped、不连接；显式运行参数为 `--run --project FILE --core NAME --case JSON --binary FILE`。独立样本来自 `tests/fixtures/register-banked-board.S`，用 `-mcpu=cortex-r52 -mthumb -DDEBUGTUI_BANKED_MODE=MODE` 编译，共 8 个实际模式均已汇编通过。以 `register-banked-board.example.json` 为起点，替换证据并去掉 `software_example`；只在 ready 循环暂停，参考数组须为每核独立存储，案例需填写真实 mode、MIDR、peer 和全部银行引用。非 Hyp 的三个 Hyp 银行标为 `unavailable=true`；User 的所有银行标为 unavailable，不进行特权 Probe。工程连接／退出不得自动运行、复位或下载，设置 `on_exit="disconnect"`。实际二进制在双核软件模型运行 Hyp 基线和 User 拒绝两种五阶段流程，明确 `board_tests_executed=false`。
+
 MPU／MAIR 使用 `registers::mpu::tests`、`ui::registers::mpu::tests` 和 `tests/selector_access/mpu_cases.rs`。软件 TCP 夹具提前启动 Python，以 JSONL 复用解释器执行真实 Tcl；没有扩大生产连接超时。延后驱动 `node scripts/test-mpu-regions-hardware.cjs` 默认 4 skipped，实际运行需 `--run --project FILE --core NAME --case JSON --binary FILE`，见 `tests/fixtures/mpu-regions-board.example.json` 与只读固件钩子 `mpu-regions-board.c`。板级期望必须独立填写所有区域与 MAIR；软件示例只能配合 `--software-fixture`。
 
 `tests/register_access.rs` 在 Windows 下启动隔离的 Node MI 夹具，验证目录模式连接不自动扫描寄存器、稀疏索引、逐项失败、精确 64 位值和异步 RUNNING 结果失效；同时检查连续内存块、64 位地址和 Scope All 下只读取选中核心。`src/session/memory.rs` 的 TCP 夹具检查显式 target／endpoint、地址序字节及无效请求在连接前拒绝；UI 单元测试检查各档布局、取消不保存、策略隔离和迟到响应丢弃。

@@ -58,7 +58,7 @@ def generate(cpu, m_profile=False):
         for mode in ["irq","fiq","und","abt","svc","hyp"]:
             group(mode,mode.upper(),"core")
             for name in ([f"r{n}_{mode}" for n in range(8,13)] if mode == "fiq" else []) + [f"sp_{mode}","elr_hyp" if mode == "hyp" else f"lr_{mode}",f"spsr_{mode}"]:
-                reg(name,mode,kind="backend",params={"name":name})
+                reg(name,mode,kind="banked",params={"name":name})
         for id in ["id","control","exceptions","mpu_el1","mpu_el2","pmu","gic","timer","virt","debug"]: group(id,id.upper(),"system")
         # Tuples are (Op1, CRn, CRm, Op2), independently checked against TRM read encodings.
         encodings = {
@@ -98,7 +98,7 @@ def generate(cpu, m_profile=False):
         reg(f"s{n}","vfp",kind="alias",params=dict(source=f"d{n//2}",offset=32*(n%2)),conditions=[("vfp.d_registers",n//2+1)])
     reg("fpscr","vfp",conditions=[("vfp.present",1)])
     ROOT.mkdir(parents=True,exist_ok=True)
-    (ROOT / f"{cpu}.toml").write_text("\n".join(lines)+"\n",encoding="utf-8")
+    (ROOT / f"{cpu}.toml").write_text("\n".join(lines)+"\n",encoding="utf-8",newline="\n")
 
 if __name__ == "__main__":
     generate("cortex-r52")

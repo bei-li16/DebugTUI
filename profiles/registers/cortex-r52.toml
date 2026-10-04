@@ -289,7 +289,7 @@ group = "irq"
 bits = 32
 access = "rw"
 description = "SP_IRQ in the irq register group."
-reader = { kind = "backend", name = "sp_irq" }
+reader = { kind = "banked", name = "sp_irq" }
 
 [[registers]]
 id = "lr_irq"
@@ -298,7 +298,7 @@ group = "irq"
 bits = 32
 access = "rw"
 description = "LR_IRQ in the irq register group."
-reader = { kind = "backend", name = "lr_irq" }
+reader = { kind = "banked", name = "lr_irq" }
 
 [[registers]]
 id = "spsr_irq"
@@ -307,7 +307,7 @@ group = "irq"
 bits = 32
 access = "rw"
 description = "SPSR_IRQ in the irq register group."
-reader = { kind = "backend", name = "spsr_irq" }
+reader = { kind = "banked", name = "spsr_irq" }
 
 [[groups]]
 id = "fiq"
@@ -321,7 +321,7 @@ group = "fiq"
 bits = 32
 access = "rw"
 description = "R8_FIQ in the fiq register group."
-reader = { kind = "backend", name = "r8_fiq" }
+reader = { kind = "banked", name = "r8_fiq" }
 
 [[registers]]
 id = "r9_fiq"
@@ -330,7 +330,7 @@ group = "fiq"
 bits = 32
 access = "rw"
 description = "R9_FIQ in the fiq register group."
-reader = { kind = "backend", name = "r9_fiq" }
+reader = { kind = "banked", name = "r9_fiq" }
 
 [[registers]]
 id = "r10_fiq"
@@ -339,7 +339,7 @@ group = "fiq"
 bits = 32
 access = "rw"
 description = "R10_FIQ in the fiq register group."
-reader = { kind = "backend", name = "r10_fiq" }
+reader = { kind = "banked", name = "r10_fiq" }
 
 [[registers]]
 id = "r11_fiq"
@@ -348,7 +348,7 @@ group = "fiq"
 bits = 32
 access = "rw"
 description = "R11_FIQ in the fiq register group."
-reader = { kind = "backend", name = "r11_fiq" }
+reader = { kind = "banked", name = "r11_fiq" }
 
 [[registers]]
 id = "r12_fiq"
@@ -357,7 +357,7 @@ group = "fiq"
 bits = 32
 access = "rw"
 description = "R12_FIQ in the fiq register group."
-reader = { kind = "backend", name = "r12_fiq" }
+reader = { kind = "banked", name = "r12_fiq" }
 
 [[registers]]
 id = "sp_fiq"
@@ -366,7 +366,7 @@ group = "fiq"
 bits = 32
 access = "rw"
 description = "SP_FIQ in the fiq register group."
-reader = { kind = "backend", name = "sp_fiq" }
+reader = { kind = "banked", name = "sp_fiq" }
 
 [[registers]]
 id = "lr_fiq"
@@ -375,7 +375,7 @@ group = "fiq"
 bits = 32
 access = "rw"
 description = "LR_FIQ in the fiq register group."
-reader = { kind = "backend", name = "lr_fiq" }
+reader = { kind = "banked", name = "lr_fiq" }
 
 [[registers]]
 id = "spsr_fiq"
@@ -384,7 +384,7 @@ group = "fiq"
 bits = 32
 access = "rw"
 description = "SPSR_FIQ in the fiq register group."
-reader = { kind = "backend", name = "spsr_fiq" }
+reader = { kind = "banked", name = "spsr_fiq" }
 
 [[groups]]
 id = "und"
@@ -398,7 +398,7 @@ group = "und"
 bits = 32
 access = "rw"
 description = "SP_UND in the und register group."
-reader = { kind = "backend", name = "sp_und" }
+reader = { kind = "banked", name = "sp_und" }
 
 [[registers]]
 id = "lr_und"
@@ -407,7 +407,7 @@ group = "und"
 bits = 32
 access = "rw"
 description = "LR_UND in the und register group."
-reader = { kind = "backend", name = "lr_und" }
+reader = { kind = "banked", name = "lr_und" }
 
 [[registers]]
 id = "spsr_und"
@@ -416,7 +416,7 @@ group = "und"
 bits = 32
 access = "rw"
 description = "SPSR_UND in the und register group."
-reader = { kind = "backend", name = "spsr_und" }
+reader = { kind = "banked", name = "spsr_und" }
 
 [[groups]]
 id = "abt"
@@ -430,7 +430,7 @@ group = "abt"
 bits = 32
 access = "rw"
 description = "SP_ABT in the abt register group."
-reader = { kind = "backend", name = "sp_abt" }
+reader = { kind = "banked", name = "sp_abt" }
 
 [[registers]]
 id = "lr_abt"
@@ -439,7 +439,7 @@ group = "abt"
 bits = 32
 access = "rw"
 description = "LR_ABT in the abt register group."
-reader = { kind = "backend", name = "lr_abt" }
+reader = { kind = "banked", name = "lr_abt" }
 
 [[registers]]
 id = "spsr_abt"
@@ -448,7 +448,7 @@ group = "abt"
 bits = 32
 access = "rw"
 description = "SPSR_ABT in the abt register group."
-reader = { kind = "backend", name = "spsr_abt" }
+reader = { kind = "banked", name = "spsr_abt" }
 
 [[groups]]
 id = "svc"
@@ -462,7 +462,7 @@ group = "svc"
 bits = 32
 access = "rw"
 description = "SP_SVC in the svc register group."
-reader = { kind = "backend", name = "sp_svc" }
+reader = { kind = "banked", name = "sp_svc" }
 
 [[registers]]
 id = "lr_svc"
@@ -471,7 +471,7 @@ group = "svc"
 bits = 32
 access = "rw"
 description = "LR_SVC in the svc register group."
-reader = { kind = "backend", name = "lr_svc" }
+reader = { kind = "banked", name = "lr_svc" }
 
 [[registers]]
 id = "spsr_svc"
@@ -480,7 +480,7 @@ group = "svc"
 bits = 32
 access = "rw"
 description = "SPSR_SVC in the svc register group."
-reader = { kind = "backend", name = "spsr_svc" }
+reader = { kind = "banked", name = "spsr_svc" }
 
 [[groups]]
 id = "hyp"
@@ -494,7 +494,7 @@ group = "hyp"
 bits = 32
 access = "rw"
 description = "SP_HYP in the hyp register group."
-reader = { kind = "backend", name = "sp_hyp" }
+reader = { kind = "banked", name = "sp_hyp" }
 
 [[registers]]
 id = "elr_hyp"
@@ -503,7 +503,7 @@ group = "hyp"
 bits = 32
 access = "rw"
 description = "ELR_HYP in the hyp register group."
-reader = { kind = "backend", name = "elr_hyp" }
+reader = { kind = "banked", name = "elr_hyp" }
 
 [[registers]]
 id = "spsr_hyp"
@@ -512,7 +512,7 @@ group = "hyp"
 bits = 32
 access = "rw"
 description = "SPSR_HYP in the hyp register group."
-reader = { kind = "backend", name = "spsr_hyp" }
+reader = { kind = "banked", name = "spsr_hyp" }
 
 [[groups]]
 id = "id"

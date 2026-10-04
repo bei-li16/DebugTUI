@@ -1,20 +1,29 @@
 diff --git a/src/target/Makefile.am b/src/target/Makefile.am
-index 3d855ab..51deb21 100644
+index 3d855ab..bbc00f3 100644
 --- a/src/target/Makefile.am
 +++ b/src/target/Makefile.am
-@@ -187,6 +187,7 @@ ARC_SRC = \
+@@ -187,6 +187,8 @@ ARC_SRC = \
  	%D%/armv7m_trace.h \
  	%D%/armv8.h \
  	%D%/armv8_dpm.h \
 +	%D%/armv8_debugtui.h \
++	%D%/armv8_debugtui_banked.h \
  	%D%/armv8_opcodes.h \
  	%D%/armv8_cache.h \
  	%D%/avrt.h \
 diff --git a/src/target/aarch64.c b/src/target/aarch64.c
-index 19ab923..c110dc8 100644
+index 19ab923..a5ab149 100644
 --- a/src/target/aarch64.c
 +++ b/src/target/aarch64.c
-@@ -3154,6 +3154,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -15,6 +15,7 @@
+ #include "target_request.h"
+ #include "target_type.h"
+ #include "armv8_opcodes.h"
++#include "armv8_debugtui_banked.h"
+ #include "armv8_cache.h"
+ #include "arm_coresight.h"
+ #include "arm_semihosting.h"
+@@ -3154,6 +3155,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  		command_print(CMD, "%s: not an ARM", target_name(target));
  		return ERROR_FAIL;
  	}
@@ -25,7 +34,7 @@ index 19ab923..c110dc8 100644
  
  	if (target->state != TARGET_HALTED) {
  		command_print(CMD, "Error: [%s] not halted", target_name(target));
-@@ -3212,16 +3216,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3212,16 +3217,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  
  		/* NOTE: parameters reordered! */
  		/* ARMV4_5_MCR(cpnum, op1, 0, crn, crm, op2) */
@@ -54,7 +63,7 @@ index 19ab923..c110dc8 100644
  
  		command_print(CMD, "0x%" PRIx32, value);
  	}
-@@ -3229,7 +3241,74 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3229,7 +3242,129 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  	return ERROR_OK;
  }
  
@@ -104,7 +113,62 @@ index 19ab923..c110dc8 100644
 +	return ERROR_OK;
 +}
 +
++COMMAND_HANDLER(aarch64_debugtui_banked_protocol_command)
++{
++	if (CMD_ARGC != 0)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	command_print(CMD, DEBUGTUI_BANKED_PROTOCOL);
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(aarch64_debugtui_banked_command)
++{
++	if (CMD_ARGC != 1)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	const struct armv8_debugtui_bank *bank = armv8_debugtui_bank_find(CMD_ARGV[0]);
++	if (!bank)
++		return ERROR_COMMAND_ARGUMENT_INVALID;
++	struct target *target = get_current_target(CMD_CTX);
++	if (!target || !target_was_examined(target))
++		return ERROR_TARGET_NOT_EXAMINED;
++	struct arm *arm = target_to_arm(target);
++	if (!is_arm(arm) || !arm->arch_info || !is_armv8(arm->arch_info) || !arm->dpm)
++		return ERROR_TARGET_INVALID;
++	if (target->state != TARGET_HALTED)
++		return ERROR_TARGET_NOT_HALTED;
++	uint32_t value = 0;
++	bool uncertain = false;
++	int retval = armv8_dpm_debugtui_banked(arm->dpm, bank, &value, &uncertain);
++	if (uncertain) {
++		target->state = TARGET_UNKNOWN;
++		command_print(CMD, "Core state restoration failed: banked read outcome unknown; reconnect required");
++		return retval;
++	}
++	if (retval == DEBUGTUI_BANKED_UNSUPPORTED)
++		return ERROR_TARGET_INVALID;
++	if (retval == DEBUGTUI_BANKED_UNAVAILABLE)
++		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
++	if (retval != ERROR_OK)
++		return retval;
++	command_print(CMD, "0x%08" PRIx32, value);
++	return ERROR_OK;
++}
++
  static const struct command_registration aarch64_exec_command_handlers[] = {
++	{
++		.name = "debugtui_banked_protocol",
++		.mode = COMMAND_ANY,
++		.handler = aarch64_debugtui_banked_protocol_command,
++		.help = "report banked MRS protocol without accessing a target",
++		.usage = "",
++	},
++	{
++		.name = "banked",
++		.mode = COMMAND_EXEC,
++		.handler = aarch64_debugtui_banked_command,
++		.help = "read one R52 bank using current-register access or legal banked MRS; never switch CPU mode",
++		.usage = "register_name",
++	},
 +	{
 +		.name = "debugtui_adapter",
 +		.mode = COMMAND_ANY,
@@ -231,19 +295,138 @@ index 0000000..9e0dde2
 +}
 +
 +#endif
+diff --git a/src/target/armv8_debugtui_banked.h b/src/target/armv8_debugtui_banked.h
+new file mode 100644
+index 0000000..f293869
+--- /dev/null
++++ b/src/target/armv8_debugtui_banked.h
+@@ -0,0 +1,112 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_BANKED_H
++#define OPENOCD_TARGET_ARMV8_DEBUGTUI_BANKED_H
++
++#include <string.h>
++#include "armv8_debugtui.h"
++
++#define DEBUGTUI_BANKED_PROTOCOL "debugtui-armv8-banked-1 mrs physical-readback no-mode-change stop-on-fault"
++#define DEBUGTUI_BANKED_UNSUPPORTED 1
++#define DEBUGTUI_BANKED_UNAVAILABLE 2
++#define DEBUGTUI_READ_DSPSR ARMV4_5_MRC(15, 3, 0, 4, 5, 0)
++#define DEBUGTUI_MRS_SPSR UINT32_C(0xf3ff8000)
++
++struct armv8_debugtui_bank {
++	const char *name;
++	unsigned int mode, gpr, sysm;
++	bool spsr;
++};
++
++/* DDI 0568A.c H1 BankedRegisterAccessValid/SPSRaccessValid. No Monitor
++ * mode exists on R52. Current banks use ordinary MOV/MRS, never an invalid
++ * banked MRS of the current bank. Hyp LR is the shared User LR, not ELR_hyp. */
++static const struct armv8_debugtui_bank armv8_debugtui_banks[] = {
++	{"r8_usr", 0x10, 8, 0, false}, {"r9_usr", 0x10, 9, 1, false},
++	{"r10_usr", 0x10, 10, 2, false}, {"r11_usr", 0x10, 11, 3, false},
++	{"r12_usr", 0x10, 12, 4, false}, {"sp_usr", 0x10, 13, 5, false},
++	{"lr_usr", 0x10, 14, 6, false},
++	{"r8_fiq", 0x11, 8, 8, false}, {"r9_fiq", 0x11, 9, 9, false},
++	{"r10_fiq", 0x11, 10, 10, false}, {"r11_fiq", 0x11, 11, 11, false},
++	{"r12_fiq", 0x11, 12, 12, false}, {"sp_fiq", 0x11, 13, 13, false},
++	{"lr_fiq", 0x11, 14, 14, false}, {"spsr_fiq", 0x11, 0, 14, true},
++	{"lr_irq", 0x12, 14, 16, false}, {"sp_irq", 0x12, 13, 17, false},
++	{"spsr_irq", 0x12, 0, 16, true},
++	{"lr_svc", 0x13, 14, 18, false}, {"sp_svc", 0x13, 13, 19, false},
++	{"spsr_svc", 0x13, 0, 18, true},
++	{"lr_abt", 0x17, 14, 20, false}, {"sp_abt", 0x17, 13, 21, false},
++	{"spsr_abt", 0x17, 0, 20, true},
++	{"lr_und", 0x1b, 14, 22, false}, {"sp_und", 0x1b, 13, 23, false},
++	{"spsr_und", 0x1b, 0, 22, true},
++	{"elr_hyp", 0x1a, 0, 30, false}, {"sp_hyp", 0x1a, 13, 31, false},
++	{"spsr_hyp", 0x1a, 0, 30, true},
++};
++
++static inline const struct armv8_debugtui_bank *armv8_debugtui_bank_find(const char *name)
++{
++	for (unsigned int i = 0; i < sizeof(armv8_debugtui_banks) / sizeof(armv8_debugtui_banks[0]); i++)
++		if (strcmp(armv8_debugtui_banks[i].name, name) == 0)
++			return &armv8_debugtui_banks[i];
++	return NULL;
++}
++
++static inline int armv8_debugtui_bank_opcode(const struct armv8_debugtui_bank *bank,
++	unsigned int mode, uint32_t *opcode)
++{
++	if (mode != 0x10 && mode != 0x11 && mode != 0x12 && mode != 0x13 &&
++		mode != 0x17 && mode != 0x1a && mode != 0x1b && mode != 0x1f)
++		return DEBUGTUI_BANKED_UNSUPPORTED;
++	bool current = bank->mode == mode || (bank->mode == 0x10 &&
++		((bank->gpr <= 12 && mode != 0x11) || mode == 0x1f ||
++		 (bank->gpr == 14 && mode == 0x1a)));
++	if (current && strcmp(bank->name, "elr_hyp") != 0) {
++		*opcode = bank->spsr ? DEBUGTUI_MRS_SPSR : UINT32_C(0xea4f0000) | bank->gpr;
++		return 0;
++	}
++	if (mode == 0x10 || (bank->mode == 0x1a && mode != 0x1a))
++		return DEBUGTUI_BANKED_UNAVAILABLE;
++	*opcode = UINT32_C(0xf3e08020) | ((bank->sysm & 15) << 16) |
++		((bank->sysm & 16) << 0) | (bank->spsr ? UINT32_C(0x00100000) : 0);
++	return 0;
++}
++
++static inline int armv8_debugtui_bank_transfer(const struct armv8_debugtui_io *io,
++	const struct armv8_debugtui_bank *bank, uint32_t *value, bool *uncertain)
++{
++	uint32_t before = 0, after = 0, midr = 0, opcode = 0, result = 0;
++	*uncertain = false;
++	/* DSPSR is accessible at every EL in Debug state and contains the entire
++	 * stopped CPSR. Ordinary MRS CPSR masks execution bits and cannot safely
++	 * determine User mode. R52 TRM c4, op1=3,c5,op2=0. */
++	int retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_DSPSR, false, &before);
++	if (retval != 0)
++		goto fault;
++	/* No privileged MIDR or banked MRS is attempted from User mode. Its
++	 * current registers remain available through the ordinary Core view. */
++	if ((before & 31) == 0x10)
++		return DEBUGTUI_BANKED_UNAVAILABLE;
++	retval = armv8_debugtui_bank_opcode(bank, before & 31, &opcode);
++	if (retval != 0)
++		return retval;
++	retval = armv8_debugtui_mrc_mcr_transfer(io, ARMV4_5_MRC(15, 0, 0, 0, 0, 0), false, &midr);
++	if (retval != 0)
++		goto fault;
++	if ((midr >> 24) != 0x41 || ((midr >> 4) & 0xfff) != 0xd13)
++		return DEBUGTUI_BANKED_UNSUPPORTED;
++	retval = armv8_debugtui_mrc_mcr_transfer(io, opcode, false, &result);
++	if (retval != 0)
++		goto fault;
++	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_DSPSR, false, &after);
++	if (retval != 0)
++		goto fault;
++	if (before != after) {
++		retval = -1;
++		goto fault;
++	}
++	*value = result;
++	return 0;
++fault:
++	*uncertain = true;
++	return retval;
++}
++
++#endif
 diff --git a/src/target/armv8_dpm.c b/src/target/armv8_dpm.c
-index 508ec97..f31253b 100644
+index 508ec97..40e1026 100644
 --- a/src/target/armv8_dpm.c
 +++ b/src/target/armv8_dpm.c
-@@ -16,6 +16,7 @@
+@@ -16,6 +16,8 @@
  #include "breakpoints.h"
  #include "target_type.h"
  #include "armv8_opcodes.h"
 +#include "armv8_debugtui.h"
++#include "armv8_debugtui_banked.h"
  
  #include "helper/time_support.h"
  
-@@ -194,8 +195,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
+@@ -194,8 +196,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
  	return ERROR_OK;
  }
  
@@ -254,7 +437,7 @@ index 508ec97..f31253b 100644
  {
  	struct armv8_common *armv8 = dpm->arm->arch_info;
  	uint32_t dscr = dpm->dscr;
-@@ -203,6 +204,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -203,6 +205,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  
  	if (p_dscr)
  		dscr = *p_dscr;
@@ -263,7 +446,7 @@ index 508ec97..f31253b 100644
  
  	/* Wait for InstrCompl bit to be set */
  	long long then = timeval_ms();
-@@ -249,9 +252,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -249,9 +253,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  
  	if (dscr & DSCR_ERR) {
  		LOG_ERROR("Opcode 0x%08" PRIx32 ", DSCR.ERR=1, DSCR.EL=%i", opcode, dpm->last_el);
@@ -277,7 +460,7 @@ index 508ec97..f31253b 100644
  
  	if (p_dscr)
  		*p_dscr = dscr;
-@@ -259,6 +265,126 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -259,6 +266,156 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  	return retval;
  }
  
@@ -384,6 +567,36 @@ index 508ec97..f31253b 100644
 +	return dpm->finish(dpm);
 +}
 +
++int armv8_dpm_debugtui_banked(struct arm_dpm *dpm,
++	const struct armv8_debugtui_bank *bank, uint32_t *value, bool *uncertain)
++{
++	*uncertain = false;
++	int retval = dpmv8_debugtui_prepare(dpm);
++	if (retval != ERROR_OK) {
++		*uncertain = retval != ERROR_TARGET_NOT_HALTED;
++		return retval;
++	}
++	if (armv8_dpm_get_core_state(dpm) == ARM_STATE_AARCH64)
++		return DEBUGTUI_BANKED_UNSUPPORTED;
++	struct dpmv8_debugtui_context context = {
++		.dpm = dpm,
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++	};
++	struct armv8_debugtui_io io = {
++		.context = &context,
++		.read_gpr = dpmv8_debugtui_read_gpr,
++		.write_gpr = dpmv8_debugtui_write_gpr,
++		.execute = dpmv8_debugtui_execute,
++	};
++	retval = armv8_debugtui_bank_transfer(&io, bank, value, uncertain);
++	if (retval != ERROR_OK)
++		return retval;
++	retval = dpm->finish(dpm);
++	if (retval != ERROR_OK)
++		*uncertain = true;
++	return retval;
++}
++
 +int armv8_dpm_debugtui_isb(struct arm_dpm *dpm)
 +{
 +	int retval = dpmv8_debugtui_prepare(dpm);
@@ -405,10 +618,10 @@ index 508ec97..f31253b 100644
  {
  	return dpmv8_exec_opcode(dpm, opcode, NULL);
 diff --git a/src/target/armv8_dpm.h b/src/target/armv8_dpm.h
-index 19b33da..0ec6a1a 100644
+index 19b33da..4409eb7 100644
 --- a/src/target/armv8_dpm.h
 +++ b/src/target/armv8_dpm.h
-@@ -23,6 +23,11 @@ struct armv8_common;
+@@ -23,6 +23,14 @@ struct armv8_common;
   */
  int armv8_dpm_setup(struct arm_dpm *dpm);
  int armv8_dpm_initialize(struct arm_dpm *dpm);
@@ -417,6 +630,9 @@ index 19b33da..0ec6a1a 100644
 +int armv8_dpm_debugtui_isb(struct arm_dpm *dpm);
 +int armv8_dpm_debugtui_mrc_mcr(struct arm_dpm *dpm, uint32_t opcode,
 +	bool write, uint32_t *value);
++struct armv8_debugtui_bank;
++int armv8_dpm_debugtui_banked(struct arm_dpm *dpm,
++	const struct armv8_debugtui_bank *bank, uint32_t *value, bool *uncertain);
  
  int armv8_dpm_read_current_registers(struct arm_dpm *dpm);
  int armv8_dpm_modeswitch(struct arm_dpm *dpm, enum arm_mode mode);

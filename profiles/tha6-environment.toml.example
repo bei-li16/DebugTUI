@@ -9,6 +9,9 @@ registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", 
 # Use [registers], independently of the gdb.registers name list above:
 # cpu="cortex-r52", tcl_endpoint="127.0.0.1:6666", cp15_command="arm mrc".
 # Add selector_command="arm mcr" only after verifying this actual backend;
+# For the separately built pinned adapter, opt in with
+# banked_command="aarch64 banked"; stock xPack does not provide this protocol.
+# Banked access requires the stopped physical frame 0 and actual R52 MIDR.
 # declare [registers.targets] with the physical target name for each core.
 # These are examples, not a verified THA6 OpenOCD target/command mapping.
 [service]

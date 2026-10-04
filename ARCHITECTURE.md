@@ -8,7 +8,7 @@
 
 `ui/memory.rs` 保存每芯片／核心的范围和通道，使用 `memory_dump` 请求。新接口限制 1–4096 字节；GDB 响应必须连续、完整并包含合法字节，总线响应按地址序解释为字节，不进行字节序重排。结果包含路由和上下文，由发起请求的视图验证后缓存；不通过无上下文的 `Snapshot.memory` 发布。切核、重连、切帧、范围或通道改变后丢弃迟到结果。暂停时可见面板每个停止点只读取一次，运行时仅手动读取配置声明允许的通道。旧 `memory` JSON 接口保持兼容。
 
-`debug_access.rs` 在同一 OpenOCD 服务的 GDB 请求和 TCL 请求间串行化访问，按解析后的 endpoint 共用锁。该调度不约束外部调试客户端。目录中的银行、浮点和 64 位后端能力仍需核对具体工具构建，未完成能力与写入接口详见 [开发进度](docs/registers-development-status.md)。
+`debug_access.rs` 在同一 OpenOCD 服务的 GDB 请求和 TCL 请求间串行化访问，按解析后的 endpoint 共用锁。该调度不约束外部调试客户端。`session/banked.rs` 的独立 banked reader 在同一租约内检查当前线程／物理帧，并在单次 TCL target 事务中验证专用协议。固定后端读取完整 DSPSR 停止状态和 MIDR，按当前模式使用普通 MOV／MRS 或合法 banked MRS；保存／恢复／物理回读 R0，复核 DSPSR，不通过旧 DPM 切换模式。普通 MRS CPSR 屏蔽执行状态且 User 模式字段不能用于可靠模式判断，因此不承担该状态检查。状态不确定时隔离共享通道，迟到上下文变化丢弃结果；Scope All 不广播。MRRC／ISB／银行候选后端已经过源码构建和离线验证，实际探针、浮点能力及未完成写入接口详见 [开发进度](docs/registers-development-status.md)。
 
 ## 0.8.3-local.3 多核断点
 

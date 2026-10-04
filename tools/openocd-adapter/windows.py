@@ -159,6 +159,7 @@ def stage(args):
     record = {
         'format': 1, 'target': deps['target'], 'board_tests_executed': False,
         'native_windows_verified': False, 'protocol': lock['protocol'],
+        'banked_protocol': lock['banked_protocol'],
         'source_revision': lock['revision'], 'jimtcl_revision': lock['jimtcl_revision'],
         'patch_sha256': lock['patch_sha256'], 'dependency_sources': deps,
         'compiler_version': checked([str(compiler), '--version']).strip(),
@@ -186,6 +187,8 @@ def verify(args):
     lock = read_json(HERE / 'source.lock.json')
     if record['source_revision'] != lock['revision'] or record['patch_sha256'] != lock['patch_sha256']:
         raise ValueError('Candidate does not correspond to the current source lock')
+    if record.get('banked_protocol') != lock['banked_protocol']:
+        raise ValueError('Candidate does not correspond to the current banked protocol')
     if record['dependency_sources'] != deps:
         raise ValueError('Candidate does not correspond to the current dependency lock')
     for name, expected in record['recipe_sha256'].items():

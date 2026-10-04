@@ -18,6 +18,7 @@ use std::{
     time::{Duration, Instant},
 };
 
+mod banked;
 mod breakpoints;
 mod capabilities;
 mod memory;

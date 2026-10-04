@@ -19,6 +19,8 @@ use std::{
     time::{Duration, Instant},
 };
 static NEXT: AtomicU64 = AtomicU64::new(1);
+#[path = "selector_access/banked_cases.rs"]
+mod banked_cases;
 #[path = "selector_access/mpu_cases.rs"]
 mod mpu_cases;
 #[path = "selector_access/mrrc_cases.rs"]

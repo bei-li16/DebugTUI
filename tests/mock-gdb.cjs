@@ -68,10 +68,15 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   if (cmd === '-list-target-features') return done('features=["async"]');
   if (cmd === '-thread-info') {
     if (state === 'running' && pauseMode === 'query-rejected') return send(`${token}^error,msg="Cannot execute this command while the target is running."`);
-    const thread = (writerProbed && process.env.DEBUGTUI_TEST_WRITE_THREAD_CHANGE) || (registerReadCount && process.env.DEBUGTUI_TEST_CAPABILITY_THREAD_CHANGE) ? '2' : '1';
+    const context = process.env.DEBUGTUI_TEST_CONTEXT_FILE ? JSON.parse(fs.readFileSync(process.env.DEBUGTUI_TEST_CONTEXT_FILE, 'utf8')) : {};
+    const thread = context.thread || ((writerProbed && process.env.DEBUGTUI_TEST_WRITE_THREAD_CHANGE) || (registerReadCount && process.env.DEBUGTUI_TEST_CAPABILITY_THREAD_CHANGE) ? '2' : '1');
     return done(state === 'ready' ? 'threads=[]' : `threads=[{id="${thread}",state="${state}"}],current-thread-id="${thread}"`);
   }
   if (cmd === '-stack-info-frame') {
+    if (process.env.DEBUGTUI_TEST_CONTEXT_FILE) {
+      const context = JSON.parse(fs.readFileSync(process.env.DEBUGTUI_TEST_CONTEXT_FILE, 'utf8'));
+      if (Number.isInteger(context.frame)) frameLevel = context.frame;
+    }
     if (registerReadCount && process.env.DEBUGTUI_TEST_CAPABILITY_FRAME_CHANGE) frameLevel = 1;
     return state === 'stopped' ? done(frame()) : send(`${token}^error,msg="No frame"`);
   }
