@@ -14,7 +14,8 @@
   },
   "board_support_verified": false,
   "installed_xpack_binary_equivalent": false,
-  "windows_backend_build_verified": false,
+  "windows_backend_build_verified": true,
+  "windows_candidate_sha256": "06dbc62b6ddfc52ab88a95cfe608d2a76baf7410653d06f51559c323f25582ab",
   "linux_backend_build_verified": true,
   "linux_candidate_sha256": "80f2c574531855a50c6e4f52e9760d1603a296c3d8cca1579cbd995bfe245bd5"
 }

@@ -22,4 +22,6 @@
 *.so
 *.dylib
 *.wasm
+__pycache__/
+*.pyc
 /.cargo/

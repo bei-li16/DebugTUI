@@ -2,6 +2,8 @@
 
 本文件记录开发分支上的实际实现，配合 [开发 TODO](registers-development-todo.md) 使用。当前仍是未发布的开发版本；下述软件验证不能作为芯片或 OpenOCD 实板能力证明。
 
+2026-10-05 Windows 后端批次：固定源码／依赖的全新目录 MinGW-w64 构建通过，包含 J-Link、CMSIS-DAP HID／USB、ST-Link 和 FTDI。Windows 原生生产事务、协议、参数／状态拒绝、静态 DLL 导入、两份 F429 配置和两种 CMSIS-DAP 后端的离线检查通过；9 项包完整性／负向检查通过。源码 ZIP 解压后四份固定提交的 Git 对象检查和独立缓存 clone 回读通过，保留对应源码、配方和许可；修复 ZIP 遗漏 Git 空 refs 目录的问题。动态系统组件与 USB 驱动由宿主提供，离线检查不证明探针通信。当前工具集和安装未替换，未连接物理探针或上板。本批未修改 Rust 运行时，最近 Cargo 完整回归仍为 292 单元、58 集成、2 ignored。最终工具集／profile 整合、安装升级及完整任务验收仍待完成，未推送或发布。
+
 2026-10-05 MRRC／ISB 批次：292 项单元、58 项集成测试通过，2 项 ignored；严格 Clippy 通过。新增显式 64 位 MRRC 通道、真实 ISB 同步和协议门禁，Scope All 仅访问选中核。固定源码 OpenOCD 补丁在 WSL 完整编译 Linux 候选，并通过真实命令的离线拒绝检查；生产事务头文件在 Windows／Linux 编译验证 19 个故障点及临时寄存器恢复。Timer 钩子用 R52 编译参数编译通过；延后驱动默认 5 skipped，实际 DebugTUI 二进制在双核软件模型六阶段通过，未执行上板测试。Windows 后端、完整一键新目录构建和生产探针打包仍待完成。配置与限制见 [适配说明](../tools/openocd-adapter/README.md)。本批先保留本地，完整任务完成后统一推送与发布。
 
 2026-10-05 MPU／MAIR 批次：288 项单元测试、53 项集成测试通过，另 2 项 ignored；严格 Clippy 通过。新增当前核心 EL1／EL2 全部实现区域的直接读取、SCTLR／HSCTLR 全局状态、HPRENR／HCR 和 MAIR 内存属性解码；总览支持键鼠、滚动与显式 Probe／Read。实际二进制延后用例在双核软件夹具完成 5 阶段，所有选择器和控制状态未变；未执行上板测试。完整任务仍在开发，自检完成后统一推送非主分支并发布。
@@ -49,28 +51,28 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 
 新增 `scripts/test-memory-write-hardware.cjs` 准备 WRITE-H04 RAM 子集：默认不连接，显式 --run 才执行专用暂停夹具、取消、写入、独立读取、两侧哨兵及成功后的显式恢复。脚本已在实际 DebugTUI 可执行文件与软件 MI 夹具上运行；报告 board_tests_executed=false。仍需补足 MMIO、缓存一致性及其他 WRITE-H 场景。
 
-64 位 CP15 未配置适配器时仍使用具名 GDB 寄存器；显式 `cp15_64_command` 经协议门禁读取真正 MRRC 的固定 16 位十六进制输出。读不到时绝不用任意两次 MRC 拼接。生产 Windows 后端及物理 Timer 条件尚未验证。32 位 CP15 命令、银行名称和可选寄存器需要与实际 OpenOCD 构建核对。未知浮点／MPU／GIC 条件不自动轮询。客户端未发送切换 CPU 模式或使能 FPU 的命令；银行和浮点后端的内部行为尚需确认，不能据此宣称后端无副作用。
+64 位 CP15 未配置适配器时仍使用具名 GDB 寄存器；显式 `cp15_64_command` 经协议门禁读取真正 MRRC 的固定 16 位十六进制输出。读不到时绝不用任意两次 MRC 拼接。Windows 候选后端的软件构建与离线命令检查已通过；现有安装仍是旧工具集，物理 Timer 条件未验证。32 位 CP15 命令、银行名称和可选寄存器需要与实际 OpenOCD 构建核对。未知浮点／MPU／GIC 条件不自动轮询。客户端未发送切换 CPU 模式或使能 FPU 的命令；银行和浮点后端的内部行为尚需确认，不能据此宣称后端无副作用。
 
 上述通道经过隔离的 MI/TCL 软件夹具验证，尚未执行上板验证。用户已指定本任务不执行上板测试；交付仍需准备可执行的相应用例并明确记录未执行。
 
 ## 完整任务仍需完成的部分
 
-2026-10-05 按用户新要求自检：TODO 中有 71 项开发条目，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。当前完整 Cargo 回归通过 288 项单元、53 项集成测试，2 项 ignored；功能验收仅运行 unit suite，其他 20 个 suite 本轮未运行。F24 的 29 项证据模式都有实际通过记录，不能用该状态替代整份 TODO 验收。
+2026-10-05 按用户新要求自检：TODO 中有 71 项开发条目，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最近完整 Cargo 回归通过 292 项单元、58 项集成测试，2 项 ignored；本 Windows 批次仅新增构建、原生离线和包检查，未重复未改动的 Rust 回归。其他功能 suite 仍需在完整任务验收时统一运行。F24 的 29 项证据模式都有实际通过记录，不能用该状态替代整份 TODO 验收。
 
 | 条目范围 | 已有实现与证据 | 尚未完成／需补验收 |
 |---|---|---|
-| REG-001–008 | 显式当前核 Probe、原始 MIDR/数量/GIC 事实、已配置 MRC/银行路径、隔离的软件多核响应；`capabilities.rs`、`tests/capability_access.rs` | 完整运行工具身份与源码构建对应、GDB 目标描述及各类位宽、FPU/Timer 和 R52+ 差异、完整能力矩阵、Windows MRRC 后端及探针/分发构建 |
+| REG-001–008 | 显式当前核 Probe、原始 MIDR/数量/GIC 事实、已配置 MRC/银行路径、隔离的软件多核响应；固定 Windows MRRC/ISB 后端与依赖、候选源码/运行包；`capabilities.rs`、`tests/capability_access.rs` | 完整运行工具身份与实际安装对应、GDB 目标描述及各类位宽、FPU/Timer 和 R52+ 差异、完整能力矩阵、最终 tools/profile 整合及安装升级 |
 | REG-101–110 | 严格目录、精确原始值/字段/别名、逐项 reader、上下文/owner、CPU/目录 Setup、内置与用户目录、三态条件；`registers.rs`、`tests/register_access.rs`、覆盖矩阵 F24 | 对最新完整交付范围重新验证 EXE/ZIP/npm 安装升级与客户目录保留；各新增类别的身份/条件/别名适配仍需完成 |
 | REG-201–211 | 树、字段、列、说明、搜索、按需批次、目标/定义切换、逐核格式与隔离偏好、MPU 总览；`src/ui/registers.rs` 及显示/MPU 测试 | 目录总数/当前显示/本次有效值及各状态分类计数尚未全部呈现；Reader unsupported 的可见分类、完整读取取消和 PowerShell/VS Code 宽窄中文/对比度视觉验收需补足 |
-| REG-301–308 | R52 目录、32 位 MRC、直接 EL1/EL2 MPU 与 MAIR、保存/恢复选择器、故障隔离与完整服务锁；`session/registers.rs`、`session/selectors.rs`、`session/mpu.rs` | 全部实际银行模式与 VFP/FPSCR/使能状态读取、目标限定 Q/D/S 别名能力、Windows 后端中的真实 ISB 适配、全部银行/VFP 延后用例 |
-| REG-401–408 | Timer/PMU/GIC 部分目录、PMU 数量与直接/选择器读取、物理/虚拟 GIC 能力分离和 AP 条件软件夹具 | 完整 Timer 权限/一致性适配、Windows MRRC 后端，完整 GIC/Debug/STM 类别及显式板级映射，Bao EL2/Guest 场景及全部延后驱动 |
+| REG-301–308 | R52 目录、32 位 MRC、直接 EL1/EL2 MPU 与 MAIR、保存/恢复选择器、故障隔离与完整服务锁；Windows 真实 ISB 补丁已构建并检查离线命令；`session/registers.rs`、`session/selectors.rs`、`session/mpu.rs` | 全部实际银行模式与 VFP/FPSCR/使能状态读取、目标限定 Q/D/S 别名能力、全部银行/VFP 延后用例 |
+| REG-401–408 | Timer/PMU/GIC 部分目录、PMU 数量与直接/选择器读取、物理/虚拟 GIC 能力分离和 AP 条件软件夹具；Windows MRRC 候选构建/命令检查 | 完整 Timer 权限/一致性适配，完整 GIC/Debug/STM 类别及显式板级映射，Bao EL2/Guest 场景及全部延后驱动 |
 | REG-501–506 | 软件回归、严格 Clippy、F24–F26 覆盖来源和限制、增量用户手册/开发记录/示例 | 全部延后案例与原功能回归，完整架构/环境/mcal-vsconfig 配套文档，最终升版、产物/profile 一致性、安装升级、非主分支推送与 Release |
 | BUS-001–008 | Setup 通道编辑、各面板入口、路由/来源、范围和绑定失效、运行限制/无回退；`src/launch/channels.rs`、`src/ui/monitor.rs`、`src/session/memory.rs`、F25 | 新增系统寄存器 MMIO 模块的完整接入及相应 BUS 延后场景/Issue #1 完整验收 |
 | WRITE-001–012 | Core 整数、声明 RAM、8/16/32 位 MMIO、typed Watch/Locals writer；草稿/权限/owner/服务锁/结果/取消；SVD 字段及部分特殊语义；F26 | 系统/状态/银行/浮点和 64 位 MMIO writer；变量位域/引用/NaN/Infinity/128 位后端；一次写、解锁、自清零等实际策略；全部类别的重叠缓存及 WRITE-T/H 和最终版本化交付 |
 
 测试矩阵自检：REG-T01–T11、BUS-T01–T05、WRITE-T01–T12 必须随上述缺口逐项补足，现有绿色软件测试不能覆盖未接入的类别。延后驱动当前覆盖 REG-H01/H14 能力子集、REG-H04/H06 选择器子集、REG-H04 完整 MPU/MAIR、REG-H05 Timer MRRC 基线/高字驱动、WRITE-H01 typed 变量子集、WRITE-H02 Core 和 WRITE-H04 RAM 子集；其余 REG-H/BUS-H/WRITE-H 的可执行用例仍需准备。上板执行按本任务要求不做，交付仍须写好所有相应 case 并记录未执行；不能把 skipped 计为 passed。
 
-完整工具版本／哈希与目标描述、可选类别／R52+ 及板级身份能力矩阵（显式能力采样仍只有十项）；Windows 64 位/ISB 后端、完整新目录构建和生产探针依赖；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；变量的位域／引用／特殊浮点及 128 位后端验收、64 位 MMIO writer 和其余写入类别的跨面板编辑；系统／银行／浮点 writer、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、推送及 Release。浮点／向量显示已完成，但实际 VFP 读取、别名适配和完整 PowerShell／VS Code 终端视觉验收仍待完成。不得因基础框架或部分 writer 通过测试而把完整 TODO 或 Goal 标为完成。
+完整运行工具版本／哈希与目标描述、可选类别／R52+ 及板级身份能力矩阵（显式能力采样仍只有十项）；最终工具集与 profile 整合、安装升级，Linux 一键脚本的完整新目录构建；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；变量的位域／引用／特殊浮点及 128 位后端验收、64 位 MMIO writer 和其余写入类别的跨面板编辑；系统／银行／浮点 writer、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、推送及 Release。浮点／向量显示已完成，但实际 VFP 读取、别名适配和完整 PowerShell／VS Code 终端视觉验收仍待完成。不得因基础框架或部分 writer 通过测试而把完整 TODO 或 Goal 标为完成。
 
 ## 当前 writer 矩阵
 
