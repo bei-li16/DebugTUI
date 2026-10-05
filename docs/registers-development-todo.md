@@ -4,7 +4,7 @@
 
 本计划将现有通用寄存器列表扩展为具有 Arm Development Studio 分组、位域和状态展示能力的寄存器窗口，并纳入 GitHub 开放 Issues 中的总线访问 target 配置、展示以及变量/内存/寄存器写入需求。优先服务 THA6206 的 MCAL 与 Bao 调试，同时保持单核、多核以及 STM32 等既有目标的兼容性。寄存器读取按“确认读取能力 → 建立数据模型 → 改造界面 → 扩展读取 → 实板验收”推进；总线入口与写入能力分别跟踪，写入不作为前期只读版本的发布条件。
 
-状态：开发中。2026-10-05 按逐项软件证据核对，71 项中已完成 16 项、未完成 55 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
+状态：开发中。2026-10-05 按逐项软件证据核对，71 项中已完成 17 项、未完成 54 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
 
 ## 当前版本与新功能版本计划
 
@@ -292,7 +292,7 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 优先级 P0。目标版本：v0.10.0。依赖 REG-007 的能力边界。
 
 - [x] REG-101：实现目录解析和校验：版本、重复 ID、组引用、位宽、字段越界、别名循环、缺少读取参数和文件大小限制。
-- [ ] REG-102：扩展配置与芯片关联，测试旧配置回退、未知字段报错、路径来源和目录选择优先级。
+- [x] REG-102：扩展配置与芯片关联，测试旧配置回退、未知字段报错、路径来源和目录选择优先级。
 - [x] REG-103：实现寄存器描述、原始值、逐项状态、采样时间和读取错误结构，保留已有 `Snapshot.registers` 的兼容输出。
 - [x] REG-104：建立 GDB reader，支持请求指定项目、隔离失败，避免单个扩展寄存器不可读导致整个 Core 组无结果。
 - [x] REG-105：实现连续和非连续位域、枚举及别名派生；补齐 64、128 位边界和字节序处理。
@@ -320,7 +320,7 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 - [x] REG-210：展示当前目录、CPU 类型及条目的 Scope、Owner 和实际读取来源；切核后不将 cluster 或 chip 共享结果伪装为当前核私有结果，对应 Issue #2。
 - [x] REG-211：增加目标实现视图与全部架构定义筛选，分别展示 Not implemented、Unavailable、Reader unsupported、Error 和 Write only；提供原因说明及分类计数，不对明确未实现项目自动试读，目标版本 v0.10.0。
 
-2026-10-05：REG-101/103/104/105、REG-201/202/203/204/207/209 的逐项软件验收见 [框架自检](register-framework-audit.md)；REG-106 见 [缓存生命周期](register-cache-lifecycle.md)，覆盖复位成功／失败、重连、切核、ELF／符号替换、换帧及迟到回复；REG-109 见 [共享归属](register-shared-owners.md)，覆盖显式拓扑、四核／跨 cluster、共享代次、读取竞争、失败及界面 owner；REG-210 见 [读取来源](register-read-provenance.md)，覆盖八类 reader、Probe/MPU/selector、实际请求、保留值来源、目录/CPU 与共享归属展示；REG-205/206/211 见 [状态与取消](register-read-status-and-cancel.md)。已完成／未完成为 **16/55**。REG-208 的实际终端视觉验收仍未执行；硬件用例已按用户要求保留延后执行。勾选不表示其余目标类别、完整阶段或全部 TODO 已完成。
+2026-10-05：REG-101/103/104/105、REG-201/202/203/204/207/209 的逐项软件验收见 [框架自检](register-framework-audit.md)；REG-102 见 [配置自检](register-configuration.md)，覆盖旧配置、严格字段、project/profile/backend/chip 优先级、中文/空格路径与实际 EXE 多核目录；REG-106 见 [缓存生命周期](register-cache-lifecycle.md)，覆盖复位成功／失败、重连、切核、ELF／符号替换、换帧及迟到回复；REG-109 见 [共享归属](register-shared-owners.md)，覆盖显式拓扑、四核／跨 cluster、共享代次、读取竞争、失败及界面 owner；REG-210 见 [读取来源](register-read-provenance.md)，覆盖八类 reader、Probe/MPU/selector、实际请求、保留值来源、目录/CPU 与共享归属展示；REG-205/206/211 见 [状态与取消](register-read-status-and-cancel.md)。已完成／未完成为 **17/54**。REG-208 的实际终端视觉验收仍未执行；硬件用例已按用户要求保留延后执行。勾选不表示其余目标类别、完整阶段或全部 TODO 已完成。
 
 完成条件：能展示 ADS 参考中的树、字段、位宽与状态；不要求具有相同目录数量。无扩展目录时现有平面列表行为仍可用。
 

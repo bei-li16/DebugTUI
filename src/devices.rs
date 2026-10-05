@@ -362,18 +362,6 @@ pub fn resolve(
     } else {
         &device.cpu
     };
-    if !cpu.is_empty() {
-        let registers = raw
-            .as_table_mut()
-            .ok_or("Project must be a table")?
-            .entry("registers")
-            .or_insert_with(|| toml::Value::Table(Default::default()))
-            .as_table_mut()
-            .ok_or("registers must be a table")?;
-        if !registers.contains_key("cpu") && !registers.contains_key("catalogue") {
-            registers.insert("cpu".into(), toml::Value::String(cpu.into()));
-        }
-    }
     let group = backends
         .as_ref()
         .and_then(|v| v.get(&device.backend))
@@ -415,6 +403,26 @@ pub fn resolve(
         .map_err(|e| format!("core_targets: {e}"))?
         .unwrap_or_default();
     crate::config::merge(environment, group);
+    // Chip associations are defaults. Respect explicit project and selected
+    // profile/backend selectors (including empty strings) before adding one.
+    let mut selected_registers = false;
+    for (value, source) in [(&*raw, "Project"), (&*environment, "Environment")] {
+        if let Some(section) = value.get("registers") {
+            let section = section
+                .as_table()
+                .ok_or_else(|| format!("{source}: registers must be a table"))?;
+            selected_registers |= section.contains_key("cpu") || section.contains_key("catalogue");
+        }
+    }
+    if !cpu.is_empty() && !selected_registers {
+        raw.as_table_mut()
+            .ok_or("Project must be a table")?
+            .entry("registers")
+            .or_insert_with(|| toml::Value::Table(Default::default()))
+            .as_table_mut()
+            .unwrap()
+            .insert("cpu".into(), toml::Value::String(cpu.into()));
+    }
     expand_selection(environment, &selection, device);
     expand_selection(raw, &selection, device);
     Ok(Some(Plan { selection, targets }))
@@ -665,6 +673,163 @@ mod tests {
         raw["registers"]["cpu"] = "".into();
         resolve(&mut environment.clone(), &mut raw, Some(&catalogue)).unwrap();
         assert_eq!(raw["registers"]["cpu"].as_str(), Some(""));
+    }
+    #[test]
+    fn register_selection_priority_respects_project_profile_backend_and_explicit_empty_selectors() {
+        let fixture = Fixture::new();
+        fs::create_dir(fixture.0.join("tools")).unwrap();
+        fs::write(
+            fixture.0.join("tools/profile.toml"),
+            include_str!("../profiles/registers/cortex-m4.toml"),
+        )
+        .unwrap();
+        fs::write(
+            fixture.0.join("customer.toml"),
+            include_str!("../profiles/registers/cortex-r52.toml"),
+        )
+        .unwrap();
+        let mut catalogue = Catalogue::parse(DEFAULTS).unwrap();
+        catalogue.devices.insert(
+            "matrix".into(),
+            Device {
+                cores: vec![0, 2],
+                backend: "generic".into(),
+                cpu: "cortex-r52+".into(),
+            },
+        );
+        for (root, backend, project, cpu, source, model) in [
+            (
+                "",
+                "",
+                "",
+                "cortex-r52+",
+                "builtin:cortex-r52+",
+                "cortex-r52+",
+            ),
+            (
+                "cpu='cortex-m4'",
+                "",
+                "",
+                "cortex-m4",
+                "builtin:cortex-m4",
+                "cortex-m4",
+            ),
+            (
+                "cpu='cortex-r52'",
+                "cpu='cortex-m4'",
+                "",
+                "cortex-m4",
+                "builtin:cortex-m4",
+                "cortex-m4",
+            ),
+            ("cpu='cortex-r52'", "cpu=''", "", "", "gdb", ""),
+            (
+                "cpu='cortex-m4'",
+                "",
+                "cpu='cortex-r52'",
+                "cortex-r52",
+                "builtin:cortex-r52",
+                "cortex-r52",
+            ),
+            (
+                "cpu='cortex-m4'\ncatalogue='profile.toml'",
+                "",
+                "cpu='cortex-r52'",
+                "cortex-r52",
+                "file:",
+                "cortex-m4",
+            ),
+            (
+                "cpu='cortex-m4'\ncatalogue='profile.toml'",
+                "",
+                "catalogue=''",
+                "cortex-m4",
+                "builtin:cortex-m4",
+                "cortex-m4",
+            ),
+            (
+                "cpu='cortex-m4'\ncatalogue='profile.toml'",
+                "",
+                "cpu=''\ncatalogue=''",
+                "",
+                "gdb",
+                "",
+            ),
+            (
+                "cpu='cortex-m4'",
+                "",
+                "cpu='unknown-cpu'\ncatalogue='customer.toml'",
+                "unknown-cpu",
+                "file:",
+                "cortex-r52",
+            ),
+        ] {
+            let profile = fixture.0.join("tools/debug-env.toml");
+            fs::write(&profile,format!("backend='generic'\n[core_targets.\"0\"]\nendpoint='localhost:5000'\n[core_targets.\"2\"]\nendpoint='localhost:5002'\n[registers]\n{root}\n[backends.generic.registers]\n{backend}\n")).unwrap();
+            let raw=toml::from_str(&format!("version=3\n[tools]\nprofile='tools/debug-env.toml'\n[debug]\nchip='matrix'\ncores=[0,2]\n[registers]\n{project}\n")).unwrap();
+            let p = Project::from_document_with_catalogue(
+                raw,
+                Some(fixture.0.join("debug.toml")),
+                None,
+                Some(&catalogue),
+            )
+            .unwrap();
+            assert_eq!(p.registers.cpu, cpu, "{root}/{backend}/{project}");
+            assert_eq!(
+                p.cores.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(),
+                ["core.0", "core.2"]
+            );
+            match p.registers.load().unwrap() {
+                None => assert_eq!(source, "gdb"),
+                Some((loaded, origin)) => {
+                    assert_eq!(loaded.cpu, model);
+                    assert!(origin.starts_with(source), "{origin}");
+                }
+            }
+            assert!(
+                p.registers.targets.is_empty(),
+                "chip catalogue selection cannot infer a system-register target"
+            );
+        }
+    }
+    #[test]
+    fn register_configuration_errors_survive_selected_backend_and_chip_defaults() {
+        let fixture = Fixture::new();
+        let catalogue = Catalogue::parse(DEFAULTS).unwrap();
+        for (profile, project, expected) in [
+            ("[registers]\nunknown_setting=true", "", "unknown field"),
+            (
+                "[backends.tha6.registers]\nunknown_setting=true",
+                "",
+                "unknown field",
+            ),
+            ("", "[registers]\nunknown_setting=true", "unknown field"),
+            (
+                "registers=5",
+                "[registers]\ncpu=''",
+                "registers must be a table",
+            ),
+            ("", "registers=5\n", "registers must be a table"),
+            ("[registers]\ncpu='unknown-cpu'", "", "unknown-cpu"),
+        ] {
+            fs::write(
+                fixture.0.join("debug-env.toml"),
+                format!(
+                    "backend='tha6'\n{profile}\n[core_targets.\"0\"]\nendpoint='localhost:3333'\n"
+                ),
+            )
+            .unwrap();
+            // Put scalar register tables at the root, not inside [debug].
+            let raw=toml::from_str(&format!("version=3\n{project}\n[tools]\nprofile='debug-env.toml'\n[debug]\nchip='tha6206'\ncores=[0]\n")).unwrap();
+            let error = Project::from_document_with_catalogue(
+                raw,
+                Some(fixture.0.join("debug.toml")),
+                None,
+                Some(&catalogue),
+            )
+            .unwrap_err();
+            assert!(error.contains(expected), "{profile}/{project}: {error}");
+        }
     }
     #[test]
     fn catalogue_install_upgrade_add_and_concurrent_writes_preserve_user_entries() {

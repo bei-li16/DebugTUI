@@ -1284,6 +1284,77 @@ mod tests {
         assert!(p.sync.is_none());
     }
     #[test]
+    fn register_configuration_paths_cover_tools_root_explicit_environment_and_project_overrides() {
+        let base = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("artifacts")
+            .join(format!(
+                "register config paths {} {:x}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+        fs::create_dir_all(base.join("tools 目录")).unwrap();
+        fs::create_dir(base.join("project 目录")).unwrap();
+        let local = base.join("project 目录/customer.toml");
+        let inherited = base.join("tools 目录/profile.toml");
+        fs::write(
+            &local,
+            include_str!("../profiles/registers/cortex-r52.toml"),
+        )
+        .unwrap();
+        fs::write(
+            &inherited,
+            include_str!("../profiles/registers/cortex-m4.toml"),
+        )
+        .unwrap();
+        let default_profile = base.join("tools 目录/debug-env.toml");
+        let explicit_profile = base.join("tools 目录/explicit.toml");
+        fs::write(&default_profile,"[registers]\ncatalogue='profile.toml'\n[registers.components.bus]\nbase=536870912\nchannel='ap0'\nlittle_endian=true\n").unwrap();
+        fs::write(
+            &explicit_profile,
+            "[registers]\ncatalogue='${profile_dir}/../project 目录/customer.toml'\n",
+        )
+        .unwrap();
+        let path = base.join("debug.toml");
+        fs::write(&path,"version=2\n[tools]\nroot='tools 目录'\n[registers.components.bus]\nchannel='project-ap'\n").unwrap();
+        let p = Project::load(&path).unwrap();
+        assert_eq!(p.registers.load().unwrap().unwrap().0.cpu, "cortex-m4");
+        assert_eq!(
+            fs::canonicalize(&p.registers.catalogue).unwrap(),
+            fs::canonicalize(&inherited).unwrap()
+        );
+        assert_eq!(p.registers.components["bus"].base, 536870912);
+        assert_eq!(p.registers.components["bus"].channel, "project-ap");
+        assert!(p.registers.components["bus"].little_endian);
+        fs::write(
+            &path,
+            "version=2\n[tools]\nprofile='missing-profile.toml'\n",
+        )
+        .unwrap();
+        let explicit =
+            Project::load_with_environment(Some(&path), Some(&explicit_profile)).unwrap();
+        assert_eq!(
+            explicit.registers.load().unwrap().unwrap().0.cpu,
+            "cortex-r52"
+        );
+        assert_eq!(
+            fs::canonicalize(&explicit.registers.catalogue).unwrap(),
+            fs::canonicalize(&local).unwrap()
+        );
+        fs::write(&path,"version=2\n[tools]\nprofile='tools 目录/debug-env.toml'\n[registers]\ncatalogue='project 目录/customer.toml'\n").unwrap();
+        let project = Project::load(&path).unwrap();
+        assert_eq!(
+            fs::canonicalize(project.registers.catalogue).unwrap(),
+            fs::canonicalize(&local).unwrap()
+        );
+        assert_eq!(
+            fs::read_to_string(&default_profile).unwrap(),
+            "[registers]\ncatalogue='profile.toml'\n[registers.components.bus]\nbase=536870912\nchannel='ap0'\nlittle_endian=true\n"
+        );
+    }
+    #[test]
     fn register_catalogue_paths_follow_the_declaring_profile_or_project() {
         let base = env::temp_dir().join(format!("debugtui-register-paths-{}", std::process::id()));
         fs::create_dir_all(base.join("tools/registers")).unwrap();

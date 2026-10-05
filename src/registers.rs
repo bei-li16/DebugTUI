@@ -76,11 +76,22 @@ impl Config {
     }
     fn load_cpu_directory(&self, directory: &Path) -> Result<Option<(Catalogue, String)>, String> {
         let user = directory.join(format!("{}.toml", self.cpu));
-        if user.is_file() {
-            return Ok(Some((
-                Catalogue::load(&user)?,
-                format!("user:{}", user.display()),
-            )));
+        match fs::symlink_metadata(&user) {
+            Ok(_) => {
+                // An existing but unreadable, non-file or dangling override is
+                // an error, not permission to silently choose another model.
+                return Ok(Some((
+                    Catalogue::load(&user)?,
+                    format!("user:{}", user.display()),
+                )));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "User register catalogue {}: {error}",
+                    user.display()
+                ));
+            }
         }
         Ok(Some((
             Catalogue::builtin(&self.cpu)?,

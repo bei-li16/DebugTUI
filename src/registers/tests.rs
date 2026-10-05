@@ -184,11 +184,50 @@ fn a_user_cpu_preset_overrides_builtins_and_invalid_overrides_do_not_fall_back()
     fs::write(&path, "version=999").unwrap();
     assert!(config.load_cpu_directory(&directory).is_err());
     fs::remove_file(&path).unwrap();
+    fs::create_dir(&path).unwrap();
+    assert!(
+        config.load_cpu_directory(&directory).is_err(),
+        "an existing directory is an invalid override, not an absent one"
+    );
+    fs::remove_dir(&path).unwrap();
     assert_eq!(
         config.load_cpu_directory(&directory).unwrap().unwrap().1,
         "builtin:cortex-r52"
     );
     fs::remove_dir(directory).unwrap();
+}
+
+#[test]
+fn register_configuration_schema_rejects_unknown_nested_fields_and_wrong_types() {
+    for text in [
+        "catalogue_typo='x.toml'",
+        "cpu=52",
+        "catalogue=3",
+        "cp15_command=[]",
+        "facts=[]",
+        "targets='cpu0'",
+        "components=[]",
+        "topology='board'",
+        "[topology]\nchip='board'\nunknown=true",
+        "[topology]\nclusters=[]",
+        "[components.bus]\nbase=0\nchannel='ap0'\nlittle_endian=true\nunknown=true",
+        "[components.bus]\nbase=0\nchannel='ap0'",
+        "[components.bus]\nbase=0\nchannel=1\nlittle_endian=true",
+        "[facts]\n'vfp.present'='yes'",
+        "[targets]\ncore0=1",
+    ] {
+        assert!(
+            toml::from_str::<Config>(text).is_err(),
+            "must reject {text}"
+        );
+    }
+    let old: Config = toml::from_str("").unwrap();
+    assert!(old.load().unwrap().is_none());
+    let extended:Config=toml::from_str("cpu=''\ncatalogue=''\ncp15_command='aarch64 mrc'\ncp15_64_command='aarch64 mrrc'\nselector_command='aarch64 mcr'\nisb_command='aarch64 isb'\nbanked_command='aarch64 banked'\nvfp_command='aarch64 vfp'\nvfp_write_command='aarch64 vfp_write'\ntcl_endpoint='localhost:6666'\n[topology]\nchip='board'\n[topology.clusters]\ncore0='A'\n[targets]\ncore0='cpu0'\n[facts]\n'vfp.present'=1\n[components.bus]\nbase=536870912\nchannel='ap0'\nlittle_endian=false\n").unwrap();
+    extended.validate().unwrap();
+    let encoded = toml::to_string(&extended).unwrap();
+    let restored: Config = toml::from_str(&encoded).unwrap();
+    assert_eq!(toml::to_string(&restored).unwrap(), encoded);
 }
 
 #[test]
