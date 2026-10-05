@@ -167,6 +167,9 @@ def evaluate(data):
         if op == 'mrrc':
             if len(args) != 3:
                 return (1, 'MRRC requires cp/op1/CRm')
+            encoding = ' '.join(args)
+            if encoding in cpu.get('timer64', {}):
+                return (0, cpu['timer64'][encoding])
             if fault == 'mrrc_fault':
                 cpu['status'] = 'unknown'
                 return (1, 'Core state restoration failed: fixture MRRC outcome unknown')
@@ -195,6 +198,10 @@ def evaluate(data):
             return (0, '')
         if op != 'mrc' or len(args) != 5:
             return (1, 'fixture permits fixed MRC/MCR only')
+        if encoding in cpu.get('timer32', {}):
+            if encoding == '15 4 14 2 0' and fault == 'timer_read_error':
+                return (1, 'fixture Timer access unavailable; original cause unknown')
+            return (0, cpu['timer32'][encoding])
         if selector:
             value = cpu[selector]
             if not changed and fault == 'invalid_original':

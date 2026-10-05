@@ -1,5 +1,18 @@
 # 寄存器功能实现进度
 
+## 2026-10-05：Timer 十五项目录与 Unknown 读取约束
+
+按 R52 TRM 表 11-1、完整 Armv8-R supplement 表 E1-1 和基础 Timer 字段定义，补齐九项三十二位与六项六十四位的描述、访问说明、字段及 `timer.present=1` 条件。Unknown 不自动读取，No 手动也不请求；实际 Probe 的观察和原声明分别保存。TVAL 明确为三十二位有符号差值；ENABLE=0 时 TVAL/ISTATUS 为架构 UNKNOWN，保留原始位但不提供误导的 ISTATUS 枚举。字段访问可覆盖整寄存器，全部六十四位高低位保留，未增加 Timer writer。
+
+新增三项单元与一项实际协调器/MI/Tcl 集成。独立编码和不对称数据覆盖全部十五项，Scope All 仅请求 core1；验证声明覆盖、Unknown/No 零请求、完整高字、单项未知错误隔离、Status 原值/条件依据保留、新 stop 失效及旧 context 拒绝。生成器 `--check` 在临时目录比对三份目录，M4 未改变。
+
+最终完整 `node scripts/test-functional.cjs --only unit` 为 **365 单元＋130 集成通过，2 ignored**（共 **495 通过**），**F24 106/106**；其余 **22 个功能套件未选择**。报告为 [`artifacts/functional-1791200193342-d937fe7e/report.json`](../artifacts/functional-1791200193342-d937fe7e/report.json)，完整 Cargo 日志为同目录 `unit.log`；整套 283800 ms，无超时。严格 Clippy、格式和差异检查通过，Clippy 日志 `artifacts/register-timer-clippy.log`；聚焦记录为 `artifacts/register-timer-model.log`、`artifacts/register-timer-worker.log`、`artifacts/register-timer-gdb.log`。
+
+失败证据保留：旧 Unknown 自动读取回归 `artifacts/register-timer-before.log`；新集成的状态分类/响应与快照/等待停止三项测试开发失误分别为 `register-timer-worker-before.log`、`register-timer-worker-response-before.log`、`register-timer-worker-stop-before.log`。首次完整回归 [`artifacts/functional-1791199829590-2342083e/report.json`](../artifacts/functional-1791199829590-2342083e/report.json) 发现旧 GDB 按需测试未声明 Timer 实现，新增条件正确阻止读取；该已知可读夹具补上显式声明后保留原全部请求/位宽/失效断言，重跑完整通过。没有把失败计为通过，也未改变运行时代码迎合测试。
+
+范围见 [Timer 自检](register-timer.md)，[十二项环境 case](../tests/cases/register-timer.md) 均 SKIPPED。REG-401/402/403 的完整 EL1/Guest/User 权限、全部独立固件基线、实际后端及一致性验收仍未完成，本批未新增勾选，当前 **已完成／未完成 20/51**。前序框架、配置/Setup、生命周期、共享归属、读取来源与条件依据一并回归。其余系统/工具整合、REG-208 实际终端、writer、最终升版/安装/Release 继续待完成。提交并推送 `codex/register-debugging`；未上板或发布，源码版本仍为 0.9.3，目标继续 active。
+
+
 ## 2026-10-05：可选条件、别名继承与持久判定依据（REG-110）
 
 新增结构化 `eligibility`，保存全部 min/max 条件、声明值与当前观察、目录/CPU/架构/来源、原始能力依据及 session/stop/core/frame。成功读取不丢失条件，失败旧值的原依据另存 `last_value_eligibility`，连续失败及共享拒绝不能覆盖；旧生产者明确 Unknown。别名继承全父链条件、WO 和副作用策略，修复 Unknown 父项被子项自动读取；WO 即使 manual 也不发送。Status 只读详情在 45×12、80×24、120×36 逐页核对，不新增 Probe/read。

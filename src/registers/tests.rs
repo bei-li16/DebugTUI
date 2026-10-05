@@ -1,6 +1,175 @@
 use super::*;
 
 #[test]
+fn timer_catalogues_match_r52_trm_widths_encodings_fields_and_independent_access() {
+    let mrc = [
+        ("cntfrq", 0, 0, 0),
+        ("cntkctl", 0, 1, 0),
+        ("cntp_tval", 0, 2, 0),
+        ("cntp_ctl", 0, 2, 1),
+        ("cntv_tval", 0, 3, 0),
+        ("cntv_ctl", 0, 3, 1),
+        ("cnthctl", 4, 1, 0),
+        ("cnthp_tval", 4, 2, 0),
+        ("cnthp_ctl", 4, 2, 1),
+    ];
+    let mrrc = [
+        ("cntpct", 0, Access::Ro),
+        ("cntvct", 1, Access::Ro),
+        ("cntp_cval", 2, Access::Rw),
+        ("cntv_cval", 3, Access::Rw),
+        ("cntvoff", 4, Access::Rw),
+        ("cnthp_cval", 6, Access::Rw),
+    ];
+    for cpu in ["cortex-r52", "cortex-r52+"] {
+        let catalogue = Catalogue::builtin(cpu).unwrap();
+        assert_eq!(
+            catalogue
+                .registers
+                .iter()
+                .filter(|r| r.group == "timer")
+                .count(),
+            15
+        );
+        for (id, op1, crm, op2) in mrc {
+            let reg = catalogue.register(id).unwrap();
+            assert_eq!(reg.bits, 32);
+            assert!(
+                matches!(reg.reader, Reader::Cp15 { cp:15, crn:14, op1:a, crm:b, op2:c } if (a,b,c)==(op1,crm,op2))
+            );
+        }
+        for (id, op1, access) in mrrc {
+            let reg = catalogue.register(id).unwrap();
+            assert_eq!(reg.bits, 64);
+            assert_eq!(reg.access, access);
+            assert!(matches!(reg.reader, Reader::Cp15_64 { cp:15, crm:14, op1:a } if a==op1));
+            assert_eq!(reg.fields.len(), 1);
+            assert_eq!(
+                (
+                    reg.fields[0].segments[0].offset,
+                    reg.fields[0].segments[0].width
+                ),
+                (0, 64)
+            );
+        }
+        for reg in catalogue.registers.iter().filter(|r| r.group == "timer") {
+            assert!(!reg.description.ends_with("in the timer register group."));
+            assert!(reg.writer.is_none() && reg.write.is_none() && !reg.read_side_effect);
+            assert_eq!(reg.conditions.len(), 1);
+            assert_eq!(reg.conditions[0].fact, "timer.present");
+            assert_eq!((reg.conditions[0].min, reg.conditions[0].max), (1, Some(1)));
+            for (value, expected) in [
+                (0, Implementation::No),
+                (1, Implementation::Yes),
+                (2, Implementation::No),
+            ] {
+                assert_eq!(
+                    catalogue
+                        .implementation(reg, &BTreeMap::from([("timer.present".into(), value)]))
+                        .0,
+                    expected
+                );
+            }
+            assert_eq!(
+                catalogue.implementation(reg, &BTreeMap::new()).0,
+                Implementation::Unknown
+            );
+            assert!(!catalogue.automatic_read(reg, &BTreeMap::new()));
+        }
+        for id in [
+            "cnthctl",
+            "cnthp_tval",
+            "cnthp_ctl",
+            "cnthp_cval",
+            "cntvoff",
+        ] {
+            assert!(
+                catalogue
+                    .register(id)
+                    .unwrap()
+                    .access_condition
+                    .contains("EL2/Hyp only")
+            );
+        }
+        for (id, expected) in [
+            (
+                "cntkctl",
+                vec![
+                    ("PL0PCTEN", 0, 1),
+                    ("PL0VCTEN", 1, 1),
+                    ("EVNTEN", 2, 1),
+                    ("EVNTDIR", 3, 1),
+                    ("EVNTI", 4, 4),
+                    ("PL0VTEN", 8, 1),
+                    ("PL0PTEN", 9, 1),
+                ],
+            ),
+            (
+                "cnthctl",
+                vec![
+                    ("PL1PCTEN", 0, 1),
+                    ("PL1PCEN", 1, 1),
+                    ("EVNTEN", 2, 1),
+                    ("EVNTDIR", 3, 1),
+                    ("EVNTI", 4, 4),
+                ],
+            ),
+        ] {
+            let fields = &catalogue.register(id).unwrap().fields;
+            assert_eq!(fields.len(), expected.len());
+            for (name, offset, width) in expected {
+                let field = fields.iter().find(|f| f.name == name).unwrap();
+                assert_eq!(
+                    (field.segments[0].offset, field.segments[0].width),
+                    (offset, width)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn timer_fields_keep_signed_tval_full_high_words_and_disabled_status_semantics() {
+    let catalogue = Catalogue::builtin("cortex-r52").unwrap();
+    for prefix in ["cntp", "cntv", "cnthp"] {
+        let tval = catalogue.register(&format!("{prefix}_tval")).unwrap();
+        assert!(tval.description.contains("UNKNOWN"));
+        for (raw, signed) in [
+            ("0x00000000", "0"),
+            ("0x7fffffff", "2147483647"),
+            ("0x80000000", "-2147483648"),
+            ("0xffffffff", "-1"),
+        ] {
+            let raw = RawValue::parse(raw, 32).unwrap();
+            let field = tval.fields[0].extract(&raw).unwrap();
+            assert_eq!(field.hex, raw.hex);
+            assert_eq!(display::Format::Signed {}.render(&field).unwrap(), signed);
+        }
+        let ctl = catalogue.register(&format!("{prefix}_ctl")).unwrap();
+        let status = ctl.fields.iter().find(|f| f.name == "ISTATUS").unwrap();
+        assert_eq!(status.access, Some(Access::Ro));
+        assert!(
+            status.enums.is_empty(),
+            "Do not label raw 1 as asserted when ENABLE=0"
+        );
+        assert!(status.description.contains("UNKNOWN when disabled"));
+        for bits in 0..8 {
+            let raw = RawValue::from_integer(bits, 32).unwrap();
+            for field in &ctl.fields {
+                let offset = field.segments[0].offset;
+                assert_eq!(
+                    field.extract(&raw).unwrap().integer().unwrap(),
+                    (bits >> offset) & 1
+                );
+            }
+        }
+        let cval = catalogue.register(&format!("{prefix}_cval")).unwrap();
+        let raw = RawValue::parse("0xfedcba9876543210", 64).unwrap();
+        assert_eq!(cval.fields[0].extract(&raw).unwrap().hex, raw.hex);
+    }
+}
+
+#[test]
 fn vfp_writer_opt_in_is_independent_strict_and_round_trips() {
     let reader: Config = toml::from_str("vfp_command='aarch64 vfp'").unwrap();
     assert!(reader.vfp_write_command.is_empty());

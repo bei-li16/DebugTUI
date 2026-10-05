@@ -2,6 +2,9 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04–05，尚未发布）
 
+2026-10-05 Timer 阶段批次：完整 Cargo **365 单元＋130 集成通过，2 ignored**，F24 **106/106**；严格 Clippy、目录重新生成比对、格式及差异检查通过。新增三项单元、一项协调器/MI/真实 Tcl 软件集成，独立验证十五项编码、位宽/字段/访问说明、Unknown/No 零请求、选定物理核、高低位及失败原值保留。首次完整回归发现旧 GDB 夹具没有 Timer 实现声明，修正夹具后保留原断言并重新完整验证；失败与成功报告见 [开发进度](docs/registers-development-status.md)。其余22套件未选择。[Timer 自检](docs/register-timer.md)、[十二项环境 case](tests/cases/register-timer.md) 明确软件证据边界，环境 case 均 SKIPPED，REG-401/402/403 继续未勾选。总计已完成／未完成 **20/51**，未上板、安装或发布。
+
+
 2026-10-05 REG-110 条件依据批次：完整 Cargo **362 单元＋129 集成通过，2 ignored**，F24 **102/102**；严格 Clippy 通过。覆盖全父链条件/WO、数量边界、声明与当前观察、成功保存依据、连续失败原值依据、双核及共享拒绝、旧 JSON 和只读详情。R52 Hyp 物理 PMU 数量限于四个，EL0/EL1 的 PMCR.N 受限值保留但不推断物理缺失；物理 ICC 限于 TRM 五位。首次完整回归的 VFP 清理失败已保留；修复测试助手 exit 早于 stdout 排空的顺序，四项确定性 Node 回归及原 VFP 驱动通过后重新完整验证。其余22套件未选择。[条件自检](docs/register-eligibility.md)、[开发进度](docs/registers-development-status.md) 给出完整报告；[八项环境 case](tests/cases/register-eligibility.md) 均 SKIPPED，未上板、安装或发布。
 
 2026-10-05 REG-107 目录交付批次：完整 Cargo **353 单元＋125 集成通过，2 ignored**，F24 **89/89**；严格 Clippy、优化构建通过。实际生产 npm／EXE／ZIP、空用户扩展目录、postinstall、CMD／PowerShell 入口、客户数据保留、损坏 override 及非连续多核来源的十四项 case 通过；发布方摘要校验后的真实 v0.9.3 包独立替换也十四项通过。代码尚为 0.9.3，历史包验证是同版本不同内容替换；最终升版与公网安装仍待执行。完整报告、此前 300 秒超时及调整为 600 秒后成功回归的记录见 [目录交付自检](docs/register-distribution.md) 和 [开发进度](docs/registers-development-status.md)。[八项环境 case](tests/cases/register-distribution.md) 均 SKIPPED，未上板或改系统安装。

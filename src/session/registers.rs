@@ -971,8 +971,40 @@ mod tests {
         assert!(engine.register_access_fault.is_none());
     }
     #[test]
+    fn timer_unknown_presence_never_dispatches_automatic_mrc_or_mrrc_reads() {
+        let mut engine = engine();
+        let catalogue = engine
+            .register_catalogue
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .0
+            .clone();
+        let ids: Vec<_> = catalogue
+            .registers
+            .iter()
+            .filter(|r| r.group == "timer")
+            .map(|r| r.id.clone())
+            .collect();
+        assert_eq!(ids.len(), 15);
+        let result = engine.read_registers(&json!({"ids":ids})).unwrap();
+        for sample in result["samples"].as_array().unwrap() {
+            assert_eq!(sample["state"], "not_read", "{}", sample["id"]);
+            assert_eq!(sample["implementation"], "unknown");
+            assert!(sample["value"].is_null());
+            assert!(sample["provenance"]["access"].is_null());
+        }
+        assert!(engine.register_access_fault.is_none());
+    }
+    #[test]
     fn unsupported_64bit_register_never_issues_two_mrc_commands() {
         let mut engine = engine();
+        engine
+            .project
+            .registers
+            .facts
+            .insert("timer.present".into(), 1);
         engine.reg_names = vec!["r0".into(), String::new(), "pc".into()];
         let result = engine.read_registers(&json!({"ids":["cntpct"]})).unwrap();
         assert_eq!(result["samples"][0]["reason"], "reader_unsupported");

@@ -714,6 +714,8 @@ System Regs 的 Total／Shown／Valid 分别计目录定义、展开筛选后的
 
 Status 的条件详情分别保存当前判定、最新尝试和保留原值当时的依据，显示 min/max、配置声明与当前观察、目录来源、物理核和停止代次。成功读取不会丢失条件；失败后不会把新依据当成旧值依据，旧生产者没有记录时显示 Unknown。别名继承父链的条件及 WO；Unknown 可选项不自动读取，WO 即使手动也不发送读取。PMCR.N 在 Guest/SVC 下可能受 HPMN 限制，不能据此认定物理计数器不存在。当前 R52 物理数量只接受 Hyp N=4，物理 ICC 优先级只接受五位，其他原始值保留但适配容量未知。查看详情不触发读取；规则及限制见 [条件依据自检](docs/register-eligibility.md)。
 
+R52/R52+ Timer 目录含十五项寄存器及字段；`timer.present` 未确定时不自动读取。TVAL 是三十二位有符号差值，可在格式菜单选有符号十进制；Timer 关闭时 TVAL 与 CTL.ISTATUS 的原始位没有有效计时语义。计数器、CVAL 与 CNTVOFF 保留完整六十四位，但分别采样不保证同时性。访问说明区分 Hyp、EL1/Guest 和 EL0 门控，说明本身不证明当前权限已核验；完整范围及未完成项见 [Timer 自检](docs/register-timer.md)。
+
 Status 的 Sampling view 区分选中栈帧与物理核心状态。GDB 值及其别名随栈帧失效；返回原帧后也需要重新读取，同一停止代次的直接后端值可保留。Reset、Reconnect、更换 ELF 和 Console 会使相关旧值失效；共享 Reset 与原始 Console 在命令发送前使全部核心缓存失效，命令报错也不会恢复旧值为有效。详细规则与验证见 [缓存生命周期](docs/register-cache-lifecycle.md)。
 
 多核项目可用 `[registers.topology]` 的 `chip` 及 `[registers.topology.clusters]` 的核心名称到 cluster 名称映射声明共享归属。目录的 `scope` 使用 `core`、`cluster` 或 `chip`；缺少 cluster 映射时不会按核心编号猜测，条目显示未知归属且不发送读取。chip 优先使用 topology.chip，否则沿用 debug.chip；两者都未声明时保留未知。

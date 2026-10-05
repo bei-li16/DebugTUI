@@ -246,6 +246,9 @@ fn catalogue_refresh_is_on_demand_and_snapshots_retain_precise_stale_values() {
     );
     project.target.endpoint = "localhost:1234".into();
     project.registers.catalogue = root.join("profiles/registers/cortex-r52.toml");
+    // This GDB fixture supplies a known implemented timer; name visibility alone
+    // must not authorize an automatic read when presence is unknown.
+    project.registers.facts.insert("timer.present".into(), 1);
     let engine = session::spawn(project);
     response(&engine, 1, "connect", json!({}));
     let commands = fs::read_to_string(&transcript).unwrap();

@@ -1132,9 +1132,17 @@ name = "CNTFRQ"
 group = "timer"
 bits = 32
 access = "rw"
-description = "CNTFRQ in the timer register group."
+description = "Software-provided counter frequency in Hz; not a measured clock. Zero or an unset value does not prove timer absence."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 0, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL1/EL2 read; writes only at EL2. EL0 read requires CNTKCTL.PL0PCTEN or PL0VCTEN."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ClockFrequency"
+segments = [{ offset = 0, width = 32 }]
+description = "Firmware's counter-frequency value in Hz; validate independently before converting ticks to time."
 
 [[registers]]
 id = "cntkctl"
@@ -1142,9 +1150,53 @@ name = "CNTKCTL"
 group = "timer"
 bits = 32
 access = "rw"
-description = "CNTKCTL in the timer register group."
+description = "Kernel controls for EL0 counter/timer access and the virtual-counter event stream; not FPU or Timer enable."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 1, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL1/EL2 access; unavailable from EL0."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "PL0PCTEN"
+segments = [{ offset = 0, width = 1 }]
+description = "EL0 physical-count access; with PL0VCTEN also controls EL0 CNTFRQ reads."
+[[registers.fields]]
+name = "PL0VCTEN"
+segments = [{ offset = 1, width = 1 }]
+description = "EL0 virtual-count access; with PL0PCTEN also controls EL0 CNTFRQ reads."
+[[registers.fields]]
+name = "EVNTEN"
+segments = [{ offset = 2, width = 1 }]
+description = "Event-stream generation enable; unrelated to timer output ENABLE."
+[[registers.fields.enums]]
+value = "0"
+name = "Disabled"
+[[registers.fields.enums]]
+value = "1"
+name = "Enabled"
+[[registers.fields]]
+name = "EVNTDIR"
+segments = [{ offset = 3, width = 1 }]
+description = "Selected counter-bit transition for event generation."
+[[registers.fields.enums]]
+value = "0"
+name = "Rising"
+[[registers.fields.enums]]
+value = "1"
+name = "Falling"
+[[registers.fields]]
+name = "EVNTI"
+segments = [{ offset = 4, width = 4 }]
+description = "Selected counter bit 0-15 for the event stream; not a timer or PMU count."
+[[registers.fields]]
+name = "PL0VTEN"
+segments = [{ offset = 8, width = 1 }]
+description = "EL0 access to CNTV_CTL, CNTV_TVAL and CNTV_CVAL."
+[[registers.fields]]
+name = "PL0PTEN"
+segments = [{ offset = 9, width = 1 }]
+description = "EL0 access to CNTP_CTL, CNTP_TVAL and CNTP_CVAL; higher-level restrictions still apply."
 
 [[registers]]
 id = "cntp_tval"
@@ -1152,9 +1204,17 @@ name = "CNTP_TVAL"
 group = "timer"
 bits = 32
 access = "rw"
-description = "CNTP_TVAL in the timer register group."
+description = "EL1 physical signed 32-bit timer difference in ticks; disabled reads are architecturally UNKNOWN. This is not the 64-bit counter or a stable interval sample."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 2, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL2: accessible. EL1: CNTHCTL.PL1PCEN controls physical timer access. EL0: also requires CNTKCTL.PL0PTEN; a permission failure does not prove absence."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "TimerValue"
+segments = [{ offset = 0, width = 32 }]
+description = "Signed two's-complement (CompareValue - counter)[31:0], in ticks; read value is UNKNOWN when disabled."
 
 [[registers]]
 id = "cntp_ctl"
@@ -1162,9 +1222,38 @@ name = "CNTP_CTL"
 group = "timer"
 bits = 32
 access = "rw"
-description = "CNTP_CTL in the timer register group."
+description = "EL1 physical timer control and raw condition status. ISTATUS is UNKNOWN when ENABLE=0; IMASK is not an implementation flag."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 2, op2 = 1 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL2: accessible. EL1: CNTHCTL.PL1PCEN controls physical timer access. EL0: also requires CNTKCTL.PL0PTEN; a permission failure does not prove absence."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ENABLE"
+segments = [{ offset = 0, width = 1 }]
+description = "Timer output enable; reading never enables the timer."
+[[registers.fields.enums]]
+value = "0"
+name = "Disabled"
+[[registers.fields.enums]]
+value = "1"
+name = "Enabled"
+[[registers.fields]]
+name = "IMASK"
+segments = [{ offset = 1, width = 1 }]
+description = "Masks the timer output; does not change ISTATUS."
+[[registers.fields.enums]]
+value = "0"
+name = "Unmasked"
+[[registers.fields.enums]]
+value = "1"
+name = "Masked"
+[[registers.fields]]
+name = "ISTATUS"
+segments = [{ offset = 2, width = 1 }]
+description = "Raw timer condition bit; meaningful only when ENABLE=1. UNKNOWN when disabled; independent of IMASK."
+access = "ro"
 
 [[registers]]
 id = "cntv_tval"
@@ -1172,9 +1261,17 @@ name = "CNTV_TVAL"
 group = "timer"
 bits = 32
 access = "rw"
-description = "CNTV_TVAL in the timer register group."
+description = "EL1 virtual signed 32-bit timer difference in ticks; disabled reads are architecturally UNKNOWN. This is not the 64-bit counter or a stable interval sample."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 3, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL1/EL2: virtual timer view. EL0: CNTKCTL.PL0VTEN controls access; a virtual view is not the physical counter or Hyp timer."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "TimerValue"
+segments = [{ offset = 0, width = 32 }]
+description = "Signed two's-complement (CompareValue - counter)[31:0], in ticks; read value is UNKNOWN when disabled."
 
 [[registers]]
 id = "cntv_ctl"
@@ -1182,9 +1279,38 @@ name = "CNTV_CTL"
 group = "timer"
 bits = 32
 access = "rw"
-description = "CNTV_CTL in the timer register group."
+description = "EL1 virtual timer control and raw condition status. ISTATUS is UNKNOWN when ENABLE=0; IMASK is not an implementation flag."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 3, op2 = 1 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL1/EL2: virtual timer view. EL0: CNTKCTL.PL0VTEN controls access; a virtual view is not the physical counter or Hyp timer."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ENABLE"
+segments = [{ offset = 0, width = 1 }]
+description = "Timer output enable; reading never enables the timer."
+[[registers.fields.enums]]
+value = "0"
+name = "Disabled"
+[[registers.fields.enums]]
+value = "1"
+name = "Enabled"
+[[registers.fields]]
+name = "IMASK"
+segments = [{ offset = 1, width = 1 }]
+description = "Masks the timer output; does not change ISTATUS."
+[[registers.fields.enums]]
+value = "0"
+name = "Unmasked"
+[[registers.fields.enums]]
+value = "1"
+name = "Masked"
+[[registers.fields]]
+name = "ISTATUS"
+segments = [{ offset = 2, width = 1 }]
+description = "Raw timer condition bit; meaningful only when ENABLE=1. UNKNOWN when disabled; independent of IMASK."
+access = "ro"
 
 [[registers]]
 id = "cnthctl"
@@ -1192,9 +1318,45 @@ name = "CNTHCTL"
 group = "timer"
 bits = 32
 access = "rw"
-description = "CNTHCTL in the timer register group."
+description = "Hyp controls for lower-EL physical-counter/timer access and the physical-counter event stream."
 reader = { kind = "cp15", cp = 15, op1 = 4, crn = 14, crm = 1, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL2/Hyp only; EL1/EL0 cannot use this register."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "PL1PCTEN"
+segments = [{ offset = 0, width = 1 }]
+description = "Lower-EL physical-count access (PL1 is EL1); EL0 CNTKCTL restrictions still apply."
+[[registers.fields]]
+name = "PL1PCEN"
+segments = [{ offset = 1, width = 1 }]
+description = "Lower-EL physical-timer access (PL1 is EL1); EL0 CNTKCTL restrictions still apply."
+[[registers.fields]]
+name = "EVNTEN"
+segments = [{ offset = 2, width = 1 }]
+description = "Event-stream generation enable; unrelated to timer output ENABLE."
+[[registers.fields.enums]]
+value = "0"
+name = "Disabled"
+[[registers.fields.enums]]
+value = "1"
+name = "Enabled"
+[[registers.fields]]
+name = "EVNTDIR"
+segments = [{ offset = 3, width = 1 }]
+description = "Selected counter-bit transition for event generation."
+[[registers.fields.enums]]
+value = "0"
+name = "Rising"
+[[registers.fields.enums]]
+value = "1"
+name = "Falling"
+[[registers.fields]]
+name = "EVNTI"
+segments = [{ offset = 4, width = 4 }]
+description = "Selected counter bit 0-15 for the event stream; not a timer or PMU count."
 
 [[registers]]
 id = "cnthp_tval"
@@ -1202,9 +1364,17 @@ name = "CNTHP_TVAL"
 group = "timer"
 bits = 32
 access = "rw"
-description = "CNTHP_TVAL in the timer register group."
+description = "Hyp physical signed 32-bit timer difference in ticks; disabled reads are architecturally UNKNOWN. This is not the 64-bit counter or a stable interval sample."
 reader = { kind = "cp15", cp = 15, op1 = 4, crn = 14, crm = 2, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL2/Hyp only; EL1/EL0 cannot use this register."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "TimerValue"
+segments = [{ offset = 0, width = 32 }]
+description = "Signed two's-complement (CompareValue - counter)[31:0], in ticks; read value is UNKNOWN when disabled."
 
 [[registers]]
 id = "cnthp_ctl"
@@ -1212,9 +1382,38 @@ name = "CNTHP_CTL"
 group = "timer"
 bits = 32
 access = "rw"
-description = "CNTHP_CTL in the timer register group."
+description = "Hyp physical timer control and raw condition status. ISTATUS is UNKNOWN when ENABLE=0; IMASK is not an implementation flag."
 reader = { kind = "cp15", cp = 15, op1 = 4, crn = 14, crm = 2, op2 = 1 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL2/Hyp only; EL1/EL0 cannot use this register."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ENABLE"
+segments = [{ offset = 0, width = 1 }]
+description = "Timer output enable; reading never enables the timer."
+[[registers.fields.enums]]
+value = "0"
+name = "Disabled"
+[[registers.fields.enums]]
+value = "1"
+name = "Enabled"
+[[registers.fields]]
+name = "IMASK"
+segments = [{ offset = 1, width = 1 }]
+description = "Masks the timer output; does not change ISTATUS."
+[[registers.fields.enums]]
+value = "0"
+name = "Unmasked"
+[[registers.fields.enums]]
+value = "1"
+name = "Masked"
+[[registers.fields]]
+name = "ISTATUS"
+segments = [{ offset = 2, width = 1 }]
+description = "Raw timer condition bit; meaningful only when ENABLE=1. UNKNOWN when disabled; independent of IMASK."
+access = "ro"
 
 [[registers]]
 id = "prbar0"
@@ -3824,9 +4023,18 @@ name = "CNTPCT"
 group = "timer"
 bits = 64
 access = "ro"
-description = "CNTPCT in the timer register group."
+description = "64-bit physical counter, one genuine MRRC sample; independent reads at different times need not match."
 reader = { kind = "cp15_64", cp = 15, op1 = 0, crm = 14 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL2 read; lower-EL access is controlled by CNTHCTL.PL1PCTEN and, at EL0, CNTKCTL.PL0PCTEN."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "PhysicalCount"
+segments = [{ offset = 0, width = 64 }]
+description = "Complete physical count in ticks; one sample, not unrelated low/high MRC reads."
+access = "ro"
 
 [[registers]]
 id = "cntvct"
@@ -3834,9 +4042,18 @@ name = "CNTVCT"
 group = "timer"
 bits = 64
 access = "ro"
-description = "CNTVCT in the timer register group."
+description = "64-bit virtual count (physical count minus CNTVOFF modulo 2^64); belongs to the current core's virtual view."
 reader = { kind = "cp15_64", cp = 15, op1 = 1, crm = 14 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL1/EL2 read; EL0 requires CNTKCTL.PL0VCTEN. CNTVOFF cannot be inferred from differently timed samples."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "VirtualCount"
+segments = [{ offset = 0, width = 64 }]
+description = "Complete virtual count in ticks; separate physical and virtual samples are not simultaneous."
+access = "ro"
 
 [[registers]]
 id = "cntp_cval"
@@ -3844,9 +4061,17 @@ name = "CNTP_CVAL"
 group = "timer"
 bits = 64
 access = "rw"
-description = "CNTP_CVAL in the timer register group."
+description = "EL1 physical full 64-bit comparator value, read with one MRRC; viewing does not program or enable the timer."
 reader = { kind = "cp15_64", cp = 15, op1 = 2, crm = 14 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL2: accessible. EL1: CNTHCTL.PL1PCEN controls physical timer access. EL0: also requires CNTKCTL.PL0PTEN; a permission failure does not prove absence."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "CompareValue"
+segments = [{ offset = 0, width = 64 }]
+description = "Complete comparator storage; independent read time differs from counter/TVAL samples."
 
 [[registers]]
 id = "cntv_cval"
@@ -3854,9 +4079,17 @@ name = "CNTV_CVAL"
 group = "timer"
 bits = 64
 access = "rw"
-description = "CNTV_CVAL in the timer register group."
+description = "EL1 virtual full 64-bit comparator value, read with one MRRC; viewing does not program or enable the timer."
 reader = { kind = "cp15_64", cp = 15, op1 = 3, crm = 14 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL1/EL2: virtual timer view. EL0: CNTKCTL.PL0VTEN controls access; a virtual view is not the physical counter or Hyp timer."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "CompareValue"
+segments = [{ offset = 0, width = 64 }]
+description = "Complete comparator storage; independent read time differs from counter/TVAL samples."
 
 [[registers]]
 id = "cntvoff"
@@ -3864,9 +4097,17 @@ name = "CNTVOFF"
 group = "timer"
 bits = 64
 access = "rw"
-description = "CNTVOFF in the timer register group."
+description = "64-bit Hyp virtual-counter offset; reading does not change Guest time or counter state."
 reader = { kind = "cp15_64", cp = 15, op1 = 4, crm = 14 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL2/Hyp only; EL1/EL0 cannot use this register."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "VirtualOffset"
+segments = [{ offset = 0, width = 64 }]
+description = "Offset subtracted from the physical count modulo 2^64; EL2 owns this value."
 
 [[registers]]
 id = "cnthp_cval"
@@ -3874,9 +4115,17 @@ name = "CNTHP_CVAL"
 group = "timer"
 bits = 64
 access = "rw"
-description = "CNTHP_CVAL in the timer register group."
+description = "Hyp physical full 64-bit comparator value, read with one MRRC; viewing does not program or enable the timer."
 reader = { kind = "cp15_64", cp = 15, op1 = 6, crm = 14 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; subject to current EL, traps and debug authorization. EL2/Hyp only; EL1/EL0 cannot use this register."
+[[registers.conditions]]
+fact = "timer.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "CompareValue"
+segments = [{ offset = 0, width = 64 }]
+description = "Complete comparator storage; independent read time differs from counter/TVAL samples."
 
 [[registers]]
 id = "icc_ap0r1"

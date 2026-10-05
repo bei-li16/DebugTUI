@@ -27,6 +27,8 @@ mod cancel_cases;
 mod mpu_cases;
 #[path = "selector_access/mrrc_cases.rs"]
 mod mrrc_cases;
+#[path = "selector_access/timer_cases.rs"]
+mod timer_cases;
 #[path = "selector_access/vfp_cases.rs"]
 mod vfp_cases;
 #[path = "selector_access/vfp_write_cases.rs"]
