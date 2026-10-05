@@ -370,13 +370,19 @@ fn register_status_search_filter_and_target_view_update_definition_counts_withou
     app.register_view
         .facts
         .insert("icc.physical.prebits".into(), 5);
+    app.register_view
+        .facts
+        .insert("gic.system_interface".into(), 1);
+    app.register_view
+        .facts
+        .insert("icv.virtual.prebits".into(), 5);
     app.register_view.query = "AP0R".into();
     app.register_view.rebuild();
-    assert_eq!(counts(&app).shown, 1);
+    assert_eq!(counts(&app).shown, 3);
     app.register_view.all_definitions = true;
     app.register_view.rebuild();
-    assert_eq!(counts(&app).shown, 4);
-    assert_eq!(counts(&app).get(Category::NotImplemented), 3);
+    assert_eq!(counts(&app).shown, 12);
+    assert_eq!(counts(&app).get(Category::NotImplemented), 9);
     app.register_view.filter = 1;
     app.register_view.rebuild();
     assert_eq!(counts(&app).shown, 0);

@@ -71,6 +71,12 @@ def main():
                     '-o', str(pmu_executable)], check=True)
     pmu_tested = subprocess.run([str(pmu_executable)], capture_output=True, text=True, check=True)
     (out/'pmu-transfer-test.log').write_text(pmu_tested.stdout+pmu_tested.stderr, encoding='utf-8')
+    gic_executable = out/('gic-transfer.exe' if os.name == 'nt' else 'gic-transfer')
+    subprocess.run([args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror',
+                    '-I', str(source/'src/target'), str(here/'tests/gic-transfer.c'),
+                    '-o', str(gic_executable)], check=True)
+    gic_tested = subprocess.run([str(gic_executable)], capture_output=True, text=True, check=True)
+    (out/'gic-transfer-test.log').write_text(gic_tested.stdout+gic_tested.stderr, encoding='utf-8')
     subprocess.run([sys.executable, str(here/'tests/vfp-write-driver.py'),
                     '--out', str(out/'vfp-write-driver')], check=True)
     report = {'board_tests_executed': False, 'revision': revision,
@@ -85,6 +91,8 @@ def main():
               'vfp_write_deferred_driver_passed': True,
               'pmu_transaction_passed': True, 'pmu_protocol': lock['pmu_protocol'],
               'pmu_transaction_binary_sha256': digest(pmu_executable),
+              'gic_transaction_passed': True, 'gic_protocol': lock['gic_protocol'],
+              'gic_transaction_binary_sha256': digest(gic_executable),
               'timer_transaction_passed': True, 'timer_protocol': lock['timer_protocol'],
               'timer_transaction_binary_sha256': digest(timer_executable),
               'backend_commands_passed': False, 'limitations':
@@ -97,6 +105,7 @@ def main():
         vfp_write_protocol = lock['vfp_write_protocol']
         timer_protocol = lock['timer_protocol']
         pmu_protocol = lock['pmu_protocol']
+        gic_protocol = lock['gic_protocol']
         # Initialize only the virtual adapter, keeping the target unexamined.
         # Exact native error codes prevent an init-mode rejection from falsely
         # passing an argument/state-guard test.
@@ -121,6 +130,8 @@ help aarch64 vfp_write
 help aarch64 timer
 if {[aarch64 debugtui_pmu_protocol] ne "%s"} {error "PMU protocol mismatch"}
 help aarch64 pmu
+if {[aarch64 debugtui_gic_protocol] ne "%s"} {error "GIC protocol mismatch"}
+help aarch64 gic
 catch {init} dummy_init_result
 proc expect_error {body expected} {
     if {![catch {uplevel 1 $body} result]} {error "command unexpectedly succeeded"}
@@ -147,6 +158,11 @@ foreach invalid {PMCR pmswinc pmevcntr4 pmevcntr01 pmcr;} {expect_error [list aa
 foreach reg {pmcr pmcntenset pmcntenclr pmovsr pmselr pmceid0 pmceid1 pmxevtyper pmxevcntr pmuserenr pmintenset pmintenclr pmovsset pmccfiltr pmevcntr0 pmevcntr1 pmevcntr2 pmevcntr3 pmevtyper0 pmevtyper1 pmevtyper2 pmevtyper3 pmccntr} {
     expect_error [list aarch64 pmu $reg] -311
 }
+expect_error {aarch64 debugtui_gic_protocol 0} -601
+expect_error {aarch64 gic} -601
+expect_error {aarch64 gic icc_ctlr 0} -601
+foreach invalid {ICC_CTLR icv_ap0r0 ich_lr4 ich_lr01 icc_eoir0 icc_dir icc_sgi1r icc_ctlr;} {expect_error [list aarch64 gic $invalid] -603}
+foreach reg {icc_ctlr icc_sre icc_hsre icc_pmr icc_rpr icc_bpr0 icc_bpr1 icc_igrpen0 icc_igrpen1 icc_hppir0 icc_hppir1 icc_ap0r0 icc_ap0r1 icc_ap0r2 icc_ap0r3 icc_ap1r0 icc_ap1r1 icc_ap1r2 icc_ap1r3 ich_vtr ich_hcr ich_misr ich_eisr ich_elrsr ich_vmcr ich_ap0r0 ich_ap0r1 ich_ap0r2 ich_ap0r3 ich_ap1r0 ich_ap1r1 ich_ap1r2 ich_ap1r3 ich_lr0 ich_lr1 ich_lr2 ich_lr3 ich_lrc0 ich_lrc1 ich_lrc2 ich_lrc3 icc_iar0 icc_iar1} {expect_error [list aarch64 gic $reg] -311}
 expect_error {aarch64 banked} -601
 expect_error {aarch64 banked sp_irq 0} -601
 foreach invalid {sp_mon spsr_usr SP_IRQ} {expect_error [list aarch64 banked $invalid] -603}
@@ -176,7 +192,7 @@ for {set index 0} {$index < 16} {incr index} {
 }
 puts "PASS: adapter protocol, command help, encoding bounds, unexamined target guards"
 shutdown
-''' % (protocol, bank_protocol, vfp_protocol, vfp_write_protocol, timer_protocol, pmu_protocol)
+''' % (protocol, bank_protocol, vfp_protocol, vfp_write_protocol, timer_protocol, pmu_protocol, gic_protocol)
         script_file = out/'backend-commands.tcl'
         script_file.write_text(script, encoding='utf-8')
         result = subprocess.run([str(backend), '-f', str(script_file)],

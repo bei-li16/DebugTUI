@@ -15,6 +15,7 @@ pub mod banked;
 pub mod capabilities;
 pub mod display;
 pub mod eligibility;
+pub mod gic;
 pub mod mpu;
 pub mod pmu;
 pub mod provenance;
@@ -39,6 +40,8 @@ pub struct Config {
     pub cp15_64_command: String,
     /// Read-only PMU adapter with fresh current Debug EL and physical count.
     pub pmu_command: String,
+    /// Observational physical ICC / Hyp ICH adapter with fresh capacities.
+    pub gic_command: String,
     /// Checked Timer adapter with fresh external identity/current Debug EL evidence.
     pub timer_command: String,
     /// State-preserving R52 banked MRS adapter; no legacy get_reg fallback.
@@ -112,6 +115,9 @@ impl Config {
         }
         if !matches!(self.cp15_64_command.as_str(), "" | "aarch64 mrrc") {
             return Err("registers.cp15_64_command must be aarch64 mrrc".into());
+        }
+        if !matches!(self.gic_command.as_str(), "" | "aarch64 gic") {
+            return Err("registers.gic_command must be aarch64 gic".into());
         }
         if !matches!(self.pmu_command.as_str(), "" | "aarch64 pmu") {
             return Err("registers.pmu_command must be aarch64 pmu".into());

@@ -1,0 +1,183 @@
+{
+  "software_example": true,
+  "frame_function": "debugtui_gic_fixture_stop",
+  "expected_midr": "0x411fd134",
+  "evidence_source": "Replace with independently captured per-core EL2 firmware GIC snapshot in a static interrupt fixture",
+  "ready": "debugtui_gic_reference[0].ready",
+  "registers": [
+    {
+      "id": "icc_ctlr",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[0]",
+      "expected": "0x00000403"
+    },
+    {
+      "id": "icc_sre",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[1]",
+      "expected": "0x00000007"
+    },
+    {
+      "id": "icc_hsre",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[2]",
+      "expected": "0x0000000f"
+    },
+    {
+      "id": "icc_pmr",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[3]",
+      "expected": "0x000000f8"
+    },
+    {
+      "id": "icc_rpr",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[4]",
+      "expected": "0x000000ff"
+    },
+    {
+      "id": "icc_bpr0",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[5]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "icc_bpr1",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[6]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "icc_igrpen0",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[7]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "icc_igrpen1",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[8]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "icc_hppir0",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[9]",
+      "expected": "0x000003ff"
+    },
+    {
+      "id": "icc_hppir1",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[10]",
+      "expected": "0x000003ff"
+    },
+    {
+      "id": "icc_ap0r0",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[11]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "icc_ap1r0",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[12]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_vtr",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[13]",
+      "expected": "0x90180003"
+    },
+    {
+      "id": "ich_hcr",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[14]",
+      "expected": "0x00007c01"
+    },
+    {
+      "id": "ich_misr",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[15]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_eisr",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[16]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_elrsr",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[17]",
+      "expected": "0x0000000f"
+    },
+    {
+      "id": "ich_vmcr",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[18]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_ap0r0",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[19]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_ap1r0",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[20]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_lr0",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[21]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_lr1",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[22]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_lr2",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[23]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_lr3",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[24]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_lrc0",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[25]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_lrc1",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[26]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_lrc2",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[27]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "ich_lrc3",
+      "bits": 32,
+      "reference": "debugtui_gic_reference[0].raw[28]",
+      "expected": "0x00000000"
+    }
+  ]
+}

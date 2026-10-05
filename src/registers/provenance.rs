@@ -66,6 +66,8 @@ pub struct Access {
     pub timer: Option<super::timer::Evidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pmu: Option<super::pmu::Evidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gic: Option<super::gic::Evidence>,
     pub route: Route,
     pub phase: Phase,
     /// Exact MI command or Tcl transaction submitted to the transport, without framing.

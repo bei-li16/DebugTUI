@@ -1172,5 +1172,12 @@ fn writers_are_independent_and_reject_width_scope_permission_and_read_effect_con
         reg.write = None;
     }
     legacy.validate().unwrap();
-    assert!(!toml::to_string(&legacy).unwrap().contains("writer"));
+    let saved: toml::Value = toml::from_str(&toml::to_string(&legacy).unwrap()).unwrap();
+    assert!(
+        saved["registers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r.get("writer").is_none() && r.get("write").is_none())
+    );
 }

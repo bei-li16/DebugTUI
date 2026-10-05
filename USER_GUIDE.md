@@ -889,3 +889,5 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --gdb C:
 打包与发布见 [PUBLISHING.md](PUBLISHING.md)，设计见 [ARCHITECTURE.md](ARCHITECTURE.md)。详细排障历史和验收数据留在测试记录，使用指南描述当前行为；待开发计划不等于已有功能。
 
 PMU 查看：配置 registers.pmu_command="aarch64 pmu" 可显式选择当前开发后端的独立只读协议。该适配覆盖 R52 四项 32 位事件与完整 64 位周期及相关状态/控制视图；观察不会启动或清空计数。当前 Debug EL2 与停止前 CPSR 分开证明，低 EL 无法证明 Hyp 陷阱时显示 Unknown。计数数量 Probe 需要新鲜原生证据；同名 GDB PMCR 不替代该证明。直接 PMEVCNTRn/PMEVTYPERn 保持 PMSELR，SEL=31 的 PMXEVCNTR 不可用。后端、配置、字段、未上板限制见 [PMU 说明](docs/register-pmu.md)。
+
+GIC 查看：开发版本显式配置 `registers.gic_command="aarch64 gic"` 后使用独立观测协议。物理 ICC、Hyp ICH 与虚拟 ICV AP backing 别名分别展示；R52 只实现每组 AP0R0/AP1R0，Probe 以当前 Debug EL2 证据分别确认物理/虚拟五位容量并过滤其他 AP 定义。停止前 Hyp 或同名 GDB CTLR/VTR 只提供原始字段，不能授权物理容量。IAR 有 acknowledge 副作用，观测后端即使手工也拒绝；EOIR/DIR/SGI 为 Write only，不安排读取。低 EL 保持 Unknown，不关闭陷阱或使能接口。LR/LRC 各为 32 位独立样本，详情保留接口、target、owner 与时间区间。配置和边界见 [GIC 说明](docs/register-gic.md)；当前发行 0.9.3 尚未包含新字段。

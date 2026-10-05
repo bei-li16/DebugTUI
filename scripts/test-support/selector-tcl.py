@@ -58,6 +58,36 @@ def evaluate(data):
         if op == 'debugtui_pmu_protocol':
             return (0, 'old-pmu-adapter' if fault == 'pmu_protocol' else
                     'debugtui-armv8-pmu-1 external-identity current-el fresh-count direct-index mrrc64 no-enable no-selector-write stop-on-fault')
+        if op == 'debugtui_gic_protocol':
+            return (0, 'old-gic-adapter' if fault == 'gic_protocol' else
+                    'debugtui-armv8-gic-1 external-identity current-el fresh-capacity physical-icc hyp-ich no-ack no-enable stop-on-fault')
+        if op == 'gic':
+            assert len(args) == 1
+            reg = args[0]
+            if fault == 'gic_fault':
+                cpu['status'] = 'unknown'
+                return (1, 'Core state restoration failed: GIC fixture outcome unknown', -1)
+            reason = cpu.get('gic_errors', {}).get(reg)
+            if fault == 'gic_identity': reason = 'reader-unsupported'
+            if fault == 'gic_unknown': reason = 'access-unknown'
+            if reg in ('icc_iar0', 'icc_iar1'): reason = 'access-restricted'
+            if re.fullmatch('(icc|ich)_ap[01]r[123]', reg): reason = 'not-implemented'
+            dscr = cpu.get('gic_dscr', '0x01000200')
+            if ((int(dscr,16) >> 8) & 3) != 2: reason = 'access-unknown'
+            elif int(dscr,16) & (1 << 16): reason = 'access-restricted'
+            if reason:
+                return (1, 'debugtui-gic:' + reason, -300 if reason == 'reader-unsupported' else -308)
+            view = 'hypervisor_ich' if reg.startswith('ich_') else 'physical_icc'
+            controls = {'icc_hsre':'0x0000000f','icc_sre':'0x00000007','icc_ctlr':'0x00000403','ich_vtr':'0x90180003','ich_hcr':'0x00007c01'}
+            raw = cpu.get('gic_values', {}).get(reg,controls.get(reg,'0xf1234567'))
+            if fault == 'gic_short': raw = '0x1234567'
+            if fault == 'gic_forged_el': dscr = '0x01000100'
+            if fault == 'gic_forged_capacity': controls['ich_vtr'] = '0xd4180003'
+            if fault == 'gic_forged_view': view = 'hypervisor_ich' if view == 'physical_icc' else 'physical_icc'
+            if fault == 'gic_context_change':
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}',encoding='utf-8')
+            dspsr = cpu.get('gic_dspsr','0xa2000410')
+            return (0,f"view {view} midr 0x411fd134 dscr {dscr} dspsr {dspsr} dlr 0x81234568 id_pfr1 0x10111011 icc_hsre {controls['icc_hsre']} icc_sre {controls['icc_sre']} icc_ctlr {controls['icc_ctlr']} ich_vtr {controls['ich_vtr']} hcr 0x00000038 ich_hcr {controls['ich_hcr']} hstr 0x00001000 value {raw}")
         if op == 'pmu':
             assert len(args) == 1
             reg = args[0]

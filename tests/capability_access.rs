@@ -175,13 +175,8 @@ fn alias_parent_unknown_conditions_block_automatic_reads_but_keep_explicit_manua
 #[test]
 fn register_eligibility_sources_survive_success_expiry_and_retained_values() {
     let (mut project, transcript) = fixture(&[]);
-    conditional_catalogue(
-        &mut project,
-        &transcript,
-        "icc.physical.prebits",
-        5,
-        Some(5),
-    );
+    conditional_catalogue(&mut project, &transcript, "mpu.el1.regions", 24, Some(24));
+    project.registers.facts.insert("mpu.el1.regions".into(), 16);
     let engine = session::spawn(project);
     ok(&engine, 1, "connect", json!({}));
     let listed = ok(&engine, 2, "registers_list", json!({}));
@@ -204,10 +199,10 @@ fn register_eligibility_sources_survive_success_expiry_and_retained_values() {
         sample["eligibility"]["conditions"][0]["source"],
         "observation"
     );
-    assert_eq!(sample["eligibility"]["conditions"][0]["value"], 5);
+    assert_eq!(sample["eligibility"]["conditions"][0]["value"], 24);
     assert_eq!(
         sample["eligibility"]["conditions"][0]["configured_value"],
-        7
+        16
     );
     assert_eq!(sample["eligibility"]["conditions"][0]["register"], "cpsr");
     assert_eq!(sample["eligibility"]["context"], listed["context"]);
@@ -240,7 +235,7 @@ fn register_eligibility_sources_survive_success_expiry_and_retained_values() {
         cached["eligibility"]["conditions"][0]["source"],
         "configuration"
     );
-    assert_eq!(cached["eligibility"]["conditions"][0]["value"], 7);
+    assert_eq!(cached["eligibility"]["conditions"][0]["value"], 16);
     assert!(cached["eligibility"]["probe"].is_null());
     assert_eq!(cached["last_value_eligibility"]["kind"], "known");
     assert_eq!(cached["last_value_eligibility"]["evidence"], preserved);
@@ -286,7 +281,8 @@ fn write_only_alias_dependencies_never_issue_value_reads_even_with_manual_intent
 }
 
 #[test]
-fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop() {
+fn explicit_probe_retains_raw_gic_fields_without_guessing_current_interface_and_expires_at_next_stop()
+ {
     let (project, transcript) = fixture(&[]);
     let endpoint = project.target.endpoint.clone();
     let engine = session::spawn(project);
@@ -306,9 +302,13 @@ fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop
     assert_eq!(result["probe"]["identity"]["model"], "Cortex-R52");
     assert_eq!(result["facts"]["mpu.el1.regions"], 24);
     assert_eq!(result["facts"]["mpu.el2.regions"], 20);
-    assert_eq!(result["facts"]["icc.physical.prebits"], 5);
-    assert_eq!(result["facts"]["icv.virtual.prebits"], 6);
-    assert_eq!(result["facts"]["icv.virtual.pribits"], 7);
+    assert_eq!(result["facts"]["icc.physical.prebits"], 7);
+    assert!(result["probe"]["facts"]["icc.physical.prebits"].is_null());
+    assert_eq!(result["facts"]["icc.ctlr_pribits"], 5);
+    assert!(result["facts"]["icv.virtual.prebits"].is_null());
+    assert_eq!(result["facts"]["ich.vtr_prebits"], 6);
+    assert!(result["facts"]["icv.virtual.pribits"].is_null());
+    assert_eq!(result["facts"]["ich.vtr_pribits"], 7);
     assert!(
         result["facts"]["pmu.counters"].is_null(),
         "Stopped Hyp CPSR does not prove current Debug EL2"
@@ -317,7 +317,7 @@ fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop
     assert!(result["facts"]["vfp.present"].is_null());
     assert!(result["facts"]["vfp.enabled"].is_null());
     assert_eq!(
-        result["probe"]["facts"]["icc.physical.prebits"]["source"],
+        result["probe"]["facts"]["icc.ctlr_pribits"]["source"],
         "gdb:icc_ctlr"
     );
     assert!(
@@ -325,7 +325,10 @@ fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop
             .as_array()
             .unwrap()
             .iter()
-            .any(|v| v.as_str().unwrap().contains("observation wins"))
+            .any(|v| v
+                .as_str()
+                .unwrap()
+                .contains("fresh native current Debug EL2"))
     );
     assert!(
         !result["probe"]["notes"]
@@ -367,15 +370,15 @@ fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop
         "registers_read",
         json!({"ids":["icc_ap0r1"], "context":listed["context"]}),
     );
-    assert_eq!(read["samples"][0]["implementation"], "no");
-    assert_eq!(read["samples"][0]["reason"], "hardware_not_implemented");
+    assert_eq!(read["samples"][0]["implementation"], "yes");
+    assert_eq!(read["samples"][0]["reason"], "reader_unsupported");
     assert_eq!(
         reads(&transcript).len(),
         10,
-        "Physically absent AP entries must not be read"
+        "A configured capacity is distinct from native observation; missing legacy reader sends no value request"
     );
     let listed_after = ok(&engine, 5, "registers_list", json!({}));
-    assert_eq!(listed_after["facts"]["icc.physical.prebits"], 5);
+    assert_eq!(listed_after["facts"]["icc.physical.prebits"], 7);
     let commands = fs::read_to_string(&transcript).unwrap();
     assert!(!commands.contains("-data-write-") && !commands.contains("-exec-"));
     assert!(!commands.contains("mcr ") && !commands.contains("FPEXC"));
@@ -662,7 +665,7 @@ fn deferred_capability_driver_runs_actual_binary_and_preserves_fixture_without_b
     fs::write(&case_file, serde_json::to_string(&json!({
         "frame_function":"main", "stable_registers":["cpsr","cpacr","pmcr"],
         "expected_raw":{"midr":"0x411fd134"},
-        "expected_facts":{"mpu.el1.regions":24,"mpu.el2.regions":20,"icc.physical.prebits":5,"icv.virtual.prebits":6},
+        "expected_facts":{"mpu.el1.regions":24,"mpu.el2.regions":20,"icc.ctlr_pribits":5,"ich.vtr_prebits":6},
         "expected_unavailable":[], "expected_unknown_facts":["vfp.present","vfp.enabled"]
     })).unwrap()).unwrap();
     let result = std::process::Command::new("node")
@@ -850,7 +853,8 @@ fn target_scoped_tcl_probe_uses_exact_mrcs_and_quarantines_failed_restoration() 
             assert_eq!(scripts.lock().unwrap().len(), 1);
         } else {
             let result = result.unwrap();
-            assert_eq!(result["facts"]["icc.physical.prebits"], 5);
+            assert_eq!(result["facts"]["icc.physical.prebits"], 7);
+            assert!(result["probe"]["facts"]["icc.physical.prebits"].is_null());
             assert_eq!(
                 result["probe"]["facts"]["mpu.el1.regions"]["source"],
                 "openocd:cp15"
@@ -866,13 +870,7 @@ fn target_scoped_tcl_probe_uses_exact_mrcs_and_quarantines_failed_restoration() 
 #[test]
 fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() {
     let (mut project, transcript) = fixture(&[]);
-    conditional_catalogue(
-        &mut project,
-        &transcript,
-        "icc.physical.prebits",
-        5,
-        Some(5),
-    );
+    conditional_catalogue(&mut project, &transcript, "mpu.el1.regions", 24, Some(24));
     project.cores = (0..2)
         .map(|i| Core {
             name: format!("core{i}"),
@@ -880,6 +878,7 @@ fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() 
             ..Default::default()
         })
         .collect();
+    project.registers.facts.insert("mpu.el1.regions".into(), 16);
     let engine = debugtui::coordinator::spawn(project);
     ok(&engine, 1, "connect", json!({}));
     ok(&engine, 2, "select_core", json!({"index":0}));

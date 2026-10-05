@@ -9,6 +9,7 @@ import json
 from tempfile import TemporaryDirectory
 from register_timer_metadata import TIMER_METADATA
 from register_pmu_metadata import PMU_METADATA
+from register_gic_metadata import GIC_METADATA, GIC_ENCODINGS
 
 ROOT = Path(__file__).resolve().parents[1] / "profiles" / "registers"
 q = json.dumps
@@ -22,9 +23,16 @@ def generate(cpu, m_profile=False, root=ROOT):
         lines.extend(["", "[[groups]]", f"id = {q(id)}", f"name = {q(name)}"])
         if parent: lines.append(f"parent = {q(parent)}")
     def reg(id, group, bits=32, access="rw", kind="gdb", params=None, conditions=None, fields=None, effect=False):
+        gic = GIC_METADATA.get(id)
+        if gic:
+            group = gic["group"]
         lines.extend(["", "[[registers]]", f"id = {q(id)}", f"name = {q(id.upper())}", f"group = {q(group)}", f"bits = {bits}", f"access = {q(access)}"])
         descriptions = {"cpsr":"Current status and processor mode of the selected core context.","xpsr":"Combined exception, instruction-set and application status.","sctlr":"EL1 system control, including MPU enable and execution controls.","hsctlr":"EL2 system control.","midr":"Processor implementer, part number, variant and revision.","mpuir":"Implemented EL1 MPU region capacity.","hmpuir":"Implemented EL2 MPU region capacity.","pmcr":"Performance monitor configuration and implemented event-counter count.","fpscr":"Floating-point status, exceptions and control.","prselr":"Current EL1 MPU region selector; direct region reads preserve this value.","hprselr":"Current EL2 MPU region selector; direct region reads preserve this value."}
         description = descriptions.get(id, f"{id.upper()} in the {group} register group.")
+        if gic:
+            description = gic["description"]
+            fields = gic["fields"]
+            conditions = gic["conditions"]
         timer = TIMER_METADATA.get(id) if group == "timer" else None
         pmu = PMU_METADATA.get(id) if group == "pmu" else None
         if pmu:
@@ -51,7 +59,7 @@ def generate(cpu, m_profile=False, root=ROOT):
             lines.append(f'write = {{ bits = {bits}, access = "read_write", effect = "modify", constraint = {{ kind = "none" }}, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = {{ kind = "modified" }} }}')
         if effect: lines.append("read_side_effect = true")
         if kind in ("cp15", "cp15_64"):
-            condition = (timer or pmu)["access_condition"] if (timer or pmu) else "Halted physical core; access depends on current EL, traps and debug authorization."
+            condition = (timer or pmu or gic)["access_condition"] if (timer or pmu or gic) else "Halted physical core; access depends on current EL, traps and debug authorization."
             lines.append(f'access_condition = {q(condition)}')
         for condition in conditions or []:
             fact, minimum = condition[:2]
@@ -89,6 +97,8 @@ def generate(cpu, m_profile=False, root=ROOT):
             for name in ([f"r{n}_{mode}" for n in range(8,13)] if mode == "fiq" else []) + [f"sp_{mode}","elr_hyp" if mode == "hyp" else f"lr_{mode}",f"spsr_{mode}"]:
                 reg(name,mode,kind="banked",params={"name":name})
         for id in ["id","control","exceptions","mpu_el1","mpu_el2","pmu","gic","timer","virt","debug"]: group(id,id.upper(),"system")
+        for id, name in [("gic_icc","Physical ICC"),("gic_ich","Hyp ICH"),("gic_icv","Virtual ICV backing aliases")]:
+            group(id,name,"gic")
         # Tuples are (Op1, CRn, CRm, Op2), independently checked against TRM read encodings.
         encodings = {
             "midr":(0,0,0,0),"ctr":(0,0,0,1),"mpidr":(0,0,0,5),"id_pfr0":(0,0,1,0),"id_pfr1":(0,0,1,1),"id_dfr0":(0,0,1,2),
@@ -101,10 +111,11 @@ def generate(cpu, m_profile=False, root=ROOT):
             "icc_ctlr":(0,12,12,4),"icc_sre":(0,12,12,5),"icc_pmr":(0,4,6,0),"icc_rpr":(0,12,11,3),"icc_ap0r0":(0,12,8,4),"icc_ap1r0":(0,12,9,0),"icc_iar0":(0,12,8,0),"icc_iar1":(0,12,12,0),"ich_vtr":(4,12,11,1),
             "cntfrq":(0,14,0,0),"cntkctl":(0,14,1,0),"cntp_tval":(0,14,2,0),"cntp_ctl":(0,14,2,1),"cntv_tval":(0,14,3,0),"cntv_ctl":(0,14,3,1),"cnthctl":(4,14,1,0),"cnthp_tval":(4,14,2,0),"cnthp_ctl":(4,14,2,1),
         }
+        encodings.update(GIC_ENCODINGS)
         for name,(op1,crn,crm,op2) in encodings.items():
             groupid = "gic" if name.startswith(("icc_", "ich_")) else "timer" if name.startswith("cnt") else "pmu" if name.startswith("pm") else "mpu_el2" if name in ["hmpuir","hprselr","hprenr","hmair0","hmair1"] else "mpu_el1" if name in ["mpuir","prselr","mair0","mair1"] else "virt" if name.startswith("h") else "id" if name in ["midr","ctr","mpidr"] or name.startswith("id_") else "exceptions" if name in ["dfsr","ifsr","adfsr","aifsr","dfar","ifar"] else "control"
             readonly = name.startswith("id_") or name in ["midr","ctr","mpidr","mpuir","hmpuir","pmceid0","pmceid1","icc_rpr","icc_iar0","icc_iar1","ich_vtr"]
-            reg(name,groupid,access="ro" if readonly else "rw",kind="cp15",params=dict(cp=15,op1=op1,crn=crn,crm=crm,op2=op2),effect=name.startswith("icc_iar"))
+            reg(name,groupid,access=GIC_METADATA[name]["access"] if name in GIC_METADATA else "ro" if readonly else "rw",kind="cp15",params=dict(cp=15,op1=op1,crn=crn,crm=crm,op2=op2),effect=name.startswith("icc_iar"))
         for level,count in [(1,24),(2,24)]:
             for n in range(count):
                 for limit in [False,True]:
@@ -114,9 +125,13 @@ def generate(cpu, m_profile=False, root=ROOT):
                     reg(name,f"mpu_el{level}",kind="cp15",params=dict(cp=15,op1=(0 if level==1 else 4)+n//16,crn=6,crm=8+(n%16)//2,op2=4*(n%2)+int(limit)),conditions=[(f"mpu.el{level}.regions",n+1)],fields=fields)
         for name,op1,crm,access in [("pmccntr",0,9,"rw"),("cntpct",0,14,"ro"),("cntvct",1,14,"ro"),("cntp_cval",2,14,"rw"),("cntv_cval",3,14,"rw"),("cntvoff",4,14,"rw"),("cnthp_cval",6,14,"rw")]:
             reg(name,"pmu" if name=="pmccntr" else "timer",bits=64,access=access,kind="cp15_64",params=dict(cp=15,op1=op1,crm=crm))
-        for bank in [0,1]:
-            for n,minimum in [(1,6),(2,7),(3,7)]:
-                reg(f"icc_ap{bank}r{n}","gic",kind="cp15",params=dict(cp=15,op1=0,crn=12,crm=8+bank,op2=(4 if bank==0 else 0)+n),conditions=[("icc.physical.prebits",minimum)])
+        for bank in range(2):
+            for n in range(4):
+                reg(f"icv_ap{bank}r{n}","gic_icv",kind="alias",params=dict(source=f"ich_ap{bank}r{n}",offset=0))
+        for name,op1,crn,crm,op2 in [("icc_eoir0",0,12,8,1),("icc_eoir1",0,12,12,1),("icc_dir",0,12,11,1)]:
+            reg(name,"gic_icc",access="wo",kind="cp15",params=dict(cp=15,op1=op1,crn=crn,crm=crm,op2=op2))
+        for name,op1 in [("icc_sgi0r",2),("icc_sgi1r",0),("icc_asgi1r",1)]:
+            reg(name,"gic_icc",bits=64,access="wo",kind="cp15_64",params=dict(cp=15,op1=op1,crm=12))
         for n in range(4):
             for typename,crm in [("pmevcntr",8),("pmevtyper",12)]:
                 reg(f"{typename}{n}","pmu",kind="cp15",params=dict(cp=15,op1=0,crn=14,crm=crm,op2=n),conditions=[("pmu.counters",n+1)])

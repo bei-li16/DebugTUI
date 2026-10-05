@@ -2010,6 +2010,7 @@ mod tests {
                     completed_ms: None,
                     timer: None,
                     pmu: None,
+                    gic: None,
                     route: crate::registers::provenance::Route::TclRegister {
                         endpoint: "127.0.0.1:6666".into(),
                         target: "cpu0".into(),
@@ -2137,6 +2138,41 @@ mod tests {
             gdb_names: vec![],
             notes: vec![],
         };
+        let entry = probe
+            .samples
+            .iter_mut()
+            .find(|s| s.id == "icc_ctlr")
+            .unwrap();
+        let wire = "view physical_icc midr 0x411fd134 dscr 0x01000200 dspsr 0xa2000410 dlr 0x81234568 id_pfr1 0x10111011 icc_hsre 0x0000000f icc_sre 0x00000007 icc_ctlr 0x00000400 ich_vtr 0x90180003 hcr 0x00000038 ich_hcr 0x00007c01 hstr 0x00001000 value 0x00000400";
+        let mut provenance = crate::registers::provenance::Provenance::declared(
+            &crate::registers::Catalogue::builtin("cortex-r52")
+                .unwrap()
+                .register("icc_ctlr")
+                .unwrap()
+                .reader,
+        );
+        provenance.access = Some(crate::registers::provenance::Access {
+            gic: Some(
+                crate::registers::gic::Response::parse(wire, "icc_ctlr", 32)
+                    .unwrap()
+                    .evidence,
+            ),
+            timer: None,
+            pmu: None,
+            route: crate::registers::provenance::Route::TclRegister {
+                endpoint: "localhost:1".into(),
+                target: "cpu0".into(),
+                operation: "GIC read icc_ctlr".into(),
+            },
+            phase: crate::registers::provenance::Phase::Responded,
+            command: "aarch64 gic icc_ctlr".into(),
+            context: probe.context.clone(),
+            timestamp_ms: 31,
+            completed_ms: Some(32),
+        });
+        entry.source = "openocd:aarch64 gic".into();
+        entry.view = crate::registers::SampleView::PhysicalCore;
+        entry.provenance = Some(provenance);
         probe.decode();
         let (engine, requests) = engine();
         app.probe_registers(Some(&engine));

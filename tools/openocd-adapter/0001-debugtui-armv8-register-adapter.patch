@@ -1,8 +1,8 @@
 diff --git a/src/target/Makefile.am b/src/target/Makefile.am
-index 3d855ab..18643b1 100644
+index 3d855ab..b830cb1 100644
 --- a/src/target/Makefile.am
 +++ b/src/target/Makefile.am
-@@ -187,6 +187,12 @@ ARC_SRC = \
+@@ -187,6 +187,13 @@ ARC_SRC = \
  	%D%/armv7m_trace.h \
  	%D%/armv8.h \
  	%D%/armv8_dpm.h \
@@ -11,15 +11,16 @@ index 3d855ab..18643b1 100644
 +	%D%/armv8_debugtui_vfp.h \
 +	%D%/armv8_debugtui_vfp_write.h \
 +	%D%/armv8_debugtui_timer.h \
++	%D%/armv8_debugtui_gic.h \
 +	%D%/armv8_debugtui_pmu.h \
  	%D%/armv8_opcodes.h \
  	%D%/armv8_cache.h \
  	%D%/avrt.h \
 diff --git a/src/target/aarch64.c b/src/target/aarch64.c
-index 19ab923..6c55e1b 100644
+index 19ab923..64f772a 100644
 --- a/src/target/aarch64.c
 +++ b/src/target/aarch64.c
-@@ -15,6 +15,11 @@
+@@ -15,6 +15,12 @@
  #include "target_request.h"
  #include "target_type.h"
  #include "armv8_opcodes.h"
@@ -28,10 +29,11 @@ index 19ab923..6c55e1b 100644
 +#include "armv8_debugtui_vfp_write.h"
 +#include "armv8_debugtui_timer.h"
 +#include "armv8_debugtui_pmu.h"
++#include "armv8_debugtui_gic.h"
  #include "armv8_cache.h"
  #include "arm_coresight.h"
  #include "arm_semihosting.h"
-@@ -3154,6 +3159,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3154,6 +3160,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  		command_print(CMD, "%s: not an ARM", target_name(target));
  		return ERROR_FAIL;
  	}
@@ -42,7 +44,7 @@ index 19ab923..6c55e1b 100644
  
  	if (target->state != TARGET_HALTED) {
  		command_print(CMD, "Error: [%s] not halted", target_name(target));
-@@ -3212,16 +3221,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3212,16 +3222,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  
  		/* NOTE: parameters reordered! */
  		/* ARMV4_5_MCR(cpnum, op1, 0, crn, crm, op2) */
@@ -71,7 +73,7 @@ index 19ab923..6c55e1b 100644
  
  		command_print(CMD, "0x%" PRIx32, value);
  	}
-@@ -3229,7 +3246,384 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3229,7 +3247,440 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  	return ERROR_OK;
  }
  
@@ -362,9 +364,7 @@ index 19ab923..6c55e1b 100644
 +		return retval == ERROR_OK ? ERROR_FAIL : retval;
 +	}
 +	if (retval > 0) {
-+		const char *reason = retval == DEBUGTUI_PMU_RESTRICTED ? "access-restricted" :
-+			retval == DEBUGTUI_PMU_ACCESS_UNKNOWN ? "access-unknown" : "reader-unsupported";
-+		command_print(CMD, "debugtui-timer:%s", reason);
++		command_print(CMD, "%s", armv8_debugtui_pmu_reason(retval));
 +		return retval == DEBUGTUI_PMU_UNSUPPORTED ? ERROR_TARGET_INVALID : ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
 +	}
 +	if (retval != ERROR_OK)
@@ -377,7 +377,65 @@ index 19ab923..6c55e1b 100644
 +	return ERROR_OK;
 +}
 +
++COMMAND_HANDLER(aarch64_debugtui_gic_protocol_command)
++{
++	if (CMD_ARGC)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	command_print(CMD, "%s", DEBUGTUI_GIC_PROTOCOL);
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(aarch64_debugtui_gic_command)
++{
++	if (CMD_ARGC != 1)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	const struct armv8_debugtui_gic_register *reg = armv8_debugtui_gic_find(CMD_ARGV[0]);
++	if (!reg)
++		return ERROR_COMMAND_ARGUMENT_INVALID;
++	struct target *target = get_current_target(CMD_CTX);
++	if (!target || !target_was_examined(target))
++		return ERROR_TARGET_NOT_EXAMINED;
++	struct arm *arm = target_to_arm(target);
++	if (!is_arm(arm) || !arm->arch_info || !is_armv8(arm->arch_info) || !arm->dpm)
++		return ERROR_TARGET_INVALID;
++	if (target->state != TARGET_HALTED)
++		return ERROR_TARGET_NOT_HALTED;
++	struct armv8_debugtui_gic_result result;
++	bool uncertain = false;
++	int retval = armv8_dpm_debugtui_gic(arm->dpm, reg, &result, &uncertain);
++	if (uncertain) {
++		target->state = TARGET_UNKNOWN;
++		command_print(CMD, "Core state restoration failed: GIC outcome unknown; reconnect required");
++		return retval == ERROR_OK ? ERROR_FAIL : retval;
++	}
++	if (retval > 0) {
++		command_print(CMD, "%s", armv8_debugtui_gic_reason(retval));
++		return retval == DEBUGTUI_GIC_UNSUPPORTED ? ERROR_TARGET_INVALID : ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
++	}
++	if (retval != ERROR_OK)
++		return retval;
++	command_print(CMD, "view %s midr 0x%08" PRIx32 " dscr 0x%08" PRIx32
++		" dspsr 0x%08" PRIx32 " dlr 0x%08" PRIx32 " id_pfr1 0x%08" PRIx32
++		" icc_hsre 0x%08" PRIx32 " icc_sre 0x%08" PRIx32 " icc_ctlr 0x%08" PRIx32
++		" ich_vtr 0x%08" PRIx32 " hcr 0x%08" PRIx32 " ich_hcr 0x%08" PRIx32
++		" hstr 0x%08" PRIx32 " value 0x%08" PRIx32,
++		reg->hyp ? "hypervisor_ich" : "physical_icc", result.midr, result.dscr,
++		result.dspsr, result.dlr, result.id_pfr1, result.icc_hsre, result.icc_sre,
++		result.icc_ctlr, result.ich_vtr, result.hcr, result.ich_hcr, result.hstr, result.value);
++	return ERROR_OK;
++}
++
  static const struct command_registration aarch64_exec_command_handlers[] = {
++	{
++		.name = "debugtui_gic_protocol", .mode = COMMAND_ANY,
++		.handler = aarch64_debugtui_gic_protocol_command,
++		.help = "report observational GIC protocol without target access", .usage = "",
++	},
++	{
++		.name = "gic", .mode = COMMAND_EXEC, .handler = aarch64_debugtui_gic_command,
++		.help = "read R52 physical ICC / Hyp ICH with fresh capacity; no acknowledgement or enables",
++		.usage = "icc_ctlr|icc_sre|icc_hsre|icc_pmr|icc_rpr|icc_bpr0|icc_bpr1|icc_igrpen0|icc_igrpen1|icc_hppir0|icc_hppir1|icc_ap0r0..3|icc_ap1r0..3|ich_vtr|ich_hcr|ich_misr|ich_eisr|ich_elrsr|ich_vmcr|ich_ap0r0..3|ich_ap1r0..3|ich_lr0..3|ich_lrc0..3|icc_iar0|icc_iar1",
++	},
 +	{
 +		.name = "debugtui_pmu_protocol", .mode = COMMAND_ANY,
 +		.handler = aarch64_debugtui_pmu_protocol_command,
@@ -676,12 +734,206 @@ index 0000000..f293869
 +}
 +
 +#endif
+diff --git a/src/target/armv8_debugtui_gic.h b/src/target/armv8_debugtui_gic.h
+new file mode 100644
+index 0000000..b4bec2a
+--- /dev/null
++++ b/src/target/armv8_debugtui_gic.h
+@@ -0,0 +1,188 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_GIC_H
++#define OPENOCD_TARGET_ARMV8_DEBUGTUI_GIC_H
++
++#include "armv8_debugtui_timer.h"
++
++#define DEBUGTUI_GIC_PROTOCOL "debugtui-armv8-gic-1 external-identity current-el fresh-capacity physical-icc hyp-ich no-ack no-enable stop-on-fault"
++#define DEBUGTUI_GIC_UNSUPPORTED 1
++#define DEBUGTUI_GIC_RESTRICTED 2
++#define DEBUGTUI_GIC_ACCESS_UNKNOWN 3
++#define DEBUGTUI_GIC_NOT_IMPLEMENTED 4
++
++struct armv8_debugtui_gic_register {
++	const char *name;
++	unsigned int op1, crn, crm, op2;
++	bool hyp, implemented, acknowledge;
++};
++/* R52 TRM Tables 10-69/80, 10-71/94. LR/LRC are independent 32-bit
++ * registers on this implementation, not a synthesized 64-bit MRRC view. */
++static const struct armv8_debugtui_gic_register armv8_debugtui_gic_registers[] = {
++	{"icc_ctlr", 0, 12, 12, 4, false, true, false},
++	{"icc_sre", 0, 12, 12, 5, false, true, false},
++	{"icc_hsre", 4, 12, 9, 5, false, true, false},
++	{"icc_pmr", 0, 4, 6, 0, false, true, false},
++	{"icc_rpr", 0, 12, 11, 3, false, true, false},
++	{"icc_bpr0", 0, 12, 8, 3, false, true, false},
++	{"icc_bpr1", 0, 12, 12, 3, false, true, false},
++	{"icc_igrpen0", 0, 12, 12, 6, false, true, false},
++	{"icc_igrpen1", 0, 12, 12, 7, false, true, false},
++	{"icc_hppir0", 0, 12, 8, 2, false, true, false},
++	{"icc_hppir1", 0, 12, 12, 2, false, true, false},
++	{"icc_ap0r0", 0, 12, 8, 4, false, true, false},
++	{"icc_ap0r1", 0, 12, 8, 5, false, false, false},
++	{"icc_ap0r2", 0, 12, 8, 6, false, false, false},
++	{"icc_ap0r3", 0, 12, 8, 7, false, false, false},
++	{"icc_ap1r0", 0, 12, 9, 0, false, true, false},
++	{"icc_ap1r1", 0, 12, 9, 1, false, false, false},
++	{"icc_ap1r2", 0, 12, 9, 2, false, false, false},
++	{"icc_ap1r3", 0, 12, 9, 3, false, false, false},
++	{"ich_vtr", 4, 12, 11, 1, true, true, false},
++	{"ich_hcr", 4, 12, 11, 0, true, true, false},
++	{"ich_misr", 4, 12, 11, 2, true, true, false},
++	{"ich_eisr", 4, 12, 11, 3, true, true, false},
++	{"ich_elrsr", 4, 12, 11, 5, true, true, false},
++	{"ich_vmcr", 4, 12, 11, 7, true, true, false},
++	{"ich_ap0r0", 4, 12, 8, 0, true, true, false},
++	{"ich_ap0r1", 4, 12, 8, 1, true, false, false},
++	{"ich_ap0r2", 4, 12, 8, 2, true, false, false},
++	{"ich_ap0r3", 4, 12, 8, 3, true, false, false},
++	{"ich_ap1r0", 4, 12, 9, 0, true, true, false},
++	{"ich_ap1r1", 4, 12, 9, 1, true, false, false},
++	{"ich_ap1r2", 4, 12, 9, 2, true, false, false},
++	{"ich_ap1r3", 4, 12, 9, 3, true, false, false},
++	{"ich_lr0", 4, 12, 12, 0, true, true, false},
++	{"ich_lr1", 4, 12, 12, 1, true, true, false},
++	{"ich_lr2", 4, 12, 12, 2, true, true, false},
++	{"ich_lr3", 4, 12, 12, 3, true, true, false},
++	{"ich_lrc0", 4, 12, 14, 0, true, true, false},
++	{"ich_lrc1", 4, 12, 14, 1, true, true, false},
++	{"ich_lrc2", 4, 12, 14, 2, true, true, false},
++	{"ich_lrc3", 4, 12, 14, 3, true, true, false},
++	{"icc_iar0", 0, 12, 8, 0, false, true, true},
++	{"icc_iar1", 0, 12, 12, 0, false, true, true},
++};
++struct armv8_debugtui_gic_result {
++	uint32_t midr, dscr, dspsr, dlr, id_pfr1, icc_hsre, icc_sre, icc_ctlr;
++	uint32_t ich_vtr, hcr, ich_hcr, hstr, value;
++};
++static inline const struct armv8_debugtui_gic_register *armv8_debugtui_gic_find(const char *name)
++{
++	for (unsigned int i = 0; i < sizeof(armv8_debugtui_gic_registers) / sizeof(armv8_debugtui_gic_registers[0]); i++)
++		if (strcmp(name, armv8_debugtui_gic_registers[i].name) == 0)
++			return &armv8_debugtui_gic_registers[i];
++	return NULL;
++}
++static inline const char *armv8_debugtui_gic_reason(int reason)
++{
++	if (reason == DEBUGTUI_GIC_RESTRICTED)
++		return "debugtui-gic:access-restricted";
++	if (reason == DEBUGTUI_GIC_ACCESS_UNKNOWN)
++		return "debugtui-gic:access-unknown";
++	if (reason == DEBUGTUI_GIC_NOT_IMPLEMENTED)
++		return "debugtui-gic:not-implemented";
++	return "debugtui-gic:reader-unsupported";
++}
++static inline int armv8_debugtui_gic_transfer(const struct armv8_debugtui_timer_io *io,
++	const struct armv8_debugtui_gic_register *reg,
++	struct armv8_debugtui_gic_result *result, bool *uncertain)
++{
++	struct armv8_debugtui_gic_result sample = {0};
++	uint32_t after;
++	*uncertain = false;
++	/* IAR is an interrupt acknowledgement, not an observational read.
++	 * No legacy fallback, implicit acknowledgement or interrupt-control writes. */
++	if (reg->acknowledge)
++		return DEBUGTUI_GIC_RESTRICTED;
++	int retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_DSCR, &sample.dscr);
++	if (retval != 0)
++		goto fault;
++	if (!armv8_debugtui_timer_state_valid(sample.dscr)) {
++		if (sample.dscr & DEBUGTUI_TIMER_FAULT_MASK) {
++			retval = -1;
++			goto fault;
++		}
++		return ((sample.dscr >> 8) & 3) == 2 && (sample.dscr & (1u << 16)) ?
++			DEBUGTUI_GIC_RESTRICTED : DEBUGTUI_GIC_UNSUPPORTED;
++	}
++	retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_MIDR, &sample.midr);
++	if (retval != 0)
++		goto fault;
++	if ((sample.midr >> 24) != 0x41 || ((sample.midr >> 16) & 15) != 15 ||
++		((sample.midr >> 4) & 0xfff) != 0xd13)
++		return DEBUGTUI_GIC_UNSUPPORTED;
++	/* At EL1 HCR.IMO/FMO redirects ICC to ICV and HSTR/ICH_HCR can trap.
++	 * Below EL2 their permissions cannot be proven without changing EL. */
++	if (((sample.dscr >> 8) & 3) != 2)
++		return DEBUGTUI_GIC_ACCESS_UNKNOWN;
++	const uint32_t opcodes[] = {
++		DEBUGTUI_READ_DSPSR, DEBUGTUI_READ_DLR,
++		ARMV4_5_MRC(15, 0, 0, 0, 1, 1), /* ID_PFR1 */
++		ARMV4_5_MRC(15, 4, 0, 12, 9, 5), /* ICC_HSRE */
++		ARMV4_5_MRC(15, 0, 0, 12, 12, 5), /* ICC_SRE */
++		ARMV4_5_MRC(15, 0, 0, 12, 12, 4), /* physical ICC_CTLR at EL2 */
++		ARMV4_5_MRC(15, 4, 0, 12, 11, 1), /* virtual ICH_VTR */
++		ARMV4_5_MRC(15, 4, 0, 1, 1, 0), /* HCR, do not change redirection */
++		ARMV4_5_MRC(15, 4, 0, 12, 11, 0), /* ICH_HCR */
++		ARMV4_5_MRC(15, 4, 0, 1, 1, 3), /* HSTR */
++	};
++	uint32_t *proof[] = {&sample.dspsr, &sample.dlr, &sample.id_pfr1,
++		&sample.icc_hsre, &sample.icc_sre, &sample.icc_ctlr, &sample.ich_vtr,
++		&sample.hcr, &sample.ich_hcr, &sample.hstr};
++	for (unsigned int i = 0; i < 10; i++) {
++		retval = armv8_debugtui_mrc_mcr_transfer(&io->core, opcodes[i], false, proof[i]);
++		if (retval != 0)
++			goto fault;
++		/* Confirm implementation/enables before subsequent GIC opcodes. */
++		if ((i == 2 && (sample.id_pfr1 >> 28) != 1) ||
++			(i == 3 && sample.icc_hsre != 15) || (i == 4 && sample.icc_sre != 7) ||
++			(i == 5 && (sample.icc_ctlr & ~UINT32_C(3)) != UINT32_C(0x400)) ||
++			(i == 6 && sample.ich_vtr != UINT32_C(0x90180003)))
++			return DEBUGTUI_GIC_UNSUPPORTED;
++	}
++	if ((sample.id_pfr1 >> 28) != 1 || sample.icc_hsre != 15 || sample.icc_sre != 7 ||
++		(sample.icc_ctlr & ~UINT32_C(3)) != UINT32_C(0x400) || sample.ich_vtr != UINT32_C(0x90180003))
++		return DEBUGTUI_GIC_UNSUPPORTED;
++	if (!reg->implemented)
++		return DEBUGTUI_GIC_NOT_IMPLEMENTED;
++	retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_DSCR, &after);
++	if (retval != 0)
++		goto fault;
++	if (!armv8_debugtui_timer_state_valid(after) || ((sample.dscr ^ after) & DEBUGTUI_TIMER_STATE_MASK)) {
++		retval = -1;
++		goto fault;
++	}
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core,
++		ARMV4_5_MRC(15, reg->op1, 0, reg->crn, reg->crm, reg->op2), false, &sample.value);
++	if (retval != 0)
++		goto fault;
++	for (unsigned int i = 0; i < 10; i++) {
++		retval = armv8_debugtui_mrc_mcr_transfer(&io->core, opcodes[i], false, &after);
++		if (retval != 0)
++			goto fault;
++		if (*proof[i] != after) {
++			retval = -1;
++			goto fault;
++		}
++	}
++	retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_MIDR, &after);
++	if (retval != 0)
++		goto fault;
++	if (sample.midr != after) {
++		retval = -1;
++		goto fault;
++	}
++	retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_DSCR, &after);
++	if (retval != 0)
++		goto fault;
++	if (!armv8_debugtui_timer_state_valid(after) || ((sample.dscr ^ after) & DEBUGTUI_TIMER_STATE_MASK)) {
++		retval = -1;
++		goto fault;
++	}
++	*result = sample;
++	return 0;
++fault:
++	*uncertain = true;
++	return retval;
++}
++#endif
 diff --git a/src/target/armv8_debugtui_pmu.h b/src/target/armv8_debugtui_pmu.h
 new file mode 100644
-index 0000000..44c5696
+index 0000000..1795f7c
 --- /dev/null
 +++ b/src/target/armv8_debugtui_pmu.h
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,152 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_PMU_H
 +#define OPENOCD_TARGET_ARMV8_DEBUGTUI_PMU_H
@@ -724,6 +976,14 @@ index 0000000..44c5696
 +		if (strcmp(name, armv8_debugtui_pmu_registers[i].name) == 0)
 +			return &armv8_debugtui_pmu_registers[i];
 +	return NULL;
++}
++static inline const char *armv8_debugtui_pmu_reason(int reason)
++{
++	if (reason == DEBUGTUI_PMU_RESTRICTED)
++		return "debugtui-pmu:access-restricted";
++	if (reason == DEBUGTUI_PMU_ACCESS_UNKNOWN)
++		return "debugtui-pmu:access-unknown";
++	return "debugtui-pmu:reader-unsupported";
 +}
 +static inline int armv8_debugtui_pmu_transfer(const struct armv8_debugtui_timer_io *io,
 +	const struct armv8_debugtui_pmu_register *reg,
@@ -1347,10 +1607,10 @@ index 0000000..636b2c7
 +
 +#endif
 diff --git a/src/target/armv8_dpm.c b/src/target/armv8_dpm.c
-index 508ec97..daf939d 100644
+index 508ec97..ada41ff 100644
 --- a/src/target/armv8_dpm.c
 +++ b/src/target/armv8_dpm.c
-@@ -16,6 +16,12 @@
+@@ -16,6 +16,13 @@
  #include "breakpoints.h"
  #include "target_type.h"
  #include "armv8_opcodes.h"
@@ -1360,10 +1620,11 @@ index 508ec97..daf939d 100644
 +#include "armv8_debugtui_vfp_write.h"
 +#include "armv8_debugtui_timer.h"
 +#include "armv8_debugtui_pmu.h"
++#include "armv8_debugtui_gic.h"
  
  #include "helper/time_support.h"
  
-@@ -194,8 +200,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
+@@ -194,8 +201,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
  	return ERROR_OK;
  }
  
@@ -1374,7 +1635,7 @@ index 508ec97..daf939d 100644
  {
  	struct armv8_common *armv8 = dpm->arm->arch_info;
  	uint32_t dscr = dpm->dscr;
-@@ -203,6 +209,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -203,6 +210,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  
  	if (p_dscr)
  		dscr = *p_dscr;
@@ -1383,7 +1644,7 @@ index 508ec97..daf939d 100644
  
  	/* Wait for InstrCompl bit to be set */
  	long long then = timeval_ms();
-@@ -249,9 +257,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -249,9 +258,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  
  	if (dscr & DSCR_ERR) {
  		LOG_ERROR("Opcode 0x%08" PRIx32 ", DSCR.ERR=1, DSCR.EL=%i", opcode, dpm->last_el);
@@ -1397,7 +1658,7 @@ index 508ec97..daf939d 100644
  
  	if (p_dscr)
  		*p_dscr = dscr;
-@@ -259,6 +270,290 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -259,6 +271,318 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  	return retval;
  }
  
@@ -1668,6 +1929,34 @@ index 508ec97..daf939d 100644
 +	return retval;
 +}
 +
++int armv8_dpm_debugtui_gic(struct arm_dpm *dpm,
++	const struct armv8_debugtui_gic_register *reg,
++	struct armv8_debugtui_gic_result *result, bool *uncertain)
++{
++	*uncertain = false;
++	int retval = dpmv8_debugtui_prepare(dpm);
++	if (retval != ERROR_OK) {
++		*uncertain = retval != ERROR_TARGET_NOT_HALTED;
++		return retval;
++	}
++	struct dpmv8_debugtui_context context = {
++		.dpm = dpm,
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++	};
++	struct armv8_debugtui_timer_io io = {
++		.core = {.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
++			.write_gpr = dpmv8_debugtui_write_gpr, .execute = dpmv8_debugtui_execute},
++		.read_debug = dpmv8_debugtui_read_timer_debug,
++	};
++	retval = armv8_debugtui_gic_transfer(&io, reg, result, uncertain);
++	if (retval != ERROR_OK)
++		return retval;
++	retval = dpm->finish(dpm);
++	if (retval != ERROR_OK)
++		*uncertain = true;
++	return retval;
++}
++
 +int armv8_dpm_debugtui_isb(struct arm_dpm *dpm)
 +{
 +	int retval = dpmv8_debugtui_prepare(dpm);
@@ -1689,10 +1978,10 @@ index 508ec97..daf939d 100644
  {
  	return dpmv8_exec_opcode(dpm, opcode, NULL);
 diff --git a/src/target/armv8_dpm.h b/src/target/armv8_dpm.h
-index 19b33da..27da396 100644
+index 19b33da..299a8ea 100644
 --- a/src/target/armv8_dpm.h
 +++ b/src/target/armv8_dpm.h
-@@ -23,6 +23,36 @@ struct armv8_common;
+@@ -23,6 +23,42 @@ struct armv8_common;
   */
  int armv8_dpm_setup(struct arm_dpm *dpm);
  int armv8_dpm_initialize(struct arm_dpm *dpm);
@@ -1720,6 +2009,12 @@ index 19b33da..27da396 100644
 +int armv8_dpm_debugtui_pmu(struct arm_dpm *dpm,
 +	const struct armv8_debugtui_pmu_register *reg,
 +	struct armv8_debugtui_pmu_result *result, bool *uncertain);
++
++struct armv8_debugtui_gic_register;
++struct armv8_debugtui_gic_result;
++int armv8_dpm_debugtui_gic(struct arm_dpm *dpm,
++	const struct armv8_debugtui_gic_register *reg,
++	struct armv8_debugtui_gic_result *result, bool *uncertain);
 +
 +struct armv8_debugtui_timer_register;
 +struct armv8_debugtui_timer_result;

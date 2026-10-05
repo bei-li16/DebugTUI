@@ -564,6 +564,21 @@ id = "debug"
 name = "DEBUG"
 parent = "system"
 
+[[groups]]
+id = "gic_icc"
+name = "Physical ICC"
+parent = "gic"
+
+[[groups]]
+id = "gic_ich"
+name = "Hyp ICH"
+parent = "gic"
+
+[[groups]]
+id = "gic_icv"
+name = "Virtual ICV backing aliases"
+parent = "gic"
+
 [[registers]]
 id = "midr"
 name = "MIDR"
@@ -1338,94 +1353,229 @@ description = "Raw cycle-filter control word; no automatic filter changes."
 [[registers]]
 id = "icc_ctlr"
 name = "ICC_CTLR"
-group = "gic"
+group = "gic_icc"
 bits = 32
 access = "rw"
-description = "ICC_CTLR in the gic register group."
+description = "Physical ICC control at current Debug EL2. EL1 reads can instead be ICV_CTLR under HCR.IMO/FMO; stopped CPSR is insufficient to identify the sampled interface."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 12, op2 = 4 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "CBPR"
+segments = [{ offset = 0, width = 1 }]
+description = "Use Group 0 binary point for both groups."
+[[registers.fields]]
+name = "EOImode"
+segments = [{ offset = 1, width = 1 }]
+description = "Separate priority drop and deactivation; the reader performs neither."
+[[registers.fields]]
+name = "PRIbits"
+segments = [{ offset = 8, width = 3 }]
+description = "Physical priority bits minus one; R52 encodes 4 for five bits."
+access = "ro"
+[[registers.fields]]
+name = "IDbits"
+segments = [{ offset = 11, width = 3 }]
+description = "Physical interrupt-ID width encoding; R52 encodes zero for 16 interface bits."
+access = "ro"
 
 [[registers]]
 id = "icc_sre"
 name = "ICC_SRE"
-group = "gic"
+group = "gic_icc"
 bits = 32
 access = "rw"
-description = "ICC_SRE in the gic register group."
+description = "R52 system-register interface and bypass enables are RAO/WI; observation does not enable the interface."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 12, op2 = 5 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "SRE"
+segments = [{ offset = 0, width = 1 }]
+description = "System-register interface enabled, RAO/WI on R52."
+access = "ro"
+[[registers.fields]]
+name = "DFB"
+segments = [{ offset = 1, width = 1 }]
+description = "FIQ bypass disabled, RAO/WI."
+access = "ro"
+[[registers.fields]]
+name = "DIB"
+segments = [{ offset = 2, width = 1 }]
+description = "IRQ bypass disabled, RAO/WI."
+access = "ro"
 
 [[registers]]
 id = "icc_pmr"
 name = "ICC_PMR"
-group = "gic"
+group = "gic_icc"
 bits = 32
 access = "rw"
-description = "ICC_PMR in the gic register group."
+description = "Physical CPU interface register ICC_PMR. Observing does not change interrupt state."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 4, crm = 6, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Priority"
+segments = [{ offset = 3, width = 5 }]
+description = "Implemented priority bits; lower values have higher priority. RPR 0xff means no active physical interrupt."
+access = "rw"
 
 [[registers]]
 id = "icc_rpr"
 name = "ICC_RPR"
-group = "gic"
+group = "gic_icc"
 bits = 32
 access = "ro"
-description = "ICC_RPR in the gic register group."
+description = "Physical CPU interface register ICC_RPR. Observing does not change interrupt state."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 11, op2 = 3 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Priority"
+segments = [{ offset = 3, width = 5 }]
+description = "Implemented priority bits; lower values have higher priority. RPR 0xff means no active physical interrupt."
+access = "ro"
 
 [[registers]]
 id = "icc_ap0r0"
 name = "ICC_AP0R0"
-group = "gic"
+group = "gic_icc"
 bits = 32
 access = "rw"
-description = "ICC_AP0R0 in the gic register group."
+description = "Physical active-priority bitmap; independent of ICH_VTR virtual capacity. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 4 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icc.physical.prebits"
+min = 5
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
 
 [[registers]]
 id = "icc_ap1r0"
 name = "ICC_AP1R0"
-group = "gic"
+group = "gic_icc"
 bits = 32
 access = "rw"
-description = "ICC_AP1R0 in the gic register group."
+description = "Physical active-priority bitmap; independent of ICH_VTR virtual capacity. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 9, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icc.physical.prebits"
+min = 5
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
 
 [[registers]]
 id = "icc_iar0"
 name = "ICC_IAR0"
-group = "gic"
+group = "gic_icc"
 bits = 32
 access = "ro"
-description = "ICC_IAR0 in the gic register group."
+description = "Read acknowledges an interrupt and changes pending/active/priority state. Never read automatically; the observational adapter rejects even manual acknowledgement requests. A separate reviewed acknowledgement path is not implemented."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 0 }
 read_side_effect = true
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "INTID"
+segments = [{ offset = 0, width = 16 }]
+description = "Interrupt ID; 1023 is spurious/no pending interrupt."
+access = "ro"
 
 [[registers]]
 id = "icc_iar1"
 name = "ICC_IAR1"
-group = "gic"
+group = "gic_icc"
 bits = 32
 access = "ro"
-description = "ICC_IAR1 in the gic register group."
+description = "Read acknowledges an interrupt and changes pending/active/priority state. Never read automatically; the observational adapter rejects even manual acknowledgement requests. A separate reviewed acknowledgement path is not implemented."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 12, op2 = 0 }
 read_side_effect = true
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "INTID"
+segments = [{ offset = 0, width = 16 }]
+description = "Interrupt ID; 1023 is spurious/no pending interrupt."
+access = "ro"
 
 [[registers]]
 id = "ich_vtr"
 name = "ICH_VTR"
-group = "gic"
+group = "gic_ich"
 bits = 32
 access = "ro"
-description = "ICH_VTR in the gic register group."
+description = "Hyp virtual-interface capacity: five virtual priority/preemption bits and four list entries on R52. Never used as physical ICC AP capacity."
 reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 11, op2 = 1 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ListRegs"
+segments = [{ offset = 0, width = 5 }]
+description = "Implemented list entries minus one; R52 encodes three."
+access = "ro"
+[[registers.fields]]
+name = "TDS"
+segments = [{ offset = 19, width = 1 }]
+description = "Separate ICC_DIR trapping support."
+access = "ro"
+[[registers.fields]]
+name = "nV4"
+segments = [{ offset = 20, width = 1 }]
+description = "No GICv4 direct virtual interrupt injection."
+access = "ro"
+[[registers.fields]]
+name = "IDbits"
+segments = [{ offset = 23, width = 3 }]
+description = "Virtual interrupt-ID width encoding."
+access = "ro"
+[[registers.fields]]
+name = "PREbits"
+segments = [{ offset = 26, width = 3 }]
+description = "Virtual preemption bits minus one; independent of physical ICC."
+access = "ro"
+[[registers.fields]]
+name = "PRIbits"
+segments = [{ offset = 29, width = 3 }]
+description = "Virtual priority bits minus one; independent of physical ICC."
+access = "ro"
 
 [[registers]]
 id = "cntfrq"
@@ -1715,6 +1865,785 @@ name = "ISTATUS"
 segments = [{ offset = 2, width = 1 }]
 description = "Raw timer condition bit; meaningful only when ENABLE=1. UNKNOWN when disabled; independent of IMASK."
 access = "ro"
+
+[[registers]]
+id = "icc_hsre"
+name = "ICC_HSRE"
+group = "gic_icc"
+bits = 32
+access = "ro"
+description = "R52 system-register interface and bypass enables are RAO/WI; observation does not enable the interface."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 9, op2 = 5 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "SRE"
+segments = [{ offset = 0, width = 1 }]
+description = "System-register interface enabled, RAO/WI on R52."
+access = "ro"
+[[registers.fields]]
+name = "DFB"
+segments = [{ offset = 1, width = 1 }]
+description = "FIQ bypass disabled, RAO/WI."
+access = "ro"
+[[registers.fields]]
+name = "DIB"
+segments = [{ offset = 2, width = 1 }]
+description = "IRQ bypass disabled, RAO/WI."
+access = "ro"
+[[registers.fields]]
+name = "Enable"
+segments = [{ offset = 3, width = 1 }]
+description = "Lower exception-level access enabled, RAO/WI; other traps still apply."
+access = "ro"
+
+[[registers]]
+id = "icc_bpr0"
+name = "ICC_BPR0"
+group = "gic_icc"
+bits = 32
+access = "rw"
+description = "Physical CPU interface register ICC_BPR0. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 3 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "BinaryPoint"
+segments = [{ offset = 0, width = 3 }]
+description = "Priority-group/subpriority split; does not change maximum implemented AP capacity."
+
+[[registers]]
+id = "icc_bpr1"
+name = "ICC_BPR1"
+group = "gic_icc"
+bits = 32
+access = "rw"
+description = "Physical CPU interface register ICC_BPR1. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 12, op2 = 3 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "BinaryPoint"
+segments = [{ offset = 0, width = 3 }]
+description = "Priority-group/subpriority split; does not change maximum implemented AP capacity."
+
+[[registers]]
+id = "icc_igrpen0"
+name = "ICC_IGRPEN0"
+group = "gic_icc"
+bits = 32
+access = "rw"
+description = "Physical CPU interface register ICC_IGRPEN0. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 12, op2 = 6 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Enable"
+segments = [{ offset = 0, width = 1 }]
+description = "Group interrupt signalling enable; never changed by observation."
+
+[[registers]]
+id = "icc_igrpen1"
+name = "ICC_IGRPEN1"
+group = "gic_icc"
+bits = 32
+access = "rw"
+description = "Physical CPU interface register ICC_IGRPEN1. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 12, op2 = 7 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Enable"
+segments = [{ offset = 0, width = 1 }]
+description = "Group interrupt signalling enable; never changed by observation."
+
+[[registers]]
+id = "icc_hppir0"
+name = "ICC_HPPIR0"
+group = "gic_icc"
+bits = 32
+access = "ro"
+description = "Physical CPU interface register ICC_HPPIR0. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 2 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "INTID"
+segments = [{ offset = 0, width = 16 }]
+description = "Interrupt ID; 1023 is spurious/no pending interrupt."
+access = "ro"
+
+[[registers]]
+id = "icc_hppir1"
+name = "ICC_HPPIR1"
+group = "gic_icc"
+bits = 32
+access = "ro"
+description = "Physical CPU interface register ICC_HPPIR1. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 12, op2 = 2 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "INTID"
+segments = [{ offset = 0, width = 16 }]
+description = "Interrupt ID; 1023 is spurious/no pending interrupt."
+access = "ro"
+
+[[registers]]
+id = "icc_ap0r1"
+name = "ICC_AP0R1"
+group = "gic_icc"
+bits = 32
+access = "rw"
+description = "Physical active-priority bitmap; independent of ICH_VTR virtual capacity. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 5 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icc.physical.prebits"
+min = 6
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "icc_ap0r2"
+name = "ICC_AP0R2"
+group = "gic_icc"
+bits = 32
+access = "rw"
+description = "Physical active-priority bitmap; independent of ICH_VTR virtual capacity. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 6 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icc.physical.prebits"
+min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "icc_ap0r3"
+name = "ICC_AP0R3"
+group = "gic_icc"
+bits = 32
+access = "rw"
+description = "Physical active-priority bitmap; independent of ICH_VTR virtual capacity. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 7 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icc.physical.prebits"
+min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "icc_ap1r1"
+name = "ICC_AP1R1"
+group = "gic_icc"
+bits = 32
+access = "rw"
+description = "Physical active-priority bitmap; independent of ICH_VTR virtual capacity. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 9, op2 = 1 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icc.physical.prebits"
+min = 6
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "icc_ap1r2"
+name = "ICC_AP1R2"
+group = "gic_icc"
+bits = 32
+access = "rw"
+description = "Physical active-priority bitmap; independent of ICH_VTR virtual capacity. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 9, op2 = 2 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icc.physical.prebits"
+min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "icc_ap1r3"
+name = "ICC_AP1R3"
+group = "gic_icc"
+bits = 32
+access = "rw"
+description = "Physical active-priority bitmap; independent of ICH_VTR virtual capacity. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 9, op2 = 3 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icc.physical.prebits"
+min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_hcr"
+name = "ICH_HCR"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Hyp control/backing register ICH_HCR. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 11, op2 = 0 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_misr"
+name = "ICH_MISR"
+group = "gic_ich"
+bits = 32
+access = "ro"
+description = "Hyp control/backing register ICH_MISR. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 11, op2 = 2 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "ro"
+
+[[registers]]
+id = "ich_eisr"
+name = "ICH_EISR"
+group = "gic_ich"
+bits = 32
+access = "ro"
+description = "Hyp control/backing register ICH_EISR. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 11, op2 = 3 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ListBitmap"
+segments = [{ offset = 0, width = 4 }]
+description = "Status bits for four implemented list entries."
+access = "ro"
+
+[[registers]]
+id = "ich_elrsr"
+name = "ICH_ELRSR"
+group = "gic_ich"
+bits = 32
+access = "ro"
+description = "Hyp control/backing register ICH_ELRSR. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 11, op2 = 5 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ListBitmap"
+segments = [{ offset = 0, width = 4 }]
+description = "Status bits for four implemented list entries."
+access = "ro"
+
+[[registers]]
+id = "ich_vmcr"
+name = "ICH_VMCR"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Hyp control/backing register ICH_VMCR. Observing does not change interrupt state."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 11, op2 = 7 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_ap0r0"
+name = "ICH_AP0R0"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Virtual active-priority backing storage in ICH; aliases ICV at EL1. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 8, op2 = 0 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
+min = 5
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_ap0r1"
+name = "ICH_AP0R1"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Virtual active-priority backing storage in ICH; aliases ICV at EL1. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 8, op2 = 1 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
+min = 6
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_ap0r2"
+name = "ICH_AP0R2"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Virtual active-priority backing storage in ICH; aliases ICV at EL1. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 8, op2 = 2 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
+min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_ap0r3"
+name = "ICH_AP0R3"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Virtual active-priority backing storage in ICH; aliases ICV at EL1. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 8, op2 = 3 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
+min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_ap1r0"
+name = "ICH_AP1R0"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Virtual active-priority backing storage in ICH; aliases ICV at EL1. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 9, op2 = 0 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
+min = 5
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_ap1r1"
+name = "ICH_AP1R1"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Virtual active-priority backing storage in ICH; aliases ICV at EL1. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 9, op2 = 1 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
+min = 6
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_ap1r2"
+name = "ICH_AP1R2"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Virtual active-priority backing storage in ICH; aliases ICV at EL1. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 9, op2 = 2 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
+min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_ap1r3"
+name = "ICH_AP1R3"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Virtual active-priority backing storage in ICH; aliases ICV at EL1. R52 implements only bank index 0; indices 1-3 remain architectural definitions and are never probed after capacity proves absence. Bitmap bits represent priorities, not interrupt IDs; BPR controls effective grouping."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 9, op2 = 3 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
+min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "ich_lr0"
+name = "ICH_LR0"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "32-bit virtual interrupt ID storage in ICH_LR; upper ID bits are RAZ/WI on R52. LR and LRC are separately sampled registers on R52; no atomic 64-bit pair is synthesized."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 12, op2 = 0 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "ich.list_registers"
+min = 1
+[[registers.fields]]
+name = "vINTID"
+segments = [{ offset = 0, width = 16 }]
+description = "Virtual interrupt identifier, separate from the LRC control sample."
+
+[[registers]]
+id = "ich_lr1"
+name = "ICH_LR1"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "32-bit virtual interrupt ID storage in ICH_LR; upper ID bits are RAZ/WI on R52. LR and LRC are separately sampled registers on R52; no atomic 64-bit pair is synthesized."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 12, op2 = 1 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "ich.list_registers"
+min = 2
+[[registers.fields]]
+name = "vINTID"
+segments = [{ offset = 0, width = 16 }]
+description = "Virtual interrupt identifier, separate from the LRC control sample."
+
+[[registers]]
+id = "ich_lr2"
+name = "ICH_LR2"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "32-bit virtual interrupt ID storage in ICH_LR; upper ID bits are RAZ/WI on R52. LR and LRC are separately sampled registers on R52; no atomic 64-bit pair is synthesized."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 12, op2 = 2 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "ich.list_registers"
+min = 3
+[[registers.fields]]
+name = "vINTID"
+segments = [{ offset = 0, width = 16 }]
+description = "Virtual interrupt identifier, separate from the LRC control sample."
+
+[[registers]]
+id = "ich_lr3"
+name = "ICH_LR3"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "32-bit virtual interrupt ID storage in ICH_LR; upper ID bits are RAZ/WI on R52. LR and LRC are separately sampled registers on R52; no atomic 64-bit pair is synthesized."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 12, op2 = 3 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "ich.list_registers"
+min = 4
+[[registers.fields]]
+name = "vINTID"
+segments = [{ offset = 0, width = 16 }]
+description = "Virtual interrupt identifier, separate from the LRC control sample."
+
+[[registers]]
+id = "ich_lrc0"
+name = "ICH_LRC0"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Separate 32-bit ICH_LRC control/physical-ID part of one virtual interrupt list entry. LR and LRC are separately sampled registers on R52; no atomic 64-bit pair is synthesized."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 14, op2 = 0 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "ich.list_registers"
+min = 1
+[[registers.fields]]
+name = "PhysicalIdOrEOI"
+segments = [{ offset = 0, width = 10 }]
+description = "HW=1: physical INTID; HW=0: bit 9 is EOI maintenance control, other bits reserved."
+[[registers.fields]]
+name = "Priority"
+segments = [{ offset = 19, width = 5 }]
+description = "Virtual interrupt priority."
+[[registers.fields]]
+name = "Group"
+segments = [{ offset = 28, width = 1 }]
+description = "Virtual interrupt group."
+[[registers.fields]]
+name = "HW"
+segments = [{ offset = 29, width = 1 }]
+description = "Hardware-backed virtual interrupt."
+[[registers.fields]]
+name = "State"
+segments = [{ offset = 30, width = 2 }]
+description = "Virtual interrupt state; observing does not acknowledge or deactivate."
+
+[[registers]]
+id = "ich_lrc1"
+name = "ICH_LRC1"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Separate 32-bit ICH_LRC control/physical-ID part of one virtual interrupt list entry. LR and LRC are separately sampled registers on R52; no atomic 64-bit pair is synthesized."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 14, op2 = 1 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "ich.list_registers"
+min = 2
+[[registers.fields]]
+name = "PhysicalIdOrEOI"
+segments = [{ offset = 0, width = 10 }]
+description = "HW=1: physical INTID; HW=0: bit 9 is EOI maintenance control, other bits reserved."
+[[registers.fields]]
+name = "Priority"
+segments = [{ offset = 19, width = 5 }]
+description = "Virtual interrupt priority."
+[[registers.fields]]
+name = "Group"
+segments = [{ offset = 28, width = 1 }]
+description = "Virtual interrupt group."
+[[registers.fields]]
+name = "HW"
+segments = [{ offset = 29, width = 1 }]
+description = "Hardware-backed virtual interrupt."
+[[registers.fields]]
+name = "State"
+segments = [{ offset = 30, width = 2 }]
+description = "Virtual interrupt state; observing does not acknowledge or deactivate."
+
+[[registers]]
+id = "ich_lrc2"
+name = "ICH_LRC2"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Separate 32-bit ICH_LRC control/physical-ID part of one virtual interrupt list entry. LR and LRC are separately sampled registers on R52; no atomic 64-bit pair is synthesized."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 14, op2 = 2 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "ich.list_registers"
+min = 3
+[[registers.fields]]
+name = "PhysicalIdOrEOI"
+segments = [{ offset = 0, width = 10 }]
+description = "HW=1: physical INTID; HW=0: bit 9 is EOI maintenance control, other bits reserved."
+[[registers.fields]]
+name = "Priority"
+segments = [{ offset = 19, width = 5 }]
+description = "Virtual interrupt priority."
+[[registers.fields]]
+name = "Group"
+segments = [{ offset = 28, width = 1 }]
+description = "Virtual interrupt group."
+[[registers.fields]]
+name = "HW"
+segments = [{ offset = 29, width = 1 }]
+description = "Hardware-backed virtual interrupt."
+[[registers.fields]]
+name = "State"
+segments = [{ offset = 30, width = 2 }]
+description = "Virtual interrupt state; observing does not acknowledge or deactivate."
+
+[[registers]]
+id = "ich_lrc3"
+name = "ICH_LRC3"
+group = "gic_ich"
+bits = 32
+access = "rw"
+description = "Separate 32-bit ICH_LRC control/physical-ID part of one virtual interrupt list entry. LR and LRC are separately sampled registers on R52; no atomic 64-bit pair is synthesized."
+reader = { kind = "cp15", cp = 15, op1 = 4, crn = 12, crm = 14, op2 = 3 }
+access_condition = "Halted physical core. The observational adapter proves current Debug EL2, external R52 identity, interface enables and independent physical/virtual capacities. Below EL2 HCR.IMO/FMO can redirect ICC to ICV and HSTR/ICH_HCR can trap; permission remains Unknown. No interrupt acknowledgement, enable or control writes."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "ich.list_registers"
+min = 4
+[[registers.fields]]
+name = "PhysicalIdOrEOI"
+segments = [{ offset = 0, width = 10 }]
+description = "HW=1: physical INTID; HW=0: bit 9 is EOI maintenance control, other bits reserved."
+[[registers.fields]]
+name = "Priority"
+segments = [{ offset = 19, width = 5 }]
+description = "Virtual interrupt priority."
+[[registers.fields]]
+name = "Group"
+segments = [{ offset = 28, width = 1 }]
+description = "Virtual interrupt group."
+[[registers.fields]]
+name = "HW"
+segments = [{ offset = 29, width = 1 }]
+description = "Hardware-backed virtual interrupt."
+[[registers.fields]]
+name = "State"
+segments = [{ offset = 30, width = 2 }]
+description = "Virtual interrupt state; observing does not acknowledge or deactivate."
 
 [[registers]]
 id = "prbar0"
@@ -4437,82 +5366,256 @@ segments = [{ offset = 0, width = 64 }]
 description = "Complete comparator storage; independent read time differs from counter/TVAL samples."
 
 [[registers]]
-id = "icc_ap0r1"
-name = "ICC_AP0R1"
-group = "gic"
+id = "icv_ap0r0"
+name = "ICV_AP0R0"
+group = "gic_icv"
 bits = 32
 access = "rw"
-description = "ICC_AP0R1 in the gic register group."
-reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 5 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+description = "Virtual active-priority alias from the same ICH backing sample at EL2. No ICV accessor is executed at EL2 and no Guest stack-frame value is substituted."
+reader = { kind = "alias", source = "ich_ap0r0", offset = 0 }
 [[registers.conditions]]
-fact = "icc.physical.prebits"
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
+min = 5
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "icv_ap0r1"
+name = "ICV_AP0R1"
+group = "gic_icv"
+bits = 32
+access = "rw"
+description = "Virtual active-priority alias from the same ICH backing sample at EL2. No ICV accessor is executed at EL2 and no Guest stack-frame value is substituted."
+reader = { kind = "alias", source = "ich_ap0r1", offset = 0 }
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
 min = 6
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
 
 [[registers]]
-id = "icc_ap0r2"
-name = "ICC_AP0R2"
-group = "gic"
+id = "icv_ap0r2"
+name = "ICV_AP0R2"
+group = "gic_icv"
 bits = 32
 access = "rw"
-description = "ICC_AP0R2 in the gic register group."
-reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 6 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+description = "Virtual active-priority alias from the same ICH backing sample at EL2. No ICV accessor is executed at EL2 and no Guest stack-frame value is substituted."
+reader = { kind = "alias", source = "ich_ap0r2", offset = 0 }
 [[registers.conditions]]
-fact = "icc.physical.prebits"
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
 min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
 
 [[registers]]
-id = "icc_ap0r3"
-name = "ICC_AP0R3"
-group = "gic"
+id = "icv_ap0r3"
+name = "ICV_AP0R3"
+group = "gic_icv"
 bits = 32
 access = "rw"
-description = "ICC_AP0R3 in the gic register group."
-reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 7 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+description = "Virtual active-priority alias from the same ICH backing sample at EL2. No ICV accessor is executed at EL2 and no Guest stack-frame value is substituted."
+reader = { kind = "alias", source = "ich_ap0r3", offset = 0 }
 [[registers.conditions]]
-fact = "icc.physical.prebits"
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
 min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
 
 [[registers]]
-id = "icc_ap1r1"
-name = "ICC_AP1R1"
-group = "gic"
+id = "icv_ap1r0"
+name = "ICV_AP1R0"
+group = "gic_icv"
 bits = 32
 access = "rw"
-description = "ICC_AP1R1 in the gic register group."
-reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 9, op2 = 1 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+description = "Virtual active-priority alias from the same ICH backing sample at EL2. No ICV accessor is executed at EL2 and no Guest stack-frame value is substituted."
+reader = { kind = "alias", source = "ich_ap1r0", offset = 0 }
 [[registers.conditions]]
-fact = "icc.physical.prebits"
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
+min = 5
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "icv_ap1r1"
+name = "ICV_AP1R1"
+group = "gic_icv"
+bits = 32
+access = "rw"
+description = "Virtual active-priority alias from the same ICH backing sample at EL2. No ICV accessor is executed at EL2 and no Guest stack-frame value is substituted."
+reader = { kind = "alias", source = "ich_ap1r1", offset = 0 }
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
 min = 6
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
 
 [[registers]]
-id = "icc_ap1r2"
-name = "ICC_AP1R2"
-group = "gic"
+id = "icv_ap1r2"
+name = "ICV_AP1R2"
+group = "gic_icv"
 bits = 32
 access = "rw"
-description = "ICC_AP1R2 in the gic register group."
-reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 9, op2 = 2 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+description = "Virtual active-priority alias from the same ICH backing sample at EL2. No ICV accessor is executed at EL2 and no Guest stack-frame value is substituted."
+reader = { kind = "alias", source = "ich_ap1r2", offset = 0 }
 [[registers.conditions]]
-fact = "icc.physical.prebits"
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
 min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
 
 [[registers]]
-id = "icc_ap1r3"
-name = "ICC_AP1R3"
-group = "gic"
+id = "icv_ap1r3"
+name = "ICV_AP1R3"
+group = "gic_icv"
 bits = 32
 access = "rw"
-description = "ICC_AP1R3 in the gic register group."
-reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 9, op2 = 3 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+description = "Virtual active-priority alias from the same ICH backing sample at EL2. No ICV accessor is executed at EL2 and no Guest stack-frame value is substituted."
+reader = { kind = "alias", source = "ich_ap1r3", offset = 0 }
 [[registers.conditions]]
-fact = "icc.physical.prebits"
+fact = "gic.system_interface"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "icv.virtual.prebits"
 min = 7
+[[registers.fields]]
+name = "Raw"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw 32-bit register; reserved bits are preserved, not interpreted."
+access = "rw"
+
+[[registers]]
+id = "icc_eoir0"
+name = "ICC_EOIR0"
+group = "gic_icc"
+bits = 32
+access = "wo"
+description = "Write-only interrupt priority-drop, deactivation or SGI command. Never read; the 64-bit SGI commands use MCRR for writes, not MRRC reads. No writer is enabled by this catalogue."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 8, op2 = 1 }
+access_condition = "Write only; no observational reader or interrupt-control writer is provided."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+
+[[registers]]
+id = "icc_eoir1"
+name = "ICC_EOIR1"
+group = "gic_icc"
+bits = 32
+access = "wo"
+description = "Write-only interrupt priority-drop, deactivation or SGI command. Never read; the 64-bit SGI commands use MCRR for writes, not MRRC reads. No writer is enabled by this catalogue."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 12, op2 = 1 }
+access_condition = "Write only; no observational reader or interrupt-control writer is provided."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+
+[[registers]]
+id = "icc_dir"
+name = "ICC_DIR"
+group = "gic_icc"
+bits = 32
+access = "wo"
+description = "Write-only interrupt priority-drop, deactivation or SGI command. Never read; the 64-bit SGI commands use MCRR for writes, not MRRC reads. No writer is enabled by this catalogue."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 12, crm = 11, op2 = 1 }
+access_condition = "Write only; no observational reader or interrupt-control writer is provided."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+
+[[registers]]
+id = "icc_sgi0r"
+name = "ICC_SGI0R"
+group = "gic_icc"
+bits = 64
+access = "wo"
+description = "Write-only interrupt priority-drop, deactivation or SGI command. Never read; the 64-bit SGI commands use MCRR for writes, not MRRC reads. No writer is enabled by this catalogue."
+reader = { kind = "cp15_64", cp = 15, op1 = 2, crm = 12 }
+access_condition = "Write only; no observational reader or interrupt-control writer is provided."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+
+[[registers]]
+id = "icc_sgi1r"
+name = "ICC_SGI1R"
+group = "gic_icc"
+bits = 64
+access = "wo"
+description = "Write-only interrupt priority-drop, deactivation or SGI command. Never read; the 64-bit SGI commands use MCRR for writes, not MRRC reads. No writer is enabled by this catalogue."
+reader = { kind = "cp15_64", cp = 15, op1 = 0, crm = 12 }
+access_condition = "Write only; no observational reader or interrupt-control writer is provided."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
+
+[[registers]]
+id = "icc_asgi1r"
+name = "ICC_ASGI1R"
+group = "gic_icc"
+bits = 64
+access = "wo"
+description = "Write-only interrupt priority-drop, deactivation or SGI command. Never read; the 64-bit SGI commands use MCRR for writes, not MRRC reads. No writer is enabled by this catalogue."
+reader = { kind = "cp15_64", cp = 15, op1 = 1, crm = 12 }
+access_condition = "Write only; no observational reader or interrupt-control writer is provided."
+[[registers.conditions]]
+fact = "gic.system_interface"
+min = 1
+max = 1
 
 [[registers]]
 id = "pmevcntr0"

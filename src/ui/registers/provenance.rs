@@ -162,6 +162,30 @@ pub(super) fn details(label: &str, provenance: &Provenance) -> Vec<String> {
         ));
         text.push("PMU observation does not enable/reset counters or write PMSELR; items are separate samples.".into());
     }
+    if let Some(gic) = &access.gic {
+        text.push(format!(
+            "GIC transfer: {:?}; interface: {:?}",
+            gic.read_method, gic.view
+        ));
+        text.push(format!(
+            "GIC physical MIDR: {} / current Debug EDSCR: {}",
+            gic.midr.hex, gic.dscr.hex
+        ));
+        text.push(format!(
+            "Stopped DSPSR: {} / DLR: {}",
+            gic.dspsr.hex, gic.dlr.hex
+        ));
+        text.push(format!("Physical ICC priority bits: {:?}; virtual ICV priority/preemption bits: {:?}/{:?}; ICH list entries: {:?}",gic.physical_priority_bits(),gic.virtual_priority_bits(),gic.virtual_preemption_bits(),gic.list_count()));
+        text.push(format!(
+            "ID_PFR1: {} / ICC_HSRE: {} / ICC_SRE: {} / ICC_CTLR: {} / ICH_VTR: {}",
+            gic.id_pfr1.hex, gic.icc_hsre.hex, gic.icc_sre.hex, gic.icc_ctlr.hex, gic.ich_vtr.hex
+        ));
+        text.push(format!(
+            "Preserved HCR: {} / ICH_HCR: {} / HSTR: {}",
+            gic.hcr.hex, gic.ich_hcr.hex, gic.hstr.hex
+        ));
+        text.push("GIC observation does not acknowledge, enable or deactivate interrupts; LR/LRC and different cores are separate samples.".into());
+    }
     for alias in &provenance.aliases {
         text.push(format!(
             "Alias source: {} / offset {} / {} bits",
@@ -206,6 +230,73 @@ mod tests {
     use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
+    fn gic_details_keep_physical_and_virtual_interfaces_and_old_evidence_distinct() {
+        use crate::registers::{Catalogue, Context, gic::Response, provenance::Access};
+        for (id, view, value) in [
+            ("icc_ctlr", "physical_icc", "0x00000403"),
+            ("ich_vtr", "hypervisor_ich", "0x90180003"),
+        ] {
+            let wire = format!(
+                "view {view} midr 0x411fd134 dscr 0x01000200 dspsr 0xa2000410 dlr 0x81234568 id_pfr1 0x10111011 icc_hsre 0x0000000f icc_sre 0x00000007 icc_ctlr 0x00000403 ich_vtr 0x90180003 hcr 0x00000038 ich_hcr 0x00007c01 hstr 0x00001000 value {value}"
+            );
+            let mut provenance = Provenance::declared(
+                &Catalogue::builtin("cortex-r52")
+                    .unwrap()
+                    .register(id)
+                    .unwrap()
+                    .reader,
+            );
+            provenance.access = Some(Access {
+                gic: Some(Response::parse(&wire, id, 32).unwrap().evidence),
+                timer: None,
+                pmu: None,
+                route: Route::TclRegister {
+                    endpoint: "localhost:6666".into(),
+                    target: "cpu1".into(),
+                    operation: format!("GIC read {id}"),
+                },
+                phase: Phase::Responded,
+                command: "INTERNAL_SCRIPT".into(),
+                context: Context {
+                    session: 1,
+                    generation: 2,
+                    core: "core1".into(),
+                    frame: 0,
+                },
+                timestamp_ms: 10,
+                completed_ms: Some(12),
+            });
+            let text = details("Retained origin", &provenance).join("\n");
+            for expected in [
+                "Host request interval: 10..12",
+                "Physical ICC priority bits: Some(5)",
+                "virtual ICV priority/preemption bits: Some(5)/Some(5)",
+                "ICH list entries: Some(4)",
+                "0x00000038",
+                "0x00001000",
+                "does not acknowledge",
+                "cpu1",
+            ] {
+                assert!(text.contains(expected), "{expected}: {text}");
+            }
+            assert!(text.contains(if id == "icc_ctlr" {
+                "PhysicalIcc"
+            } else {
+                "HypervisorIch"
+            }));
+            assert!(!text.contains("INTERNAL_SCRIPT"));
+            let mut old = serde_json::to_value(&provenance).unwrap();
+            old["access"].as_object_mut().unwrap().remove("gic");
+            let old: Provenance = serde_json::from_value(old).unwrap();
+            assert!(old.access.as_ref().unwrap().gic.is_none());
+            assert!(
+                !details("Old origin", &old)
+                    .join("\n")
+                    .contains("GIC transfer")
+            );
+        }
+    }
+    #[test]
     fn provenance_popup_distinguishes_catalogue_cpu_scope_latest_attempt_and_retained_origin_without_io()
      {
         for scope in [Scope::Core, Scope::Cluster, Scope::Chip] {
@@ -242,6 +333,7 @@ mod tests {
                 completed_ms: None,
                 timer: None,
                 pmu: None,
+                gic: None,
                 route: Route::TclMemory {
                     endpoint: "127.0.0.1:6666".into(),
                     target: "ap.actual".into(),

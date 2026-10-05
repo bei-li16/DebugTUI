@@ -14,6 +14,8 @@ cpu = "cortex-r52"
 cp15_command = "aarch64 mrc"
 cp15_64_command = "aarch64 mrrc"
 timer_command = "aarch64 timer"
+pmu_command = "aarch64 pmu"
+gic_command = "aarch64 gic"
 selector_command = "aarch64 mcr"
 isb_command = "aarch64 isb"
 banked_command = "aarch64 banked"
@@ -81,7 +83,7 @@ sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 python3 tools/openocd-adapter/test.py --source PATH_TO_PINNED_SOURCE --out artifacts/openocd-adapter-tests --openocd PATH_TO_BACKEND
 ```
 
-事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，另验证银行事务的 20 个故障点、R0 恢复／CPSR 变化及安全权限拒绝，以及 VFP 的 63 个故障点、R0/R1 恢复、DSPSR／FPEXC／HCPTR 变化、D16/D32、未使能和原始未知 MVFR；严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对四项协议、帮助以及参数和全部 23 个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用 GNU Arm 汇编器独立确认 MRRC、Thumb ISB 及银行／当前寄存器编码；`tests/vfp-encoding.s` 核对 VMRS／VMOV／HCPTR。
+事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，另验证银行事务的 20 个故障点、R0 恢复／CPSR 变化及安全权限拒绝，以及 VFP 的 63 个故障点、R0/R1 恢复、DSPSR／FPEXC／HCPTR 变化、D16/D32、未使能和原始未知 MVFR；严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对七项协议、帮助以及参数和全部 23 个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用 GNU Arm 汇编器独立确认 MRRC、Thumb ISB 及银行／当前寄存器编码；`tests/vfp-encoding.s` 核对 VMRS／VMOV／HCPTR。
 
 本 VFP 写入后端批次 Linux 候选后端 SHA-256 为 `1dd04e403485c254431ea6f47a3690f2453c682f23b0901ac9d3e321d180ccda`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-05-01:04)`。dirty 来自尚未成为上游提交的适配补丁，构建时间为 UTC。上一批 MRRC／ISB 候选哈希保留在 lock 的 previous_candidates，不能用于当前补丁。候选产物未安装或发布，未来分发须保留源码、补丁与许可，不能把其能力写到现有 Windows 二进制上。
 
@@ -131,4 +133,12 @@ VFP REG-H03 驱动 `scripts/test-register-vfp-hardware.cjs` 默认 4 skipped；�
 
 独立 `aarch64 debugtui_pmu_protocol` 必须返回 `debugtui-armv8-pmu-1 external-identity current-el fresh-count direct-index mrrc64 no-enable no-selector-write stop-on-fault`，不能用通用 MRRC 或 Timer 协议代替。工程显式设置 `registers.pmu_command="aarch64 pmu"`。后端校验外部 AP 的当前 EL2/身份、原生 PerfMon/PMCR.N/HDCR/PMSELR、完整状态/PC 与 scratch 回读，然后返回 22 项 MRC32 或完整周期 MRRC64 及逐次证明。直接事件索引保持 PMSELR；不启动、复位计数或清除溢出标志。低 EL 的 Hyp trap 权限未知时没有数据指令；HDD 禁止当前 EL2 时拒绝。不接受 PMSWINC、事件 4 以上或任意原始命令/写入参数。
 
-生产 C 测试覆盖 23 个手写读编码、1,614 个 I/O 失败点、190 项拒绝、208 项证明/scratch 变化及六个移动周期值。源锁本批维护十项文件、六个独立协议；Windows/Linux 候选摘要及依赖/GPL/离线命令证据见 [PMU 说明](../../docs/register-pmu.md)。候选未安装、未上板。`scripts/test-register-pmu-hardware.cjs` 默认五项 SKIPPED，十项环境 case 和只读 GNU Arm 固件 hook 已准备，不能由软件测试推导芯片授权/读值。包含 PMU 的旧选择器环境 case 现在也需独立 PMU 协议的当前数量 Probe，不再接受仅凭停止前 Hyp 的物理容量判断。
+生产 C 测试覆盖 23 个手写读编码、1,614 个 I/O 失败点、190 项拒绝、208 项证明/scratch 变化及六个移动周期值。PMU 原批次维护十项文件、六个独立协议；当前 GIC 批次扩展为十一项文件、七个独立协议；Windows/Linux 候选摘要及依赖/GPL/离线命令证据见 [PMU 说明](../../docs/register-pmu.md)。候选未安装、未上板。`scripts/test-register-pmu-hardware.cjs` 默认五项 SKIPPED，十项环境 case 和只读 GNU Arm 固件 hook 已准备，不能由软件测试推导芯片授权/读值。包含 PMU 的旧选择器环境 case 现在也需独立 PMU 协议的当前数量 Probe，不再接受仅凭停止前 Hyp 的物理容量判断。
+
+## GIC 观测协议与接口
+
+独立 `aarch64 debugtui_gic_protocol` 返回 `debugtui-armv8-gic-1 external-identity current-el fresh-capacity physical-icc hyp-ich no-ack no-enable stop-on-fault`。工程显式选择 `registers.gic_command="aarch64 gic"`；默认空值保持原读通道。原生固定允许名单为 43 个 MRC32 编码：29 个 R52 观测项目、12 个已知未实现的 AP 编码和两个被拒绝的 IAR acknowledge 编码。WO 的 EOIR/DIR/SGI 不在允许名单中；ICV AP 是主机从 ICH 同一份 backing 证据派生，不执行 EL2 ICV 指令，也不使用 Guest 栈帧值。
+
+外部 EDSCR/MIDR 先证明当前 AArch32 Debug EL2 和 R52 D13，然后读取并前后核对 DSPSR、DLR、ID_PFR1、ICC_HSRE/SRE/CTLR、ICH_VTR、HCR、ICH_HCR、HSTR 与 R0 物理恢复。R52 CTLR 的物理五位容量和 VTR 的虚拟五位/四列表分别解码；未适配的六/七位值拒绝，不能用停止前 Hyp 或虚拟容量确认物理 AP。低 EL 的重定向/陷阱无法证明时 Unknown 且没有 GIC opcode；已知 HDD 禁止为 restricted。没有使能、acknowledge、EOI/DIR/SGI、解锁或模式写入。LR/LRC 是各一次 MRC32，不拼成 MRRC64。请求任何失败不回退或重试；物理状态/暂存/控制改变即 unknown 和隔离。
+
+生产同一 C 头文件模型覆盖 29 个成功入口、3,190 个 I/O 失败点、239 项安全拒绝和406项状态/暂存变化。Windows/Linux 完整构建、原生命令/独立协议、软件双核 worker 与延后固件证据见 [GIC 自检](../../docs/register-gic.md)。十项环境 case 全部 SKIPPED；`scripts/test-register-gic-hardware.cjs` 默认五项 SKIPPED。未安装或上板，完整 MMIO GIC/Debug 与低 EL ICV 仍未完成。本批同时修正 PMU 安全错误误用 Timer 前缀的问题，由生产 PMU 头文件的三个精确 typed-tag 断言验证；既有独立 PMU 协议保持原字符串。

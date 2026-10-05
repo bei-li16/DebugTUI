@@ -23,6 +23,8 @@ static NEXT: AtomicU64 = AtomicU64::new(1);
 mod banked_cases;
 #[path = "selector_access/cancel_cases.rs"]
 mod cancel_cases;
+#[path = "selector_access/gic_cases.rs"]
+mod gic_cases;
 #[path = "selector_access/mpu_cases.rs"]
 mod mpu_cases;
 #[path = "selector_access/mrrc_cases.rs"]
@@ -156,6 +158,7 @@ fn fixture(fault: &'static str) -> Fixture {
                                 || script.contains("aarch64 banked")
                                 || script.contains("aarch64 timer")
                                 || script.contains("aarch64 pmu")
+                                || script.contains("aarch64 gic")
                         }
                         _ => false,
                     })

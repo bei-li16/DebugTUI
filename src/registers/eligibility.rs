@@ -28,6 +28,9 @@ pub struct Observation {
     pub raw: Option<RawValue>,
     pub source: String,
     pub timestamp_ms: u64,
+    /// Successful request proof is retained with the decision, even without a data read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<provenance::Provenance>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ProbeBasis {
@@ -219,6 +222,9 @@ impl Catalogue {
                         },
                         source: sample.source.clone(),
                         timestamp_ms: sample.timestamp_ms,
+                        provenance: (sample.state == State::Valid)
+                            .then(|| sample.provenance.clone())
+                            .flatten(),
                     })
                     .collect(),
             });
@@ -315,6 +321,31 @@ impl Evidence {
                     observation.reason,
                     observation.detail
                 ));
+                if let Some(access) = observation
+                    .provenance
+                    .as_ref()
+                    .and_then(|p| p.access.as_ref())
+                {
+                    lines.push(format!(
+                        "Probe request: {:?} · {:?} · {} · {}..{} ms · core={} frame={} stop={} session={}",
+                        access.route, access.phase, access.command, access.timestamp_ms,
+                        access.completed_ms.map(|n| n.to_string()).unwrap_or_else(|| "Unknown".into()),
+                        access.context.core, access.context.frame, access.context.generation,
+                        access.context.session
+                    ));
+                    if let Some(gic) = &access.gic {
+                        lines.push(format!(
+                            "GIC capacity proof: {:?} {:?} MIDR={} EDSCR={} DSPSR={} DLR={} ID_PFR1={}",
+                            gic.view, gic.read_method, gic.midr.hex, gic.dscr.hex,
+                            gic.dspsr.hex, gic.dlr.hex, gic.id_pfr1.hex
+                        ));
+                        lines.push(format!(
+                            "GIC controls: ICC_HSRE={} ICC_SRE={} ICC_CTLR={} ICH_VTR={} HCR={} ICH_HCR={} HSTR={}",
+                            gic.icc_hsre.hex, gic.icc_sre.hex, gic.icc_ctlr.hex, gic.ich_vtr.hex,
+                            gic.hcr.hex, gic.ich_hcr.hex, gic.hstr.hex
+                        ));
+                    }
+                }
             }
             lines.extend(probe.notes.iter().cloned());
         }

@@ -34,6 +34,40 @@ fn probe() -> capabilities::Probe {
         gdb_names: vec![],
         notes: vec![],
     };
+    let entry = probe
+        .samples
+        .iter_mut()
+        .find(|s| s.id == "icc_ctlr")
+        .unwrap();
+    let wire = "view physical_icc midr 0x411fd134 dscr 0x01000200 dspsr 0xa2000410 dlr 0x81234568 id_pfr1 0x10111011 icc_hsre 0x0000000f icc_sre 0x00000007 icc_ctlr 0x00000400 ich_vtr 0x90180003 hcr 0x00000038 ich_hcr 0x00007c01 hstr 0x00001000 value 0x00000400";
+    let mut provenance = super::super::provenance::Provenance::declared(
+        &Catalogue::builtin("cortex-r52")
+            .unwrap()
+            .register("icc_ctlr")
+            .unwrap()
+            .reader,
+    );
+    provenance.access = Some(super::super::provenance::Access {
+        gic: Some(
+            super::super::gic::Response::parse(wire, "icc_ctlr", 32)
+                .unwrap()
+                .evidence,
+        ),
+        timer: None,
+        pmu: None,
+        route: super::super::provenance::Route::TclRegister {
+            endpoint: "localhost:1".into(),
+            target: "cpu2".into(),
+            operation: "GIC read icc_ctlr".into(),
+        },
+        phase: super::super::provenance::Phase::Responded,
+        command: "aarch64 gic icc_ctlr".into(),
+        context: context.clone(),
+        timestamp_ms: 31,
+        completed_ms: Some(32),
+    });
+    entry.source = "openocd:aarch64 gic".into();
+    entry.provenance = Some(provenance);
     probe.decode();
     probe
 }
@@ -154,8 +188,48 @@ fn observed_capability_basis_records_raw_sources_and_rejects_other_stop_core_fra
         .find(|s| s.id == "icc_ctlr")
         .unwrap();
     assert_eq!(raw.raw.as_ref().unwrap().hex, "0x00000400");
-    assert_eq!(raw.source, "gdb:icc_ctlr");
+    assert_eq!(raw.source, "openocd:aarch64 gic");
     assert_eq!(raw.timestamp_ms, 31);
+    let access = raw.provenance.as_ref().unwrap().access.as_ref().unwrap();
+    assert_eq!(access.context, context());
+    assert_eq!(access.completed_ms, Some(32));
+    assert_eq!(
+        access.gic.as_ref().unwrap().physical_priority_bits(),
+        Some(5)
+    );
+    let saved = serde_json::to_value(&evidence).unwrap();
+    let restored: Evidence = serde_json::from_value(saved.clone()).unwrap();
+    assert_eq!(serde_json::to_value(restored).unwrap(), saved);
+    assert!(
+        evidence
+            .lines("Current")
+            .iter()
+            .any(|s| s.contains("GIC capacity proof") && s.contains("0x01000200"))
+    );
+    let mut old = sample(&context(), "r0", "0x80000001");
+    old.eligibility = Some(evidence.clone());
+    let mut failure = old.clone();
+    failure.state = State::Unavailable;
+    failure.eligibility = None;
+    failure.context.generation += 1;
+    failure.inherit_value_origin(&old);
+    let Some(Retained::Known(original)) = &failure.last_value_eligibility else {
+        panic!("Lost native capacity basis")
+    };
+    assert_eq!(serde_json::to_value(original).unwrap(), saved);
+    let mut legacy = saved;
+    for observation in legacy["probe"]["observations"].as_array_mut().unwrap() {
+        observation.as_object_mut().unwrap().remove("provenance");
+    }
+    let legacy: Evidence = serde_json::from_value(legacy).unwrap();
+    assert!(
+        legacy
+            .probe
+            .unwrap()
+            .observations
+            .iter()
+            .all(|o| o.provenance.is_none())
+    );
     for change in ["core", "frame", "stop", "session"] {
         let mut current = context();
         match change {
@@ -208,6 +282,7 @@ fn capability_probe_failure_keeps_unknown_and_does_not_publish_retained_raw_as_c
         .unwrap();
     assert_eq!(raw.reason, Reason::AccessRestricted);
     assert!(raw.raw.is_none());
+    assert!(raw.provenance.is_none());
     assert!(raw.detail.contains("fixture denied"));
     assert_eq!(
         probe

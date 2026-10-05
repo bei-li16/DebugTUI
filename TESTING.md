@@ -1,5 +1,14 @@
 # DebugTUI 验证记录
 
+## GIC 当前原生容量与 AP 条件（2026-10-06，开发分支）
+
+完整 Cargo 375 单元＋150 集成通过，2 ignored，合计 525 通过；F24 129/129 个证据模式匹配，严格 Clippy 通过。完整报告 `artifacts/functional-1791220138851-f975cb60/report.json`，日志同目录 unit.log；其余 22 功能套件本批未选择，最终完整验收仍待做。四项 GIC 单元、七项实际 EXE/worker/MI/Tcl 集成与十三项能力回归覆盖独立物理/虚拟容量、双核 Scope All、No 无数据读且完整依据保留、IAR/WO、别名/原生 32 位、权限/错误/取消/上下文变化。旧 GDB/Hyp 容量假设及 CTLR 合法低位夹具断言已经纠正，原失败报告保留。
+
+Windows/Linux 七项原生事务/协议、两个候选完整构建、Windows 本机依赖/配置/源码包及九项包拒绝检查通过；当前十一项源锁/补丁/候选/对应源码一致性见 `artifacts/register-gic-final-package-audit.json`。只读固件 GNU Arm 离线编译及三十七条独立 MRC 反汇编检查通过，对象未执行。十项环境 case 均 SKIPPED，默认驱动五阶段 SKIPPED；软件驱动另验证独立基线、未就绪/不匹配和清理，双核隔离由独立 worker 测试验证。
+
+只新增勾选 REG-408 的软件范围，进度 24/47。完整 Debug/GIC MMIO/低 EL ICV、其他 TODO、最终全套回归/升版/安装/Release 仍未完成；全局安装与源码基线仍为 0.9.3。[GIC 自检](docs/register-gic.md) 与 [进度](docs/registers-development-status.md) 记录支持边界和原始证据。
+
+
 ## 寄存器与显式内存通道开发分支（2026-10-04–05，尚未发布）
 
 2026-10-05 Timer 一致性批次：完整 Cargo **368 单元＋137 集成通过，2 ignored**，共 **505 通过**，F24 **118/118**；严格 Clippy、格式及差异检查通过。新增 u64 极限/原生位宽/旧证据单元与实际 EXE 的回绕、冻结、倒退/异常高字/过旧基线集成；生产 C 新增48个动态 pair 回读，Windows/Linux同头文件模型/离线命令通过，原有候选未重编译、当前源码包已更新并原生验证。主机起止区间与单项 MRC32/MRRC64 绑定来源，不推导跨项/跨核同时性。首轮 G: ENOSPC 失败日志保留，完整归档生成目录释放空间后整套重新通过；证明见 [开发进度](docs/registers-development-status.md) 和 [一致性自检](docs/register-timer.md)。仅新增 REG-403，已完成／未完成 **22/49**；其余22套件未选择，[十四项环境 case](tests/cases/register-timer.md) 均 SKIPPED，未上板、安装或发布。

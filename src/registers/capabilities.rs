@@ -241,49 +241,88 @@ impl Probe {
                 "Actual FPEXC.EN; never changed by this reader",
             );
         }
-        if self.raw("cpsr").is_some_and(|n| n & 31 == 0x1a) {
-            if let Some(n) = self.raw("icc_ctlr") {
-                let bits = ((n >> 8) & 7) + 1;
+        if let Some(n) = self.raw("icc_ctlr") {
+            self.fact("icc.ctlr_pribits", ((n >> 8) & 7) + 1, "icc_ctlr",
+                "Raw ICC/ICV CTLR.PRIbits+1; stopped CPSR does not identify current Debug EL or interface");
+            if let Some(evidence) = self.fresh_gic("icc_ctlr", super::gic::View::PhysicalIcc) {
+                let bits = evidence.physical_priority_bits().unwrap();
                 self.fact(
-                    "icc.ctlr_pribits",
+                    "icc.physical.pribits",
                     bits,
                     "icc_ctlr",
-                    "Raw ICC_CTLR.PRIbits+1 observed in Hyp; adapted R52 physical value is five",
+                    "Fresh native physical ICC_CTLR at current Debug EL2; R52 TRM Table 10-94",
                 );
-                if bits == 5 {
-                    self.fact(
-                        "icc.physical.pribits",
-                        bits,
-                        "icc_ctlr",
-                        "Physical Hyp ICC_CTLR.PRIbits+1; R52 TRM Table 10-94 specifies five priority bits",
-                    );
-                    self.fact("icc.physical.prebits",bits,"icc_ctlr","Maximum physical preemption bits for AP capacity; independent of virtual ICH_VTR");
-                } else {
-                    self.notes.push(format!("Decode: Physical ICC priority capacity remains unknown: ICC_CTLR reports {bits} bits, outside the adapted R52 value of five"));
-                }
+                self.fact("icc.physical.prebits", bits, "icc_ctlr", "Maximum physical AP preemption capacity; decoded from ICC_CTLR, independently of ICH_VTR");
+                self.fact(
+                    "gic.system_interface",
+                    1,
+                    "icc_ctlr",
+                    "Fresh native ID_PFR1.GIC=1 in the same physical transaction",
+                );
+            } else {
+                self.notes.push("Decode: Physical ICC AP capacity remains unknown: requires matching fresh native current Debug EL2 evidence; stopped CPSR.M=Hyp alone is insufficient".into());
             }
-            if let Some(n) = self.raw("ich_vtr") {
+        }
+        if let Some(n) = self.raw("ich_vtr") {
+            self.fact(
+                "ich.vtr_pribits",
+                ((n >> 29) & 7) + 1,
+                "ich_vtr",
+                "Raw ICH_VTR.PRIbits+1; access and interface not inferred from stopped CPSR",
+            );
+            self.fact(
+                "ich.vtr_prebits",
+                ((n >> 26) & 7) + 1,
+                "ich_vtr",
+                "Raw ICH_VTR.PREbits+1; never physical ICC capacity",
+            );
+            self.fact(
+                "ich.vtr_listregs",
+                (n & 31) + 1,
+                "ich_vtr",
+                "Raw ICH_VTR.ListRegs+1",
+            );
+            if let Some(evidence) = self.fresh_gic("ich_vtr", super::gic::View::HypervisorIch) {
+                let (pri, pre, count) = (
+                    evidence.virtual_priority_bits().unwrap(),
+                    evidence.virtual_preemption_bits().unwrap(),
+                    evidence.list_count().unwrap(),
+                );
                 self.fact(
                     "icv.virtual.pribits",
-                    ((n >> 29) & 7) + 1,
+                    pri,
                     "ich_vtr",
-                    "ICH_VTR.PRIbits+1; virtual CPU interface only",
+                    "Fresh native Hyp ICH_VTR.PRIbits+1; virtual interface only",
                 );
-                self.fact(
-                    "icv.virtual.prebits",
-                    ((n >> 26) & 7) + 1,
-                    "ich_vtr",
-                    "ICH_VTR.PREbits+1; never reused for physical ICC AP registers",
-                );
-                self.fact(
-                    "ich.list_registers",
-                    (n & 31) + 1,
-                    "ich_vtr",
-                    "ICH_VTR.ListRegs+1; Hyp interface",
-                );
+                self.fact("icv.virtual.prebits", pre, "ich_vtr", "Fresh native Hyp ICH_VTR.PREbits+1; virtual AP backing capacity, never physical ICC");
+                self.fact("ich.list_registers", count, "ich_vtr", "Fresh native Hyp ICH_VTR.ListRegs+1; LR and LRC remain separate 32-bit samples");
+            } else {
+                self.notes.push("Decode: Virtual ICV/ICH AP capacity remains unknown: requires matching fresh native current Debug EL2 ICH_VTR evidence".into());
             }
         }
     }
+    fn fresh_gic(&self, id: &str, view: super::gic::View) -> Option<&super::gic::Evidence> {
+        let sample = self.observed(id)?;
+        let access = sample.provenance.as_ref()?.access.as_ref()?;
+        let evidence = access.gic.as_ref()?;
+        let raw = if id == "icc_ctlr" {
+            &evidence.icc_ctlr
+        } else {
+            &evidence.ich_vtr
+        };
+        (sample.source == "openocd:aarch64 gic"
+            && sample.view == super::SampleView::PhysicalCore
+            && matches!(&access.route, super::provenance::Route::TclRegister {operation,..} if operation == &format!("GIC read {id}"))
+            && access.context == self.context
+            && access.phase == super::provenance::Phase::Responded
+            && access.completed_ms.is_some_and(|n| n >= access.timestamp_ms)
+            && evidence.view == view
+            && evidence.midr.integer().ok()? == u128::from(self.raw("midr")?)
+            && raw.integer().ok()? == u128::from(self.raw(id)?)
+            && evidence.physical_priority_bits().is_some())
+        .then_some(evidence)
+    }
+
     pub fn effective(&self, declared: &BTreeMap<String, u64>) -> BTreeMap<String, u64> {
         let mut result = declared.clone();
         result.extend(self.facts.iter().map(|(k, v)| (k.clone(), v.value)));

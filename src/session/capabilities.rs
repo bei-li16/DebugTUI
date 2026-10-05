@@ -105,14 +105,18 @@ impl Engine {
                     Reason::AccessRestricted,
                     "EL2 access is not proven in this physical CPSR mode",
                 )),
-                "icc_ctlr" | "ich_vtr" if !hyp => Some((
-                    Reason::AccessRestricted,
-                    "Physical ICC / Hyp ICH interface requires proven Hyp mode; no virtual alias guess",
-                )),
-                "icc_ctlr" | "ich_vtr" if !gic => Some((
-                    Reason::Unknown,
-                    "GIC system-register capability has not been established",
-                )),
+                "icc_ctlr" | "ich_vtr" if self.project.registers.gic_command.is_empty() && !hyp => {
+                    Some((
+                        Reason::AccessRestricted,
+                        "Physical ICC / Hyp ICH interface requires proven Hyp mode; no virtual alias guess",
+                    ))
+                }
+                "icc_ctlr" | "ich_vtr" if self.project.registers.gic_command.is_empty() && !gic => {
+                    Some((
+                        Reason::Unknown,
+                        "GIC system-register capability has not been established",
+                    ))
+                }
                 "pmcr"
                     if self.project.registers.pmu_command.is_empty()
                         && !probe.facts.get("pmu.present").is_some_and(|f| f.value == 1) =>
@@ -135,7 +139,10 @@ impl Engine {
             } else {
                 // A genuine named GDB register is an independent read route.
                 self.register_value_access = None;
-                let result = if id == "pmcr" && !self.project.registers.pmu_command.is_empty() {
+                let native = (id == "pmcr" && !self.project.registers.pmu_command.is_empty())
+                    || (matches!(id, "icc_ctlr" | "ich_vtr")
+                        && !self.project.registers.gic_command.is_empty());
+                let result = if native {
                     sample.source = self.register_sample_origin(register, &catalogue).1;
                     self.read_register_value(register, &catalogue, &mut values)
                 } else if self.reg_names.iter().any(|n| n == id) {

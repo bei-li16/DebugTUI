@@ -96,6 +96,9 @@ static int transfer(struct fixture *f, struct armv8_debugtui_pmu_result *result,
 }
 int main(void)
 {
+	assert(strcmp(armv8_debugtui_pmu_reason(1), "debugtui-pmu:reader-unsupported") == 0);
+	assert(strcmp(armv8_debugtui_pmu_reason(2), "debugtui-pmu:access-restricted") == 0);
+	assert(strcmp(armv8_debugtui_pmu_reason(3), "debugtui-pmu:access-unknown") == 0);
 	assert(sizeof(opcodes) / sizeof(opcodes[0]) == 23);
 	assert(sizeof(armv8_debugtui_pmu_registers) / sizeof(armv8_debugtui_pmu_registers[0]) == 23);
 	for (unsigned int i = 0; i < 23; i++)

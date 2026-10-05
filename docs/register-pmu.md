@@ -28,7 +28,7 @@ EL0/EL1 的 PMCR.N 可受 HDCR.HPMN 限制，PMU 访问还受 TPM、TPMCR、HSTR
 
 ## 后端与软件验证
 
-补丁基于 OpenOCD `d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e`、Jim Tcl `d5243a25c488dfe751ef218828f13516e04ea2ba`，维护十项源文件散列及独立 `debugtui-armv8-pmu-1` 协议。当前补丁 SHA256：`803aad6b643b4df96ff6e2afe8c3e495c6497992205c08cba3e9cff2b944e24d`。
+补丁基于 OpenOCD `d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e`、Jim Tcl `d5243a25c488dfe751ef218828f13516e04ea2ba`，PMU 原批次维护十项源文件散列及独立 `debugtui-armv8-pmu-1` 协议。以下为保留的 PMU 批次证据；当前包含 GIC 的十一项源锁、候选散列和原生错误标签修正见 [GIC 自检](register-gic.md)。PMU 批次补丁 SHA256：`803aad6b643b4df96ff6e2afe8c3e495c6497992205c08cba3e9cff2b944e24d`。
 
 - Linux 候选 SHA256：`acf62e95c0ed092394eb530a7fb73f4408e313f8f08c6b7fa9bc5b585eeadc9f`，构建与生产 C/真实离线命令报告在 `/home/bei-li16/.cache/debugtui-openocd-linux-pmu-final-20261005/tests/report.json`，日志镜像为 `artifacts/openocd-pmu-linux-final-build.log`。
 - Windows x64 候选 SHA256：`bfe3d7aa99e10a978f0d34b3aa9b479a61bfef0ba68dc56ae41c9836d8321bc1`，本机验证报告 `.dev/openocd-windows-pmu-final/windows-tests/report.json`，日志 `artifacts/openocd-pmu-windows-native-corrected.log`。依赖 DLL、GPL 对应源码与本机 dummy/profile 检查通过；未等同于已安装 xPack 或实板验证。

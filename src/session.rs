@@ -21,6 +21,7 @@ use std::{
 mod banked;
 mod breakpoints;
 mod capabilities;
+mod gic;
 mod memory;
 mod memory_writes;
 mod mpu;

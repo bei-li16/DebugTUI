@@ -24,7 +24,7 @@ System Regs 的 Status 选中条目显示 Current condition evaluation、Latest 
 
 因此 `pmu.pmcr_n` 保留本次原始字段，仅在已适配 R52 身份、原生 PMU 事务的新鲜当前 Debug EL2 证明、匹配的响应/来源/上下文和 N=4 时发布 `pmu.counters`（本轮自检纠正了仅凭停止前 Hyp 模式确认数量的旧规则）。Guest/SVC 的 0/1/4 等值，或 Hyp 的未适配数量，不能证明物理缺失；无可用配置声明时数量条件保持 Unknown。PMCR.E 不参与物理数量判定，不启动或清除计数器。
 
-实际 Hyp 的 `icc.ctlr_pribits` 同样保存原始字段；R52 物理容量只接受五位，其他值保持未知并保存不匹配原因。ICH_VTR 的虚拟事实与物理 ICC 分开，不能替代物理 AP 容量。条件引擎的 5/6/7 位、数量上限测试是通用软件边界，不声明实际 R52 有六/七位物理接口；R52+ 和其他 CPU 的适配仍待各自手册与后端证据。
+`icc.ctlr_pribits` 与 `ich.vtr_pribits/prebits/listregs` 只保存原始字段。物理 ICC 和虚拟 ICV/ICH 容量分别要求当前停止 context 中原生 CTLR/VTR 响应的 matching MIDR、PhysicalCore、接口、MRC32 和完整时间区间，不从停止前 Hyp 推断。R52 适配值是物理/虚拟五位与四列表，六/七位矛盾值保持未知；ICH_VTR 不能替代物理 ICC AP 容量，详见 [GIC 自检](register-gic.md)。条件引擎的 5/6/7 位、数量上限测试是通用软件边界，不声明实际 R52 有六/七位物理接口；R52+ 和其他 CPU 的适配仍待各自手册与后端证据。
 
 ## 软件证据
 
@@ -32,16 +32,16 @@ System Regs 的 Status 选中条目显示 Current condition evaluation、Latest 
 | --- | --- |
 | 全部内置可选条目及数量边界 | `all_builtin_optional_conditions_preserve_unknown_and_exact_count_boundaries` 遍历 M4/R52/R52+，验证缺失、min/max 和越界；这是模型测试，不证明对应 CPU 物理实现 |
 | 已知零、缺失、全部条件、JSON | `capability_evidence_keeps_zero_missing_exclusion_and_all_declared_conditions` |
-| 当前观察覆盖声明并保存原始来源 | `observed_capability_basis_records_raw_sources_and_rejects_other_stop_core_frame_or_session` |
+| 当前观察覆盖声明并保存原始来源 | `observed_capability_basis_records_raw_sources_and_rejects_other_stop_core_frame_or_session`；GIC 批次补齐 native 容量证明、请求区间、JSON/旧格式与保留值依据 |
 | Probe 失败保持 Unknown | `capability_probe_failure_keeps_unknown_and_does_not_publish_retained_raw_as_current_basis` |
 | WO/副作用和 alias 父链 | `aliases_inherit_write_only_and_read_effect_policy_without_overriding_manual_intent`；实际 worker 的 `write_only_alias_dependencies_never_issue_value_reads_even_with_manual_intent` 检查没有值请求 |
 | 自动 Unknown 与显式手动 | `alias_parent_unknown_conditions_block_automatic_reads_but_keep_explicit_manual_reads`；旧实现失败日志 `artifacts/register-eligibility-before.log` 保留，不能计为通过 |
-| 成功、Probe 过期、旧值依据 | `register_eligibility_sources_survive_success_expiry_and_retained_values` 通过实际 MI 验证 observed 5 覆盖 declared 7，下一 stop 声明排除时不再读，旧字节与原依据保留 |
+| 成功、Probe 过期、旧值依据 | `register_eligibility_sources_survive_success_expiry_and_retained_values` 通过实际 MI 验证 MPU observed 24 覆盖 declared 16，下一 stop 声明排除时不再读，旧字节与原依据保留；原 GDB/Hyp GIC 五位推断已移除 |
 | 连续失败与旧生产者 | `retained_condition_basis_keeps_original_evidence_across_repeated_failures_and_old_snapshots` |
 | 双核及 Scope All | `multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all` 检查 core0/core1 的独立声明/观察和实际请求数量，不读取 peer |
 | owner 变化后不复活已拒绝依据 | `shared_failures_keep_last_values_and_current_failure_lifetime_through_later_snapshots` 核对中间失败及后续 frame 快照，保持最后认可的 raw、provenance 和 eligibility |
 | PMCR 的模式及虚拟数量 | `pmcr_guest_counts_and_unadapted_hyp_values_never_prove_physical_counter_absence`；`non_hyp_probe_never_reads_el2_or_attributes_virtual_icc_as_physical` 验证 SVC 的 N=0 保持物理数量 Unknown 且不自动读依赖项 |
-| R52 物理 GIC 与虚拟接口分离 | `unadapted_r52_icc_priority_counts_remain_unknown_without_reusing_virtual_capacity`；`gic_virtual_priority_evidence_never_decides_physical_ap_capacity` |
+| R52 物理 GIC 与虚拟接口分离 | `raw_gic_counts_and_stopped_hyp_never_prove_physical_or_virtual_ap_capacity` 与 `gic_capacities_require_independent_current_native_interface_evidence` 替代旧停止前 Hyp/虚拟数量夹具；真实 GIC worker 验证 No 条目的完整物理/虚拟依据及零数据访问 |
 | 只读详情及窄宽滚动 | `register_status_preserves_current_latest_and_retained_condition_sources_without_io` 在 45×12、80×24、120×36 逐页核对所有来源，旧样本与请求数不变 |
 | 测试助手退出响应完整性 | `headless_fixture_session_drains_quit_response_before_rejecting_exit_and_keeps_failures` 纳入 Cargo；四项 Node 流事件夹具验证 exit 早于末尾响应、缺失响应、错误响应及非零退出，保持失败分类 |
 

@@ -1,5 +1,24 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：GIC AP 条件、原生物理/虚拟容量与只读后端
+
+新增独立 `registers.gic_command="aarch64 gic"` 与 `debugtui-armv8-gic-1` 协议。按 R52 TRM/GIC 架构区分物理 ICC、Hyp ICH 及 ICV AP backing：四十三条原生 MRC32 路由中二十九条可观测、十二条额外 AP 在 R52 未实现、两条 IAR 有 acknowledge 副作用而拒绝。目录补齐八项 ICV AP alias 与六项 WO 元数据；LR0–3/LRC0–3 各为独立 32 位，不用 MRRC 或拼装原子视图。未创建 GIC writer，不改变模式/使能/中断状态。
+
+容量不再由停止前 CPSR.Hyp 或 GDB CTLR/VTR 推断。每项从外部 AP 取得当前 MIDR/EDSCR，确认 Arm/D13/AArch32 当前 Debug EL2，逐步校验 ID_PFR1/SRE/HSRE/ICC_CTLR/ICH_VTR、HCR/ICH_HCR/HSTR 及前后 DSPSR/DLR；数据后恢复并物理回读 scratch。真正物理五位与虚拟五位/四列表，各绑定相应原生 CTLR/VTR 成功请求的接口、上下文、owner、源/路由和时间区间。低 EL Unknown、EL2 HDD 已知禁止 Restricted；不回退旧 MRC/GDB，状态/控制/传输不确定即停止并隔离服务。
+
+条件夹具独立验证 ICC/ICH/ICV 的 5/6/7 位边界与未知/已排除零请求；R52 原生只接受五位。Scope All 只读选中物理核，切核/停止点/session/实际线程/frame 变化丢弃旧上下文。取消完成在途恢复后丢弃结果，失败旧值保留原始接口/请求时间。自检补齐 `ProbeBasis.observations` 的完整成功 provenance，No 条目无数据读也能追溯容量的十二项证明；失败不把保留原值/证明冒充成功，旧 JSON 兼容且不制造证据。当前状态/原值依据在详情与 headless 可查。
+
+完整 `node scripts/test-functional.cjs --only unit` 为 **375 单元＋150 集成通过，2 ignored**，共 **525 通过**，**F24 129/129**（匹配模式数），334793 ms 无超时；其余 **22 套件未选择**。报告 [`artifacts/functional-1791220138851-f975cb60/report.json`](../artifacts/functional-1791220138851-f975cb60/report.json)，Cargo 为同目录 unit.log；最终严格 Clippy 日志 `artifacts/register-gic-clippy-final.log`。 新增四项 GIC 相关单元与七项实际 EXE/worker/MI/Tcl 集成，十三项能力回归同步修正。七项覆盖双核 Scope All、原生/alias 全量读、No/WO/IAR、未知/受限、协议/身份/截短/伪造、故障隔离、取消/上下文变化和独立固件延后驱动；驱动正向仅验证单核，双核 worker 隔离另有独立证据。
+
+首轮完整回归保留 `artifacts/functional-1791218850784-f4aaa82d/report.json`：四处旧测试使用 GDB/Hyp 容量推断或脆弱文本搜索。已改用完整 native 证明、按三类 AP 统计，以及真正 TOML writer/write 键校验。下一轮 `artifacts/functional-1791219621548-289ac805/report.json` 在新增 No 依据检查失败：夹具 CTLR=0x403，断言误写 0x400；低两位是合法控制位。已改为精确夹具值，聚焦 `artifacts/register-gic-basis-corrected-test.log` 及最终完整回归通过。失败日志保留，未删除断言或跳过安装验证。
+
+生产 GIC C 模型以四十三条独立编码和十项证明编码验证 **二十九项成功、3,190 个 I/O 失败点、239 项安全拒绝、406 项证明/scratch 变化**。本批还修正前序原生 PMU 安全错误误用 Timer 前缀，由三个精确 typed-tag 断言验证。Linux/Windows 在新 GIC 目录完整重建，七项事务/协议与真实离线命令通过；Windows 本机 DLL/配置/对应源码与九项包拒绝检查通过。当前十一项源锁、补丁/候选散列与源码 ZIP 的逐字节一致性见 `artifacts/register-gic-final-package-audit.json`；构建/原生日志为 `artifacts/openocd-gic-linux-build.log`、`artifacts/openocd-gic-windows-build.log`、`artifacts/openocd-gic-windows-native.log`。原候选/报告保留，未替换全局安装。
+
+GNU Arm 11.4 离线编译独立只读固件，反汇编确认三十七条精确 MRC、二十九条观察值及身份/控制重检，先做 MRS 守卫、无 IAR/MCR/MCRR/MSR/MRRC，见 `artifacts/register-gic-firmware-report.json`；对象未执行。为保留 G: 空间，两份已结束且十四项通过的安装夹具完整归档到 F:，原路径报告/日志按哈希恢复，映射 `artifacts/register-gic-space-archive.json`；本批没有删客户文件或将空间问题计为通过。
+
+只新增勾选 **REG-408 的软件范围**，当前 **已完成／未完成 24/47**。依据用户明确不做上板的要求，[十项 GIC 环境 case](../tests/cases/register-gic.md) 全部准备且 SKIPPED，默认驱动五项 SKIPPED，报告 `artifacts/register-gic-hardware-1791218725523-5f1d83e3/report.json`。完整范围、手册和边界见 [GIC 自检](register-gic.md)。REG-405 的完整 Debug/GIC MMIO/低 EL ICV、REG-401 低 EL Timer 权限、STM/Bao、BUS、其他 writer、工具整合、REG-208 及最终升版/安装/Release 仍未完成；不将软件通过当作硬件访问成功。源码与安装基线仍为 0.9.3，本批提交并推送 `codex/register-debugging`，目标保持 active。
+
+
 
 ## 2026-10-05：PMU 原生读取、当前 Debug EL 与物理容量
 
@@ -199,7 +218,7 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 
 ## 完整任务仍需完成的部分
 
-2026-10-05 按逐项软件证据自检：TODO 有 71 项开发条目，当前已完成／未完成为 22/49；逐项范围见框架、配置、Setup、目录交付、条件依据、生命周期、共享归属、读取来源及状态与取消自检，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新完整 Cargo 和实际 GDB 回归见上方批次记录。其他功能 suite 仍需在完整任务验收时统一运行。F24／F26 的银行、MRRC、VFP 和变量写入测试映射不能替代整份 TODO 验收。
+2026-10-06 按逐项软件证据自检：TODO 有 71 项开发条目，当前已完成／未完成为 24/47；逐项范围见框架、配置、Setup、目录交付、条件依据、生命周期、共享归属、读取来源及状态与取消自检，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新完整 Cargo 和实际 GDB 回归见上方批次记录。其他功能 suite 仍需在完整任务验收时统一运行。F24／F26 的银行、MRRC、VFP 和变量写入测试映射不能替代整份 TODO 验收。
 
 | 条目范围 | 已有实现与证据 | 尚未完成／需补验收 |
 |---|---|---|
@@ -207,7 +226,7 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 | REG-101–110 | 严格目录、精确原始值/字段/别名、逐项 reader、上下文/owner、四核显式拓扑与独立共享代次／路由缓存、CPU/目录 Setup、内置与用户目录、三态条件；REG-102 的配置层/路径/芯片关联、REG-108 的完整目录预览／取消／保存／配置差异与当前核心身份提示、REG-107 的目录载荷／初始化／隔离安装／客户文件保留、REG-110 的全父链条件／WO／当前与原值依据已核对；`registers.rs`、`tests/register_access.rs`、覆盖矩阵 F24 | 正式升版后重新验证完整产物、真实版本升级与公网安装；各新增类别的身份/条件/别名适配仍需完成 |
 | REG-201–211 | 树、字段、列、说明、搜索、逐核偏好、MPU 总览；新增总数/显示/当前有效/分类计数、完整原因弹窗、实际缺失筛选、请求取消及恢复／Scope All 软件证据；REG-201/202/203/204/205/206/207/209/210/211 已核对，实际路由与保留值来源分开记录 | REG-208 的实际 PowerShell/VS Code 宽窄中文/对比度视觉验收仍需补足；全部目标类别仍需完整验收，不以软件缓冲截图代替终端验收 |
 | REG-301–308 | R52 目录、32 位 MRC、直接 EL1/EL2 MPU 与 MAIR、保存/恢复选择器、故障隔离与完整服务锁；真实 ISB／MRRC 和专用银行后端的新目录构建与离线验证；REG-H02 驱动与 8 模式钩子；`session/banked.rs` 及银行事务测试；Hyp VFP/FPSCR 与 MVFR/FPEXC、D16/D32 别名、REG-H03 四类软件用例 | 合法 EL1/Guest/User 读取、更多模式延后用例及未知 R52+ 身份仍未完成 |
-| REG-401–408 | Timer/PMU/GIC 部分目录、PMU 数量与直接/选择器读取、物理/虚拟 GIC 能力分离和 AP 条件软件夹具；REG-402 六项真正 MRRC、独立 Timer 协议/当前物理证据与 Windows/Linux 新候选已核对 | 完整低 EL Timer 权限与环境时序验证，完整 GIC/Debug/STM 类别及显式板级映射，Bao EL2/Guest 场景及全部延后驱动 |
+| REG-401–408 | REG-402/403 的 Timer MRRC 与单项一致性、REG-404 的当前原生 PMU 容量与 32/64 位读取、REG-408 的原生 ICC/ICH 独立容量及 ICV AP 条件/No 完整依据；Windows/Linux 七协议候选与离线固件/延后驱动已有软件证据 | 完整低 EL Timer/ICV 权限、完整 Debug/GIC Distributor/Redistributor MMIO、STM 的实际存在性与映射、Bao EL2/Guest 场景及其他延后驱动；上板未执行 |
 | REG-501–506 | 软件回归、严格 Clippy、F24–F26 覆盖来源和限制、增量用户手册/开发记录/示例 | 全部延后案例与原功能回归，完整架构/环境/mcal-vsconfig 配套文档，最终升版、产物/profile 一致性、安装升级、非主分支推送与 Release |
 | BUS-001–008 | Setup 通道编辑、各面板入口、路由/来源、范围和绑定失效、运行限制/无回退；`src/launch/channels.rs`、`src/ui/monitor.rs`、`src/session/memory.rs`、F25 | 新增系统寄存器 MMIO 模块的完整接入及相应 BUS 延后场景/Issue #1 完整验收 |
 | WRITE-001–012 | Core 整数、声明 RAM、8/16/32 位 MMIO、typed Watch/Locals writer；正负 Infinity、精确 NaN payload 的 GDB 常量检查及条件 Python buffer；C++ RAM 引用、实际 DWARF signed/unsigned 128 位和 1–64 位位域／新鲜邻接事务软件后端；Hyp S/D/Q 独立 raw writer、物理 pair／邻接和旧别名失效、实际二进制延后主机流程；草稿/权限/owner/服务锁/结果/取消；SVD 字段及部分特殊语义；F26 | 系统/状态/银行、合法 EL1/Guest/User VFP 和 64 位 MMIO writer；变量 long double／完整继承成员映射，配套 ARM GDB 的精确 NaN 主机接口；一次写、解锁、自清零等实际策略；全部类别的重叠缓存及 WRITE-T/H 和最终版本化交付 |

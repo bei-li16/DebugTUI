@@ -140,51 +140,120 @@ fn r52_el1_and_el2_region_counts_use_different_fields_and_known_ranges() {
 }
 
 #[test]
-fn gic_virtual_priority_evidence_never_decides_physical_ap_capacity() {
-    let p = probe(&[
-        ("cpsr", 0x1a),
-        ("icc_ctlr", 4 << 8),
-        ("ich_vtr", (6 << 29) | (5 << 26) | 3),
-    ]);
-    assert_eq!(p.facts["icc.physical.pribits"].value, 5);
-    assert_eq!(p.facts["icc.physical.prebits"].value, 5);
-    assert_eq!(p.facts["icv.virtual.pribits"].value, 7);
-    assert_eq!(p.facts["icv.virtual.prebits"].value, 6);
-    assert_eq!(p.facts["ich.list_registers"].value, 4);
-    for mode in [0x10, 0x13, 0x1f] {
-        let p = probe(&[
-            ("cpsr", mode),
-            ("icc_ctlr", 6 << 8),
-            ("ich_vtr", 0x90180003),
-        ]);
-        assert!(!p.facts.contains_key("icc.physical.prebits"));
-        assert!(!p.facts.contains_key("icv.virtual.prebits"));
+fn raw_gic_counts_and_stopped_hyp_never_prove_physical_or_virtual_ap_capacity() {
+    for mode in [0x10, 0x13, 0x1a, 0x1f] {
+        for bits in 1..=8 {
+            let p = probe(&[
+                ("cpsr", mode),
+                ("icc_ctlr", (bits - 1) << 8),
+                ("ich_vtr", (6 << 29) | (5 << 26) | 3),
+            ]);
+            assert_eq!(p.facts["icc.ctlr_pribits"].value, bits);
+            assert_eq!(p.facts["ich.vtr_pribits"].value, 7);
+            assert_eq!(p.facts["ich.vtr_prebits"].value, 6);
+            assert_eq!(p.facts["ich.vtr_listregs"].value, 4);
+            for key in [
+                "icc.physical.pribits",
+                "icc.physical.prebits",
+                "icv.virtual.pribits",
+                "icv.virtual.prebits",
+                "ich.list_registers",
+            ] {
+                assert!(!p.facts.contains_key(key), "{mode:#x} {bits}: {key}");
+            }
+        }
     }
-    let p = probe(&[("cpsr", 0x1a), ("ich_vtr", 0x90180003)]);
-    assert!(!p.facts.contains_key("icc.physical.prebits"));
 }
-
 #[test]
-fn unadapted_r52_icc_priority_counts_remain_unknown_without_reusing_virtual_capacity() {
-    for bits in 1..=8 {
-        let p = probe(&[
-            ("cpsr", 0x1a),
-            ("icc_ctlr", (bits - 1) << 8),
-            ("ich_vtr", (6 << 29) | (5 << 26) | 3),
-        ]);
-        assert_eq!(p.facts["icc.ctlr_pribits"].value, bits);
-        assert_eq!(p.facts["icv.virtual.prebits"].value, 6);
-        if bits == 5 {
-            assert_eq!(p.facts["icc.physical.prebits"].value, 5);
-            assert_eq!(p.facts["icc.physical.pribits"].value, 5);
-        } else {
-            assert!(!p.facts.contains_key("icc.physical.prebits"));
-            assert!(!p.facts.contains_key("icc.physical.pribits"));
-            assert!(
-                p.notes
-                    .iter()
-                    .any(|note| note.contains("outside the adapted R52 value"))
+fn gic_capacities_require_independent_current_native_interface_evidence() {
+    use crate::registers::{
+        gic::{Response, View},
+        provenance::{Access, Phase, Provenance, Route},
+        timer::ReadMethod,
+    };
+    for mode in [0x10, 0x13, 0x1a] {
+        let mut p = probe(&[("cpsr", mode), ("icc_ctlr", 0x403), ("ich_vtr", 0x90180003)]);
+        for (id, view, value) in [
+            ("icc_ctlr", "physical_icc", "0x00000403"),
+            ("ich_vtr", "hypervisor_ich", "0x90180003"),
+        ] {
+            let wire = format!(
+                "view {view} midr 0x411fd134 dscr 0x01000200 dspsr 0xa2000410 dlr 0x81234568 id_pfr1 0x10111011 icc_hsre 0x0000000f icc_sre 0x00000007 icc_ctlr 0x00000403 ich_vtr 0x90180003 hcr 0x00000038 ich_hcr 0x00007c01 hstr 0x00001000 value {value}"
             );
+            let sample = p.samples.iter_mut().find(|s| s.id == id).unwrap();
+            let mut provenance = Provenance::declared(
+                &Catalogue::builtin("cortex-r52")
+                    .unwrap()
+                    .register(id)
+                    .unwrap()
+                    .reader,
+            );
+            provenance.access = Some(Access {
+                timer: None,
+                pmu: None,
+                gic: Some(Response::parse(&wire, id, 32).unwrap().evidence),
+                route: Route::TclRegister {
+                    endpoint: "localhost:1".into(),
+                    target: "cpu1".into(),
+                    operation: format!("GIC read {id}"),
+                },
+                phase: Phase::Responded,
+                command: format!("aarch64 gic {id}"),
+                context: p.context.clone(),
+                timestamp_ms: 29,
+                completed_ms: Some(30),
+            });
+            sample.source = "openocd:aarch64 gic".into();
+            sample.provenance = Some(provenance);
+        }
+        p.decode();
+        for key in [
+            "icc.physical.pribits",
+            "icc.physical.prebits",
+            "icv.virtual.pribits",
+            "icv.virtual.prebits",
+        ] {
+            assert_eq!(p.facts[key].value, 5);
+        }
+        assert_eq!(p.facts["ich.list_registers"].value, 4);
+        for (id, key, other) in [
+            ("icc_ctlr", "icc.physical.prebits", "icv.virtual.prebits"),
+            ("ich_vtr", "icv.virtual.prebits", "icc.physical.prebits"),
+        ] {
+            for mismatch in 0..12 {
+                let mut bad = p.clone();
+                let sample = bad.samples.iter_mut().find(|s| s.id == id).unwrap();
+                let a = sample.provenance.as_mut().unwrap().access.as_mut().unwrap();
+                match mismatch {
+                    0 => sample.source = format!("gdb:{id}"),
+                    1 => sample.view = SampleView::SelectedFrame,
+                    2 => a.context.generation += 1,
+                    3 => a.phase = Phase::Started,
+                    4 => a.completed_ms = None,
+                    5 => a.completed_ms = Some(28),
+                    6 => {
+                        a.route = Route::TclRegister {
+                            endpoint: "x".into(),
+                            target: "cpu1".into(),
+                            operation: "GIC read icc_pmr".into(),
+                        }
+                    }
+                    7 => a.gic.as_mut().unwrap().read_method = ReadMethod::Mrrc64,
+                    8 => {
+                        a.gic.as_mut().unwrap().view = if id == "icc_ctlr" {
+                            View::HypervisorIch
+                        } else {
+                            View::PhysicalIcc
+                        }
+                    }
+                    9 => a.gic.as_mut().unwrap().midr = RawValue::parse("0x411fd130", 32).unwrap(),
+                    10 => a.gic.as_mut().unwrap().dscr = RawValue::parse("0x01000100", 32).unwrap(),
+                    _ => sample.value = Some(RawValue::parse("0x00000000", 32).unwrap()),
+                }
+                bad.decode();
+                assert!(!bad.facts.contains_key(key), "{id} mismatch {mismatch}");
+                assert_eq!(bad.facts[other].value, 5);
+            }
         }
     }
 }
@@ -282,6 +351,7 @@ fn pmu_physical_capacity_requires_matching_current_native_read_evidence_not_stop
         provenance.access = Some(Access {
             timer: None,
             pmu: Some(evidence),
+            gic: None,
             route: Route::TclRegister {
                 endpoint: "localhost:1".into(),
                 target: "cpu1".into(),
@@ -388,14 +458,17 @@ fn vfp_cross_core_or_stale_features_never_authorize_aliases() {
 
 #[test]
 fn observed_context_facts_override_declarations_and_report_retains_raw_sources() {
-    let mut p = probe(&[("cpsr", 0x1a), ("icc_ctlr", 0x400)]);
+    let mut p = probe(&[("cpsr", 0x1a), ("icc_ctlr", 0x400), ("mpuir", 0x1800)]);
     let declared = BTreeMap::from([
         ("icc.physical.prebits".into(), 7),
         ("vfp.present".into(), 1),
+        ("mpu.el1.regions".into(), 16),
     ]);
     let effective = p.effective(&declared);
-    assert_eq!(effective["icc.physical.prebits"], 5);
+    assert_eq!(effective["icc.physical.prebits"], 7);
     assert_eq!(effective["vfp.present"], 1);
+    assert_eq!(effective["mpu.el1.regions"], 24);
+    assert_eq!(declared["mpu.el1.regions"], 16);
     assert_eq!(declared["icc.physical.prebits"], 7);
     p.samples.push(Sample {
         id: "midr".into(),

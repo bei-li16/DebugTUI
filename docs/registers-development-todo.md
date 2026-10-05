@@ -4,7 +4,7 @@
 
 本计划将现有通用寄存器列表扩展为具有 Arm Development Studio 分组、位域和状态展示能力的寄存器窗口，并纳入 GitHub 开放 Issues 中的总线访问 target 配置、展示以及变量/内存/寄存器写入需求。优先服务 THA6206 的 MCAL 与 Bao 调试，同时保持单核、多核以及 STM32 等既有目标的兼容性。寄存器读取按“确认读取能力 → 建立数据模型 → 改造界面 → 扩展读取 → 实板验收”推进；总线入口与写入能力分别跟踪，写入不作为前期只读版本的发布条件。
 
-状态：开发中。2026-10-05 按逐项软件证据核对，71 项中已完成 23 项、未完成 48 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
+状态：开发中。2026-10-06 按逐项软件证据核对，71 项中已完成 24 项、未完成 47 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md)、[GIC 自检](register-gic.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
 
 ## 当前版本与新功能版本计划
 
@@ -362,7 +362,9 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 - [ ] REG-405：接入 GIC、Debug 等适用寄存器，明确 MMIO、CP15 与每核或共享归属；有读副作用的项目仅手工读取并标明。
 - [ ] REG-406：芯片确有 STM 时接入其适合只读的配置和状态寄存器，区分配置空间与 stimulus 空间；本阶段不实现 Trace 数据流采集与解码。[Arm STM 编程说明](https://developer.arm.com/community/arm-community-blogs/b/tools-software-ides-blog/posts/programming-arm-s-system-trace-macrocell)
 - [ ] REG-407：完成 Bao EL2 下的 Timer、Virt 和 MPU 验证，检查切核及 Guest 运行时的数据归属和状态解释。
-- [ ] REG-408：落实 GIC AP 可选寄存器的条件过滤与错误解释，按实际实现和接口区分物理 ICC、虚拟 ICV 及 ICH 能力；验证 5/6/7 位条件夹具和 R52 实板 AP0R0/AP1R0，禁止试读已确认未实现项，目标版本 v0.11.1。
+- [x] REG-408：落实 GIC AP 可选寄存器的条件过滤与错误解释，按实际实现和接口区分物理 ICC、虚拟 ICV 及 ICH 能力；验证 5/6/7 位条件夹具和 R52 实板 AP0R0/AP1R0，禁止试读已确认未实现项，目标版本 v0.11.1。
+
+2026-10-06 GIC 批次完成 REG-408 的软件要求：ICC_CTLR 与 ICH_VTR 各有当前原生 Debug EL2/物理身份和独立接口证明，ICV AP 使用明确 ICH backing；5/6/7 条件夹具和 R52 五位/四列表分别验证。Unknown 不自动试读、No 即便手工也无数据访问，判定保留完整源/控制/上下文/请求时间。二十九项 MRC32、LR/LRC 分开、IAR/WO 无观测读、双核 Scope All、取消和故障隔离已有软件证据。生产 C 的 3,190 个失败点、239 项拒绝、406 项变化，Windows/Linux 重建/七协议/源码包与本机验证通过；完整 Cargo 525 项通过、2 ignored，F24 129/129，严格 Clippy 通过。按用户要求不执行上板，[十项环境 case](../tests/cases/register-gic.md) 与只读独立固件/五阶段驱动均已准备且 SKIPPED；R52 实板 AP0R0/AP1R0 未宣称通过。REG-405 的 Debug/GIC MMIO/低 EL ICV 仍未勾选，当前已完成／未完成 **24/47**，见 [GIC 自检](register-gic.md) 与 [开发进度](registers-development-status.md)。
 
 完成条件：每个新增模块独立记录支持条件。64 位 Timer 未通过实板验证时不得声明已支持；其缺口不阻塞已完成基础功能的独立发布。
 
