@@ -15,15 +15,17 @@ pub(super) struct Drafts(
     BTreeMap<String, Draft>,
     pub(super) BTreeMap<String, super::memory_writes::Draft>,
     pub(super) BTreeMap<String, super::variable_writes::Draft>,
+    pub(super) BTreeMap<String, super::vfp_writes::Draft>,
 );
 impl Drafts {
     pub(super) fn clear(&mut self) {
         self.0.clear();
         self.1.clear();
         self.2.clear();
+        self.3.clear();
     }
     pub(super) fn len(&self) -> usize {
-        self.0.len() + self.1.len() + self.2.len()
+        self.0.len() + self.1.len() + self.2.len() + self.3.len()
     }
 }
 struct Draft {
@@ -38,7 +40,7 @@ struct Draft {
 }
 
 impl Engine {
-    fn write_permission(&mut self) -> Result<(), String> {
+    pub(super) fn write_permission(&mut self) -> Result<(), String> {
         let permission = self.mi("-gdb-show may-write-registers")?;
         if permission.data.string("value") != "on" {
             return Err("GDB register writes are disabled (may-write-registers)".into());
@@ -105,6 +107,9 @@ impl Engine {
         let register = catalogue.register(id).ok_or("Unknown register ID")?;
         if register.scope != Scope::Core {
             return Err("A GDB register writer must belong to one physical core".into());
+        }
+        if matches!(register.writer, Some(Writer::Vfp { .. })) {
+            return self.preview_vfp_write(p, expected, register);
         }
         let (implementation, evidence) = register.implementation(&self.effective_register_facts());
         if implementation == Implementation::No
@@ -204,7 +209,8 @@ impl Engine {
         let token = p["draft"].as_str().ok_or("Write draft ID required")?;
         let removed = self.write_drafts.0.remove(token).is_some()
             | self.write_drafts.1.remove(token).is_some()
-            | self.write_drafts.2.remove(token).is_some();
+            | self.write_drafts.2.remove(token).is_some()
+            | self.write_drafts.3.remove(token).is_some();
         Ok(
             json!({"draft":token,"outcome":if removed {json!(Outcome::NotSent)} else {Json::Null},"cancelled":removed,
             "detail":if removed {"Draft cancelled before sending"} else {"No pending draft; a sent write cannot be withdrawn"}}),
@@ -232,6 +238,9 @@ impl Engine {
     }
     pub(super) fn apply_write(&mut self, p: &Json) -> Result<Json, String> {
         let token = p["draft"].as_str().ok_or("Write draft ID required")?;
+        if self.write_drafts.3.contains_key(token) {
+            return self.apply_vfp_write(token);
+        }
         if self.write_drafts.2.contains_key(token) {
             return self.apply_variable_write(token);
         }

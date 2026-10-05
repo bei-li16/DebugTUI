@@ -1,12 +1,14 @@
 """Development-only target model executing actual Tcl control flow; no board I/O.
 
 Uses the standard Python tkinter Tcl interpreter without creating a Tk window.
-Input/output are JSON; the target model permits only reads, adapted selector MCRs
-and CP15ISB. It supplies register behavior, not an alternate transaction algorithm.
+Input/output are JSON; the target model permits reads, adapted selector MCRs,
+CP15ISB and raw VFP writes. Tcl runs the production host control flow; this model
+supplies register behavior, while separate C tests execute the physical backend.
 """
 import json
 import sys
 import tkinter
+import re
 from pathlib import Path
 
 def evaluate(data):
@@ -56,6 +58,44 @@ def evaluate(data):
         if op == 'debugtui_vfp_protocol':
             return (0, 'old-vfp-adapter' if fault == 'vfp_protocol' else
                     'debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault')
+        if op == 'debugtui_vfp_write_protocol':
+            return (0, 'old-vfp-writer' if fault == 'vfp_write_protocol' else
+                    'debugtui-armv8-vfp-write-1 vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault')
+        if op == 'vfp_write':
+            assert len(args) == 2 and re.fullmatch(r'[sdq](0|[1-9][0-9]?)', args[0])
+            reg, raw = args
+            index = int(reg[1:])
+            bits = 32 if reg[0] == 's' else 64 if reg[0] == 'd' else 128
+            assert index < (16 if bits == 128 else 32)
+            assert re.fullmatch(r'0x[0-9a-f]{%d}' % (bits // 4), raw)
+            if fault == 'vfp_write_refused':
+                return (0, 'outcome not_sent reason pending-register-write')
+            pair = index // 4 if bits == 32 else index // 2 if bits == 64 else index
+            offset = pair + (0x100000000 if name == 'cpu1' else 0)
+            initial = ((0x7ff8000012345678 + offset) << 64) | (0x800000003f800000 + offset)
+            pairs = cpu.setdefault('vfp_pairs', {})
+            before = int(pairs.get(str(pair), str(initial)))
+            shift = (index % 4) * 32 if bits == 32 else (index % 2) * 64 if bits == 64 else 0
+            mask = ((1 << bits) - 1) << shift
+            expected = (before & ~mask) | (int(raw, 16) << shift)
+            observed = expected
+            outcome = 'verified'
+            if fault in ('vfp_write_mismatch', 'vfp_write_mismatch_context_change'):
+                observed ^= 1 << shift
+                outcome = 'mismatch'
+            if fault == 'vfp_write_neighbour_mismatch':
+                observed ^= 1 << (0 if shift else 127)
+                outcome = 'mismatch'
+            pairs[str(pair)] = str(observed)
+            if fault == 'vfp_write_unknown':
+                cpu['status'] = 'unknown'
+                return (1, 'Core state restoration failed: VFP write result unknown', -1)
+            if fault in ('vfp_write_context_change', 'vfp_write_mismatch_context_change'):
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+            if fault == 'vfp_write_forged_expected':
+                expected ^= 1 << (0 if shift else 127)
+            fpexc = 0x700 if fault == 'vfp_write_forged_enable' else 0x40000700
+            return (0, f'outcome {outcome} before 0x{before:032x} expected 0x{expected:032x} value 0x{observed:032x} mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x{fpexc:08x}')
         if op == 'vfp':
             reg = args[0]
             if fault == 'vfp_refusal_context_change':
@@ -86,7 +126,8 @@ def evaluate(data):
             if data:
                 pair = int(reg[1:]) // 2 if reg.startswith('d') else int(reg[1:])
                 offset = pair + (0x100000000 if name == 'cpu1' else 0)
-                value = f'0x{0x7ff8000012345678 + offset:016x}{0x800000003f800000 + offset:016x}'
+                initial = ((0x7ff8000012345678 + offset) << 64) | (0x800000003f800000 + offset)
+                value = f'0x{int(cpu.setdefault("vfp_pairs", {}).get(str(pair), str(initial))):032x}'
             else:
                 value = f'0x{controls[reg]:08x}'
             if fault == 'vfp_short':

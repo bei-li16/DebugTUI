@@ -30,6 +30,7 @@ mod selectors;
 mod symbols;
 mod variable_writes;
 mod vfp;
+mod vfp_writes;
 mod watch;
 mod writes;
 pub(crate) use symbols::Symbol;

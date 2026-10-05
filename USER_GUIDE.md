@@ -744,6 +744,37 @@ MVFR0/1 确认 SP-only D16 或 DP/NEON D32；D16 仍有 64 位 D 存储，但不
 
 同一请求内 S/D/Q 共享精确 128 位物理 pair，保留 NaN 载荷、负零及高位；缓存不跨请求／核心／停止点／帧。Scope All 只读选中核。后端恢复回读 R0/R1，并复核 DSPSR、HCPTR、FPEXC；异常未知进入 FAULT，重连前不重试。软件用例和 Windows/Linux 构建通过，物理执行按本任务要求未测试。REG-H03 驱动和独立固件钩子见 [测试说明](tests/README.md)。
 
+### 编辑 R52 浮点与向量原始位（开发分支）
+
+S/D/Q 的 **Edit value** 使用独立 writer。专用 reader 可用或目录标有 RW，都不足以开放写入；使用包含写协议的固定源码适配后端，并在工程中显式配置：
+
+```toml
+[registers]
+cpu = "cortex-r52"
+tcl_endpoint = "127.0.0.1:6666"
+vfp_command = "aarch64 vfp"
+vfp_write_command = "aarch64 vfp_write"
+[registers.targets]
+core0 = "board.cpu0"
+core1 = "board.cpu1"
+```
+
+上例 target 名称须替换为实际映射；现有 stock xPack 不提供此协议。当前写入只适配已确认的 R52 D13、Hyp、HCPTR.TCP10=0、FPEXC.EN=1、暂停的物理 frame 0，且遵守 GDB `may-write-registers`。实际 MVFR 确认 D16/D32；D16 的 64 位 D 存储可写，高 D 和 Q 不开放。R52+ 实际身份、合法 EL1/Guest/User 路径以及 FPSCR/FPEXC 等控制 writer 仍待适配。
+
+在 Single、Double 或 Quad 中选中条目，按 `e` 或点 **Edit value**，输入后 **Preview**，核对物理核、target、通道和位宽，再显式 **Apply** 或 **Cancel**。S/D/Q 分别接受精确 32/64/128 位字符串；浮点输入仅适用于 S/D，NaN payload 应使用原始十六进制，字节输入需明确 LE/BE。Scope All 始终只写选中核，不广播。
+
+Headless 使用同一 `write_preview` / `write_apply` / `write_cancel` 接口。先调用 `registers_list`，用其返回的当前 `context` 替换以下示例：
+
+```json
+{"id":10,"method":"write_preview","params":{"context":{"session":17,"generation":3,"core":"core0","frame":0},"target":{"kind":"register","id":"q15"},"selection":{"kind":"register"},"input":{"kind":"unsigned","text":"0x8123456789abcdef7ff0123456789abc"}}}
+```
+
+Preview 不写 FP 数据，返回完整原始 pair 及单次草稿令牌。Apply 重新核对上下文、权限、协议和物理容量；后端以发送时的新鲜 pair 保留 S/D 相邻位。Q 使用两次 D 写入，`atomic=false`，部分执行可能发生；不通过 GDB LONGEST 写 128 位数据，不修改模式或使能 FPU。
+
+结果 `verified` 表示完整 pair 回读一致，`mismatch` 包括邻接位变化，`not_sent` 表示已知未写，`unknown` 表示可能已改变存储。写后上下文变化时，已验证结果显示 `accepted`，已有 mismatch 保留。未知结果使共享通道进入 FAULT；不重试或自动恢复旧值。成功或未知写入使旧样本、别名、其他草稿及关联视图失效；重连不会重放草稿。
+
+软件验证与延后上板步骤见 [VFP 写入验收](tests/cases/register-vfp-writes.md)。实际 DebugTUI 驱动默认报告 skipped；本任务没有执行板卡测试。
+
 ### 读取 MPU／PMU 选择器组（开发分支）
 
 普通 **Read** 继续使用 PRBARn／PRLARn、PMEVCNTRn／PMEVTYPERn 的直接索引通道。需要选择器通道时，在暂停物理核心的 frame 0 先 **Probe caps**，选中对应区域／事件计数器，再点击 **Read bank** 或执行 `:register-bank-read`。Scope All 仍只操作当前核心。区域索引必须小于实际 MPUIR／HMPUIR 数量；当前适配 R52 的 16／20／24 区域和最多 4 个 32 位 PMU 事件计数器，EL2 要求 Hyp。选择 PMU index 31 读取计数器不受支持，但保存的 PMSELR=31 可以原样恢复。

@@ -13,6 +13,8 @@ registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", 
 # banked_command="aarch64 banked"; stock xPack does not provide this protocol.
 # Banked access requires the stopped physical frame 0 and actual R52 MIDR.
 # vfp_command="aarch64 vfp" opts into the independent VFP protocol.
+# vfp_write_command="aarch64 vfp_write" independently enables raw S/D/Q drafts.
+# A reader or RW label alone never enables editing; stock xPack lacks this writer.
 # VFP data requires verified Hyp permissions and FPEXC.EN; never enabled here.
 # declare [registers.targets] with the physical target name for each core.
 # These are examples, not a verified THA6 OpenOCD target/command mapping.

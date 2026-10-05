@@ -14,6 +14,7 @@ let frameLevel = 0;
 let registerWritten = false;
 let writerProbed = false;
 let registerReadCount = 0;
+let registerPermissionQueries = 0;
 let memoryWritten = false;
 let memoryWriterProbed = false;
 const variables = process.env.DEBUGTUI_TEST_BITFIELD_VARIABLE ? require('./mock-bitfield-variable-gdb.cjs') : process.env.DEBUGTUI_TEST_WIDE_VARIABLE ? require('./mock-wide-variable-gdb.cjs') : process.env.DEBUGTUI_TEST_FLOAT_VARIABLE ? require('./mock-float-variable-gdb.cjs') : process.env.DEBUGTUI_TEST_VARIABLES ? require('./mock-variable-gdb.cjs') : null;
@@ -32,7 +33,8 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   if (variables?.handle(cmd, {done, memory, error: message => send(`${token}^error,msg=${JSON.stringify(message)}`), running: () => {state='running';send('*running,thread-id="all"');}, stopped: () => {state='stopped';send(`*stopped,reason="signal-received",${frame()}`);}})) return;
   if (cmd.startsWith('-gdb-set ') || cmd.startsWith('-file-exec-and-symbols ')) return done();
   if (cmd === '-gdb-show may-write-registers') {
-    const disabled = process.env.DEBUGTUI_TEST_REGISTER_READONLY || (writerProbed && process.env.DEBUGTUI_TEST_WRITE_PERMISSION_CHANGE);
+    registerPermissionQueries++;
+    const disabled = process.env.DEBUGTUI_TEST_REGISTER_READONLY || (writerProbed && process.env.DEBUGTUI_TEST_WRITE_PERMISSION_CHANGE) || (process.env.DEBUGTUI_TEST_REGISTER_PERMISSION_AFTER && registerPermissionQueries > Number(process.env.DEBUGTUI_TEST_REGISTER_PERMISSION_AFTER));
     return done(`value="${disabled ? 'off' : 'on'}"`);
   }
   if (cmd === '-gdb-show may-write-memory') return done(`value="${process.env.DEBUGTUI_TEST_MEMORY_READONLY || (memoryWriterProbed && process.env.DEBUGTUI_TEST_MEMORY_PERMISSION_CHANGE) ? 'off' : 'on'}"`);

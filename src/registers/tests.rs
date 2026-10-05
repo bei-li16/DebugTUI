@@ -1,6 +1,96 @@
 use super::*;
 
 #[test]
+fn vfp_writer_opt_in_is_independent_strict_and_round_trips() {
+    let reader: Config = toml::from_str("vfp_command='aarch64 vfp'").unwrap();
+    assert!(reader.vfp_write_command.is_empty());
+    reader.validate().unwrap();
+    for (read, write, valid) in [
+        ("", "", true),
+        ("", "aarch64 vfp_write", false),
+        ("aarch64 vfp", "aarch64 vfp_write", true),
+        ("aarch64 vfp", "arm vfp_write", false),
+        ("aarch64 vfp", "aarch64 vfp_write; resume", false),
+    ] {
+        let config = Config {
+            vfp_command: read.into(),
+            vfp_write_command: write.into(),
+            ..Default::default()
+        };
+        assert_eq!(config.validate().is_ok(), valid, "{read}/{write}");
+        let copy: Config = toml::from_str(&toml::to_string(&config).unwrap()).unwrap();
+        assert_eq!(copy.vfp_write_command, write);
+    }
+}
+
+#[test]
+fn vfp_storage_metadata_requires_the_exact_physical_view_and_plain_semantics() {
+    for cpu in ["cortex-r52", "cortex-r52+"] {
+        let catalogue = Catalogue::builtin(cpu).unwrap();
+        assert_eq!(
+            catalogue
+                .registers
+                .iter()
+                .filter(|r| matches!(r.writer, Some(Writer::Vfp { .. })))
+                .count(),
+            80
+        );
+        for id in ["fpsid", "fpscr", "mvfr0", "mvfr1", "mvfr2", "fpexc"] {
+            assert!(catalogue.register(id).unwrap().writer.is_none());
+        }
+        for case in 0..12 {
+            let mut invalid = catalogue.clone();
+            let reg = invalid
+                .registers
+                .iter_mut()
+                .find(|r| r.id == "s31")
+                .unwrap();
+            match case {
+                0 => reg.writer = Some(Writer::Vfp { name: "s30".into() }),
+                1 => reg.scope = Scope::Chip,
+                2 => reg.access = Access::Ro,
+                3 => reg.access = Access::Wo,
+                4 => {
+                    reg.reader = Reader::Alias {
+                        source: "d14".into(),
+                        offset: 32,
+                    }
+                }
+                5 => {
+                    reg.reader = Reader::Alias {
+                        source: "d15".into(),
+                        offset: 0,
+                    }
+                }
+                6 => reg.read_side_effect = true,
+                7 => reg.write.as_mut().unwrap().read_side_effect = true,
+                8 => reg.write.as_mut().unwrap().bits = 64,
+                9 => reg.write.as_mut().unwrap().effect = crate::writes::Effect::OneToClear,
+                10 => reg.write.as_mut().unwrap().verification = crate::writes::Verification::None,
+                _ => {
+                    let parent = invalid
+                        .registers
+                        .iter_mut()
+                        .find(|r| r.id == "d15")
+                        .unwrap();
+                    parent.writer = None;
+                    parent.write = None;
+                    parent.reader = Reader::Gdb { name: "d15".into() };
+                }
+            }
+            assert!(invalid.validate().is_err(), "{cpu}, case {case}");
+        }
+    }
+    assert!(
+        Catalogue::builtin("cortex-m4")
+            .unwrap()
+            .registers
+            .iter()
+            .all(|r| !matches!(r.writer, Some(Writer::Vfp { .. })))
+    );
+}
+
+#[test]
 fn mrrc_and_genuine_isb_configuration_is_explicit_and_strict() {
     let old: Config = toml::from_str("cp15_command='arm mrc'").unwrap();
     assert!(old.cp15_64_command.is_empty() && old.isb_command.is_empty());
@@ -526,7 +616,9 @@ fn writers_are_independent_and_reject_width_scope_permission_and_read_effect_con
     let r0 = catalogue.register("r0").unwrap();
     assert!(matches!(&r0.writer, Some(Writer::GdbInteger { name }) if name == "r0"));
     assert!(catalogue.register("sctlr").unwrap().writer.is_none());
-    assert!(catalogue.register("d0").unwrap().writer.is_none());
+    assert!(
+        matches!(&catalogue.register("d0").unwrap().writer, Some(Writer::Vfp { name }) if name == "d0")
+    );
     assert!(catalogue.register("cpsr").unwrap().writer.is_none());
     for kind in 0..5 {
         let mut invalid = catalogue.clone();

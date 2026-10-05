@@ -52,6 +52,7 @@ pub(super) struct RegisterView {
     pub(super) preference_scope: String,
     display_formats: BTreeMap<String, crate::registers::display::Format>,
     mpu_popup: Option<mpu::Popup>,
+    vfp_write_targets: BTreeSet<String>,
 }
 impl RegisterView {
     pub(super) fn edit_candidate(
@@ -98,6 +99,10 @@ impl RegisterView {
         };
         let reason = if register.writer.is_none() || register.write.is_none() {
             Some("No independent writer and write semantics are declared for this object.".into())
+        } else if matches!(register.writer, Some(crate::registers::Writer::Vfp { .. }))
+            && !self.vfp_write_targets.contains(&context.core)
+        {
+            Some("Configure the independent registers.vfp_write_command and this core's TCL target before editing VFP storage.".into())
         } else if !register.access.writable() {
             Some("Register is read-only.".into())
         } else if register.implementation(&self.facts).0 == Implementation::No {
@@ -145,6 +150,14 @@ impl RegisterView {
             preference_scope: String::new(),
             display_formats: BTreeMap::new(),
             mpu_popup: None,
+            vfp_write_targets: if project.registers.vfp_write_command == "aarch64 vfp_write"
+                && project.registers.vfp_command == "aarch64 vfp"
+                && !project.registers.tcl_endpoint.is_empty()
+            {
+                project.registers.targets.keys().cloned().collect()
+            } else {
+                BTreeSet::new()
+            },
         };
         view.rebuild();
         view
@@ -1440,6 +1453,102 @@ mod tests {
             context: app.register_context(),
             timestamp_ms: 23,
             source: format!("gdb:{id}"),
+        }
+    }
+    #[test]
+    fn vfp_editor_uses_native_width_and_requires_this_cores_independent_writer() {
+        for (name, bits, raw) in [
+            ("s31", 32, "0x7fa12345"),
+            ("d31", 64, "0xfff0123456789abc"),
+            ("q15", 128, "0x8123456789abcdef7ff0123456789abc"),
+        ] {
+            for enabled in [false, true] {
+                for (width, height) in [(45, 12), (80, 24)] {
+                    let mut project = app().project;
+                    project.registers.vfp_command = "aarch64 vfp".into();
+                    project.registers.tcl_endpoint = "127.0.0.1:6666".into();
+                    project
+                        .registers
+                        .targets
+                        .insert("default".into(), "cpu0".into());
+                    if enabled {
+                        project.registers.vfp_write_command = "aarch64 vfp_write".into();
+                    }
+                    let mut app = App::new(project, false);
+                    app.snapshot.state = "STOPPED".into();
+                    app.select_pane(3);
+                    app.register_view.query = name.into();
+                    app.register_view.rebuild();
+                    app.selection = (0..app.register_view.rows.len())
+                        .find(|i| {
+                            app.register_view
+                                .edit_candidate(*i, &app.register_context())
+                                .is_ok_and(|c| c.target["id"] == name)
+                        })
+                        .unwrap();
+                    let candidate = app
+                        .register_view
+                        .edit_candidate(app.selection, &app.register_context())
+                        .unwrap();
+                    assert_eq!(candidate.bits, bits);
+                    assert_eq!(candidate.reason.is_none(), enabled);
+                    if enabled {
+                        let peer = Context {
+                            core: "core1".into(),
+                            ..app.register_context()
+                        };
+                        assert!(
+                            app.register_view
+                                .edit_candidate(app.selection, &peer)
+                                .unwrap()
+                                .reason
+                                .unwrap()
+                                .contains("this core's TCL target")
+                        );
+                    }
+                    let (engine, requests) = engine();
+                    app.key(
+                        KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE),
+                        Some(&engine),
+                    );
+                    app.write_paste(raw);
+                    let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+                    terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+                    if width == 45 {
+                        app.write_key(
+                            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+                            Some(&engine),
+                        );
+                    } else {
+                        let buffer = terminal.backend().buffer();
+                        let (x, y) = (0..height)
+                            .find_map(|y| {
+                                let row: String =
+                                    (0..width).map(|x| buffer[(x, y)].symbol()).collect();
+                                row.find("Preview").map(|x| (x as u16, y))
+                            })
+                            .unwrap();
+                        app.write_mouse(
+                            MouseEvent {
+                                kind: MouseEventKind::Down(event::MouseButton::Left),
+                                column: x,
+                                row: y,
+                                modifiers: KeyModifiers::NONE,
+                            },
+                            Some(&engine),
+                        );
+                    }
+                    if enabled {
+                        let request = requests.try_recv().unwrap();
+                        assert_eq!(request.method, "write_preview");
+                        assert_eq!(request.params["target"]["id"], name);
+                        assert_eq!(request.params["input"]["text"], raw);
+                        assert_eq!(request.params["context"], json!(app.register_context()));
+                    } else {
+                        assert!(requests.try_recv().is_err());
+                    }
+                }
+            }
         }
     }
     #[test]

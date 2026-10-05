@@ -433,6 +433,15 @@ impl Engine {
         RawValue::parse(&value.string("value"), bits).map_err(|error| (Reason::Unknown, error))
     }
     pub(super) fn register_tcl(&mut self, operation: &str) -> Result<String, (Reason, String)> {
+        self.register_tcl_tracked(operation, &mut false)
+    }
+    /// True once entering transport: errors afterwards may follow a hardware write.
+    pub(super) fn register_tcl_tracked(
+        &mut self,
+        operation: &str,
+        submitted: &mut bool,
+    ) -> Result<String, (Reason, String)> {
+        *submitted = false;
         self.check_register_read_cancelled()
             .map_err(|error| (Reason::Unknown, error))?;
         if let Some(error) = &self.register_access_fault {
@@ -465,6 +474,7 @@ impl Engine {
         );
         let mut stream = crate::live_watch::connect(&endpoint)
             .map_err(|error| (Reason::TransportError, error))?;
+        *submitted = true;
         match crate::live_watch::transact(&mut stream, &script) {
             Ok(value) => Ok(value),
             Err(error) => {

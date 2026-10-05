@@ -29,6 +29,8 @@ mod mpu_cases;
 mod mrrc_cases;
 #[path = "selector_access/vfp_cases.rs"]
 mod vfp_cases;
+#[path = "selector_access/vfp_write_cases.rs"]
+mod vfp_write_cases;
 struct Fixture {
     project: Project,
     transcript: PathBuf,

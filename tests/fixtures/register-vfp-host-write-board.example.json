@@ -1,0 +1,19 @@
+{
+  "software_example": true,
+  "evidence_source": "Replace with independent VMOV firmware samples, actual core IDs and paused hook evidence",
+  "fixture_core_private": true,
+  "restore_on_verified": true,
+  "frame_function": "debugtui_vfp_ready_hook",
+  "reference": "debugtui_vfp_reference",
+  "expected_midr": "0x410fd133",
+  "expected_mvfr0": "0x10110222",
+  "expected_mvfr1": "0x12111111",
+  "target": "board.cpu0",
+  "peer_core": "core1",
+  "peer_target": "board.cpu1",
+  "control_scope": "all",
+  "register": "s31",
+  "raw": "0x7fa12345",
+  "expected_before": "0xfedcba987654320ffedcba987654320e",
+  "expected_peer": "0x123456789abcdef00123456789abcdef"
+}

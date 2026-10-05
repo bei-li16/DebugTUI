@@ -36,6 +36,8 @@ pub struct Config {
     pub banked_command: String,
     /// Explicit adapter with physical VFP enable, capacity and scratch checks.
     pub vfp_command: String,
+    /// Independent opt-in writer. Reader availability never enables data writes.
+    pub vfp_write_command: String,
     /// Opt-in MCR used only for adapted, saved/restored selector transactions.
     pub selector_command: String,
     /// Genuine ISB; empty retains the guarded legacy CP15ISB route.
@@ -95,6 +97,13 @@ impl Config {
         }
         if !matches!(self.vfp_command.as_str(), "" | "aarch64 vfp") {
             return Err("registers.vfp_command must be aarch64 vfp".into());
+        }
+        if !matches!(self.vfp_write_command.as_str(), "" | "aarch64 vfp_write")
+            || (!self.vfp_write_command.is_empty() && self.vfp_command != "aarch64 vfp")
+        {
+            return Err(
+                "registers.vfp_write_command requires aarch64 vfp_write and aarch64 vfp".into(),
+            );
         }
         if !self.isb_command.is_empty()
             && (self.isb_command != "aarch64 isb"
@@ -239,6 +248,8 @@ pub enum Reader {
 pub enum Writer {
     /// GDB's MI writer uses LONGEST, so it cannot represent a 128-bit vector.
     GdbInteger { name: String },
+    /// Fixed raw S/D/Q protocol with fresh physical alias merging and readback.
+    Vfp { name: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -627,6 +638,47 @@ impl Catalogue {
             }
             match (&register.writer, &register.write) {
                 (None, None) => {}
+                (Some(Writer::Vfp { name }), Some(write)) => {
+                    let view = vfp::WriteView::parse(name)
+                        .ok_or_else(|| format!("Invalid VFP writer for {}", register.id))?;
+                    let reader_matches = match &register.reader {
+                        Reader::Vfp { name: reader } => view.bits != 32 && reader == name,
+                        Reader::Alias { source, offset } => {
+                            view.bits == 32
+                                && source == &view.reader_name()
+                                && *offset == view.offset % 64
+                                && self.register(source).is_some_and(|parent| {
+                                    parent.bits == 64
+                                        && parent.scope == Scope::Core
+                                        && !parent.read_side_effect
+                                        && matches!(&parent.reader, Reader::Vfp { name } if name == source)
+                                })
+                        }
+                        _ => false,
+                    };
+                    if name != &register.id
+                        || view.bits != register.bits
+                        || write.bits != register.bits
+                        || register.scope != Scope::Core
+                        || register.access != Access::Rw
+                        || register.read_side_effect
+                        || write.read_side_effect
+                        || !reader_matches
+                        || write.access != crate::writes::Access::ReadWrite
+                        || write.effect != crate::writes::Effect::Modify
+                        || !write.fields.is_empty()
+                        || !matches!(write.constraint, crate::writes::Constraint::None)
+                        || !matches!(write.verification, crate::writes::Verification::Modified)
+                    {
+                        return Err(format!(
+                            "VFP writer requires matching plain raw storage metadata: {}",
+                            register.id
+                        ));
+                    }
+                    write
+                        .validate()
+                        .map_err(|e| format!("Write metadata for {}: {e}", register.id))?;
+                }
                 (Some(Writer::GdbInteger { name }), Some(write)) => {
                     if !identifier(name)
                         || register.bits > 64

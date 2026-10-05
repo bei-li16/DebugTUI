@@ -32,6 +32,9 @@ def generate(cpu, m_profile=False):
         if group == "core" and kind == "gdb" and not fields and (id in ("sp", "lr", "pc") or id.startswith("r") and id[1:].isdigit()):
             lines.append(f'writer = {{ kind = "gdb_integer", name = {q(id)} }}')
             lines.append('write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }')
+        elif not m_profile and group in ("single", "double", "quad"):
+            lines.append(f'writer = {{ kind = "vfp", name = {q(id)} }}')
+            lines.append(f'write = {{ bits = {bits}, access = "read_write", effect = "modify", constraint = {{ kind = "none" }}, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = {{ kind = "modified" }} }}')
         if effect: lines.append("read_side_effect = true")
         if kind in ("cp15", "cp15_64"):
             lines.append('access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."')

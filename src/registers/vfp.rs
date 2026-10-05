@@ -1,5 +1,7 @@
 //! R52 VFP evidence and fixed adapter wire format; no permissions inferred from CPACR.
 use super::RawValue;
+mod writes;
+pub use writes::{WRITE_PROTOCOL, WriteResponse, WriteView};
 
 pub const PROTOCOL: &str = "debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault";
 
