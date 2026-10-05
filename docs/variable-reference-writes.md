@@ -1,12 +1,12 @@
 # C++ 引用与 128 位标量写入
 
-Watch／Locals 的统一 typed writer 现支持声明普通 RAM 中的可赋值 C++ lvalue／rvalue reference，以及编译器和实际 GDB 均提供的 128 位整数标量。引用到指针修改的是指针变量，不修改 pointee。const／volatile 根对象及 referent 仍拒绝，long double 和位域尚未适配；CPU 状态、银行及 S/D/Q 向量 writer 不由本批开放。
+Watch／Locals 的统一 typed writer 现支持声明普通 RAM 中的可赋值 C++ lvalue／rvalue reference，以及编译器和实际 GDB 均提供的 128 位整数标量。引用到指针修改的是指针变量，不修改 pointee。const／volatile 根对象及 referent 仍拒绝，long double 尚未适配；CPU 状态、银行及 S/D/Q 向量 writer 不由本批开放。位域使用后续的 [DWARF 专用路径](variable-bitfield-writes.md)。
 
 ## 类型、存储与写入
 
 预览和应用保留 GDB `ptype /r` 的实际引用类型，并仅剥离最外层 `&`／`&&` 来判断 referent 的整数、浮点、布尔或指针类型和限定符。对引用使用 `__typeof__(*(&(expression)))` 得到被引用对象类型，避免把数字强转成 C++ reference。实际 `&(expression)` 必须解析到声明 RAM 的 referent 地址，并验证实际 `sizeof`、访问宽度／对齐、owner、线程、栈帧、停止代次、ELF、可赋值属性及 `may-write-memory`。没有实际 RAM 地址的引用拒绝；不会把 reference 绑定槽、优化值或 saved register 推断成可写 referent。
 
-实际本机 GDB 允许取得位域地址，6 位字段的 `sizeof` 也返回 4 字节容器大小，地址和大小不能证明普通标量布局。Preview／Apply 对成员路径额外读取直接父类型的 `ptype /r`，要求字段能对应唯一的普通直接声明；位域、继承或无法确认的成员拒绝赋值。模板参数中的 `const` 或 `*` 不视为外层限定符或指针。该校验是当前不支持位域时的拒绝路径，尚未实现 DWARF bitpos／bitsize 和邻接位验证。
+实际本机 GDB 允许取得位域地址，6 位字段的 `sizeof` 也返回 4 字节容器大小，地址和大小不能证明普通标量布局。Preview／Apply 对成员路径额外读取直接父类型的 `ptype /r`，要求字段能对应唯一的直接声明；位域委托专用布局／邻接位事务，继承或无法确认的成员拒绝赋值。模板参数中的 `const` 或 `*` 不视为外层限定符或指针。引用批次的位域负向用例保留为未声明 RAM 字节序时的拒绝验证。
 
 原有 `-var-assign` 类型赋值路径保持不变：服务锁覆盖检查、一次赋值和回读，临时禁止目标函数调用并恢复设置；没有裸地址写入回退。Apply 重新创建对象、检查引用类型和 referent 地址，切核、切帧、地址或权限变化都会使原草稿不可应用。只消费一次草稿，发送后错误不重试或自动恢复旧值；Scope All 仅作用于当前 owner。浮点引用复用已有原始位核对和条件 Python buffer 路径。
 
@@ -25,4 +25,4 @@ Watch／Locals 的统一 typed writer 现支持声明普通 RAM 中的可赋值 
 node scripts/test-variable-reference-arm.cjs --object <variable-reference-board-arm.o>
 ```
 
-上板状态和实际 core0／core1／shared／局部帧／128 位适用性 case 见 [延后矩阵](../tests/cases/variable-references-wide.md)，位域拒绝与尚未实现的写入案例见 [位域案例](../tests/cases/variable-bitfields.md)。当前未执行上板、推送或发布。位域仍需 DWARF bitpos／bitsize、容器实际范围与邻接位事务验证，继承成员映射也未适配；完整 TODO 中的其他读写类别、工具集整合、最终回归和 Release 保持待完成。
+上板状态和实际 core0／core1／shared／局部帧／128 位适用性 case 见 [延后矩阵](../tests/cases/variable-references-wide.md)，位域的新路径见 [位域案例](../tests/cases/variable-bitfields.md)。当前未执行上板、推送或发布。完整继承成员映射未适配；完整 TODO 中的其他读写类别、工具集整合、最终回归和 Release 保持待完成。

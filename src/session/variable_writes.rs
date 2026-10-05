@@ -6,13 +6,17 @@ use crate::{
     writes::{Input, MemoryKind, Outcome, ScalarType, Selection, variable_lvalue},
 };
 use std::path::PathBuf;
+mod bitfields;
 mod literals;
+use bitfields::BitfieldMetadata;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 struct Metadata {
     expression: String,
     type_name: String,
     reference: bool,
+    declared_bits: u16,
+    bitfield: Option<BitfieldMetadata>,
     scalar: ScalarType,
     address: Option<String>,
     region: Option<String>,
@@ -82,9 +86,13 @@ impl Engine {
     ) -> Result<(RawValue, Assignment), String> {
         // A GDB may know a DWARF 128-bit type while rejecting the compiler's
         // spelling. Only the validated object supplies this type expression.
-        let (raw, assignment) = metadata
-            .scalar
-            .assignment_with_type(input, Some(&metadata.assignment_type()))?;
+        let (raw, assignment) = if metadata.bitfield.is_some() {
+            metadata.scalar.bitfield_assignment(input)?
+        } else {
+            metadata
+                .scalar
+                .assignment_with_type(input, Some(&metadata.assignment_type()))?
+        };
         if !metadata.scalar.requires_literal_probe(&raw) {
             return Ok((raw, Assignment::Expression(assignment)));
         }
@@ -275,17 +283,21 @@ impl Engine {
             format!("Variable is optimized out, unavailable or not a raw scalar: {e}; {value}")
         })
     }
-    fn variable_type(&mut self, expression: &str) -> Result<String, String> {
+    fn variable_console(&mut self, command: &str) -> Result<String, String> {
         if self.console_capture.is_some() {
             return Err("Nested type capture is unavailable".into());
         }
         self.console_capture = Some(String::new());
-        let printed = self.console(&format!("ptype /r {expression}"));
+        let printed = self.console(command);
         let output = self.console_capture.take().unwrap_or_default();
         printed?;
         if output.contains('\0') {
             return Err("Expanded type exceeds the capture limit".into());
         }
+        Ok(output)
+    }
+    fn variable_type(&mut self, expression: &str) -> Result<String, String> {
+        let output = self.variable_console(&format!("ptype /r {expression}"))?;
         Ok(output
             .trim()
             .strip_prefix("type = ")
@@ -320,10 +332,13 @@ impl Engine {
             .data
             .string("path_expr");
         variable_lvalue(&expression)?;
-        if let Some((parent, field)) = ScalarType::member_parent(&expression)? {
+        let member = if let Some((parent, field)) = ScalarType::member_parent(&expression)? {
             let parent_type = self.variable_type(&parent)?;
-            ScalarType::validate_member(&parent_type, &field)?;
-        }
+            ScalarType::validate_member(&parent_type, &field)?
+                .map(|bits| (parent, parent_type, field, bits))
+        } else {
+            None
+        };
         let type_name = self.variable_type(&expression)?;
         let (pointer, float, boolean) = ScalarType::validate_type(&type_name)?;
         let reference = ScalarType::type_signature(&type_name)?
@@ -338,11 +353,12 @@ impl Engine {
             return Err("Select a scalar member of the aggregate".into());
         }
         let bytes = self.variable_size(&expression)?;
-        let bits = u16::try_from(bytes)
+        let declared_bits = u16::try_from(bytes)
             .ok()
             .and_then(|b| b.checked_mul(8))
             .filter(|b| matches!(b, 8 | 16 | 32 | 64 | 128))
             .ok_or("Typed scalar width is unsupported")?;
+        let bits = member.as_ref().map_or(declared_bits, |m| m.3);
         let signed = if pointer || float || boolean {
             false
         } else {
@@ -359,20 +375,30 @@ impl Engine {
                 _ => return Err("Cannot determine the scalar signed range".into()),
             }
         };
-        let storage = self.variable_storage(&expression, bytes, Some(bits), context)?;
+        let (storage, bitfield) = if let Some((parent, parent_type, field, bits)) = member {
+            if pointer || float || reference {
+                return Err("Bitfield requires a plain integer/boolean type".into());
+            }
+            let (storage, metadata) =
+                self.bitfield_metadata(&parent, &parent_type, &field, bits, bytes, context)?;
+            (storage, Some(metadata))
+        } else {
+            (
+                self.variable_storage(&expression, bytes, Some(bits), context)?,
+                None,
+            )
+        };
         if reference && storage.address.is_none() {
             return Err(
                 "Reference writer requires the actual referent's declared RAM address".into(),
             );
         }
-        self.variable_raw(&name, bits)?;
-        if self.register_context() != *context || self.snapshot.state != "STOPPED" {
-            return Err("Variable context changed while resolving its type/storage".into());
-        }
-        Ok(Metadata {
+        let metadata = Metadata {
             expression,
             type_name,
             reference,
+            declared_bits,
+            bitfield,
             scalar: ScalarType {
                 bits,
                 signed,
@@ -384,7 +410,13 @@ impl Engine {
             region: storage.region,
             owner: storage.owner,
             scope: storage.scope,
-        })
+        };
+        self.variable_value(&name, &metadata)?;
+        self.bitfield_before(&metadata, &name, context)?;
+        if self.register_context() != *context || self.snapshot.state != "STOPPED" {
+            return Err("Variable context changed while resolving its type/storage".into());
+        }
+        Ok(metadata)
     }
     fn variable_storage(
         &mut self,
@@ -515,13 +547,17 @@ impl Engine {
             context.session,
             NEXT_DRAFT.fetch_add(1, Ordering::Relaxed)
         );
-        let mask = RawValue::parse(
-            &format!("0x{}", "f".repeat(usize::from(raw.bits / 4))),
+        let mask = RawValue::from_integer(
+            if raw.bits == 128 {
+                u128::MAX
+            } else {
+                (1u128 << raw.bits) - 1
+            },
             raw.bits,
         )?;
         let result = json!({"draft":token,"target":p["target"],"context":context,"thread":thread,"owner":metadata.owner,"scope":metadata.scope,"metadata":metadata,
-            "channel":"gdb","endpoint":self.project.target.endpoint,"plan":{"value":raw,"selected_mask":mask,"needs_fresh_read":false},"outcome":Outcome::NotSent,
-            "literal":assignment,"warning":"Typed assignment recreates and rechecks this member, type and storage at Apply; GDB target function calls are disabled during inspection and assignment. Special float literals are checked against the exact preview bits.","expires_in_ms":DRAFT_LIFETIME.as_millis()});
+            "channel":"gdb","endpoint":self.project.target.endpoint,"plan":{"value":raw,"selected_mask":mask,"needs_fresh_read":metadata.bitfield.is_some()},"outcome":Outcome::NotSent,
+            "literal":assignment,"warning":"Apply recreates and rechecks type/storage with target calls disabled. Bitfields re-read parent bytes immediately before one typed assignment and verify all neighbouring bits; special float and 128-bit literals are checked against exact preview bits.","expires_in_ms":DRAFT_LIFETIME.as_millis()});
         self.write_drafts.2.insert(
             token,
             Draft {
@@ -578,6 +614,11 @@ impl Engine {
                         return Err("Variable thread changed before assignment".into());
                     }
                     let mut assign = |engine: &mut Self, assignment: &str| {
+                        let before = engine.bitfield_before(
+                            &metadata,
+                            &node.string("name"),
+                            &draft.context,
+                        )?;
                         // Literal probing also drains asynchronous MI records.
                         // Recheck after it, immediately before the sole assignment.
                         if engine.variable_context(&draft.context)? != draft.thread {
@@ -600,19 +641,45 @@ impl Engine {
                                     .into(),
                             );
                         }
-                        let observed =
-                            engine.variable_raw(&node.string("name"), metadata.scalar.bits)?;
+                        let observed = engine.variable_value(&node.string("name"), &metadata)?;
+                        result["observed"] = json!(observed);
+                        let neighbours = if let Some(before) = before {
+                            let field = metadata.bitfield.as_ref().unwrap();
+                            let after = engine.bitfield_bytes(&metadata, &draft.context)?;
+                            let expected =
+                                field
+                                    .layout
+                                    .expected(&before, &draft.raw, field.little_endian)?;
+                            let matched = after == expected;
+                            let original_field =
+                                field.layout.extract(&before, field.little_endian)?;
+                            let neighbours_preserved = field.layout.expected(
+                                &after,
+                                &original_field,
+                                field.little_endian,
+                            )? == before;
+                            result["gdb_observed"] = json!(observed);
+                            result["observed"] =
+                                json!(field.layout.extract(&after, field.little_endian)?);
+                            result["parent_before_bytes"] = json!(before);
+                            result["parent_after_bytes"] = json!(after);
+                            result["parent_expected_bytes"] = json!(expected);
+                            result["neighbours_preserved"] = json!(neighbours_preserved);
+                            result["parent_matches_expected"] = json!(matched);
+                            matched
+                        } else {
+                            true
+                        };
                         if engine.register_context() != draft.context
                             || engine.snapshot.state != "STOPPED"
                         {
                             return Err("Context changed during variable verification".into());
                         }
-                        outcome = if observed == draft.raw {
+                        outcome = if observed == draft.raw && neighbours {
                             Outcome::Verified
                         } else {
                             Outcome::Mismatch
                         };
-                        result["observed"] = json!(observed);
                         Ok(())
                     };
                     match &draft.assignment {

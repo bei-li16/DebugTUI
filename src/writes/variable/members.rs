@@ -1,5 +1,5 @@
 //! A GDB can expose a bitfield address and its declared integer sizeof.
-//! Require the actual parent declaration instead of inferring a full scalar.
+//! Inspect the actual parent declaration instead of inferring a full scalar.
 use super::{ScalarType, variable_lvalue};
 
 fn unparenthesize(mut expression: &str) -> &str {
@@ -58,7 +58,7 @@ impl ScalarType {
         variable_lvalue(&parent)?;
         Ok(Some((parent, field.to_owned())))
     }
-    pub(crate) fn validate_member(parent_type: &str, field: &str) -> Result<(), String> {
+    pub(crate) fn validate_member(parent_type: &str, field: &str) -> Result<Option<u16>, String> {
         let signature = Self::type_signature(parent_type)?;
         if signature
             .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
@@ -81,7 +81,7 @@ impl ScalarType {
         let mut depth = 1usize;
         let mut declaration = String::new();
         let mut found = 0usize;
-        let mut bitfield = false;
+        let mut bitfield = None;
         for c in parent_type[start + 1..].chars() {
             match c {
                 '{' => {
@@ -119,7 +119,12 @@ impl ScalarType {
                             found += 1;
                         } else if tail.starts_with(':') && !tail.starts_with("::") {
                             found += 1;
-                            bitfield = true;
+                            bitfield = Some(
+                                tail[1..]
+                                    .trim()
+                                    .parse::<u16>()
+                                    .map_err(|_| "Unknown bitfield width")?,
+                            );
                         }
                     }
                     declaration.clear();
@@ -134,10 +139,10 @@ impl ScalarType {
                     .into(),
             );
         }
-        if bitfield {
-            return Err("Bitfield writer needs actual DWARF width and verified neighbouring storage; not adapted".into());
+        if bitfield.is_some_and(|bits| !(1..=64).contains(&bits)) {
+            return Err("GDB bitfield writer needs 1..64 actual field bits".into());
         }
-        Ok(())
+        Ok(bitfield)
     }
 }
 #[cfg(test)]
@@ -158,17 +163,21 @@ mod tests {
         assert!(ScalarType::member_parent("obj.Base::member").is_err());
     }
     #[test]
-    fn actual_parent_declarations_reject_bitfields_and_missing_or_ambiguous_members() {
+    fn actual_parent_declarations_expose_width_and_reject_missing_or_ambiguous_members() {
         let parent = "struct P { public: uint32_t before; unsigned low : 5; int middle : 6; unsigned neighbour : 7; struct Nested { int middle; } nested; uint32_t after; }";
         assert!(ScalarType::validate_member(parent, "before").is_ok());
         assert!(ScalarType::validate_member(parent, "after").is_ok());
         assert!(ScalarType::validate_member(parent, "nested").is_ok());
-        for field in ["low", "middle", "neighbour", "absent"] {
-            assert!(
-                ScalarType::validate_member(parent, field).is_err(),
-                "{field}"
-            );
-        }
+        assert_eq!(ScalarType::validate_member(parent, "low").unwrap(), Some(5));
+        assert_eq!(
+            ScalarType::validate_member(parent, "middle").unwrap(),
+            Some(6)
+        );
+        assert_eq!(
+            ScalarType::validate_member(parent, "neighbour").unwrap(),
+            Some(7)
+        );
+        assert!(ScalarType::validate_member(parent, "absent").is_err());
         assert!(ScalarType::validate_member("struct P {int x; int x;}", "x").is_err());
         assert!(ScalarType::validate_member("const struct P {int x;}", "x").is_err());
     }
@@ -185,7 +194,7 @@ mod tests {
                 "struct P<Nested {int value;}> {unsigned value:5;}",
                 "value"
             )
-            .is_err()
+            .is_ok()
         );
     }
 }

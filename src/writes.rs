@@ -6,6 +6,7 @@ use std::collections::BTreeSet;
 mod memory;
 mod variable;
 pub use memory::{Config, MemoryKind, Region, SvdOverride, memory_bytes};
+pub(crate) use variable::BitfieldLayout;
 pub use variable::{ScalarType, variable_lvalue};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

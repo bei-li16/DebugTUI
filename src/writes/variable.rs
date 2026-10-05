@@ -1,6 +1,8 @@
 //! Typed MI assignment accepts literal values and a restricted C lvalue grammar.
 use super::*;
+mod bitfields;
 mod members;
+pub(crate) use bitfields::BitfieldLayout;
 
 /// No function calls, casts, arithmetic, assignment, debugger variables or dynamic indices.
 /// Parentheses and dereferences are allowed; GDB function calls are separately disabled.
@@ -185,7 +187,21 @@ impl ScalarType {
         input: &Input,
         gdb_type: Option<&str>,
     ) -> Result<(RawValue, String), String> {
-        if !matches!(self.bits, 8 | 16 | 32 | 64 | 128) {
+        self.assignment_value(input, gdb_type, false)
+    }
+    pub(crate) fn bitfield_assignment(&self, input: &Input) -> Result<(RawValue, String), String> {
+        if self.float || self.pointer || !(1..=64).contains(&self.bits) {
+            return Err("Bitfield assignment needs an integer or boolean of 1..64 bits".into());
+        }
+        self.assignment_value(input, None, true)
+    }
+    fn assignment_value(
+        &self,
+        input: &Input,
+        gdb_type: Option<&str>,
+        bitfield: bool,
+    ) -> Result<(RawValue, String), String> {
+        if !bitfield && !matches!(self.bits, 8 | 16 | 32 | 64 | 128) {
             return Err("Typed scalar width is unsupported".into());
         }
         if self.float && !matches!(input.kind, InputKind::Float | InputKind::Bytes) {

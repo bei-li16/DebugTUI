@@ -38,6 +38,7 @@ const suites = [
   js('watch-tree','scripts/test-watch-tree-gdb.cjs',[binary],true),
   js('variable-write','scripts/test-variable-write-gdb.cjs',[binary],true),
   js('variable-reference','scripts/test-variable-reference-gdb.cjs',[binary],true),
+  js('variable-bitfield','scripts/test-variable-bitfield-gdb.cjs',[binary],true),
   js('search','scripts/test-search-gdb.cjs',[binary],true),
   js('breakpoints','scripts/test-breakpoints-gdb.cjs',[binary],true),
   js('memory','scripts/test-memory-access-gdb.cjs',[binary],true),

@@ -7,6 +7,8 @@ use debugtui::{
 };
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf, time::Duration};
+#[path = "write_access/bitfield_cases.rs"]
+mod bitfield_cases;
 #[path = "write_access/float_cases.rs"]
 mod float_cases;
 #[path = "write_access/reference_cases.rs"]

@@ -1,0 +1,13 @@
+{
+  "frame": 0,
+  "frame_function": "debug_bitfield_fixture",
+  "target": { "kind": "variable", "pane": "watch", "expression": "bitfield_cells", "path": [0, 2] },
+  "parent": "bitfield_cells",
+  "field": "bitfield_cells.middle",
+  "expected_layout": { "bit_offset": 37, "bits": 6, "declared_bytes": 4, "parent_bytes": 12 },
+  "input": { "kind": "signed", "text": "-32" },
+  "little_endian": true,
+  "owner": "core:core0",
+  "scope": "core",
+  "sentinels": ["bitfield_cells.before", "bitfield_cells.after", "bitfield_cells.low", "bitfield_cells.neighbour", "bitfield_cells.reserved", "bitfield_calls"]
+}
