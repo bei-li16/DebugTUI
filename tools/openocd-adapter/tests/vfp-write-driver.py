@@ -42,6 +42,10 @@ class Fixture(socketserver.ThreadingTCPServer):
         saved = self.selected
         self.selected = target
         self.commands.append((target, body))
+        dscr = 0x01000200
+        if self.mode == 'dtr-flags': dscr |= (len(self.commands) % 2) << 29
+        if self.mode == 'lower-el': dscr = 0x01000100
+        proof = f'midr 0x411fd134 dscr 0x{dscr:08x} dspsr 0xa2000410 dlr 0x81234568 hcptr 0x00000000'
         try:
             if body == 'aarch64 debugtui_adapter':
                 return hardware.ADAPTER_PROTOCOL
@@ -49,15 +53,11 @@ class Fixture(socketserver.ThreadingTCPServer):
                 return hardware.READ_PROTOCOL
             if body == 'aarch64 debugtui_vfp_write_protocol':
                 return hardware.PROTOCOL
-            if body == 'aarch64 mrc 15 3 0 4 5':
-                return '0xa200041a'
-            if body == 'aarch64 mrc 15 4 2 1 1':
-                return '0x00000000'
             if re.fullmatch(r'aarch64 vfp [dq]\d+', body):
                 raw = self.owner if target == 'board.cpu0' else PEER
-                return f'mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 value 0x{raw:032x}'
+                return f'{proof} mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 value 0x{raw:032x}'
             if body == 'aarch64 vfp fpscr':
-                return 'mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 value 0xa000009f'
+                return f'{proof} mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 value 0xa000009f'
             found = re.fullmatch(r'aarch64 vfp_write ([sdq]\d+) (0x[0-9a-fA-F]+)', body)
             assert found, 'Unexpected command: ' + body
             assert target == 'board.cpu0', 'No write to peer permitted'
@@ -84,7 +84,7 @@ class Fixture(socketserver.ThreadingTCPServer):
             if self.mode == 'mismatch':
                 self.owner ^= 1
                 outcome = 'mismatch'
-            return f'outcome {outcome} before 0x{before:032x} expected 0x{expected:032x} value 0x{self.owner:032x} mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700'
+            return f'outcome {outcome} before 0x{before:032x} expected 0x{expected:032x} value 0x{self.owner:032x} mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 {proof}'
         finally:
             self.selected = saved
 
@@ -139,12 +139,32 @@ class Cases(unittest.TestCase):
             self.assertEqual(fixture.owner, OWNER_BEFORE)
             self.assertTrue(all(target == 'board.cpu0' for target, _, _ in fixture.writes))
 
+    def test_transport_flags_can_change_without_changing_current_el_or_fp_state(self):
+        report, fixture = self.run_fixture(mode='dtr-flags')
+        self.assertFalse(report['failed'])
+        self.assertEqual(len(fixture.writes), 2)
+        self.assertEqual(fixture.owner, OWNER_BEFORE)
+
+    def test_current_lower_el_refuses_before_any_data_write(self):
+        report, fixture = self.run_fixture(mode='lower-el')
+        self.assertTrue(report['failed'])
+        self.assertEqual(fixture.writes, [])
+        self.assertEqual(fixture.owner, OWNER_BEFORE)
+        self.assertEqual([item['state'] for item in report['results']], ['failed', 'skipped', 'skipped', 'skipped'])
+
     def test_unknown_never_reads_retries_or_restores_after_write(self):
         report, fixture = self.run_fixture(mode='unknown')
         self.assertTrue(report['failed'])
         self.assertEqual(len(fixture.writes), 1)
         self.assertTrue(fixture.commands[-1][1].startswith('aarch64 vfp_write '))
         self.assertEqual([item['state'] for item in report['results']], ['passed', 'failed', 'skipped', 'skipped'])
+
+    def test_blank_assertion_cannot_report_a_successful_case(self):
+        with patch.object(hardware, 'snapshot', side_effect=AssertionError()):
+            report, fixture = self.run_fixture()
+        self.assertTrue(report['failed'])
+        self.assertEqual(report['results'][0]['detail'], 'AssertionError')
+        self.assertEqual(fixture.writes, [])
 
     def test_mismatch_is_not_restored_or_retried(self):
         report, fixture = self.run_fixture(mode='mismatch')

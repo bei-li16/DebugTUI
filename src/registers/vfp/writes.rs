@@ -2,8 +2,7 @@
 use super::{Kind, RawValue, Response, exact_raw};
 use crate::writes::Outcome;
 
-pub const WRITE_PROTOCOL: &str =
-    "debugtui-armv8-vfp-write-1 vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault";
+pub const WRITE_PROTOCOL: &str = "debugtui-armv8-vfp-write-2 external-identity current-el dspsr dlr vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct WriteView {
@@ -90,11 +89,13 @@ impl WriteResponse {
             }
             return Ok(Self::NotSent(words[3].into()));
         }
-        if words.len() != 14
+        if words.len() != 24
             || [
-                words[0], words[2], words[4], words[6], words[8], words[10], words[12],
+                words[0], words[2], words[4], words[6], words[8], words[10], words[12], words[14],
+                words[16], words[18], words[20], words[22],
             ] != [
-                "outcome", "before", "expected", "value", "mvfr0", "mvfr1", "fpexc",
+                "outcome", "before", "expected", "value", "mvfr0", "mvfr1", "fpexc", "midr",
+                "dscr", "dspsr", "dlr", "hcptr",
             ]
         {
             return Err("Malformed VFP writer receipt; result unknown".into());
@@ -105,8 +106,16 @@ impl WriteResponse {
         let kind = Kind::parse(&view.reader_name()).ok_or("Invalid VFP storage writer")?;
         Response::parse(
             &format!(
-                "mvfr0 {} mvfr1 {} fpexc {} value {}",
-                words[9], words[11], words[13], words[7]
+                "midr {} dscr {} dspsr {} dlr {} hcptr {} mvfr0 {} mvfr1 {} fpexc {} value {}",
+                words[15],
+                words[17],
+                words[19],
+                words[21],
+                words[23],
+                words[9],
+                words[11],
+                words[13],
+                words[7]
             ),
             kind,
         )?;
@@ -146,7 +155,7 @@ mod tests {
                     0
                 );
                 let wire = format!(
-                    "outcome verified before {} expected {} value {} mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700",
+                    "outcome verified before {} expected {} value {} mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 midr 0x411fd134 dscr 0x01000200 dspsr 0xa2000410 dlr 0x81234568 hcptr 0x00000000",
                     before.hex, expected.hex, expected.hex
                 );
                 assert!(matches!(
@@ -161,6 +170,9 @@ mod tests {
                     wire.replace("0x40000700", "0x00000700"),
                     wire.replace("0x12111111", "0x12113111"),
                     wire.replace("before", "value"),
+                    wire.replace("0x01000200", "0x01000100"),
+                    wire.replace("0x411fd134", "0x511fd134"),
+                    wire.replace("0x00000000", "0x00000400"),
                 ] {
                     assert!(WriteResponse::parse(&invalid, view, &command).is_err());
                 }

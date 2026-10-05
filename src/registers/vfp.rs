@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 mod writes;
 pub use writes::{WRITE_PROTOCOL, WriteResponse, WriteView};
 
-pub const PROTOCOL: &str = "debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault";
+pub const PROTOCOL: &str = "debugtui-armv8-vfp-2 external-identity current-el dspsr dlr vmrs pair-readback no-enable stop-on-fault";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -84,11 +84,43 @@ pub fn features(mvfr0: u64, mvfr1: u64) -> Option<Features> {
 }
 
 pub struct Response {
+    pub evidence: Evidence,
     pub value: RawValue,
     pub features: Option<Features>,
     pub mvfr0: RawValue,
     pub mvfr1: RawValue,
     pub fpexc: RawValue,
+}
+
+/// Physical state from the same transaction. DSPSR describes stopped program
+/// state; only external EDSCR supplies the current Debug exception level.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Evidence {
+    pub midr: RawValue,
+    pub dscr: RawValue,
+    pub dspsr: RawValue,
+    pub dlr: RawValue,
+    pub hcptr: RawValue,
+}
+impl Evidence {
+    pub fn validate(&self) -> Result<(), String> {
+        for raw in [&self.midr, &self.dscr, &self.dspsr, &self.dlr, &self.hcptr] {
+            if raw.bits != 32 || exact_raw(&raw.hex, 32)? != *raw {
+                return Err("VFP access requires exact physical 32-bit evidence".into());
+            }
+        }
+        let dscr = self.dscr.integer()?;
+        if self.midr.integer()? & 0xff0ffff0 != 0x410fd130
+            || (dscr >> 8) & 3 != 2
+            || dscr & 0x1c0000c0 != 0
+            || dscr & (1 << 24) == 0
+            || dscr & ((1 << 12) | (1 << 16)) != 0
+            || self.hcptr.integer()? & (1 << 10) != 0
+        {
+            return Err("VFP sample contradicts current Debug EL/identity/trap evidence".into());
+        }
+        Ok(())
+    }
 }
 
 /// Capacity and raw storage from one successful pair request. This describes
@@ -174,16 +206,29 @@ impl Response {
     }
     pub fn parse(text: &str, kind: Kind) -> Result<Self, String> {
         let words: Vec<_> = text.split_whitespace().collect();
-        if words.len() != 8
-            || [words[0], words[2], words[4], words[6]] != ["mvfr0", "mvfr1", "fpexc", "value"]
+        if words.len() != 18
+            || [
+                words[0], words[2], words[4], words[6], words[8], words[10], words[12], words[14],
+                words[16],
+            ] != [
+                "midr", "dscr", "dspsr", "dlr", "hcptr", "mvfr0", "mvfr1", "fpexc", "value",
+            ]
         {
-            return Err("Malformed VFP adapter evidence/value response".into());
+            return Err("Malformed VFP current physical evidence/value response".into());
         }
-        let mvfr0 = exact_raw(words[1], 32)?;
-        let mvfr1 = exact_raw(words[3], 32)?;
-        let fpexc = exact_raw(words[5], 32)?;
+        let evidence = Evidence {
+            midr: exact_raw(words[1], 32)?,
+            dscr: exact_raw(words[3], 32)?,
+            dspsr: exact_raw(words[5], 32)?,
+            dlr: exact_raw(words[7], 32)?,
+            hcptr: exact_raw(words[9], 32)?,
+        };
+        evidence.validate()?;
+        let mvfr0 = exact_raw(words[11], 32)?;
+        let mvfr1 = exact_raw(words[13], 32)?;
+        let fpexc = exact_raw(words[15], 32)?;
         let features = features(mvfr0.integer()? as u64, mvfr1.integer()? as u64);
-        let value = exact_raw(words[7], if kind.pair().is_some() { 128 } else { 32 })?;
+        let value = exact_raw(words[17], if kind.pair().is_some() { 128 } else { 32 })?;
         if let Some(pair) = kind.pair() {
             let features =
                 features.ok_or("Unadapted or contradictory physical R52 MVFR evidence")?;
@@ -197,6 +242,7 @@ impl Response {
             }
         }
         Ok(Self {
+            evidence,
             value,
             features,
             mvfr0,
@@ -209,6 +255,10 @@ impl Response {
 #[cfg(test)]
 #[path = "vfp/view_tests.rs"]
 mod view_tests;
+
+#[cfg(test)]
+#[path = "vfp/access_tests.rs"]
+mod access_tests;
 
 #[cfg(test)]
 mod tests {
@@ -284,7 +334,7 @@ mod tests {
     }
     #[test]
     fn vfp_wire_is_exact_and_pair_views_preserve_overlapping_bits() {
-        let text = "mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 value 0x7ff8000012345678800000003f800000";
+        let text = "midr 0x411fd134 dscr 0x01000200 dspsr 0xa2000410 dlr 0x81234568 hcptr 0x00000000 mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 value 0x7ff8000012345678800000003f800000";
         let response = Response::parse(text, Kind::Double(0)).unwrap();
         assert_eq!(
             Kind::Double(0).view(&response.value).unwrap().hex,

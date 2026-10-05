@@ -123,6 +123,22 @@ pub(super) fn details(label: &str, provenance: &Provenance) -> Vec<String> {
             ));
         }
     }
+    if let Some(proof) = &access.vfp {
+        match proof.validate() {
+            Ok(()) => {
+                text.push(format!(
+                    "FP current Debug EL: 2 (Hyp); external MIDR: {} / EDSCR: {}",
+                    proof.midr.hex, proof.dscr.hex
+                ));
+                text.push(format!(
+                    "FP stopped DSPSR: {} / DLR: {} / HCPTR: {}",
+                    proof.dspsr.hex, proof.dlr.hex, proof.hcptr.hex
+                ));
+                text.push("Saved DSPSR is stopped program state; it does not authorize current Debug instructions. No mode or FPU enable change.".into());
+            }
+            Err(error) => text.push(format!("FP current access evidence invalid: {error}")),
+        }
+    }
     if let Some(pair) = &access.vfp_pair {
         match pair.features() {
             Ok(features) => {
@@ -270,14 +286,15 @@ mod tests {
     #[test]
     fn floating_pair_details_explain_capacity_raw_bits_and_mapping_without_permissions() {
         use crate::registers::{
-            Context, Reader,
+            Context, RawValue, Reader,
             provenance::Access,
             vfp::{Kind, Response},
         };
-        let response = Response::parse("mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 value 0x7ff8000000000042800000003f800000", Kind::Quad(0)).unwrap();
+        let response = Response::parse("midr 0x411fd134 dscr 0x01000200 dspsr 0xa2000410 dlr 0x81234568 hcptr 0x00000000 mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 value 0x7ff8000000000042800000003f800000", Kind::Quad(0)).unwrap();
         let mut origin = Provenance::declared(&Reader::Vfp { name: "q0".into() });
         origin.access = Some(Access {
             banked: None,
+            vfp: Some(response.evidence.clone()),
             vfp_pair: response.pair_evidence(Kind::Quad(0)),
             timer: None,
             pmu: None,
@@ -300,6 +317,9 @@ mod tests {
         });
         let text = details("Current value", &origin).join("\n");
         for expected in [
+            "FP current Debug EL: 2 (Hyp)",
+            "FP stopped DSPSR: 0xa2000410 / DLR: 0x81234568",
+            "does not authorize current Debug instructions",
             "D0 / D1; 32 D registers; Q views: supported",
             "0x7ff8000000000042800000003f800000",
             "0x10110222",
@@ -323,6 +343,12 @@ mod tests {
         let malformed = details("Current value", &origin).join("\n");
         assert!(malformed.contains("FP storage evidence invalid"));
         assert!(!malformed.contains("Q views: supported"));
+        let mut invalid = origin.clone();
+        invalid.access.as_mut().unwrap().vfp.as_mut().unwrap().dscr =
+            RawValue::parse("0x01000100", 32).unwrap();
+        let text = details("Current value", &invalid).join("\n");
+        assert!(text.contains("FP current access evidence invalid"));
+        assert!(!text.contains("FP current Debug EL: 2"));
     }
     use crate::registers::{Reader, Scope, State};
     use crate::ui::registers::{
@@ -352,6 +378,7 @@ mod tests {
             );
             provenance.access = Some(Access {
                 banked: None,
+                vfp: None,
                 vfp_pair: None,
                 gic: Some(Response::parse(&wire, id, 32).unwrap().evidence),
                 timer: None,
@@ -442,6 +469,7 @@ mod tests {
                 pmu: None,
                 gic: None,
                 banked: None,
+                vfp: None,
                 vfp_pair: None,
                 route: Route::TclMemory {
                     endpoint: "127.0.0.1:6666".into(),

@@ -12,7 +12,7 @@
 
 `debug_access.rs` 在同一OpenOCD服务的GDB/Tcl请求间按endpoint串行化；不约束外部客户端。`session/banked.rs` 在同一租约内检查物理线程/frame0，并在单次target事务内检查独立v2协议。外部MIDR/EDSCR提供当前身份/EL，EL0/User与EL2/Hyp分别确定当前银行规则；EL1具体模式未知，不根据停止前DSPSR猜测，也不执行受约束不可预测的MRS CPSR。读取前后身份/执行状态和完整DSPSR/DLR一致，R0保存/恢复/物理回读；不使用旧mode-switch DPM。严格typed证明绑定owner/context/实际route/请求时间和传输方法，失败原值保留旧证明。Scope All只访问选中核，迟到上下文变化丢弃结果，不确定状态隔离通道。当前后端经Windows/Linux构建及本机离线验证，未连接板卡；完整EL1银行仍待完成，见[银行自检](docs/register-banked-proof.md)。
 
-`session/register_adapter.rs` 为银行／VFP 共用物理线程、frame 0、服务租约和迟到上下文检查。`session/vfp.rs` 验证独立 VFP 协议及严格元数据／位宽，单个请求内按物理 pair 缓存 D/S/Q，并保留 pair 的 MVFR 证据防止 D16 缓存授权 Q。`registers/vfp.rs` 只识别手册规定的 R52 两种配置；控制原始值可保留未知字段，数据不依据未知字段授权。十五项 Probe 增加真实 MVFR/FPEXC 事实，未使能与未实现、工具不支持、访问受限分别保留原因。C 事务用 VMRS／两个 GP 与 D 的 VMOV，R0/R1 保存恢复后物理回读，前后完整 DSPSR、HCPTR、FPEXC 一致才发布结果；无模式或 FPU 写入。当前 Hyp 路径有软件证据，EL1/Guest 合法读取仍待适配。
+`session/register_adapter.rs` 为银行／VFP 共用物理线程、frame 0、服务租约和迟到上下文检查。`session/vfp.rs` 验证独立VFP v2协议及严格元数据／位宽，单个请求内按物理pair缓存D/S/Q，并保留pair的MVFR证据防止D16缓存授权Q。`registers/vfp.rs` 只识别手册规定的R52两种配置；控制原始值可保留未知字段，数据不依据未知字段授权。十五项Probe增加真实MVFR/FPEXC事实，未使能与未实现、工具不支持、访问受限分别保留原因。C事务先经外部Debug AP读取MIDR/EDSCR，每次核对HALT，以当前EL2/AArch32证明Hyp；保存DSPSR不独立授权。VMRS／两个GP与D的VMOV后，R0/R1保存恢复并物理回读，前后身份/执行状态、完整DSPSR/DLR/HCPTR/FPEXC一致才发布结果；无模式或FPU写入。当前Hyp路径有软件证据，EL1/Guest/User合法读取仍待适配，见[VFP证明](docs/register-vfp-proof.md)。
 
 `session/timer.rs` 接入按 CP15 编码选择的独立 Timer 协议，复用 `register_adapter.rs` 的服务租约/实际线程/物理 frame 0 前后检查。生产后端从所选 core 的 debug AP 获取当前 MIDR/EDSCR，再在同一状态内读取单项 MRC/MRRC；前后完整 DSPSR/DLR、暂存恢复回读与状态一致才发布。低 EL 不可证明的上层使能保持 Unknown；未知恢复隔离服务并进入 FAULT。`registers/timer.rs` 严格检查原生名称/宽度及新鲜身份/权限，证据写入该次 `provenance.access.timer`，不成为可跨 stop 复用的 implementation 事实。
 
@@ -210,4 +210,4 @@ R52 MMIO 目录通过统一 session/registers → read_memory_channel 进入 GDB
 
 可选 registers.mmio_probe=true 通过固定三组件有界 RO 请求形成当前物理身份证明；数据路径要求同 context 的有效组件证明。独立 mmio_probe.ID/.after 样本保留实际 memory route/aperture、前后区间及 owner；GIC组被Debug前后复核包围，按手册精确 R52字段解码，不使用逻辑core名称推断地址或affinity。coordinator对 Probe 和普通样本同样绑定/验证共享owner epoch；peer生命周期、请求期间epoch变化和worker FIFO失效均清除相关共享事实。原配置单独保存、未知不变成No、64位两字非原子；完整范围见 [MMIO Probe](docs/register-mmio-probe.md)。
 
-VFP数据响应在 `provenance.access.vfp_pair` 记录首个D编号、完整128位pair和同次MVFR0/MVFR1/FPEXC。`PairEvidence`验证存储容量/位宽/视图范围；session请求级ReadCache共享完整原始来源，Alias继续记录独立的source/offset/bits。S/D/Q的派生及显示使用逻辑位序，lane0是低位，不依赖内存端序。该元数据描述已取得的存储，不授予执行权限；新鲜Debug状态/低EL后端适配继续在REG-304跟踪。[存储视图自检](docs/register-storage-views.md)。
+VFP数据响应在 `provenance.access.vfp_pair` 记录首个D编号、完整128位pair和同次MVFR0/MVFR1/FPEXC。`PairEvidence`验证存储容量/位宽/视图范围；session请求级ReadCache共享完整原始来源，Alias继续记录独立的source/offset/bits。S/D/Q的派生及显示使用逻辑位序，lane0是低位，不依赖内存端序。该元数据描述已取得的存储，不授予执行权限；v2另以 `provenance.access.vfp` 保存外部MIDR/EDSCR、停止DSPSR/DLR及HCPTR，控制值也保留相同访问证明。旧JSON缺字段不制造证明；完整低EL后端适配继续在REG-304跟踪。[存储视图](docs/register-storage-views.md)、[当前状态自检](docs/register-vfp-proof.md)。

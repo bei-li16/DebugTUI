@@ -28,6 +28,128 @@ fn vfp_trace(state: &Value) -> Vec<String> {
         .map(|row| row[2].as_str().unwrap().to_string())
         .collect()
 }
+
+#[test]
+fn current_vfp_proof_tracks_selected_core_and_all_stopped_modes_under_scope_all() {
+    let mut f = configured("");
+    f.project.cores = (0..2)
+        .map(|i| Core {
+            name: format!("core{i}"),
+            endpoint: format!("localhost:{}", 26700 + i),
+            ..Default::default()
+        })
+        .collect();
+    f.project.registers.targets = [
+        ("core0".into(), "cpu0".into()),
+        ("core1".into(), "cpu1".into()),
+    ]
+    .into();
+    let engine = debugtui::coordinator::spawn(f.project.clone());
+    ok(&engine, 1, "connect", json!({}));
+    ok(&engine, 2, "control_scope", json!({"scope":"all"}));
+    ok(
+        &engine,
+        3,
+        "registers_read",
+        json!({"ids":["fpexc"],"manual":true}),
+    );
+    let peer = f.state.lock().unwrap()["targets"]["cpu0"].clone();
+    ok(&engine, 4, "select_core", json!({"index":1}));
+    let start = f.state.lock().unwrap()["trace"].as_array().unwrap().len();
+    for (index, mode) in [0x10, 0x11, 0x12, 0x13, 0x17, 0x1a, 0x1b, 0x1f]
+        .into_iter()
+        .enumerate()
+    {
+        let saved = format!("0x{:08x}", 0xa2000400u32 | mode);
+        f.state.lock().unwrap()["targets"]["cpu1"]["vfp_dspsr"] = json!(saved);
+        let read = ok(
+            &engine,
+            10 + index as u64,
+            "registers_read",
+            json!({"ids":["q0","s0","d1","mvfr0","fpexc"],"manual":true}),
+        );
+        let samples = read["samples"].as_array().unwrap();
+        for sample in samples {
+            assert_eq!(sample["state"], "valid", "{sample}");
+            let access = &sample["provenance"]["access"];
+            assert_eq!(access["route"]["target"], "cpu1");
+            assert_eq!(access["context"]["core"], "core1");
+            assert_eq!(access["vfp"]["dspsr"]["hex"], saved);
+            assert_eq!(access["vfp"]["dscr"]["hex"], "0x01000200");
+            let proof: debugtui::registers::vfp::Evidence =
+                serde_json::from_value(access["vfp"].clone()).unwrap();
+            proof.validate().unwrap();
+            assert_eq!(sample["owner"], "core:core1");
+        }
+        for sample in &samples[1..3] {
+            assert_eq!(
+                sample["provenance"]["access"],
+                samples[0]["provenance"]["access"]
+            );
+        }
+    }
+    let state = f.state.lock().unwrap();
+    assert_eq!(state["targets"]["cpu0"], peer);
+    for row in &state["trace"].as_array().unwrap()[start..] {
+        if row[1] == "vfp" {
+            assert_eq!(row[0], "cpu1");
+        }
+    }
+    assert!(selector_writes(&state).is_empty());
+    drop(state);
+    ok(&engine, 30, "quit", json!({}));
+}
+
+#[test]
+fn forged_or_legacy_vfp_current_proof_cannot_replace_a_valid_origin() {
+    for (fault, reason) in [
+        ("vfp_legacy_response", "reader_unsupported"),
+        ("vfp_forged_identity", "reader_unsupported"),
+        ("vfp_forged_el", "reader_unsupported"),
+        ("vfp_forged_trap", "reader_unsupported"),
+        ("vfp_el0", "access_restricted"),
+        ("vfp_el1", "access_restricted"),
+    ] {
+        let f = configured("");
+        let engine = session::spawn(f.project.clone());
+        ok(&engine, 1, "connect", json!({}));
+        let first = ok(
+            &engine,
+            2,
+            "registers_read",
+            json!({"ids":["q0","mvfr0"],"manual":true}),
+        );
+        f.state.lock().unwrap()["fault"] = json!(fault);
+        let failed = ok(
+            &engine,
+            3,
+            "registers_read",
+            json!({"ids":["q0","mvfr0","r0"],"manual":true}),
+        );
+        let status = ok(&engine, 4, "status", json!({}));
+        for index in 0..2 {
+            let sample = &failed["samples"][index];
+            assert_eq!(sample["reason"], reason, "{fault}: {sample}");
+            assert!(sample["value"].is_null());
+            assert!(sample["provenance"]["access"]["vfp"].is_null());
+            let old = status["register_samples"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["id"] == sample["id"])
+                .unwrap();
+            assert_eq!(
+                old["last_value_provenance"]["provenance"],
+                first["samples"][index]["provenance"]
+            );
+            assert_eq!(old["value"], first["samples"][index]["value"]);
+        }
+        assert_eq!(failed["samples"][2]["state"], "valid");
+        assert_eq!(status["state"], "STOPPED");
+        ok(&engine, 5, "step", json!({}));
+        ok(&engine, 6, "quit", json!({}));
+    }
+}
 #[test]
 fn every_vfp_storage_view_uses_shared_physical_pairs_with_exact_alias_bits() {
     let f = configured("");

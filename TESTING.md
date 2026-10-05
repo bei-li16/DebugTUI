@@ -1,5 +1,15 @@
 # DebugTUI 验证记录
 
+## VFP当前Debug状态与独立源码包（2026-10-06，开发分支）
+
+完整Cargo **391单元＋165集成通过，2 ignored，共556通过**；F24 **149/149**个证据模式匹配，538354 ms无超时，其余22外层套件未选择。总报告、Markdown及unit.log逐字节镜像到 `artifacts/functional-1791238088481-8911e18d/`，原53份子报告在F盘，核对 `artifacts/vfp-proof-report-mirror.json`。严格Clippy通过，日志 `artifacts/vfp-proof-clippy.log`。
+
+两项新单元及两项多核worker测试验证当前EL和八种保存模式分离、Core1/Scope All、旧或伪造证明、失败原值来源与后续控制；现有四类实际EXE读流程和五类写流程完整回归。Windows/Linux完整重建、七套生产事务/七协议、实际dummy命令及Windows本机DLL/三项离线配置通过。VFP生产模型73读/166写故障点；八项TCP测试含DTR传输位变化、低EL拒绝及空异常失败报告。源ZIP补齐JSON夹具，旧包拒绝、新包全新解压后脱离工作区运行七套模型、八项TCP和后端命令通过。原专项夹具及空异常失败日志保留，最终日志/当前包记录见[VFP证明](docs/register-vfp-proof.md)、[源码自检](docs/register-backend-source.md)。
+
+Windows包检查十一项通过，新增JSON缺失/篡改拒绝；原Git refs负向夹具补齐JSON后继续独立验证Git空目录，原九项未删减。日志 `artifacts/vfp-proof-windows-package-regression.log`，首轮夹具错误日志保留。
+
+八项环境case全部SKIPPED，未上板、安装或发布。REG-304低EL合法读取仍未完成；总TODO保持 **26完成／45待完成**，目标active，源码/全局安装基线0.9.3。
+
 ## S/D/Q存储视图与后端源码（2026-10-06，开发分支）
 
 四新单元、三新集成补齐同次物理pair/容量raw、D16/D32完整视图、特殊值和双核Scope All、失败原值来源；实际EXE延后驱动四种软件场景通过。四种正常startup标本对象离线编译，64字数据节独立核对；八项环境case均SKIPPED。固定Git基线重新应用补丁，十一项源锁与Windows/Linux候选/源码包一致，后端源码可获得/可构建证据完整。[存储视图](docs/register-storage-views.md)、[后端源码](docs/register-backend-source.md)。

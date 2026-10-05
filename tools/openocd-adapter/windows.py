@@ -12,6 +12,7 @@ import zipfile
 
 
 HERE = Path(__file__).resolve().parent
+DRIVER_FIXTURE = 'tests/fixtures/register-vfp-write-board.example.json'
 
 
 def digest(path):
@@ -76,6 +77,8 @@ def check_source_archive(archive, lock):
         patch = bundle.read('recipe/openocd-adapter/' + lock['patch'])
         if hashlib.sha256(patch).hexdigest() != lock['patch_sha256']:
             raise ValueError('Corresponding source ZIP contains a different patch')
+        if DRIVER_FIXTURE not in bundle.namelist() or bundle.read(DRIVER_FIXTURE) != (HERE.parents[1] / DRIVER_FIXTURE).read_bytes():
+            raise ValueError('Corresponding source ZIP lost the independent driver fixture')
         deps = read_json(HERE / 'windows-dependencies.lock.json')
         pins = [('openocd-source', lock['revision']),
                 ('openocd-source/jimtcl', lock['jimtcl_revision']),
@@ -156,6 +159,7 @@ def stage(args):
                 bundle.write(path, 'recipe/openocd-adapter/' + path.relative_to(HERE).as_posix())
         for name in ['stm32f429-live.cfg', 'stm32f429-dap.cfg']:
             bundle.write(HERE.parent / 'config' / name, 'recipe/config/' + name)
+        bundle.write(HERE.parents[1] / DRIVER_FIXTURE, DRIVER_FIXTURE)
     record = {
         'format': 1, 'target': deps['target'], 'board_tests_executed': False,
         'native_windows_verified': False, 'protocol': lock['protocol'],
@@ -173,6 +177,7 @@ def stage(args):
         'recipe_sha256': {name: digest(HERE / name) for name in
                           ['build-windows.sh', 'windows.py', 'test.py', 'source.lock.json',
                            'windows-dependencies.lock.json', lock['patch']]},
+        'driver_fixture_sha256': {DRIVER_FIXTURE: digest(HERE.parents[1] / DRIVER_FIXTURE)},
         'files': manifest(install),
         'limitations': ['No physical probe, ARM instruction execution or board support was verified.'],
     }
@@ -209,6 +214,8 @@ def verify(args):
     for name, expected in record['recipe_sha256'].items():
         if digest(HERE / name) != expected:
             raise ValueError(f'Build recipe changed; regenerate the staged package: {name}')
+    if record.get('driver_fixture_sha256') != {DRIVER_FIXTURE: digest(HERE.parents[1] / DRIVER_FIXTURE)}:
+        raise ValueError('Independent driver fixture changed or was not included; restage the source package')
     check_manifest(install, record['files'])
     if digest(root / record['corresponding_source']['name']) != record['corresponding_source']['sha256']:
         raise ValueError('Corresponding source package changed or disappeared')

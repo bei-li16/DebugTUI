@@ -435,6 +435,10 @@ fn vfp_unknown_or_forged_receipts_quarantine_without_retry_or_gdb_fallback() {
         "vfp_write_unknown",
         "vfp_write_forged_expected",
         "vfp_write_forged_enable",
+        "vfp_write_forged_el",
+        "vfp_write_forged_identity",
+        "vfp_write_forged_trap",
+        "vfp_write_legacy_receipt",
         "target_restore",
     ] {
         let f = configured("");

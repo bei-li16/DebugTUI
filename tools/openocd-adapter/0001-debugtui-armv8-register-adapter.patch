@@ -17,7 +17,7 @@ index 3d855ab..b830cb1 100644
  	%D%/armv8_cache.h \
  	%D%/avrt.h \
 diff --git a/src/target/aarch64.c b/src/target/aarch64.c
-index 19ab923..419b38d 100644
+index 19ab923..ededaf0 100644
 --- a/src/target/aarch64.c
 +++ b/src/target/aarch64.c
 @@ -15,6 +15,12 @@
@@ -73,7 +73,7 @@ index 19ab923..419b38d 100644
  
  		command_print(CMD, "0x%" PRIx32, value);
  	}
-@@ -3229,7 +3247,447 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3229,7 +3247,454 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  	return ERROR_OK;
  }
  
@@ -211,13 +211,16 @@ index 19ab923..419b38d 100644
 +	}
 +	if (retval != ERROR_OK)
 +		return retval;
++	char evidence[256];
++	snprintf(evidence, sizeof(evidence), "midr 0x%08" PRIx32 " dscr 0x%08" PRIx32 " dspsr 0x%08" PRIx32
++		" dlr 0x%08" PRIx32 " hcptr 0x%08" PRIx32 " mvfr0 0x%08" PRIx32
++		" mvfr1 0x%08" PRIx32 " fpexc 0x%08" PRIx32, result.midr, result.dscr, result.dspsr,
++		result.dlr, result.hcptr, result.mvfr0, result.mvfr1, result.fpexc);
 +	if (request.data)
-+		command_print(CMD, "mvfr0 0x%08" PRIx32 " mvfr1 0x%08" PRIx32 " fpexc 0x%08" PRIx32
-+			" value 0x%016" PRIx64 "%016" PRIx64,
-+			result.mvfr0, result.mvfr1, result.fpexc, result.words[1], result.words[0]);
++		command_print(CMD, "%s value 0x%016" PRIx64 "%016" PRIx64,
++			evidence, result.words[1], result.words[0]);
 +	else
-+		command_print(CMD, "mvfr0 0x%08" PRIx32 " mvfr1 0x%08" PRIx32 " fpexc 0x%08" PRIx32
-+			" value 0x%08" PRIx32, result.mvfr0, result.mvfr1, result.fpexc, (uint32_t)result.words[0]);
++		command_print(CMD, "%s value 0x%08" PRIx32, evidence, (uint32_t)result.words[0]);
 +	return ERROR_OK;
 +}
 +
@@ -287,10 +290,14 @@ index 19ab923..419b38d 100644
 +		return retval;
 +	command_print(CMD, "outcome %s before 0x%016" PRIx64 "%016" PRIx64
 +		" expected 0x%016" PRIx64 "%016" PRIx64 " value 0x%016" PRIx64 "%016" PRIx64
-+		" mvfr0 0x%08" PRIx32 " mvfr1 0x%08" PRIx32 " fpexc 0x%08" PRIx32,
++		" mvfr0 0x%08" PRIx32 " mvfr1 0x%08" PRIx32 " fpexc 0x%08" PRIx32
++		" midr 0x%08" PRIx32 " dscr 0x%08" PRIx32 " dspsr 0x%08" PRIx32
++		" dlr 0x%08" PRIx32 " hcptr 0x%08" PRIx32,
 +		retval == ERROR_OK ? "verified" : "mismatch", result.before.words[1], result.before.words[0],
 +		result.expected[1], result.expected[0], result.observed.words[1], result.observed.words[0],
-+		result.observed.mvfr0, result.observed.mvfr1, result.observed.fpexc);
++		result.observed.mvfr0, result.observed.mvfr1, result.observed.fpexc,
++		result.observed.midr, result.observed.dscr, result.observed.dspsr, result.observed.dlr,
++		result.observed.hcptr);
 +	return ERROR_OK;
 +}
 +
@@ -1339,17 +1346,17 @@ index 0000000..b9587b4
 +#endif
 diff --git a/src/target/armv8_debugtui_vfp.h b/src/target/armv8_debugtui_vfp.h
 new file mode 100644
-index 0000000..70f517c
+index 0000000..7472475
 --- /dev/null
 +++ b/src/target/armv8_debugtui_vfp.h
-@@ -0,0 +1,177 @@
+@@ -0,0 +1,211 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_VFP_H
 +#define OPENOCD_TARGET_ARMV8_DEBUGTUI_VFP_H
 +
 +#include "armv8_debugtui_banked.h"
 +
-+#define DEBUGTUI_VFP_PROTOCOL "debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault"
++#define DEBUGTUI_VFP_PROTOCOL "debugtui-armv8-vfp-2 external-identity current-el dspsr dlr vmrs pair-readback no-enable stop-on-fault"
 +#define DEBUGTUI_VFP_UNSUPPORTED 1
 +#define DEBUGTUI_VFP_RESTRICTED 2
 +#define DEBUGTUI_VFP_DISABLED 3
@@ -1364,7 +1371,7 @@ index 0000000..70f517c
 +
 +struct armv8_debugtui_vfp_result {
 +	uint64_t words[2];
-+	uint32_t mvfr0, mvfr1, fpexc, hcptr, dspsr;
++	uint32_t mvfr0, mvfr1, fpexc, hcptr, dspsr, dlr, midr, dscr;
 +	bool neon;
 +};
 +
@@ -1420,48 +1427,66 @@ index 0000000..70f517c
 +	return 0;
 +}
 +
-+static inline int armv8_debugtui_vfp_transfer(const struct armv8_debugtui_io *io,
++static inline int armv8_debugtui_vfp_transfer(const struct armv8_debugtui_banked_io *io,
 +	const struct armv8_debugtui_vfp_request *request,
 +	struct armv8_debugtui_vfp_result *result, bool *uncertain)
 +{
-+	uint32_t before, after, midr, hcptr, mvfr0, mvfr1, fpexc;
++	uint32_t before, after, hcptr, mvfr0, mvfr1, fpexc;
 +	struct armv8_debugtui_vfp_result sample = {0};
 +	unsigned int registers = 0;
 +	bool neon = false;
 +	*uncertain = false;
-+	int retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_DSPSR, false, &before);
++	int retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_DSCR, &sample.dscr);
 +	if (retval)
 +		goto fault;
-+	/* Hyp permits direct trap inspection. Other modes require another proven
-+	 * reader/policy; do not inject inaccessible HCPTR or guess Guest permissions. */
-+	if ((before & 31) != 0x1a)
-+		return DEBUGTUI_VFP_RESTRICTED;
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, ARMV4_5_MRC(15, 0, 0, 0, 0, 0), false, &midr);
-+	if (retval)
-+		goto fault;
-+	if ((midr >> 24) != 0x41 || ((midr >> 4) & 0xfff) != 0xd13 || ((midr >> 16) & 15) != 15)
++	if (!armv8_debugtui_banked_state_valid(sample.dscr)) {
++		if (sample.dscr & DEBUGTUI_BANKED_FAULT_MASK)
++			goto mismatch;
 +		return DEBUGTUI_VFP_UNSUPPORTED;
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_HCPTR, false, &hcptr);
++	}
++	retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_MIDR, &sample.midr);
++	if (retval)
++		goto fault;
++	if ((sample.midr & UINT32_C(0xff0ffff0)) != UINT32_C(0x410fd130))
++		return DEBUGTUI_VFP_UNSUPPORTED;
++	/* Only fresh external EDSCR proves current Hyp. Saved DSPSR is not
++	 * current PSTATE; do not inject MIDR/HCPTR at an unproven lower EL.
++	 * EL1/Guest needs a separate proven permission reader, not a mode change. */
++	if (((sample.dscr >> 8) & 3) != 2)
++		return DEBUGTUI_VFP_RESTRICTED;
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_READ_DSPSR, false, &before);
++	if (retval)
++		goto fault;
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_BANKED_READ_DLR, false, &sample.dlr);
++	if (retval)
++		goto fault;
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_READ_HCPTR, false, &hcptr);
 +	if (retval)
 +		goto fault;
 +	if (hcptr & (1u << 10))
 +		return DEBUGTUI_VFP_RESTRICTED; /* VMRS is also undefined in Hyp when TCP10=1. */
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_VMRS(7), false, &mvfr0);
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_VMRS(7), false, &mvfr0);
 +	if (retval)
 +		goto fault;
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_VMRS(6), false, &mvfr1);
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_VMRS(6), false, &mvfr1);
 +	if (retval)
 +		goto fault;
 +	retval = armv8_debugtui_vfp_features(mvfr0, mvfr1, &registers, &neon);
 +	if (retval && request->data)
 +		return retval;
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_VMRS(8), false, &fpexc);
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_VMRS(8), false, &fpexc);
 +	if (retval)
 +		goto fault;
 +	if (request->data && (request->pair * 2 >= registers || (request->quad && !neon)))
 +		return DEBUGTUI_VFP_NOT_IMPLEMENTED;
 +	if ((request->data || request->control == 1) && !(fpexc & (1u << 30)))
 +		return DEBUGTUI_VFP_DISABLED;
++	retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_DSCR, &after);
++	if (retval)
++		goto fault;
++	if (!armv8_debugtui_banked_state_valid(after) ||
++		((sample.dscr ^ after) & DEBUGTUI_BANKED_STATE_MASK))
++		goto mismatch;
 +	if (request->data) {
 +		/* VMOV Rt,Rt2,Dn is permitted even by the SP-only instruction subset.
 +		 * Read both D lanes once so all overlapping views share one raw sample.
@@ -1469,7 +1494,7 @@ index 0000000..70f517c
 +		 * to execute NEON arithmetic. Q is only an implemented storage view. */
 +		for (unsigned int i = 0; i < 2; i++) {
 +			unsigned int index = request->pair * 2 + i;
-+			retval = armv8_debugtui_mrrc_transfer(io, 11, 1 | ((index >> 4) << 1),
++			retval = armv8_debugtui_mrrc_transfer(&io->core, 11, 1 | ((index >> 4) << 1),
 +				index & 15, &sample.words[i]);
 +			if (retval)
 +				goto fault;
@@ -1483,26 +1508,42 @@ index 0000000..70f517c
 +		else if (request->control == 8)
 +			value = fpexc;
 +		else {
-+			retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_VMRS(request->control), false, &value);
++			retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_VMRS(request->control), false, &value);
 +			if (retval)
 +				goto fault;
 +		}
 +		sample.words[0] = value;
 +	}
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_VMRS(8), false, &after);
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_VMRS(8), false, &after);
 +	if (retval)
 +		goto fault;
 +	if (after != fpexc)
 +		goto mismatch;
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_HCPTR, false, &after);
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_READ_HCPTR, false, &after);
 +	if (retval)
 +		goto fault;
 +	if (after != hcptr)
 +		goto mismatch;
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_DSPSR, false, &after);
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_READ_DSPSR, false, &after);
 +	if (retval)
 +		goto fault;
 +	if (before != after)
++		goto mismatch;
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_BANKED_READ_DLR, false, &after);
++	if (retval)
++		goto fault;
++	if (after != sample.dlr)
++		goto mismatch;
++	retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_MIDR, &after);
++	if (retval)
++		goto fault;
++	if (after != sample.midr)
++		goto mismatch;
++	retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_DSCR, &after);
++	if (retval)
++		goto fault;
++	if (!armv8_debugtui_banked_state_valid(after) ||
++		((sample.dscr ^ after) & DEBUGTUI_BANKED_STATE_MASK))
 +		goto mismatch;
 +	sample.mvfr0 = mvfr0;
 +	sample.mvfr1 = mvfr1;
@@ -1522,17 +1563,17 @@ index 0000000..70f517c
 +#endif
 diff --git a/src/target/armv8_debugtui_vfp_write.h b/src/target/armv8_debugtui_vfp_write.h
 new file mode 100644
-index 0000000..636b2c7
+index 0000000..c833795
 --- /dev/null
 +++ b/src/target/armv8_debugtui_vfp_write.h
-@@ -0,0 +1,155 @@
+@@ -0,0 +1,166 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_VFP_WRITE_H
 +#define OPENOCD_TARGET_ARMV8_DEBUGTUI_VFP_WRITE_H
 +
 +#include "armv8_debugtui_vfp.h"
 +
-+#define DEBUGTUI_VFP_WRITE_PROTOCOL "debugtui-armv8-vfp-write-1 vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault"
++#define DEBUGTUI_VFP_WRITE_PROTOCOL "debugtui-armv8-vfp-write-2 external-identity current-el dspsr dlr vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault"
 +#define DEBUGTUI_VFP_WRITE_MISMATCH 5
 +
 +struct armv8_debugtui_vfp_write_request {
@@ -1634,7 +1675,7 @@ index 0000000..636b2c7
 +	return 0;
 +}
 +
-+static inline int armv8_debugtui_vfp_write_transfer(const struct armv8_debugtui_io *io,
++static inline int armv8_debugtui_vfp_write_transfer(const struct armv8_debugtui_banked_io *io,
 +	const struct armv8_debugtui_vfp_write_request *request,
 +	struct armv8_debugtui_vfp_write_result *result, bool *sent, bool *uncertain)
 +{
@@ -1658,7 +1699,16 @@ index 0000000..636b2c7
 +	unsigned int count = request->bits == 128 ? 2 : 1;
 +	for (unsigned int i = 0; i < count; i++) {
 +		unsigned int selected = request->bits == 128 ? i : lane;
-+		retval = armv8_debugtui_vfp_write_double(io, request->read.pair * 2 + selected,
++		uint32_t state;
++		retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_DSCR, &state);
++		if (retval)
++			goto fault;
++		if (!armv8_debugtui_banked_state_valid(state) ||
++			((state ^ sample.before.dscr) & DEBUGTUI_BANKED_STATE_MASK)) {
++			retval = -1;
++			goto fault;
++		}
++		retval = armv8_debugtui_vfp_write_double(&io->core, request->read.pair * 2 + selected,
 +			sample.expected[selected], sent);
 +		if (retval)
 +			goto fault;
@@ -1666,7 +1716,9 @@ index 0000000..636b2c7
 +	retval = armv8_debugtui_vfp_transfer(io, &request->read, &sample.observed, uncertain);
 +	if (retval)
 +		goto fault; /* Even a safe refusal now follows a possibly completed write. */
-+	if (sample.before.dspsr != sample.observed.dspsr || sample.before.hcptr != sample.observed.hcptr ||
++	if (sample.before.midr != sample.observed.midr || sample.before.dlr != sample.observed.dlr ||
++		((sample.before.dscr ^ sample.observed.dscr) & DEBUGTUI_BANKED_STATE_MASK) ||
++		sample.before.dspsr != sample.observed.dspsr || sample.before.hcptr != sample.observed.hcptr ||
 +		sample.before.fpexc != sample.observed.fpexc || sample.before.mvfr0 != sample.observed.mvfr0 ||
 +		sample.before.mvfr1 != sample.observed.mvfr1) {
 +		retval = -1;
@@ -1682,7 +1734,7 @@ index 0000000..636b2c7
 +
 +#endif
 diff --git a/src/target/armv8_dpm.c b/src/target/armv8_dpm.c
-index 508ec97..22e2350 100644
+index 508ec97..ae2a114 100644
 --- a/src/target/armv8_dpm.c
 +++ b/src/target/armv8_dpm.c
 @@ -16,6 +16,13 @@
@@ -1733,7 +1785,7 @@ index 508ec97..22e2350 100644
  
  	if (p_dscr)
  		*p_dscr = dscr;
-@@ -259,6 +271,323 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -259,6 +271,329 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  	return retval;
  }
  
@@ -1891,9 +1943,12 @@ index 508ec97..22e2350 100644
 +		.dpm = dpm,
 +		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
 +	};
-+	struct armv8_debugtui_io io = {
-+		.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
-+		.write_gpr = dpmv8_debugtui_write_gpr, .execute = dpmv8_debugtui_execute,
++	struct armv8_debugtui_banked_io io = {
++		.core = {
++			.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
++			.write_gpr = dpmv8_debugtui_write_gpr, .execute = dpmv8_debugtui_execute,
++		},
++		.read_debug = dpmv8_debugtui_read_timer_debug,
 +	};
 +	retval = armv8_debugtui_vfp_transfer(&io, request, result, uncertain);
 +	if (retval != ERROR_OK)
@@ -1921,9 +1976,12 @@ index 508ec97..22e2350 100644
 +		.dpm = dpm,
 +		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
 +	};
-+	struct armv8_debugtui_io io = {
-+		.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
-+		.write_gpr = dpmv8_debugtui_write_gpr, .execute = dpmv8_debugtui_execute,
++	struct armv8_debugtui_banked_io io = {
++		.core = {
++			.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
++			.write_gpr = dpmv8_debugtui_write_gpr, .execute = dpmv8_debugtui_execute,
++		},
++		.read_debug = dpmv8_debugtui_read_timer_debug,
 +	};
 +	retval = armv8_debugtui_vfp_write_transfer(&io, request, result, sent, uncertain);
 +	if (retval != ERROR_OK && retval != DEBUGTUI_VFP_WRITE_MISMATCH)

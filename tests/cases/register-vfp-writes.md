@@ -4,7 +4,7 @@
 
 依据：本地 Cortex-R52 TRM `100026_0104_01_en` §§16.3–16.6；完整 Armv8-R AArch32 Supplement `DDI 0568A.c` D1.3 的 VMOV 两个 GP 与 D 存储的合法指令子集。D16 SP-only 的 D 是 64 位存储，可搬运原始位，但不说明支持双精度运算。S0–31 映射 D0–15；Q0–15 是 D0–31 两两组合，只有已确认的 D32/NEON 配置开放 Q。
 
-准备专用固件，让启动代码明确建立 Hyp、HCPTR.TCP10=0、FPEXC.EN=1 和已知 D 数据；两个核心分别在独立 ready loop 暂停，测试期间独占调试器，排除 Live Watch、GDB 或其他 TCL 客户端并发。不要用本测试打开 FPU、切换模式、复位、下载或暂停生产程序。记录探针、工具哈希、MIDR、MVFR0/1、FPEXC、FPSCR、HCPTR、DSPSR、物理 R0/R1/PC 与每核原始 D 基线。使用 [独立 GNU VMRS/VMOV 固件钩子](../fixtures/register-vfp-board.S) 采样初始原始字，不以 writer 返回的 expected 作为独立基线。
+准备专用固件，让启动代码明确建立 Hyp、HCPTR.TCP10=0、FPEXC.EN=1 和已知 D 数据；两个核心分别在独立 ready loop 暂停，测试期间独占调试器，排除 Live Watch、GDB 或其他 TCL 客户端并发。不要用本测试打开 FPU、切换模式、复位、下载或暂停生产程序。记录探针、工具哈希、外部MIDR/EDSCR、MVFR0/1、FPEXC、FPSCR、HCPTR、DSPSR/DLR、物理 R0/R1/PC 与每核原始 D 基线。使用 [独立 GNU VMRS/VMOV 固件钩子](../fixtures/register-vfp-board.S) 采样初始原始字，不以 writer 返回的 expected 作为独立基线。当前读写协议均为v2，完整字符串由源码锁规定；保存DSPSR不是当前Hyp证明，EL2必须由外部EDSCR确认。
 
 默认执行不会连接：
 
@@ -18,7 +18,7 @@ python tools/openocd-adapter/tests/vfp-write-hardware.py
 python tools/openocd-adapter/tests/vfp-write-hardware.py --run --case G:/Tests/r52-core0-s31.json
 ```
 
-驱动核对固定协议和暂停 owner、独立基线、原始写入及完整 pair、FP/模式/陷阱控制和 peer；只在所有验证通过后再发送一次独立恢复写入。任何 unknown、mismatch、断连、超时、控制变化或恢复故障停止后续指令，不重试、不自动 rollback。内部事务物理回读 R0/R1；驱动的外部控制复核不能代替独立物理 PC/GPR 或恢复运行后固件样本。这些仍需保存为各用例的额外证据。
+驱动核对固定协议和暂停 owner、独立基线、原始写入及完整 pair、FP/模式/陷阱控制和 peer；使用每个响应的MIDR/EDSCR/DSPSR/DLR/HCPTR，不另注入CPU MIDR或直接当前CPSR指令。EDSCR稳定比较忽略可变化的DTR传输位，每次仍严格校验EL/ITE/故障。只在所有验证通过后再发送一次独立恢复写入。任何 unknown、mismatch、断连、超时、控制变化或恢复故障停止后续指令，不重试、不自动 rollback。内部事务物理回读 R0/R1；驱动的外部控制复核不能代替独立物理 PC/GPR 或恢复运行后固件样本。这些仍需保存为各用例的额外证据。八项TCP软件测试含低EL拒绝、传输位正常变化及空异常失败报告，均不能作为上板通过。
 
 DebugTUI 主机链路另有独立驱动，默认生成 4 skipped，不启动或连接目标：
 
@@ -41,8 +41,8 @@ node scripts/test-register-vfp-write-hardware.cjs --run --project G:/Tests/r52-w
 | VFP-WH-D32-Q | D32/NEON 配置写 d16/d31、q0/q15，含高 64 位非零与独立不对称字 | D 与 Q 高字完整，S/D/Q 位别名一致；Q 明确 non-atomic、两个 D 各写一次，不使用 GDB LONGEST 通道 |
 | VFP-WH-PERMISSION | 分别准备 EN=0、TCP10=1、EL1/Guest/User、未知 MIDR/MVFR 的独立固件；手工运行协议命令 | 当前后端按真实前置条件返回 not_sent；没有写 FPEXC/CPACR/HCPTR、模式或尝试越权 VMOV；EL1/Guest 当前未适配不算硬件缺失 |
 | VFP-WH-CACHE | 在独立可恢复会话中预设同一 pair 的 GDB D 写入；另测待写 PC/CPSR/FP 状态，再请求后端写入；成功后刷新 D 别名 | pending-register-write 在注入前拒绝；保留原 GDB 待写值。无待写值时，成功或未知结果使该 pair 与两个 ARM32 D alias 的后端有效标记失效；恢复运行不回放旧 pair |
-| VFP-WH-STATE | 成功写入前后保存独立物理 R0/R1、PC、完整 DSPSR（含 T/IT）、HCPTR、FPEXC、FPSCR | 只有指定 FP 数据变化；所有控制、临时寄存器与 peer 原样；写后显式恢复原数据再次独立确认 |
-| VFP-WH-PARTIAL | 仅在独立可恢复实验环境注入第一个/第二个 D 写入后的传输失败、scratch 恢复或控制回读故障 | 后端 target unknown，日志提示重连；不注入剩余指令、不重放、不猜测恢复。Q 可能已部分改变，不能宣称 not_sent/atomic。当前 144 故障点仅有生产 C 事务软件证据 |
+| VFP-WH-STATE | 成功写入前后保存外部MIDR/EDSCR、独立物理 R0/R1、PC、完整 DSPSR（含 T/IT）/DLR、HCPTR、FPEXC、FPSCR | 只有指定 FP 数据变化；所有控制、临时寄存器与 peer 原样；写后显式恢复原数据再次独立确认 |
+| VFP-WH-PARTIAL | 仅在独立可恢复实验环境注入第一个/第二个 D 写入后的传输失败、当前EL变化、scratch 恢复或控制回读故障 | 后端 target unknown，日志提示重连；不注入剩余指令、不重放、不猜测恢复。Q 可能已部分改变，不能宣称 not_sent/atomic。当前166故障点仅有生产C事务软件证据；首次物理写入前EDSCR变化同样停止 |
 | VFP-WH-FRONTEND | 主机驱动分别运行 core0/core1 的 S/D/Q 正常 case；另在 TUI 45×12 和 80×24 终端操作键盘 `e`、鼠标 Edit value、Preview、Cancel、Apply；预览后切换核／帧／停止点／会话／权限，测试 Scope All；两个别名草稿先应用一份再尝试另一份 | 默认无写；取消或旧上下文不写；写入只属于选中 owner，peer 原样；S/D 新鲜邻接位与 Q 高字完整；其他草稿及旧别名失效，手动刷新由新 pair 得到一致值。后端协议不符无 GDB 回退；unknown/timeout 不重试。已有实际二进制＋真实 Tcl 软件证据及键鼠单元测试，实板／原生终端视觉验收仍未执行 |
 
 成功后允许操作者按固件流程恢复运行，使用独立 VMOV 钩子确认结果及恢复值，再进行下一例；把新的暂停点当作新上下文。自动驱动没有这一步，不把软件 TCP 夹具或后端输出算作独立固件执行证明。

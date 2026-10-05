@@ -1,6 +1,6 @@
 # S/D/Q 存储视图与浮点显示自检
 
-2026-10-06。对应 REG-305 的软件验收；实板未执行。REG-304 的完整读取权限、EL1/Guest 和新鲜当前 Debug 状态适配仍待完成。
+2026-10-06。对应 REG-305 的软件验收；实板未执行。后续[VFP当前Debug状态自检](register-vfp-proof.md)已升级v2的当前Hyp证明；REG-304的完整EL1/Guest/User合法读取仍待完成。
 
 ## 范围与依据
 
@@ -20,7 +20,7 @@ S(2n) 和 S(2n+1) 分别来自 Dn 的低/高32位，n<16；Qn 来自 D(2n) 的�
 
 详情显示 D 对、容量、原始位和能力字段，说明 lane 0 是最低有效位。格式只作用于已经取得的 raw，显示切换不发出目标读写；整数、binary32/binary64 及8/16/32/64位向量分量沿用同一格式器。quiet/signaling NaN 保留符号和完整载荷，正负无穷、正负零和 subnormal 有独立验证。字段仅提供整数格式。
 
-失败请求不制造新成功证明；Snapshot 的最近有效值保留此前 pair、原始能力、owner/context 与时间。不同 pair 和不同核心分别采样，无跨项原子快照。此次 metadata 不升级 VFP v1 的权限协议，也不把停止前 DSPSR 当作独立的当前 EL 证明；该后端缺口继续列在 REG-304。
+失败请求不制造新成功证明；Snapshot 的最近有效值保留此前 pair、原始能力、owner/context 与时间。不同 pair 和不同核心分别采样，无跨项原子快照。存储元数据本身不授予执行权限；本批552项证据使用当时v1，后续v2将外部MIDR/EDSCR和DSPSR/DLR/HCPTR另存为当前Hyp访问证明，停止前DSPSR不再充当当前EL依据。完整低EL后端适配继续列在REG-304，最新回归见[VFP证明](register-vfp-proof.md)。
 
 ## 软件证据
 

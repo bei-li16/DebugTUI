@@ -1,6 +1,6 @@
 """Deferred physical S/D/Q writer cases. Default execution never connects.
 
-Uses the independent OpenOCD writer, not the pending DebugTUI draft adapter.
+Uses the independent OpenOCD writer; DebugTUI integration is checked separately.
 No reset, halt, resume, mode/FPU enable, retry or uncertain-write rollback.
 """
 import argparse
@@ -11,8 +11,8 @@ import re
 import socket
 import time
 
-PROTOCOL = 'debugtui-armv8-vfp-write-1 vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault'
-READ_PROTOCOL = 'debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault'
+PROTOCOL = 'debugtui-armv8-vfp-write-2 external-identity current-el dspsr dlr vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault'
+READ_PROTOCOL = 'debugtui-armv8-vfp-2 external-identity current-el dspsr dlr vmrs pair-readback no-enable stop-on-fault'
 ADAPTER_PROTOCOL = 'debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault'
 PHASES = ['VFP-WH01-STOP', 'VFP-WH02-WRITE', 'VFP-WH03-UNCHANGED', 'VFP-WH04-RESTORE']
 
@@ -64,22 +64,46 @@ class Tcl:
         self.socket.close()
 
 
+PROOF_KEYS = {'midr', 'dscr', 'dspsr', 'dlr', 'hcptr'}
+STATE_MASK = 0x00053f00
+def checked_proof(result):
+    for key in PROOF_KEYS:
+        exact(result[key], 32)
+    dscr = exact(result['dscr'], 32)
+    assert exact(result['midr'], 32) & 0xff0ffff0 == 0x410fd130, 'R52 physical identity required'
+    assert (dscr >> 8) & 3 == 2 and dscr & (1 << 24), 'Current Debug EL2 and ITE required'
+    assert not dscr & (0x1c0000c0 | (1 << 12) | (1 << 16)), 'Invalid Debug execution state or fault'
+    assert not exact(result['hcptr'], 32) & (1 << 10), 'HCPTR.TCP10 restricts FP access'
+
+
+def snapshot_signature(sample):
+    # DTR full/empty and other transport bits may vary between transactions.
+    # Each raw EDSCR was already checked for ITE, faults, AArch32 and current EL.
+    stable = dict(sample)
+    stable['dscr'] = exact(sample['dscr'], 32) & STATE_MASK
+    return stable
+
+
+def same_evidence(left, right, key):
+    if key == 'dscr':
+        return ((exact(left[key], 32) ^ exact(right[key], 32)) & STATE_MASK) == 0
+    return left[key] == right[key]
+
 def snapshot(client, name, target=None):
     reader = name if name[0] != 's' else 'd' + str(int(name[1:]) // 2)
     result = parse_pairs(client.execute('aarch64 vfp ' + reader, target))
-    assert set(result) == {'mvfr0', 'mvfr1', 'fpexc', 'value'}
+    assert set(result) == {'mvfr0', 'mvfr1', 'fpexc', 'value'} | PROOF_KEYS
+    checked_proof(result)
     for key in ['mvfr0', 'mvfr1', 'fpexc']:
         exact(result[key], 32)
     exact(result['value'], 128)
     fpscr = parse_pairs(client.execute('aarch64 vfp fpscr', target))
-    assert set(fpscr) == {'mvfr0', 'mvfr1', 'fpexc', 'value'}
+    assert set(fpscr) == {'mvfr0', 'mvfr1', 'fpexc', 'value'} | PROOF_KEYS
+    checked_proof(fpscr)
+    for key in PROOF_KEYS | {'mvfr0', 'mvfr1', 'fpexc'}:
+        assert same_evidence(fpscr, result, key), 'Physical state changed between samples'
     result['fpscr'] = fpscr['value']
     exact(result['fpscr'], 32)
-    result['dspsr'] = client.execute('aarch64 mrc 15 3 0 4 5', target)
-    result['hcptr'] = client.execute('aarch64 mrc 15 4 2 1 1', target)
-    exact(result['dspsr'], 32)
-    exact(result['hcptr'], 32)
-    assert exact(result['dspsr'], 32) & 31 == 0x1a, 'Hyp physical mode required'
     return result
 
 
@@ -96,13 +120,14 @@ def checked_write(client, name, raw, before):
     result = parse_pairs(client.execute(f'aarch64 vfp_write {name} {raw}'))
     if result.get('outcome') == 'not_sent':
         raise RuntimeError('Writer refused before sending: ' + result.get('reason', 'unknown'))
-    assert set(result) == {'outcome', 'before', 'expected', 'value', 'mvfr0', 'mvfr1', 'fpexc'}, 'Write response unknown; reconnect before any further instruction'
+    assert set(result) == {'outcome', 'before', 'expected', 'value', 'mvfr0', 'mvfr1', 'fpexc'} | PROOF_KEYS, 'Write response unknown; reconnect before any further instruction'
     assert result['outcome'] == 'verified', 'Write was not verified; stop without retry or restore'
     expected = merged(exact(before['value'], 128), name, raw)
     assert exact(result['before'], 128) == exact(before['value'], 128), 'Physical baseline changed during write'
     assert exact(result['expected'], 128) == expected and exact(result['value'], 128) == expected, 'Independent pair calculation mismatch'
-    for key in ['mvfr0', 'mvfr1', 'fpexc']:
-        assert result[key] == before[key], 'Control evidence changed'
+    checked_proof(result)
+    for key in PROOF_KEYS | {'mvfr0', 'mvfr1', 'fpexc'}:
+        assert same_evidence(result, before, key), 'Physical/control evidence changed'
     return result
 
 
@@ -111,7 +136,7 @@ def run_case(args):
     out.mkdir(parents=True, exist_ok=True)
     report = {'board_tests_executed': False, 'results': [],
               'layer': 'software fixture' if args.software_fixture else 'physical backend' if args.run else 'deferred',
-              'limitations': ['DebugTUI preview/apply/UI integration is pending.',
+              'limitations': ['This backend driver does not exercise DebugTUI preview/apply/UI; use the separate host driver.',
                               'Physical R0/R1 restoration is checked internally; external PC/GPR and independent firmware samples are additional manual cases.']}
     client = None
     failed = None
@@ -155,18 +180,18 @@ def run_case(args):
         current = PHASES[2]
         after = snapshot(client, name)
         assert exact(after['value'], 128) == merged(exact(before['value'], 128), name, spec['raw'])
-        assert {k: v for k, v in after.items() if k != 'value'} == {k: v for k, v in before.items() if k != 'value'}
-        assert snapshot(client, name, spec['peer_target']) == peer, 'Peer was changed'
+        assert {k: v for k, v in snapshot_signature(after).items() if k != 'value'} == {k: v for k, v in snapshot_signature(before).items() if k != 'value'}
+        assert snapshot_signature(snapshot(client, name, spec['peer_target'])) == snapshot_signature(peer), 'Peer was changed'
         report['results'].append({'id': current, 'state': 'passed', 'after': after, 'peer_unchanged': True})
         current = PHASES[3]
         shift = (int(name[1:]) % 4) * 32 if bits == 32 else (int(name[1:]) % 2) * 64 if bits == 64 else 0
         original = (exact(before['value'], 128) >> shift) & ((1 << bits) - 1)
         restored = checked_write(client, name, f'0x{original:0{bits // 4}x}', after)
-        assert snapshot(client, name) == before, 'Explicit verified restoration mismatch'
-        assert snapshot(client, name, spec['peer_target']) == peer
+        assert snapshot_signature(snapshot(client, name)) == snapshot_signature(before), 'Explicit verified restoration mismatch'
+        assert snapshot_signature(snapshot(client, name, spec['peer_target'])) == snapshot_signature(peer)
         report['results'].append({'id': current, 'state': 'passed', 'write': restored})
     except Exception as error:
-        failed = str(error)
+        failed = str(error) or type(error).__name__
         report['results'].append({'id': current, 'state': 'failed', 'detail': failed})
     finally:
         if client:

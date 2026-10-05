@@ -87,6 +87,9 @@ impl Engine {
                 "FPSCR response contradicts FPEXC.EN".into(),
             ));
         }
+        if let Some(access) = &mut self.register_value_access {
+            access.vfp = Some(response.evidence.clone());
+        }
         let value = kind
             .view(&response.value)
             .map_err(|error| (Reason::TransportError, error))?;

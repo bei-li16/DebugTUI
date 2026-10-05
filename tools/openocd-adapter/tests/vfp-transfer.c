@@ -5,7 +5,9 @@
 #include "armv8_debugtui_vfp.h"
 
 struct fixture {
-	uint32_t gpr[2], dspsr, midr, hcptr, mvfr0, mvfr1, fpexc;
+	uint32_t gpr[2], dspsr, dlr, dscr, midr, hcptr, mvfr0, mvfr1, fpexc;
+	unsigned int debug_reads, dlr_reads;
+	uint32_t debug_change, identity_change, dlr_change;
 	unsigned int operations, fail_at, status_reads, enable_reads, trap_reads, data_reads;
 	unsigned int corrupt_restore;
 	uint32_t status_change, enable_change, trap_change;
@@ -39,8 +41,8 @@ static int execute(void *context, uint32_t opcode)
 		return -7;
 	if (opcode == DEBUGTUI_READ_DSPSR)
 		f->gpr[0] = f->dspsr ^ (++f->status_reads == 2 ? f->status_change : 0);
-	else if (opcode == ARMV4_5_MRC(15, 0, 0, 0, 0, 0))
-		f->gpr[0] = f->midr;
+	else if (opcode == DEBUGTUI_BANKED_READ_DLR)
+		f->gpr[0] = f->dlr ^ (++f->dlr_reads == 2 ? f->dlr_change : 0);
 	else if (opcode == DEBUGTUI_READ_HCPTR)
 		f->gpr[0] = f->hcptr ^ (++f->trap_reads == 2 ? f->trap_change : 0);
 	else if ((opcode & UINT32_C(0xfff00fff)) == DEBUGTUI_VMRS(0)) {
@@ -63,10 +65,23 @@ static int execute(void *context, uint32_t opcode)
 	}
 	return 0;
 }
+static int read_debug(void *context, uint32_t offset, uint32_t *value)
+{
+	struct fixture *f = context;
+	if (++f->operations == f->fail_at)
+		return -7;
+	if (offset == DEBUGTUI_BANKED_DSCR)
+		*value = f->dscr ^ (++f->debug_reads == 3 ? f->debug_change : 0);
+	else {
+		assert(offset == DEBUGTUI_BANKED_MIDR);
+		*value = f->midr ^ (f->debug_reads >= 2 ? f->identity_change : 0);
+	}
+	return 0;
+}
 static struct fixture fresh(void)
 {
 	struct fixture f = {.gpr = {0x11223344, 0x55667788}, .dspsr = 0xa200041a,
-		.midr = 0x411fd134, .mvfr0 = 0x10110222, .mvfr1 = 0x12111111, .fpexc = 0x40000700};
+		.midr = 0x411fd134, .dscr = 0x01000200, .dlr = 0x81234568, .mvfr0 = 0x10110222, .mvfr1 = 0x12111111, .fpexc = 0x40000700};
 	return f;
 }
 static int transfer(struct fixture *fixture, const char *name,
@@ -74,8 +89,8 @@ static int transfer(struct fixture *fixture, const char *name,
 {
 	struct armv8_debugtui_vfp_request request;
 	assert(armv8_debugtui_vfp_request(name, &request));
-	struct armv8_debugtui_io io = {.context = fixture, .read_gpr = read_gpr,
-		.write_gpr = write_gpr, .execute = execute};
+	struct armv8_debugtui_banked_io io = {.core = {.context = fixture, .read_gpr = read_gpr,
+		.write_gpr = write_gpr, .execute = execute}, .read_debug = read_debug};
 	return armv8_debugtui_vfp_transfer(&io, &request, result, uncertain);
 }
 int main(void)
@@ -88,7 +103,7 @@ int main(void)
 	assert(DEBUGTUI_VMRS(1) == 0xeef10a10 && DEBUGTUI_VMRS(7) == 0xeef70a10);
 	assert(ARMV5_T_MRRC(11, 1, 0, 1, 0) == 0xec510b10);
 	assert(ARMV5_T_MRRC(11, 3, 0, 1, 15) == 0xec510b3f);
-	for (unsigned int failure = 0; failure <= 63; failure++) {
+	for (unsigned int failure = 0; failure <= 73; failure++) {
 		struct fixture f = fresh(); f.fail_at = failure;
 		struct armv8_debugtui_vfp_result result = {.words = {11, 22}};
 		bool uncertain = false;
@@ -97,19 +112,22 @@ int main(void)
 			assert(status == -7 && uncertain && f.operations == failure);
 			assert(result.words[0] == 11 && result.words[1] == 22);
 		} else {
-			assert(status == 0 && !uncertain && f.operations == 63 && f.data_reads == 2);
+			assert(status == 0 && !uncertain && f.operations == 73 && f.data_reads == 2);
 			assert(result.words[0] == data(30) && result.words[1] == data(31));
 			assert(f.gpr[0] == 0x11223344 && f.gpr[1] == 0x55667788);
 			assert(result.fpexc == 0x40000700 && result.neon);
 		}
 	}
-	for (unsigned int changed = 0; changed < 6; changed++) {
+	for (unsigned int changed = 0; changed < 9; changed++) {
 		struct fixture f = fresh();
 		if (changed < 2) f.corrupt_restore = changed + 1;
 		if (changed == 2) f.status_change = 1u << 5;
 		if (changed == 3) f.status_change = 1u << 26;
 		if (changed == 4) f.enable_change = 1u << 30;
 		if (changed == 5) f.trap_change = 1u << 10;
+		if (changed == 6) f.debug_change = 1u << 8;
+		if (changed == 7) f.identity_change = 1u << 4;
+		if (changed == 8) f.dlr_change = 1u << 4;
 		struct armv8_debugtui_vfp_result result = {.words = {11, 22}};
 		bool uncertain = false;
 		assert(transfer(&f, "d0", &result, &uncertain) != 0 && uncertain);
@@ -119,15 +137,15 @@ int main(void)
 		struct fixture f = fresh();
 		const char *name = "d16";
 		int expected = DEBUGTUI_VFP_RESTRICTED;
-		unsigned int steps = 5;
-		if (refused < 2) f.dspsr = refused == 0 ? 0x10 : 0x13;
-		if (refused == 2) { f.hcptr = 1u << 10; steps = 15; }
-		if (refused == 3) { f.fpexc = 0x700; steps = 30; expected = DEBUGTUI_VFP_DISABLED; }
+		unsigned int steps = 2;
+		if (refused < 2) f.dscr = refused == 0 ? 0x01000000 : 0x01000100;
+		if (refused == 2) { f.hcptr = 1u << 10; steps = 17; }
+		if (refused == 3) { f.fpexc = 0x700; steps = 32; expected = DEBUGTUI_VFP_DISABLED; }
 		if (refused == 4 || refused == 5) {
-			f.mvfr0 = 0x10110021; f.mvfr1 = 0x11000011; steps = 30;
+			f.mvfr0 = 0x10110021; f.mvfr1 = 0x11000011; steps = 32;
 			expected = DEBUGTUI_VFP_NOT_IMPLEMENTED; if (refused == 5) name = "q0";
 		}
-		if (refused == 6) { f.mvfr1 |= 2u << 12; steps = 25; expected = DEBUGTUI_VFP_UNSUPPORTED; }
+		if (refused == 6) { f.mvfr1 |= 2u << 12; steps = 27; expected = DEBUGTUI_VFP_UNSUPPORTED; }
 		struct armv8_debugtui_vfp_result result = {.words = {11, 22}};
 		bool uncertain = true;
 		assert(transfer(&f, name, &result, &uncertain) == expected && !uncertain);
@@ -144,12 +162,32 @@ int main(void)
 		assert(!disabled || result.words[0] == 0x10110021);
 		if (!disabled) assert(result.words[0] == data(14) && result.words[1] == data(15));
 	}
+	const uint32_t stopped_modes[] = {0x10, 0x11, 0x12, 0x13, 0x17, 0x1a, 0x1b, 0x1f};
+	for (unsigned int i = 0; i < 8; i++) {
+		struct fixture f = fresh(); f.dspsr = 0xa2000400 | stopped_modes[i];
+		struct armv8_debugtui_vfp_result result;
+		bool uncertain = true;
+		assert(transfer(&f, "d0", &result, &uncertain) == 0 && !uncertain);
+		assert(result.dspsr == f.dspsr && result.dscr == 0x01000200 && result.midr == f.midr && result.dlr == f.dlr);
+	}
+	const uint32_t invalid_states[] = {0x01001200, 0x00000200, 0x01000300, 0x01010200};
+	for (unsigned int i = 0; i < 4; i++) {
+		struct fixture f = fresh(); f.dscr = invalid_states[i];
+		struct armv8_debugtui_vfp_result result = {.words = {11, 22}};
+		bool uncertain = true;
+		assert(transfer(&f, "d0", &result, &uncertain) == DEBUGTUI_VFP_UNSUPPORTED && !uncertain);
+		assert(f.operations == 1 && f.data_reads == 0 && result.words[0] == 11);
+	}
+	struct fixture faulted = fresh(); faulted.dscr |= 1u << 6;
+	struct armv8_debugtui_vfp_result rejected = {.words = {11, 22}};
+	bool unsafe = false;
+	assert(transfer(&faulted, "d0", &rejected, &unsafe) < 0 && unsafe && faulted.operations == 1);
 	/* Preserve raw unknown feature encodings for inspection, never authorize data. */
 	struct fixture unknown = fresh(); unknown.mvfr1 = 0x12113111;
 	struct armv8_debugtui_vfp_result raw;
 	bool uncertain = true;
 	assert(transfer(&unknown, "mvfr1", &raw, &uncertain) == 0 && !uncertain);
 	assert(raw.words[0] == 0x12113111 && raw.mvfr1 == 0x12113111 && unknown.data_reads == 0);
-	puts("PASS: VFP pairs, 63 fault points, physical scratch/control restoration, D16/D32, disabled and safe refusals");
+	puts("PASS: VFP pairs, 73 fault points, physical scratch/control restoration, D16/D32, external current EL/identity/DLR, eight stopped modes, disabled and safe refusals");
 	return 0;
 }

@@ -65,6 +65,8 @@ pub struct Access {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub banked: Option<super::banked::Evidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vfp: Option<super::vfp::Evidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vfp_pair: Option<super::vfp::PairEvidence>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timer: Option<super::timer::Evidence>,

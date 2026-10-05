@@ -91,8 +91,28 @@ class WindowsPackageTests(unittest.TestCase):
                 bundle.writestr(member, original.read(member))
             member = 'recipe/openocd-adapter/' + SOURCE_LOCK['patch']
             bundle.writestr(member, original.read(member))
+            bundle.writestr(windows.DRIVER_FIXTURE, original.read(windows.DRIVER_FIXTURE))
             # This reproduces the original files-only ZIP packaging bug.
         with self.assertRaisesRegex(ValueError, 'lost its refs directory'):
+            windows.check_source_archive(changed, SOURCE_LOCK)
+
+    def test_source_archive_cannot_omit_independent_driver_fixture(self):
+        self.check_bad_driver_fixture(include=False)
+
+    def test_source_archive_cannot_change_independent_driver_fixture(self):
+        self.check_bad_driver_fixture(include=True)
+
+    def check_bad_driver_fixture(self, include):
+        changed = self.root / 'bad-driver-fixture.zip'
+        with zipfile.ZipFile(SOURCE_ARCHIVE) as original, zipfile.ZipFile(changed, 'w') as bundle:
+            for name in SOURCE_LOCK['patched_sources_sha256']:
+                member = 'openocd-source/' + name
+                bundle.writestr(member, original.read(member))
+            member = 'recipe/openocd-adapter/' + SOURCE_LOCK['patch']
+            bundle.writestr(member, original.read(member))
+            if include:
+                bundle.writestr(windows.DRIVER_FIXTURE, original.read(windows.DRIVER_FIXTURE) + b'changed')
+        with self.assertRaisesRegex(ValueError, 'independent driver fixture'):
             windows.check_source_archive(changed, SOURCE_LOCK)
 
 

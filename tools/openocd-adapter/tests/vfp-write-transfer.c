@@ -5,7 +5,9 @@
 #include "armv8_debugtui_vfp_write.h"
 
 struct fixture {
-	uint32_t gpr[2], dspsr, midr, hcptr, mvfr0, mvfr1, fpexc;
+	uint32_t gpr[2], dspsr, dlr, dscr, midr, hcptr, mvfr0, mvfr1, fpexc;
+	unsigned int debug_reads, dlr_reads;
+	uint32_t debug_change, identity_change, dlr_change;
 	uint64_t d[32];
 	unsigned int operations, fail_at, writes, corrupt_restore;
 	bool fail_after_commit;
@@ -42,8 +44,8 @@ static int execute(void *context, uint32_t opcode)
 		return -7;
 	if (opcode == DEBUGTUI_READ_DSPSR)
 		f->gpr[0] = f->dspsr ^ (f->writes && f->changed == 1 ? 1u << 26 : 0);
-	else if (opcode == ARMV4_5_MRC(15, 0, 0, 0, 0, 0))
-		f->gpr[0] = f->midr;
+	else if (opcode == DEBUGTUI_BANKED_READ_DLR)
+		f->gpr[0] = f->dlr ^ (f->writes ? f->dlr_change : 0);
 	else if (opcode == DEBUGTUI_READ_HCPTR)
 		f->gpr[0] = f->hcptr ^ (f->writes && f->changed == 2 ? 1u << 15 : 0);
 	else if ((opcode & UINT32_C(0xfff00fff)) == DEBUGTUI_VMRS(0)) {
@@ -73,10 +75,26 @@ static int execute(void *context, uint32_t opcode)
 	return 0;
 }
 
+static int read_debug(void *context, uint32_t offset, uint32_t *value)
+{
+	struct fixture *f = context;
+	if (++f->operations == f->fail_at)
+		return -7;
+	if (offset == DEBUGTUI_BANKED_DSCR) {
+		f->debug_reads++;
+		*value = f->dscr ^ (f->writes && f->changed == 8 ? 1u << 8 : 0);
+		if (f->debug_reads == 4)
+			*value ^= f->debug_change;
+	} else {
+		assert(offset == DEBUGTUI_BANKED_MIDR);
+		*value = f->midr ^ (f->writes && f->changed == 9 ? 1u << 4 : 0);
+	}
+	return 0;
+}
 static struct fixture fresh(void)
 {
 	struct fixture f = {.gpr = {0x11223344, 0x55667788}, .dspsr = 0xa200041a,
-		.midr = 0x411fd134, .mvfr0 = 0x10110222, .mvfr1 = 0x12111111, .fpexc = 0x40000700};
+		.midr = 0x411fd134, .dscr = 0x01000200, .dlr = 0x81234568, .mvfr0 = 0x10110222, .mvfr1 = 0x12111111, .fpexc = 0x40000700};
 	for (unsigned int i = 0; i < 32; i++)
 		f.d[i] = UINT64_C(0xfedcba9876543200) + i;
 	return f;
@@ -87,8 +105,8 @@ static int transfer(struct fixture *f, const char *name, const char *raw,
 {
 	struct armv8_debugtui_vfp_write_request request;
 	assert(armv8_debugtui_vfp_write_request(name, raw, &request));
-	struct armv8_debugtui_io io = {.context = f, .read_gpr = read_gpr,
-		.write_gpr = write_gpr, .execute = execute};
+	struct armv8_debugtui_banked_io io = {.core = {.context = f, .read_gpr = read_gpr,
+		.write_gpr = write_gpr, .execute = execute}, .read_debug = read_debug};
 	return armv8_debugtui_vfp_write_transfer(&io, &request, result, sent, uncertain);
 }
 
@@ -122,7 +140,7 @@ int main(void)
 			struct armv8_debugtui_vfp_write_result result;
 			bool sent = false, uncertain = true;
 			assert(transfer(&f, name, raw, &result, &sent, &uncertain) == 0 && sent && !uncertain);
-			assert(f.writes == (kind == 2 ? 2u : 1u) && f.operations == (kind == 2 ? 144u : 135u));
+			assert(f.writes == (kind == 2 ? 2u : 1u) && f.operations == (kind == 2 ? 166u : 156u));
 			assert(!memcmp(f.d, expected, sizeof(expected)) && !memcmp(f.gpr, before.gpr, sizeof(f.gpr)));
 			unsigned int pair = d / 2;
 			assert(result.before.words[0] == before.d[pair * 2] && result.before.words[1] == before.d[pair * 2 + 1]);
@@ -130,17 +148,17 @@ int main(void)
 			assert(!memcmp(result.expected, result.observed.words, sizeof(result.expected)));
 		}
 	}
-	for (unsigned int failure = 1; failure <= 144; failure++) {
+	for (unsigned int failure = 1; failure <= 166; failure++) {
 		struct fixture f = fresh(); f.fail_at = failure;
 		struct armv8_debugtui_vfp_write_result result = {.expected = {11, 22}};
 		bool sent = false, uncertain = false;
 		assert(transfer(&f, "q15", "0x0123456789abcdeffedcba9876543210", &result, &sent, &uncertain) == -7);
 		assert(uncertain && f.operations == failure && result.expected[0] == 11 && result.expected[1] == 22);
-		assert(f.writes <= 2 && sent == (failure >= 68));
+		assert(f.writes <= 2 && sent == (failure >= 79));
 	}
 	/* Failure after the first or second physical write: no replay or rollback. */
 	for (unsigned int lane = 0; lane < 2; lane++) {
-		struct fixture f = fresh(); f.fail_at = 68 + lane * 9; f.fail_after_commit = true;
+		struct fixture f = fresh(); f.fail_at = 79 + lane * 10; f.fail_after_commit = true;
 		struct armv8_debugtui_vfp_write_result result = {.expected = {11, 22}};
 		bool sent = false, uncertain = false;
 		assert(transfer(&f, "q15", "0x0123456789abcdeffedcba9876543210", &result, &sent, &uncertain) == -7);
@@ -148,9 +166,11 @@ int main(void)
 		assert(f.d[30] == UINT64_C(0xfedcba9876543210));
 		assert(f.d[31] == (lane ? UINT64_C(0x0123456789abcdef) : fresh().d[31]));
 	}
-	for (unsigned int changed = 1; changed <= 7; changed++) {
+	for (unsigned int changed = 1; changed <= 10; changed++) {
 		struct fixture f = fresh();
-		if (changed <= 5) f.changed = changed; else f.corrupt_restore = changed - 5;
+		if (changed <= 5 || changed == 8 || changed == 9) f.changed = changed;
+		else if (changed == 10) f.dlr_change = 1u << 4;
+		else f.corrupt_restore = changed - 5;
 		struct armv8_debugtui_vfp_write_result result = {.expected = {11, 22}};
 		bool sent = false, uncertain = false;
 		assert(transfer(&f, "s31", "0x80000000", &result, &sent, &uncertain) != 0);
@@ -167,7 +187,7 @@ int main(void)
 	for (unsigned int refused = 0; refused < 8; refused++) {
 		struct fixture f = fresh(), before;
 		const char *name = "d16", *raw = "0x0123456789abcdef";
-		if (refused < 2) f.dspsr = refused == 0 ? 0x10 : 0x13;
+		if (refused < 2) f.dscr = refused == 0 ? 0x01000000 : 0x01000100;
 		if (refused == 2) f.hcptr = 1u << 10;
 		if (refused == 3) f.fpexc &= ~(1u << 30);
 		if (refused == 4 || refused == 5) {
@@ -183,12 +203,19 @@ int main(void)
 		assert(f.writes == 0 && !memcmp(f.d, before.d, sizeof(f.d)) && !memcmp(f.gpr, before.gpr, sizeof(f.gpr)));
 		assert(result.expected[0] == 11 && result.expected[1] == 22);
 	}
+	/* A changed current EL before the first write is uncertain, unsent and
+	 * never retried. Saved Hyp DSPSR does not authorize lower-EL execution. */
+	struct fixture changing = fresh(); changing.debug_change = 1u << 8;
+	struct armv8_debugtui_vfp_write_result untouched = {.expected = {11, 22}};
+	bool no_send = true, unsafe = false;
+	assert(transfer(&changing, "s0", "0x80000000", &untouched, &no_send, &unsafe) < 0);
+	assert(!no_send && unsafe && changing.writes == 0 && untouched.expected[0] == 11);
 	/* D16 SP-only still supports raw D and all 32 S views; no float arithmetic. */
 	struct fixture sp = fresh(); sp.mvfr0 = 0x10110021; sp.mvfr1 = 0x11000011;
 	struct armv8_debugtui_vfp_write_result result;
 	bool sent = false, uncertain = true;
 	assert(transfer(&sp, "s31", "0x7FA12345", &result, &sent, &uncertain) == 0 && sent && !uncertain);
 	assert(sp.d[15] == ((fresh().d[15] & UINT64_C(0xffffffff)) | UINT64_C(0x7fa1234500000000)));
-	puts("PASS: 80 S/D/Q views, raw NaN/sign bits, fresh siblings, 144 fault points, partial Q writes, controls and safe refusals");
+	puts("PASS: 80 S/D/Q views, raw NaN/sign bits, fresh siblings, 166 fault points, partial Q writes, external current EL/identity/DLR, controls and safe refusals");
 	return 0;
 }

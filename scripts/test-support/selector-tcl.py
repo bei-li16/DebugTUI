@@ -152,10 +152,16 @@ def evaluate(data):
                     'debugtui-armv8-banked-2 external-identity current-el dspsr dlr mrs physical-readback no-mode-change stop-on-fault')
         if op == 'debugtui_vfp_protocol':
             return (0, 'old-vfp-adapter' if fault == 'vfp_protocol' else
-                    'debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault')
+                    'debugtui-armv8-vfp-2 external-identity current-el dspsr dlr vmrs pair-readback no-enable stop-on-fault')
         if op == 'debugtui_vfp_write_protocol':
             return (0, 'old-vfp-writer' if fault == 'vfp_write_protocol' else
-                    'debugtui-armv8-vfp-write-1 vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault')
+                    'debugtui-armv8-vfp-write-2 external-identity current-el dspsr dlr vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault')
+        vfp_dscr = cpu.get('vfp_dscr', '0x01000200')
+        vfp_dspsr = cpu.get('vfp_dspsr', '0xa2000410')
+        vfp_midr = '0x511fd134' if fault == 'vfp_forged_identity' else '0x411fd134'
+        if fault == 'vfp_forged_el': vfp_dscr = '0x01000100'
+        vfp_hcptr = '0x00000400' if fault == 'vfp_forged_trap' else '0x00000000'
+        vfp_proof = f'midr {vfp_midr} dscr {vfp_dscr} dspsr {vfp_dspsr} dlr 0x81234568 hcptr {vfp_hcptr}'
         if op == 'vfp_write':
             assert len(args) == 2 and re.fullmatch(r'[sdq](0|[1-9][0-9]?)', args[0])
             reg, raw = args
@@ -190,9 +196,16 @@ def evaluate(data):
             if fault == 'vfp_write_forged_expected':
                 expected ^= 1 << (0 if shift else 127)
             fpexc = 0x700 if fault == 'vfp_write_forged_enable' else 0x40000700
-            return (0, f'outcome {outcome} before 0x{before:032x} expected 0x{expected:032x} value 0x{observed:032x} mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x{fpexc:08x}')
+            receipt_proof = vfp_proof
+            if fault == 'vfp_write_forged_el': receipt_proof = receipt_proof.replace('0x01000200', '0x01000100')
+            if fault == 'vfp_write_forged_identity': receipt_proof = receipt_proof.replace('0x411fd134', '0x511fd134')
+            if fault == 'vfp_write_forged_trap': receipt_proof = receipt_proof.replace('0x00000000', '0x00000400')
+            if fault == 'vfp_write_legacy_receipt': receipt_proof = ''
+            return (0, f'outcome {outcome} before 0x{before:032x} expected 0x{expected:032x} value 0x{observed:032x} mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x{fpexc:08x} {receipt_proof}')
         if op == 'vfp':
             reg = args[0]
+            if fault in ('vfp_el0', 'vfp_el1'):
+                return (1, 'debugtui-vfp:access-restricted: current EL permissions unproven', -308)
             if fault == 'vfp_refusal_context_change':
                 Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
                 return (1, 'debugtui-vfp:access-restricted', -308)
@@ -229,7 +242,8 @@ def evaluate(data):
                 value = '0x1'
             if fault == 'vfp_context_change':
                 Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
-            return (0, f'mvfr0 0x{mvfr0:08x} mvfr1 0x{mvfr1:08x} fpexc 0x{fpexc:08x} value {value}')
+            body = f'mvfr0 0x{mvfr0:08x} mvfr1 0x{mvfr1:08x} fpexc 0x{fpexc:08x} value {value}'
+            return (0, body if fault == 'vfp_legacy_response' else vfp_proof + ' ' + body)
         if op == 'banked':
             if fault == 'bank_refusal_context_change':
                 Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')

@@ -4,6 +4,7 @@
   "evidence_source": "Replace with independently built firmware identity, GNU Arm sample hook and per-core reference symbols",
   "expected_midr": "0x411fd134",
   "expected_mode": "0x1a",
+  "expected_debug_el": 2,
   "expected_mvfr0": "0x10110222",
   "expected_mvfr1": "0x12111111",
   "expected_enabled": true,

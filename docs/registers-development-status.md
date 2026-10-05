@@ -1,5 +1,15 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：VFP当前Debug状态与独立源码包验证
+
+VFP读写协议升级v2，由选中target的外部MIDR/EDSCR及HALT证明当前EL2/AArch32，保存DSPSR不再作为当前Hyp依据。五项原始访问证明随控制和pair保留，详情区分当前EL与停止前状态；低EL在CPU指令前拒绝，失败保留原值来源。writer每个物理D写入前复核EDSCR，矛盾receipt按未知处理。两项新单元、两项新多核worker测试覆盖八种保存模式、Scope All选中Core1、旧或伪造证明及后续调试；73读/166写故障点和80视图生产模型通过。
+
+Windows/Linux完整重建，七协议/七套生产事务与实际dummy命令、本机DLL/三项离线配置通过。延后TCP驱动八项通过，新增可变化DTR位、低EL零写入和空异常不得误报成功的验证。源码ZIP补齐独立驱动JSON夹具，旧包缺失明确拒绝；新包全新解压后脱离工作区编译七套模型、运行八项TCP及后端命令通过。Windows包拒绝回归十一项通过，保留原九项并新增JSON缺失/篡改两项；原Git refs负向夹具补齐JSON，避免提前失败漏验Git目录。见[VFP证明](register-vfp-proof.md)、[源码自检](register-backend-source.md)。
+
+完整Cargo **391单元＋165集成通过，2 ignored，共556通过**；**F24 149/149**为证据匹配模式数。538354 ms，无超时，其余22外层套件未选择；总报告/日志逐字节镜像 `artifacts/functional-1791238088481-8911e18d/`，原53份子报告留在F盘，镜像核对 `artifacts/vfp-proof-report-mirror.json`。严格Clippy通过，日志 `artifacts/vfp-proof-clippy.log`。首次专项误用单核worker及驱动空异常的失败日志保留，修正后最终验证通过。
+
+本轮不增加TODO勾选，**26完成／45待完成**，目标active；REG-304完整EL1/Guest/User合法读取、FP状态writer及其余TODO、最终全套验收/工具安装/升版/Release仍待完成。[八项环境case](../tests/cases/register-vfp-proof.md)全部SKIPPED，未上板。源码和既有全局安装仍为0.9.3；本轮提交并推送非主分支 `codex/register-debugging`。
+
 ## 2026-10-06：S/D/Q存储来源与固定后端源码自检
 
 VFP数据现在保存同次MVFR0/MVFR1/FPEXC、首个D编号及完整128位pair，S/D/Q共享原请求/owner/上下文与区间，失败保留原值/原依据。全部D16/D32视图、能力矛盾/Unknown、特殊浮点/向量、双核Scope All与实际EXE驱动有软件证据。正常测试startup标本D16/D32×大小端四对象离线编译及数据节核对通过，对象未执行；[八项环境case](../tests/cases/register-storage-views.md)保持SKIPPED。详见[存储视图自检](register-storage-views.md)。REG-304完整权限/当前Debug状态仍待完成。
@@ -281,7 +291,7 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 |---|---|---|
 | r0–r12、SP、LR、PC | 独立声明的 GDB 整数 writer；仅暂停、物理 frame 0、单个 owner；PC/SP 提示关联视图变化 | 真实 worker／MI 管道软件夹具；本地 ARM GDB 查询命令存在；实板未执行 |
 | CPSR/xPSR 与其他状态／系统／银行寄存器 | 尚无经适配的 writer；不由 reader 或 RW 标签开放写入 | 目录和负向请求测试 |
-| D/S/Q 与 FP 状态 | 独立 OpenOCD Hyp raw writer 与 DebugTUI 草稿／服务锁／物理 owner／键鼠编辑已接入；S/D 新鲜 pair 保留相邻位，Q 非原子，写后旧别名失效；FP 状态和 EL1/Guest/User writer 未适配；GDB LONGEST 通路不得写 128 位向量 | 生产 C 80 视图/144 故障点、5 项底层 TCP 驱动、9 项主机集成、键鼠／窄终端，实际二进制主机 S/D/Q 各 5 阶段及不确定／mismatch 停止；Windows/Linux 后端和延后 WRITE-H03 case；未上板 |
+| D/S/Q 与 FP 状态 | 独立OpenOCD Hyp raw writer v2与DebugTUI草稿／服务锁／物理owner／键鼠编辑已接入；外部MIDR/EDSCR证明当前Hyp，S/D新鲜pair保留相邻位，Q非原子，写后旧别名失效；FP状态和EL1/Guest/User writer未适配；GDB LONGEST通路不得写128位向量 | 生产C 80视图/166故障点、八项底层TCP驱动、九项主机集成、键鼠／窄终端，实际二进制主机S/D/Q各五阶段及不确定／mismatch停止；Windows/Linux后端和延后WRITE-H03 case；未上板 |
 | RAM | 声明地址区域、owner、通道与 byte_writable 后，GDB MI 或 target 限定 TCL 字节写入；最多 4096 字节，Flash 走 Download | 实际 worker 软件夹具、64 位地址、范围哨兵、错误及延后脚本验证；实板未执行 |
 | SVD 外设及字段 | 声明 MMIO 区域及 TCL 通道；单个对齐 8/16/32 位访问；GDB MMIO 与 64 位 MMIO writer 未适配 | 真实 TCP TCL 软件夹具；大小端、混合语义、WO、回读与错误覆盖；实板未执行 |
 | Watch／Locals 标量与结构体／数组成员 | GDB `-var-assign` 类型赋值；实际类型、可赋值性、地址、线程、帧、owner 在预览／应用重新检查；DWARF 位域实际宽度／声明类型、目标字节序、完整父及潜在扩大范围校验，新鲜父字节与全部邻接位验证；无法确认的成员拒绝；声明 RAM，寄存器驻留只接受物理 frame 0；引用要求实际 referent RAM 地址；特殊 float／double 和 128 位常量逐位核对，精确 NaN buffer 依赖实际 GDB Python；const／volatile／AP 路由无隐式回退 | 本机普通／特殊变量 GCC/GDB 9 阶段，C++ 引用／实际 128 位 8 阶段，位域含 64 位／packed 的 6 阶段通过；R52 EABI C++ 对象与配套 ARM GDB 引用类型／常量及大小端位域／原始节字节离线检查通过，该 Arm 编译器没有 128 位标量；MI 大小端／故障／多核隔离与键鼠测试；实板未执行 |

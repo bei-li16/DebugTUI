@@ -176,7 +176,11 @@
         "floating_pair_details_explain_capacity_raw_bits_and_mapping_without_permissions",
         "all_d16_storage_samples_keep_pair_capacity_without_publishing_high_d_or_q",
         "failed_vfp_refresh_retains_original_pair_capacity_and_raw_origin",
-        "independent_fp_patterns_prove_all_raw_and_float_views_on_the_selected_owner"
+        "independent_fp_patterns_prove_all_raw_and_float_views_on_the_selected_owner",
+        "vfp_current_hyp_proof_accepts_all_stopped_modes_without_granting_lower_el_access",
+        "vfp_current_proof_rejects_legacy_missing_forged_and_faulted_evidence",
+        "current_vfp_proof_tracks_selected_core_and_all_stopped_modes_under_scope_all",
+        "forged_or_legacy_vfp_current_proof_cannot_replace_a_valid_origin"
       ],
       "sources": [
         "src/registers.rs",
@@ -335,7 +339,10 @@
         "tests/fixtures/register-storage-patterns.json",
         "tests/cases/register-storage-views.md",
         "docs/register-storage-views.md",
-        "docs/register-backend-source.md"
+        "docs/register-backend-source.md",
+        "src/registers/vfp/access_tests.rs",
+        "docs/register-vfp-proof.md",
+        "tests/cases/register-vfp-proof.md"
       ],
       "limits": [
         "目录及 MI/TCL 软件夹具不证明目标实现或实际后端能力",

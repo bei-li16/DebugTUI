@@ -55,25 +55,25 @@ Timer 一致性自检另覆盖 48 个动态回读模型（六项×八个边界�
 
 ## VFP 原始值与别名
 
-`aarch64 debugtui_vfp_protocol` 返回 `debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault`。`aarch64 vfp NAME` 接受 FPSID、FPSCR、MVFR0/1/2、FPEXC（小写名称）以及 D0–31、Q0–15。控制值为 32 位，数据始终返回两个 D 寄存器组成的 128 位物理采样，并附 MVFR0、MVFR1 和 FPEXC 原始证据。DebugTUI 按请求缓存物理 pair，D 的两个 lane、S 的低／高 32 位和 Q 共用同一值；不会把截断的 GDB 输出补成宽值，也不回退旧 get_reg。
+`aarch64 debugtui_vfp_protocol` 返回 `debugtui-armv8-vfp-2 external-identity current-el dspsr dlr vmrs pair-readback no-enable stop-on-fault`。`aarch64 vfp NAME` 接受 FPSID、FPSCR、MVFR0/1/2、FPEXC（小写名称）以及 D0–31、Q0–15。控制值为 32 位，数据始终返回两个 D 寄存器组成的 128 位物理采样，并附 MVFR0、MVFR1 和 FPEXC 原始证据。DebugTUI 按请求缓存物理 pair，D 的两个 lane、S 的低／高 32 位和 Q 共用同一值；不会把截断的 GDB 输出补成宽值，也不回退旧 get_reg。
 
 R52 TRM §§16.5–16.6 的两种配置为 SP-only D16（MVFR0=`0x10110021`、MVFR1=`0x11000011`）和 DP/NEON D32（`0x10110222`、`0x12111111`）。DDI 0568 D1.3 明确 SP-only 仍允许 GP 两寄存器与 D 的 VMOV；D16 中超过 D15 或 Q 视图明确未实现。未知／矛盾字段保留原始控制值，拒绝数据访问；FPINST/FPINST2 不实现，不试探。
 
-当前专用通道只接受物理 DSPSR 证明的 Hyp 模式和实际 R52 D13 MIDR；读取 HCPTR.TCP10，受限时不执行 VMRS。Hyp 不依据 CPACR 推断权限。FPEXC.EN=0 仍可读取标识／FPEXC，FPSCR 和数据返回 Feature disabled。EL1/Guest/User 当前安全返回 Access restricted，其合法 VFP 读取仍是待补后端／权限策略；这不是硬件未实现证明。读取不会切换模式、写 CPACR/HCPTR/FPEXC/FPSCR 或 FP 数据。
+当前专用通道使用外部 Debug AP MIDR 和 EDSCR 证明实际 R52 D13／当前 Hyp；每次外部访问核对 EDPRSR.HALT。保存的 DSPSR 仅是停止前状态，不授权当前指令，不注入 CPU MIDR 或 MRS CPSR。当前 EL0/EL1 在 CPU 指令前拒绝；当前 Hyp 再读取 HCPTR.TCP10，受限时不执行 VMRS。Hyp 不依据 CPACR 推断权限。FPEXC.EN=0 仍可读取标识／FPEXC，FPSCR 和数据返回 Feature disabled。EL1/Guest/User 当前安全返回 Access restricted，其合法 VFP 读取仍是待补后端／权限策略；这不是硬件未实现证明。读取不会切换模式、写 CPACR/HCPTR/FPEXC/FPSCR 或 FP 数据。
 
-每次保存／恢复／物理回读 R0/R1，复核前后完整 DSPSR、HCPTR 和 FPEXC；传输／指令／恢复结果未知立即停用目标，不继续注入或重试。S/D/Q 的共享缓存仅在同一已校验的读取请求内有效，不跨核／停止点／线程／帧复用。Scope All 只访问选中核心。
+每次保存／恢复／物理回读 R0/R1，复核前后完整 DSPSR、DLR、HCPTR、FPEXC，以及外部身份和当前执行状态；传输／指令／恢复结果未知立即停用目标，不继续注入或重试。成功响应固定为 `midr RAW32 dscr RAW32 dspsr RAW32 dlr RAW32 hcptr RAW32 mvfr0 RAW32 mvfr1 RAW32 fpexc RAW32 value RAW32|RAW128`。主机拒绝旧协议、缺失或矛盾的当前状态；所有控制及数据值保留同次状态证明，旧 JSON 不伪造新字段。S/D/Q 的共享缓存仅在同一已校验的读取请求内有效，不跨核／停止点／线程／帧复用。Scope All 只访问选中核心。
 
 ## 构建和软件验证
 
 ### VFP 原始位写入后端
 
-`aarch64 debugtui_vfp_write_protocol` 返回独立协议 `debugtui-armv8-vfp-write-1 vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault`。`aarch64 vfp_write NAME RAW` 只接受 S0–31、D0–31、Q0–15 的小写名称和精确 32/64/128 位十六进制原始值，不执行表达式或浮点数值转换。FPSCR、FPEXC 和标识控制不在 writer 允许名单中。当前只支持实际 R52 D13 的 Hyp／TCP10=0／EN=1；其他模式的合法路径仍待适配，不自动改变 CPU 模式或使能 FPU。
+`aarch64 debugtui_vfp_write_protocol` 返回独立协议 `debugtui-armv8-vfp-write-2 external-identity current-el dspsr dlr vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault`。`aarch64 vfp_write NAME RAW` 只接受 S0–31、D0–31、Q0–15 的小写名称和精确 32/64/128 位十六进制原始值，不执行表达式或浮点数值转换。FPSCR、FPEXC 和标识控制不在 writer 允许名单中。当前只支持实际 R52 D13 的 Hyp／TCP10=0／EN=1；其他模式的合法路径仍待适配，不自动改变 CPU 模式或使能 FPU。
 
-事务复用已校验的物理 pair 读取，在发送前重新确认实际权限／能力。S 从新鲜 D 保留另一半 32 位，D 保留 pair 的另一 D；Q 用两次 VMOV 写入，明确非原子。每次都保存／恢复／物理回读 R0/R1，写后再读取完整 pair，比较前后 DSPSR、HCPTR、FPEXC 和 MVFR；NaN payload、符号和高字直接按位搬运。结果为 `outcome verified|mismatch before RAW128 expected RAW128 value RAW128 mvfr0 RAW32 mvfr1 RAW32 fpexc RAW32`。前置条件安全拒绝为 `outcome not_sent reason REASON`。任何传输、恢复或状态结果未知都立即停止并把 target 标为 unknown，不重试、补写或猜测回滚。
+事务复用已校验的物理 pair 读取，在发送前重新确认实际权限／能力。S 从新鲜 D 保留另一半 32 位，D 保留 pair 的另一 D；Q 用两次 VMOV 写入，明确非原子。每次都保存／恢复／物理回读 R0/R1，写后再读取完整 pair，每个物理写入前再次核对 EDSCR，写后比较前后 MIDR、EDSCR、DSPSR、DLR、HCPTR、FPEXC 和 MVFR；NaN payload、符号和高字直接按位搬运。结果为 `outcome verified|mismatch before RAW128 expected RAW128 value RAW128 mvfr0 RAW32 mvfr1 RAW32 fpexc RAW32 midr RAW32 dscr RAW32 dspsr RAW32 dlr RAW32 hcptr RAW32`。前置条件安全拒绝为 `outcome not_sent reason REASON`。任何传输、恢复或状态结果未知都立即停止并把 target 标为 unknown，不重试、补写或猜测回滚。
 
 同一 pair 或 PC/CPSR/FP 状态的 OpenOCD GDB cache 有待写值时，注入前拒绝为 pending-register-write；不删除用户的待写值。实际发送后使该 pair 及两个 ARM32 D alias 的有效标记失效。只访问当前明确 target，无跨核广播。DebugTUI 已以独立 `vfp_write_command` 接入 Hyp raw preview/apply、编辑 UI、服务锁和别名失效；EL1/Guest/User、FP 状态及其他 writer 类别仍待适配，这个后端不能代替 WRITE-005/008–012 完整验收。
 
-`tests/vfp-write-transfer.c` 编译生产头文件，验证 80 个视图、144 个故障点、两次 Q 写入的部分完成、临时寄存器恢复、完整 pair 及控制一致性、D16/未知身份/未使能/陷阱拒绝；GNU Arm 独立核对 VMOV 写入编码。`tests/vfp-write-driver.py` 用真实 TCP 的严格双核模型验证三种位宽、明确恢复和失败后不读／重试／回滚，5 项通过。硬件驱动 `tests/vfp-write-hardware.py` 默认 4 skipped；模板和八类延后用例见 [VFP 写入 case](../../tests/cases/register-vfp-writes.md)。上板执行未做，外部物理 PC/GPR、待写 cache 及独立固件写后样本仍需额外记录。
+VFP 读取生产模型验证73个故障点、八种保存模式与当前Hyp分离、EL0/EL1零CPU指令拒绝、外部身份／执行状态／DLR变化。`tests/vfp-write-transfer.c` 编译生产头文件，验证 80 个视图、166 个故障点、两次 Q 写入的部分完成、临时寄存器恢复、完整 pair 及控制一致性、D16/未知身份/未使能/陷阱拒绝；GNU Arm 独立核对 VMOV 写入编码。`tests/vfp-write-driver.py` 用真实 TCP 的严格双核模型验证三种位宽、明确恢复和失败后不读／重试／回滚，8 项通过；另验证DTR传输标志变化不误判当前EL，以及当前EL1在写入前拒绝。硬件驱动 `tests/vfp-write-hardware.py` 默认 4 skipped；模板和八类延后用例见 [VFP 写入 case](../../tests/cases/register-vfp-writes.md)。上板执行未做，外部物理 PC/GPR、待写 cache 及独立固件写后样本仍需额外记录。
 
 在具备 Git、GCC、make、autoconf、automake、libtool 和 pkg-config 的 Unix 构建环境中执行：
 
@@ -89,7 +89,7 @@ sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 python3 tools/openocd-adapter/test.py --source PATH_TO_PINNED_SOURCE --out artifacts/openocd-adapter-tests --openocd PATH_TO_BACKEND
 ```
 
-事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，另验证银行事务的1110个故障点、R0恢复／完整DSPSR与DLR变化、37项EL0/EL2成功、41项受限及162项EL1 Unknown，以及 VFP 的 63 个故障点、R0/R1 恢复、DSPSR／FPEXC／HCPTR 变化、D16/D32、未使能和原始未知 MVFR；严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对七项协议、帮助以及参数和全部 23 个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用 GNU Arm 汇编器独立确认 MRRC、Thumb ISB 及银行／当前寄存器编码；`tests/vfp-encoding.s` 核对 VMRS／VMOV／HCPTR。
+事务测试编译生产使用的同一份头文件，验证完整高字、一次MRRC、MRC/MCR的物理恢复、19个传输失败点和三类恢复值不匹配，另验证银行事务的1110个故障点、R0恢复／完整DSPSR与DLR变化、37项EL0/EL2成功、41项受限及162项EL1 Unknown，以及VFP的73个故障点、R0/R1恢复、外部当前MIDR/EDSCR与DSPSR/DLR/FPEXC/HCPTR变化、八种保存模式、D16/D32、未使能和原始未知MVFR；严格C警告检查通过。命令检查仅初始化进程内dummy虚拟适配器，保持target未examine，核对七项协议、帮助以及参数和全部23个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用GNU Arm汇编器独立确认MRRC、Thumb ISB及银行／当前寄存器编码；`tests/vfp-encoding.s` 核对VMRS／VMOV／HCPTR。
 
 本 VFP 写入后端批次 Linux 候选后端 SHA-256 为 `1dd04e403485c254431ea6f47a3690f2453c682f23b0901ac9d3e321d180ccda`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-05-01:04)`。dirty 来自尚未成为上游提交的适配补丁，构建时间为 UTC。上一批 MRRC／ISB 候选哈希保留在 lock 的 previous_candidates，不能用于当前补丁。候选产物未安装或发布，未来分发须保留源码、补丁与许可，不能把其能力写到现有 Windows 二进制上。
 
@@ -118,7 +118,7 @@ python tools/openocd-adapter/windows.py verify --root G:/Build/openocd-windows-n
 python tools/openocd-adapter/tests/windows-package.py --candidate G:/Build/openocd-windows-new/install --source-archive G:/Build/openocd-windows-new/corresponding-source.zip --objdump C:/MinGW/bin/objdump.exe
 ```
 
-原生检查先验证清单、配方和源码 ZIP，再执行生产事务测试及真实后端命令检查，核对 J-Link、CMSIS-DAP、ST-Link、FTDI 的注册，以及两份 F429 配置和 HID／USB bulk 后端能离线加载。物理配置加载在 config 阶段结束，显式 init 被拒绝；只在前面的独立事务检查中初始化进程内 dummy，不连接真实探针或打开调试端口。检查成功后才把 `native_windows_verified` 标为 true 并重新生成候选 ZIP。九项包检查包含缺失 DLL、非 PE、同大小篡改、新增 DLL、有效 ZIP 内补丁篡改和 Git 空目录遗失拒绝。
+原生检查先验证清单、配方和源码ZIP，再执行生产事务测试及真实后端命令检查，核对J-Link、CMSIS-DAP、ST-Link、FTDI的注册，以及两份F429配置和HID／USB bulk后端能离线加载。物理配置加载在config阶段结束，显式init被拒绝；只在前面的独立事务检查中初始化进程内dummy，不连接真实探针或打开调试端口。检查成功后才把 `native_windows_verified` 标为true并重新生成候选ZIP。十一项包检查包含缺失DLL、非PE、同大小篡改、新增DLL、有效ZIP内补丁篡改、Git空目录遗失及独立TCP驱动夹具缺失/变化拒绝。Git refs负向夹具包含有效JSON，避免被新JSON检查提前拒绝而漏验原Git目录问题。
 
 本 VFP 写入后端批次 Windows 候选后端 SHA-256 为 `4e75d9878062b2f33d4377005f1a1bcbc71f4f4aa37ac3f3d8281e91b32afc00`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-05-01:05)`，构建时间为 UTC。本批新目录 Windows 构建、最终修复的增量重编译及原生命令、依赖、配置检查通过；源码 ZIP 固定提交回读已核对，仍不代表探针通信或 R52 实板指令执行通过。现有 `tools/bin/openocd`、依赖锁及安装未改动。最终 tools/profile 合并、安装升级和整个任务完成后的 Release 仍待完成；不能只分发运行 ZIP 而遗漏对应源码与许可。
 
@@ -148,3 +148,14 @@ VFP REG-H03 驱动 `scripts/test-register-vfp-hardware.cjs` 默认 4 skipped；�
 外部 EDSCR/MIDR 先证明当前 AArch32 Debug EL2 和 R52 D13，然后读取并前后核对 DSPSR、DLR、ID_PFR1、ICC_HSRE/SRE/CTLR、ICH_VTR、HCR、ICH_HCR、HSTR 与 R0 物理恢复。R52 CTLR 的物理五位容量和 VTR 的虚拟五位/四列表分别解码；未适配的六/七位值拒绝，不能用停止前 Hyp 或虚拟容量确认物理 AP。低 EL 的重定向/陷阱无法证明时 Unknown 且没有 GIC opcode；已知 HDD 禁止为 restricted。没有使能、acknowledge、EOI/DIR/SGI、解锁或模式写入。LR/LRC 是各一次 MRC32，不拼成 MRRC64。请求任何失败不回退或重试；物理状态/暂存/控制改变即 unknown 和隔离。
 
 生产同一 C 头文件模型覆盖 29 个成功入口、3,190 个 I/O 失败点、239 项安全拒绝和406项状态/暂存变化。Windows/Linux 完整构建、原生命令/独立协议、软件双核 worker 与延后固件证据见 [GIC 自检](../../docs/register-gic.md)。十项环境 case 全部 SKIPPED；`scripts/test-register-gic-hardware.cjs` 默认五项 SKIPPED。未安装或上板，完整 MMIO GIC/Debug 与低 EL ICV 仍未完成。本批同时修正 PMU 安全错误误用 Timer 前缀的问题，由生产 PMU 头文件的三个精确 typed-tag 断言验证；既有独立 PMU 协议保持原字符串。
+
+
+对应源码ZIP现在包含独立驱动依赖的 `tests/fixtures/register-vfp-write-board.example.json`，PROVENANCE保存其哈希；缺失或变化的示例会使本机包验证拒绝。此前仅从工作区执行测试不能证明单独解压的配方可用。新增 `tests/source-package.py` 在全新目录解压并核对当前配方，脱离工作区重新编译七套生产事务和运行八项TCP驱动测试，可选择用候选执行dummy原生命令；不连接探针。
+
+```sh
+python tools/openocd-adapter/tests/source-package.py --archive PATH/corresponding-source.zip --out NEW_DIRECTORY --cc gcc --openocd PATH/openocd
+```
+
+EDSCR中的DTR满/空位可能在不同事务间变化；延后驱动每次仍严格验证身份、EL2/AArch32、ITE、故障和TCP10，稳定性比较按执行状态mask进行，原始值完整保留。不能把传输位变化视为EL变化，也不能因忽略传输位而放宽权限检查。
+
+低EL反例同时发现无消息AssertionError曾令驱动的failed标志为false；现始终记录异常类型，新增空异常测试禁止把失败阶段计为成功。

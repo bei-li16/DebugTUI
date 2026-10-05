@@ -16,6 +16,7 @@ const spec=JSON.parse(fs.readFileSync(caseFile));
 assert(!spec.software_example||options['software-fixture'],'Replace software expectations before physical execution');
 assert(spec.frame_function&&spec.evidence_source&&spec.expected_midr,'Declare paused hook and independent evidence');
 assert.equal(Number(spec.expected_mode),0x1a,'This adapter requires Hyp; EL1/Guest have separate pending cases');
+assert.equal(spec.expected_debug_el,2,'Declare the fresh external Debug EL separately from saved program mode');
 assert(/^[A-Za-z_]\w*$/.test(spec.reference),'Use a core-private unsigned-int firmware array');
 assert(['r0','r1','pc','cpsr','hcptr'].every(id=>spec.stable_registers?.includes(id)),'Guard both scratch registers, PC, CPSR and HCPTR');
 const controls=['fpsid','mvfr0','mvfr1','mvfr2','fpexc','fpscr'];
@@ -84,6 +85,12 @@ const word=async index=>{
         const reason=trapped?'access_restricted':absent?'hardware_not_implemented':!enabled&&(data||id==='fpscr')?'feature_disabled':null;
         if(reason){assert.equal(sample.reason,reason,`${id}: ${sample.detail}`);assert.equal(sample.value,null);if(absent)assert.equal(sample.implementation,'no');continue;}
         assert.equal(sample.state,'valid',`${id}: ${sample.detail}`);
+        const current=sample.provenance?.access?.vfp;
+        for(const field of ['midr','dscr','dspsr','dlr','hcptr']){assert.equal(current?.[field]?.bits,32);exact(current[field].hex);}
+        assert.equal(current.midr.hex,spec.expected_midr);
+        const dscr=exact(current.dscr.hex);assert.equal(Number((dscr>>8n)&3n),spec.expected_debug_el);
+        assert((dscr&(1n<<24n))!==0n);assert.equal(dscr&BigInt(0x1c0010c0|(1<<16)),0n);
+        assert.equal(exact(current.hcptr.hex),exact(before.hcptr));
         const expected=!data?reference[id]:id[0]==='d'?d[index]:id[0]==='s'?(d[Math.floor(index/2)]>>BigInt(32*(index%2)))&0xffffffffn:d[index*2]|(d[index*2+1]<<64n);
         assert.equal(exact(sample.value.hex,data?(id[0]==='d'?64:id[0]==='q'?128:32):32),expected,id);
         if(data){
