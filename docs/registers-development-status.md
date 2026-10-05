@@ -1,5 +1,22 @@
 # 寄存器功能实现进度
 
+
+## 2026-10-05：PMU 原生读取、当前 Debug EL 与物理容量
+
+新增独立 `registers.pmu_command="aarch64 pmu"` 和 `debugtui-armv8-pmu-1` 协议。R52 适配二十二项 32 位控制/事件寄存器及完整 64 位 PMCCNTR；直接索引保留 PMSELR，周期只用一次 MRRC，不自动开始、清空或配置计数。按 TRM 区分 SEL=31 的 PMXEVTYPER 周期过滤器别名和 PMXEVCNTR 的 UNDEFINED；未知索引在数据指令前拒绝。目录补齐位域、混合权限、注释及实现条件，R52/R52+ 同步生成；D16 身份和低 EL 完整权限仍未适配。
+
+后端逐项读取外部 Debug AP MIDR/EDSCR 与当前 Debug EL，保存前后 DSPSR/DLR、ID_DFR0、PMCR、HDCR、PMSELR 及 scratch 恢复回读。当前 Arm/D13/AArch32 EL2 才确认物理四项容量；EL0/EL1 返回 Unknown，不改变模式/控制位或用停止前 CPSR 猜测陷阱权限。失败不重试、不回退，未知物理状态隔离服务。新 `Access.pmu` 与完整原生宽度/方法、主机请求区间、选定 owner/context 一起保存；失败旧值保留旧证据，跨条目/跨核不视为同时采样。
+
+自检修正旧 Probe 仅凭停止前 Hyp 与 PMCR.N=4 确认物理容量的问题。现在要求同次原生 PMCR 读取的来源、视图、响应阶段、上下文、实际 MIDR、匹配值和当前 Debug EL2 证据；旧原始 `pmu.pmcr_n` 仍可显示，HDCR.HPMN 另记且不授予 Guest 访问。原生 C 错误路径另修正为成功后才复制 scalar，避免失败时使用未初始化值；Windows/Linux 在新的 final 目录重建，旧候选与证明保留。
+
+最终 `node scripts/test-functional.cjs --only unit` 为 **371 单元＋143 集成通过，2 ignored**，共 **514 通过**，**F24 127/127**，370979 ms 无超时；其余 **22 套件未选择**。报告 [`artifacts/functional-1791213732352-d18b6c32/report.json`](../artifacts/functional-1791213732352-d18b6c32/report.json)，Cargo 为同目录 unit.log；严格 Clippy 日志 `artifacts/register-pmu-clippy.log`。新增两项 PMU 单元、一项新鲜能力证据单元及六项真实 EXE/worker/MI/Tcl 集成，含双核 Scope All、全部宽度、协议/身份/权限/伪造/截短拒绝、取消、context 变化、故障隔离及旧值来源。延后驱动执行独立固件基线、未就绪、参考值不同与计数已开启四种软件流程。
+
+首轮完整回归失败报告 [`artifacts/functional-1791212601141-051d7e49/report.json`](../artifacts/functional-1791212601141-051d7e49/report.json) 保留：旧 selector 驱动依赖停止前 Hyp 的容量推断。夹具改为显式新鲜 PMU 协议，同时校正模型直接索引与原 selector 值一致；原选择器事务及恢复断言保留，聚焦 `artifacts/register-pmu-selector-driver.log` 与最终整套均通过。为保留空间，三个已结束且十四项通过的安装夹具完整迁往 F: 任务归档；原路径报告/日志恢复并逐字节校验，映射 `artifacts/register-pmu-space-archive.json`。本轮没有空间失败或删除客户文件。
+
+最终生产 C 验证 **23 项独立手写编码、1,614 个 I/O 失败点、190 项安全拒绝、208 项证明/scratch 变化、六项完整 64 位移动计数与 LC/E 组合**。Windows/Linux 新目录构建、实际离线命令、Windows 原生依赖/配置验证及九项包拒绝测试通过；对应源码包含当前十项源文件、补丁、测试与 README，散列一致。日志为 `artifacts/openocd-pmu-linux-final-build.log`、`artifacts/openocd-pmu-windows-final-build.log`、`artifacts/openocd-pmu-windows-native-corrected.log`、`artifacts/openocd-pmu-package-corrected-test.log`，最终 Windows 证明 `.dev/openocd-windows-pmu-final/windows-tests/report.json`；一致性自检 `artifacts/register-pmu-final-package-audit.json`。GNU Arm 的只读固件离线编译/反汇编确认 22 项 MRC 与一项 MRRC，先检查 CPSR、无 MCR/MCRR/MSR，见 `artifacts/register-pmu-firmware-report.json`；对象未执行。
+
+只新增勾选 **REG-404**，当前 **已完成／未完成 23/48**。按任务不执行上板，[十项 PMU 环境 case](../tests/cases/register-pmu.md) 均已准备且 SKIPPED；默认驱动五项 SKIPPED，报告 [`artifacts/register-pmu-hardware-1791213796124-dd11aab0/report.json`](../artifacts/register-pmu-hardware-1791213796124-dd11aab0/report.json)。完整范围及候选 SHA256 见 [PMU 自检](register-pmu.md)。REG-401 的低 EL 使能/权限、GIC/Debug/STM、Bao 验证、BUS、writer、工具整合、REG-208 和最终升版/安装/Release 仍待完成。源码与安装基线仍为 0.9.3，本批交付位于非主分支 `codex/register-debugging`，目标保持 active。
+
 ## 2026-10-05：Timer 单项完整读取与请求时间界限
 
 新增 `Access.completed_ms`，分别在完整 TCL 帧和匹配 MI token 的结果记录到达后写入；与已有实际 dispatch 起点共用当前 worker 的单调时钟。未发送/断帧/旧 JSON 不制造终点。新 Timer 的 `read_method` 严格绑定原生宽度与一次 MRC32/MRRC64，旧证据缺失时为 Unknown；失败保留原值的完整时间/物理来源，详情与 headless 可查。单项 MRRC 复制同一值到 Rt 低字/Rt2 高字，再从 pair 传输取回；不把请求中点/响应时刻当硬件时间戳，跨条目/跨核不能视作同时采样。手册依据为 R52 TRM 表 11-1、§4.2.18 和完整 DDI0487 M.b F5.1.117（PDF 12139–12140）。[架构](../ARCHITECTURE.md) 与 [Timer 自检](register-timer.md) 已同步。

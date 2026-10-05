@@ -50,3 +50,7 @@ ready = "Listening on port 3335 for gdb connections"
 [core_targets."3"]
 endpoint = "127.0.0.1:3336"
 ready = "Listening on port 3336 for gdb connections"
+
+# registers.pmu_command="aarch64 pmu" explicitly opts in to the independent read-only PMU protocol.
+# Current Debug EL2, fresh PMCR.N and identity are checked; lower-EL traps remain Unknown.
+# Indexed event reads preserve PMSELR; observation never enables/resets counters.

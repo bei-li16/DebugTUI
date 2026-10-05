@@ -142,6 +142,26 @@ pub(super) fn details(label: &str, provenance: &Provenance) -> Vec<String> {
         ));
         text.push("Timer items are separate samples; no cross-register atomic snapshot.".into());
     }
+    if let Some(pmu) = &access.pmu {
+        text.push(format!(
+            "PMU transfer: {:?}; physical event count: {:?}",
+            pmu.read_method,
+            pmu.physical_count()
+        ));
+        text.push(format!(
+            "PMU physical MIDR: {} / current Debug EDSCR: {}",
+            pmu.midr.hex, pmu.dscr.hex
+        ));
+        text.push(format!(
+            "Stopped DSPSR: {} / DLR: {}",
+            pmu.dspsr.hex, pmu.dlr.hex
+        ));
+        text.push(format!(
+            "ID_DFR0: {} / PMCR: {} / HDCR: {} / preserved PMSELR: {}",
+            pmu.id_dfr0.hex, pmu.pmcr.hex, pmu.hdcr.hex, pmu.pmselr.hex
+        ));
+        text.push("PMU observation does not enable/reset counters or write PMSELR; items are separate samples.".into());
+    }
     for alias in &provenance.aliases {
         text.push(format!(
             "Alias source: {} / offset {} / {} bits",
@@ -221,6 +241,7 @@ mod tests {
             provenance.access = Some(crate::registers::provenance::Access {
                 completed_ms: None,
                 timer: None,
+                pmu: None,
                 route: Route::TclMemory {
                     endpoint: "127.0.0.1:6666".into(),
                     target: "ap.actual".into(),

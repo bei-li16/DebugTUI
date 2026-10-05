@@ -55,6 +55,44 @@ def evaluate(data):
         if op == 'debugtui_timer_protocol':
             return (0, 'old-timer-adapter' if fault == 'timer_protocol' else
                     'debugtui-armv8-timer-1 external-identity current-el dspsr dlr scratch-readback no-mode-change stop-on-fault')
+        if op == 'debugtui_pmu_protocol':
+            return (0, 'old-pmu-adapter' if fault == 'pmu_protocol' else
+                    'debugtui-armv8-pmu-1 external-identity current-el fresh-count direct-index mrrc64 no-enable no-selector-write stop-on-fault')
+        if op == 'pmu':
+            assert len(args) == 1
+            reg = args[0]
+            if fault == 'pmu_fault':
+                cpu['status'] = 'unknown'
+                return (1, 'Core state restoration failed: PMU fixture outcome unknown', -1)
+            reason = cpu.get('pmu_errors', {}).get(reg)
+            if fault == 'pmu_identity': reason = 'reader-unsupported'
+            if fault == 'pmu_unknown': reason = 'access-unknown'
+            if reason:
+                return (1, 'debugtui-pmu:' + reason, -300 if reason == 'reader-unsupported' else -308)
+            dscr = cpu.get('pmu_dscr', '0x01000200')
+            pmcr = cpu.get('pmu_pmcr', '0x41132048')
+            sel = int(cpu['pmselr'])
+            if ((int(dscr, 16) >> 8) & 3) != 2:
+                return (1, 'debugtui-pmu:access-unknown', -308)
+            if int(pmcr, 16) & 0xffffff80 != 0x41132000:
+                return (1, 'debugtui-pmu:reader-unsupported', -300)
+            if (reg == 'pmxevcntr' and sel >= 4) or (reg == 'pmxevtyper' and sel >= 4 and sel != 31):
+                return (1, 'debugtui-pmu:access-restricted', -308)
+            default = '0xfedcba9876543210' if reg == 'pmccntr' else '0xf1234567'
+            if reg == 'pmxevtyper': default = '0x00000000' if sel == 31 else '0x00140011'
+            if reg == 'pmxevcntr': default = f'0x{0xf123ab00+sel:08x}'
+            if re.fullmatch('pmevtyper[0-3]', reg): default = '0x00140011'
+            if re.fullmatch('pmevcntr[0-3]', reg): default = f'0x{0xf123ab00+int(reg[-1]):08x}'
+            raw = cpu.get('pmu_values', {}).get(reg, default)
+            if reg == 'pmcr': raw = pmcr
+            if reg == 'pmselr': raw = f'0x{sel:08x}'
+            if fault == 'pmu_short': raw = '0x76543210'
+            if fault == 'pmu_forged_el': dscr = '0x01000100'
+            if fault == 'pmu_forged_count': pmcr = '0x41131048'
+            if fault == 'pmu_context_change':
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+            dspsr = cpu.get('pmu_dspsr', '0xa2000410')
+            return (0, f'midr 0x411fd134 dscr {dscr} dspsr {dspsr} dlr 0x81234568 id_dfr0 0x03010066 pmcr {pmcr} hdcr 0x00400e02 pmselr 0x{sel:08x} value {raw}')
         if op == 'timer':
             assert len(args) == 1
             reg = args[0]

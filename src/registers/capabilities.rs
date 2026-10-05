@@ -170,10 +170,42 @@ impl Probe {
                 "pmcr",
                 "Raw PMCR.N; EL0/EL1 can report HDCR.HPMN instead of the physical count",
             );
-            if self.raw("cpsr").is_some_and(|value| value & 31 == 0x1a) && count == 4 {
-                self.fact("pmu.counters", count, "pmcr", "Physical Hyp PMCR.N; R52 TRM 13.3.1 specifies four event counters; PMCR.E is independent");
+            let physical = self.observed("pmcr").and_then(|sample| {
+                let access = sample.provenance.as_ref()?.access.as_ref()?;
+                let evidence = access.pmu.as_ref()?;
+                (sample.source == "openocd:aarch64 pmu"
+                    && sample.view == super::SampleView::PhysicalCore
+                    && matches!(&access.route, super::provenance::Route::TclRegister {operation,..} if operation=="PMU read pmcr")
+                    && access.context == self.context
+                    && access.phase == super::provenance::Phase::Responded
+                    && evidence.read_method == super::timer::ReadMethod::Mrc32
+                    && evidence.pmcr.integer().ok()? == u128::from(n)
+                    && evidence.midr.integer().ok()? == u128::from(self.raw("midr")?)
+                    && evidence.physical_count() == Some(4))
+                .then_some(evidence.hdcr.integer().ok()? as u64 & 31)
+            });
+            if let Some(guest_partition) = physical {
+                self.fact("pmu.counters", count, "pmcr", "Fresh external identity/current Debug EL2 and native PMCR.N=4; stopped CPSR and PMCR.E do not establish capacity");
+                self.fact(
+                    "pmu.present",
+                    1,
+                    "pmcr",
+                    "Fresh native ID_DFR0.PerfMon=3 in the same read transaction",
+                );
+                self.fact(
+                    "pmu.version",
+                    3,
+                    "pmcr",
+                    "Fresh native ID_DFR0.PerfMon=3; no newer PMUv3 extensions assumed",
+                );
+                self.fact(
+                    "pmu.guest_partition",
+                    guest_partition,
+                    "pmcr",
+                    "Raw HDCR.HPMN; not an EL1 permission grant or physical counter count",
+                );
             } else {
-                self.notes.push("Decode: Physical PMU count remains unknown: requires Hyp and the adapted R52 PMCR.N=4; an EL0/EL1 count can be restricted by HDCR.HPMN".into());
+                self.notes.push("Decode: Physical PMU count remains unknown: requires fresh current Debug EL2 PMU evidence; stopped CPSR.M=Hyp alone is insufficient and EL0/EL1 PMCR.N can reflect HDCR.HPMN".into());
             }
         }
         if let (Some(m0), Some(m1)) = (self.raw("mvfr0"), self.raw("mvfr1")) {

@@ -22,7 +22,7 @@ System Regs 的 Status 选中条目显示 Current condition evaluation、Latest 
 
 核对用户提供的 Cortex-R52 TRM `100026_0104_01_en`（718 页）：PMCR 13.3.1、表 13-2（第 435–436 页）规定物理 N=4，E 为独立使能位；ICC_CTLR 表 10-94（第 350 页）规定 PRIbits 编码 0b100，即五个物理优先级位。缓存的完整 Armv8-R AArch32 supplement `DDI0568A.c ID110520` 第 143 页说明 EL0/EL1 读取 PMCR.N 返回 HDCR.HPMN。用户另一份 26 页 `DEN0130_0100_en` 是 R-Profile 介绍，不能标为完整架构 supplement。
 
-因此 `pmu.pmcr_n` 保留本次原始字段，仅在已适配 R52 身份、实际 Hyp 和 N=4 时发布 `pmu.counters`。Guest/SVC 的 0/1/4 等值，或 Hyp 的未适配数量，不能证明物理缺失；无可用配置声明时数量条件保持 Unknown。PMCR.E 不参与物理数量判定，不启动或清除计数器。
+因此 `pmu.pmcr_n` 保留本次原始字段，仅在已适配 R52 身份、原生 PMU 事务的新鲜当前 Debug EL2 证明、匹配的响应/来源/上下文和 N=4 时发布 `pmu.counters`（本轮自检纠正了仅凭停止前 Hyp 模式确认数量的旧规则）。Guest/SVC 的 0/1/4 等值，或 Hyp 的未适配数量，不能证明物理缺失；无可用配置声明时数量条件保持 Unknown。PMCR.E 不参与物理数量判定，不启动或清除计数器。
 
 实际 Hyp 的 `icc.ctlr_pribits` 同样保存原始字段；R52 物理容量只接受五位，其他值保持未知并保存不匹配原因。ICH_VTR 的虚拟事实与物理 ICC 分开，不能替代物理 AP 容量。条件引擎的 5/6/7 位、数量上限测试是通用软件边界，不声明实际 R52 有六/七位物理接口；R52+ 和其他 CPU 的适配仍待各自手册与后端证据。
 

@@ -1,0 +1,147 @@
+{
+  "software_example": true,
+  "frame_function": "debugtui_pmu_fixture_stop",
+  "expected_midr": "0x411fd134",
+  "evidence_source": "Replace illustrative values with independently captured, per-core firmware PMU snapshot",
+  "ready": "debugtui_pmu_reference[0].ready",
+  "registers": [
+    {
+      "id": "pmcr",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[0]",
+      "expected": "0x41132048"
+    },
+    {
+      "id": "pmcntenset",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[1]",
+      "expected": "0x0000000f"
+    },
+    {
+      "id": "pmcntenclr",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[2]",
+      "expected": "0x0000000f"
+    },
+    {
+      "id": "pmovsr",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[3]",
+      "expected": "0x8000000f"
+    },
+    {
+      "id": "pmselr",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[4]",
+      "expected": "0x00000003"
+    },
+    {
+      "id": "pmceid0",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[5]",
+      "expected": "0x6e1fffdb"
+    },
+    {
+      "id": "pmceid1",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[6]",
+      "expected": "0x0000001e"
+    },
+    {
+      "id": "pmxevtyper",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[7]",
+      "expected": "0x40000014"
+    },
+    {
+      "id": "pmxevcntr",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[8]",
+      "expected": "0xf123ab03"
+    },
+    {
+      "id": "pmuserenr",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[9]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "pmintenset",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[10]",
+      "expected": "0x8000000f"
+    },
+    {
+      "id": "pmintenclr",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[11]",
+      "expected": "0x8000000f"
+    },
+    {
+      "id": "pmovsset",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[12]",
+      "expected": "0x8000000f"
+    },
+    {
+      "id": "pmccfiltr",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[13]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "pmevcntr0",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[14]",
+      "expected": "0xf123ab00"
+    },
+    {
+      "id": "pmevcntr1",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[15]",
+      "expected": "0xf123ab01"
+    },
+    {
+      "id": "pmevcntr2",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[16]",
+      "expected": "0xf123ab02"
+    },
+    {
+      "id": "pmevcntr3",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[17]",
+      "expected": "0xf123ab03"
+    },
+    {
+      "id": "pmevtyper0",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[18]",
+      "expected": "0x40000011"
+    },
+    {
+      "id": "pmevtyper1",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[19]",
+      "expected": "0x40000012"
+    },
+    {
+      "id": "pmevtyper2",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[20]",
+      "expected": "0x40000013"
+    },
+    {
+      "id": "pmevtyper3",
+      "bits": 32,
+      "reference": "debugtui_pmu_reference[0].raw[21]",
+      "expected": "0x40000014"
+    },
+    {
+      "id": "pmccntr",
+      "bits": 64,
+      "reference": "debugtui_pmu_reference[0].cycle",
+      "expected": "0xfedcba9876543210"
+    }
+  ]
+}

@@ -166,6 +166,7 @@ fn deferred_timer_driver_runs_actual_binary_with_independent_fixture_baseline_an
 }
 
 fn adapter(fixture: &mut Fixture) {
+    fixture.project.registers.pmu_command = "aarch64 pmu".into();
     fixture.project.registers.cp15_command = "aarch64 mrc".into();
     fixture.project.registers.selector_command = "aarch64 mcr".into();
     fixture.project.registers.cp15_64_command = "aarch64 mrrc".into();

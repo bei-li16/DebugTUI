@@ -64,6 +64,8 @@ pub struct Access {
     /// Fresh physical evidence bound to this request, never an implementation fact.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timer: Option<super::timer::Evidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pmu: Option<super::pmu::Evidence>,
     pub route: Route,
     pub phase: Phase,
     /// Exact MI command or Tcl transaction submitted to the transport, without framing.

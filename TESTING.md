@@ -812,3 +812,5 @@ Artifacts: `artifacts/ui-0.6.0/`, `artifacts/completion-native-1789607444647/`, 
 - ARM / RISC-V / x64 模拟 MI、通用服务启动/回收、五种 Pause 场景通过：`artifacts/environment test 工程 20260919-203549/`、`artifacts/pause-20260919-203556/`。
 - 从实际 Ratatui 缓冲导出并检查 Watch 树预览：`artifacts/watch-tree-ui/watch-tree.png`、`watch-tree-compact.png`。本轮真实目标求值在本机测试程序中完成，ARM ELF 补全不连接硬件；未做物理 MCU 内存访问验证。
 - npm 本地包重新安装成功，`debugtui --version` 为 0.7.2。安装目录中的 exe 与 release 构建 SHA-256 相同：`32EFDEC1FCE8D3FBE4708080C50D62012ECDE88B10829C913ACAC60395F0CD4B`；直接用已安装 exe 重跑 Watch 树测试通过：`artifacts/watch-tree-1789821508317/verification.json`。
+
+PMU 软件与延后验收入口：生产 C 的 23 项编码、1,614 个传输失败点、190 项安全拒绝、208 项状态/scratch 变化及六个完整移动周期样本通过 Linux/Windows 模型。原生 Windows candidate 的 DLL/GPL 源码和真实 dummy 命令验证通过。会话/多核/取消/能力/驱动覆盖和本轮完整回归报告见 [PMU 证据](docs/register-pmu.md) 与开发进度。`node scripts/test-register-pmu-hardware.cjs` 默认五项 SKIPPED，十项 [环境用例](tests/cases/register-pmu.md) 未执行上板；固件只离线编译，不计为硬件通过。

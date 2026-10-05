@@ -103,6 +103,16 @@ impl Engine {
         }
         let (view, route, gdb_name) = match &root.reader {
             reader
+                if !self.project.registers.pmu_command.is_empty()
+                    && crate::registers::pmu::route(reader).is_some() =>
+            {
+                (
+                    SampleView::PhysicalCore,
+                    format!("openocd:{}", self.project.registers.pmu_command),
+                    None,
+                )
+            }
+            reader
                 if !self.project.registers.timer_command.is_empty()
                     && crate::registers::timer::route(reader).is_some() =>
             {
@@ -423,6 +433,17 @@ impl Engine {
         }
         self.register_value_access = None;
         let result = (|| {
+            if !self.project.registers.pmu_command.is_empty()
+                && let Some((name, bits)) = crate::registers::pmu::route(&register.reader)
+            {
+                if register.bits != bits {
+                    return Err((
+                        Reason::ReaderUnsupported,
+                        "PMU route requires its native register width".into(),
+                    ));
+                }
+                return self.read_pmu_register(name, bits);
+            }
             if !self.project.registers.timer_command.is_empty()
                 && let Some((name, bits)) = crate::registers::timer::route(&register.reader)
             {
@@ -735,6 +756,7 @@ impl Engine {
     pub(super) fn plan_register_value_access(&mut self, route: Route, command: String) {
         self.register_value_access = Some(Access {
             timer: None,
+            pmu: None,
             completed_ms: None,
             route,
             command,

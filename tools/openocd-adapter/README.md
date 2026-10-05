@@ -126,3 +126,9 @@ VFP REG-H03 驱动 `scripts/test-register-vfp-hardware.cjs` 默认 4 skipped；�
 只读钩子 `tests/fixtures/register-timer-board.c` 记录 CNTPCT/CNTVCT/CNTP_CVAL 的固件 MRRC 样本，不开启 Timer 或修改比较值。各核分别编译固件或将基线改为 per-core 数组，据此修改 case 的变量引用。固件初始化需建立权限、明确 debug freeze 条件，并配置至少一个高字非零的已知稳定 CVAL。驱动按完整 64 位模运算检查基线差值和进展，避免要求不同时间采样相等；检查当前核、稳定控制、选择器、可选 peer 和客户配置未变。GDB 的核心 guard 是逻辑视图，不能单独证明物理 R0/R1 恢复；物理回读由固定适配器内部执行。
 
 真正 ISB 的物理用例复用 `scripts/test-register-selectors-hardware.cjs`：专用固件预先关闭 CP15BEN，工程设置 `isb_command`，分别执行 EL1/EL2 MPU 和 PMU 已知索引，保留 `evidence.synchronization`、原/恢复选择器及控制状态对比。不得为通过用例而启用 CP15BEN；未知结果不自动继续、复位或重试。Timer 驱动已在实际 DebugTUI 可执行文件的双核软件模型六阶段通过，包含独立基线接口和 peer 检查。当前均未上板执行，Linux 编译和软件模拟不记作板卡支持证明。
+
+## 只读 PMU 协议
+
+独立 `aarch64 debugtui_pmu_protocol` 必须返回 `debugtui-armv8-pmu-1 external-identity current-el fresh-count direct-index mrrc64 no-enable no-selector-write stop-on-fault`，不能用通用 MRRC 或 Timer 协议代替。工程显式设置 `registers.pmu_command="aarch64 pmu"`。后端校验外部 AP 的当前 EL2/身份、原生 PerfMon/PMCR.N/HDCR/PMSELR、完整状态/PC 与 scratch 回读，然后返回 22 项 MRC32 或完整周期 MRRC64 及逐次证明。直接事件索引保持 PMSELR；不启动、复位计数或清除溢出标志。低 EL 的 Hyp trap 权限未知时没有数据指令；HDD 禁止当前 EL2 时拒绝。不接受 PMSWINC、事件 4 以上或任意原始命令/写入参数。
+
+生产 C 测试覆盖 23 个手写读编码、1,614 个 I/O 失败点、190 项拒绝、208 项证明/scratch 变化及六个移动周期值。源锁本批维护十项文件、六个独立协议；Windows/Linux 候选摘要及依赖/GPL/离线命令证据见 [PMU 说明](../../docs/register-pmu.md)。候选未安装、未上板。`scripts/test-register-pmu-hardware.cjs` 默认五项 SKIPPED，十项环境 case 和只读 GNU Arm 固件 hook 已准备，不能由软件测试推导芯片授权/读值。包含 PMU 的旧选择器环境 case 现在也需独立 PMU 协议的当前数量 Probe，不再接受仅凭停止前 Hyp 的物理容量判断。

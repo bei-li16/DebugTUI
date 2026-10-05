@@ -887,3 +887,5 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --gdb C:
 已有 STM32F429、THA6206 MCAL 单核/双核及 Bao 等调试记录，具体板卡、固件、探针、项目和限制见 [TESTING.md](TESTING.md)。模拟 GDB/TCL、终端渲染与配置测试不能替代实板验证；当前发行与宿主验收范围为 Windows，不代表其他平台或任意架构组合均通过。
 
 打包与发布见 [PUBLISHING.md](PUBLISHING.md)，设计见 [ARCHITECTURE.md](ARCHITECTURE.md)。详细排障历史和验收数据留在测试记录，使用指南描述当前行为；待开发计划不等于已有功能。
+
+PMU 查看：配置 registers.pmu_command="aarch64 pmu" 可显式选择当前开发后端的独立只读协议。该适配覆盖 R52 四项 32 位事件与完整 64 位周期及相关状态/控制视图；观察不会启动或清空计数。当前 Debug EL2 与停止前 CPSR 分开证明，低 EL 无法证明 Hyp 陷阱时显示 Unknown。计数数量 Probe 需要新鲜原生证据；同名 GDB PMCR 不替代该证明。直接 PMEVCNTRn/PMEVTYPERn 保持 PMSELR，SEL=31 的 PMXEVCNTR 不可用。后端、配置、字段、未上板限制见 [PMU 说明](docs/register-pmu.md)。

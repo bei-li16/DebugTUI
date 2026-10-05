@@ -309,7 +309,11 @@ fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop
     assert_eq!(result["facts"]["icc.physical.prebits"], 5);
     assert_eq!(result["facts"]["icv.virtual.prebits"], 6);
     assert_eq!(result["facts"]["icv.virtual.pribits"], 7);
-    assert_eq!(result["facts"]["pmu.counters"], 4);
+    assert!(
+        result["facts"]["pmu.counters"].is_null(),
+        "Stopped Hyp CPSR does not prove current Debug EL2"
+    );
+    assert_eq!(result["facts"]["pmu.pmcr_n"], 4);
     assert!(result["facts"]["vfp.present"].is_null());
     assert!(result["facts"]["vfp.enabled"].is_null());
     assert_eq!(

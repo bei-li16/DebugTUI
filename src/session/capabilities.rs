@@ -113,10 +113,15 @@ impl Engine {
                     Reason::Unknown,
                     "GIC system-register capability has not been established",
                 )),
-                "pmcr" if !probe.facts.get("pmu.present").is_some_and(|f| f.value == 1) => Some((
-                    Reason::Unknown,
-                    "A known implemented PMU architecture has not been observed",
-                )),
+                "pmcr"
+                    if self.project.registers.pmu_command.is_empty()
+                        && !probe.facts.get("pmu.present").is_some_and(|f| f.value == 1) =>
+                {
+                    Some((
+                        Reason::Unknown,
+                        "A known implemented PMU architecture has not been observed",
+                    ))
+                }
                 _ => None,
             };
             if let Some((reason, detail)) = denied {
@@ -130,7 +135,10 @@ impl Engine {
             } else {
                 // A genuine named GDB register is an independent read route.
                 self.register_value_access = None;
-                let result = if self.reg_names.iter().any(|n| n == id) {
+                let result = if id == "pmcr" && !self.project.registers.pmu_command.is_empty() {
+                    sample.source = self.register_sample_origin(register, &catalogue).1;
+                    self.read_register_value(register, &catalogue, &mut values)
+                } else if self.reg_names.iter().any(|n| n == id) {
                     sample.source = format!("gdb:{id}");
                     self.gdb_register_value(id, 32)
                 } else {

@@ -4,7 +4,7 @@
 
 本计划将现有通用寄存器列表扩展为具有 Arm Development Studio 分组、位域和状态展示能力的寄存器窗口，并纳入 GitHub 开放 Issues 中的总线访问 target 配置、展示以及变量/内存/寄存器写入需求。优先服务 THA6206 的 MCAL 与 Bao 调试，同时保持单核、多核以及 STM32 等既有目标的兼容性。寄存器读取按“确认读取能力 → 建立数据模型 → 改造界面 → 扩展读取 → 实板验收”推进；总线入口与写入能力分别跟踪，写入不作为前期只读版本的发布条件。
 
-状态：开发中。2026-10-05 按逐项软件证据核对，71 项中已完成 22 项、未完成 49 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
+状态：开发中。2026-10-05 按逐项软件证据核对，71 项中已完成 23 项、未完成 48 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
 
 ## 当前版本与新功能版本计划
 
@@ -355,7 +355,10 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 
 2026-10-05 单项一致性批次完成 REG-403 的软件要求：六项各一次 MRRC、Rt 低字/Rt2 高字与一次指令复制的 pair；48 个动态回读模型覆盖进位/全值回绕，完整主机请求区间与传输方法绑定各次来源。实际 EXE 软件驱动验证回绕/允许冻结及要求进展/倒退/异常高字/过旧基线四种拒绝；失败正常清理，旧值保留原时间证据。不同寄存器和不同核不视为原子快照，旧证据缺失时不制造时间/方法。完整 Cargo 505 项通过、2 ignored，F24 118/118，严格 Clippy 通过；[十四项环境 case](../tests/cases/register-timer.md) 均已准备且 SKIPPED。REG-401 的低 EL 使能/权限适配仍未完成；当前已完成／未完成 **22/49**，完整证据与实际环境边界见 [Timer 自检](register-timer.md)。
 
-- [ ] REG-404：接入 PMU，确认实际计数器数量、位宽和选址方式；查看不自动开始或清空计数。
+- [x] REG-404：接入 PMU，确认实际计数器数量、位宽和选址方式；查看不自动开始或清空计数。
+
+2026-10-05 PMU 批次完成 REG-404 的软件要求：R52 当前 Debug EL2 的新鲜外部身份与原生 PMCR/HDCR 证据确认四项 32 位事件容量，周期一次 MRRC 读取完整 64 位；直接索引保持 PMSELR，明确 SEL=31 的 type 别名与 count UNDEFINED，不开始/清空/配置计数。旧 CPSR.Hyp 数量推断已纠正；专用独立协议、逐核来源、错误隔离与取消均有软件证据。生产 C 的 1,614 个失败点、190 项拒绝、208 项状态变化以及 Windows/Linux 重建与本机包验证通过；完整 Cargo 514 项通过、2 ignored，F24 127/127，严格 Clippy 通过。[十项环境 case](../tests/cases/register-pmu.md) 已准备且均 SKIPPED，默认驱动五项 SKIPPED；低 EL 权限、外部 PMU MMIO 通道、R52+ 身份和最终工具交付未宣称完成，相关范围继续在通用权限/BUS/后续模块/交付任务跟踪。当前已完成／未完成 **23/48**，详见 [PMU 自检](register-pmu.md) 与 [开发进度](registers-development-status.md)。
+
 - [ ] REG-405：接入 GIC、Debug 等适用寄存器，明确 MMIO、CP15 与每核或共享归属；有读副作用的项目仅手工读取并标明。
 - [ ] REG-406：芯片确有 STM 时接入其适合只读的配置和状态寄存器，区分配置空间与 stimulus 空间；本阶段不实现 Trace 数据流采集与解码。[Arm STM 编程说明](https://developer.arm.com/community/arm-community-blogs/b/tools-software-ides-blog/posts/programming-arm-s-system-trace-macrocell)
 - [ ] REG-407：完成 Bao EL2 下的 Timer、Virt 和 MPU 验证，检查切核及 Guest 运行时的数据归属和状态解释。

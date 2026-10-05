@@ -27,6 +27,8 @@ mod cancel_cases;
 mod mpu_cases;
 #[path = "selector_access/mrrc_cases.rs"]
 mod mrrc_cases;
+#[path = "selector_access/pmu_cases.rs"]
+mod pmu_cases;
 #[path = "selector_access/timer_adapter_cases.rs"]
 mod timer_adapter_cases;
 #[path = "selector_access/timer_cases.rs"]
@@ -153,6 +155,7 @@ fn fixture(fault: &'static str) -> Fixture {
                             script.contains("aarch64 vfp")
                                 || script.contains("aarch64 banked")
                                 || script.contains("aarch64 timer")
+                                || script.contains("aarch64 pmu")
                         }
                         _ => false,
                     })
@@ -279,7 +282,10 @@ fn real_tcl_selector_transactions_read_pairs_and_restore_each_selector_and_targe
         ("mpu_el2", 19, "hprselr", 2),
         ("pmu", 3, "pmselr", 31),
     ] {
-        let fixture = fixture("");
+        let mut fixture = fixture("");
+        if kind == "pmu" {
+            fixture.project.registers.pmu_command = "aarch64 pmu".into();
+        }
         let engine = session::spawn(fixture.project.clone());
         ok(&engine, 1, "connect", json!({}));
         let context = probe(&engine, 2);
@@ -488,6 +494,7 @@ fn deferred_selector_driver_runs_against_the_actual_binary_and_real_tcl_fixture(
     let directory = fixture.transcript.parent().unwrap();
     let project_path = directory.join("selector-driver.toml");
     let mut project = fixture.project.clone();
+    project.registers.pmu_command = "aarch64 pmu".into();
     project.version = 1;
     project.cores = (0..2)
         .map(|i| Core {

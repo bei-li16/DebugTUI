@@ -16,6 +16,7 @@ fn source(sample: &Sample, endpoint: Option<&str>, time: u64) -> Provenance {
     provenance.access = Some(Access {
         completed_ms: None,
         timer: None,
+        pmu: None,
         route: Route::GdbRegister {
             endpoint: endpoint.map(str::to_owned),
             configured_endpoint: "configured:3333".into(),

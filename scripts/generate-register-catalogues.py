@@ -8,6 +8,7 @@ import argparse
 import json
 from tempfile import TemporaryDirectory
 from register_timer_metadata import TIMER_METADATA
+from register_pmu_metadata import PMU_METADATA
 
 ROOT = Path(__file__).resolve().parents[1] / "profiles" / "registers"
 q = json.dumps
@@ -25,6 +26,11 @@ def generate(cpu, m_profile=False, root=ROOT):
         descriptions = {"cpsr":"Current status and processor mode of the selected core context.","xpsr":"Combined exception, instruction-set and application status.","sctlr":"EL1 system control, including MPU enable and execution controls.","hsctlr":"EL2 system control.","midr":"Processor implementer, part number, variant and revision.","mpuir":"Implemented EL1 MPU region capacity.","hmpuir":"Implemented EL2 MPU region capacity.","pmcr":"Performance monitor configuration and implemented event-counter count.","fpscr":"Floating-point status, exceptions and control.","prselr":"Current EL1 MPU region selector; direct region reads preserve this value.","hprselr":"Current EL2 MPU region selector; direct region reads preserve this value."}
         description = descriptions.get(id, f"{id.upper()} in the {group} register group.")
         timer = TIMER_METADATA.get(id) if group == "timer" else None
+        pmu = PMU_METADATA.get(id) if group == "pmu" else None
+        if pmu:
+            description = pmu["description"]
+            fields = pmu["fields"]
+            conditions = [*(conditions or []), ("pmu.present", 1, 1)]
         if timer:
             description = timer["description"]
             fields = timer["fields"]
@@ -45,7 +51,7 @@ def generate(cpu, m_profile=False, root=ROOT):
             lines.append(f'write = {{ bits = {bits}, access = "read_write", effect = "modify", constraint = {{ kind = "none" }}, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = {{ kind = "modified" }} }}')
         if effect: lines.append("read_side_effect = true")
         if kind in ("cp15", "cp15_64"):
-            condition = timer["access_condition"] if timer else "Halted physical core; access depends on current EL, traps and debug authorization."
+            condition = (timer or pmu)["access_condition"] if (timer or pmu) else "Halted physical core; access depends on current EL, traps and debug authorization."
             lines.append(f'access_condition = {q(condition)}')
         for condition in conditions or []:
             fact, minimum = condition[:2]
@@ -91,7 +97,7 @@ def generate(cpu, m_profile=False, root=ROOT):
             "mpuir":(0,0,0,4),"prselr":(0,6,2,1),"mair0":(0,10,2,0),"mair1":(0,10,2,1),
             "hsctlr":(4,1,0,0),"hcr":(4,1,1,0),"hdcr":(4,1,1,1),"hcptr":(4,1,1,2),"hstr":(4,1,1,3),"hsr":(4,5,2,0),"hdfar":(4,6,0,0),"hifar":(4,6,0,2),"hvbar":(4,12,0,0),"htpidr":(4,13,0,2),
             "hmpuir":(4,0,0,4),"hprselr":(4,6,2,1),"hprenr":(4,6,1,1),"hmair0":(4,10,2,0),"hmair1":(4,10,2,1),
-            "pmcr":(0,9,12,0),"pmceid0":(0,9,12,6),"pmceid1":(0,9,12,7),"pmcntenset":(0,9,12,1),"pmcntenclr":(0,9,12,2),"pmovsr":(0,9,12,3),"pmselr":(0,9,12,5),"pmxevtyper":(0,9,13,1),"pmxevcntr":(0,9,13,2),
+            "pmcr":(0,9,12,0),"pmceid0":(0,9,12,6),"pmceid1":(0,9,12,7),"pmcntenset":(0,9,12,1),"pmcntenclr":(0,9,12,2),"pmovsr":(0,9,12,3),"pmselr":(0,9,12,5),"pmxevtyper":(0,9,13,1),"pmxevcntr":(0,9,13,2),"pmuserenr":(0,9,14,0),"pmintenset":(0,9,14,1),"pmintenclr":(0,9,14,2),"pmovsset":(0,9,14,3),"pmccfiltr":(0,14,15,7),
             "icc_ctlr":(0,12,12,4),"icc_sre":(0,12,12,5),"icc_pmr":(0,4,6,0),"icc_rpr":(0,12,11,3),"icc_ap0r0":(0,12,8,4),"icc_ap1r0":(0,12,9,0),"icc_iar0":(0,12,8,0),"icc_iar1":(0,12,12,0),"ich_vtr":(4,12,11,1),
             "cntfrq":(0,14,0,0),"cntkctl":(0,14,1,0),"cntp_tval":(0,14,2,0),"cntp_ctl":(0,14,2,1),"cntv_tval":(0,14,3,0),"cntv_ctl":(0,14,3,1),"cnthctl":(4,14,1,0),"cnthp_tval":(4,14,2,0),"cnthp_ctl":(4,14,2,1),
         }

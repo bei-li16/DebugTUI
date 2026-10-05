@@ -24,6 +24,7 @@ mod capabilities;
 mod memory;
 mod memory_writes;
 mod mpu;
+mod pmu;
 mod register_adapter;
 mod registers;
 mod selectors;

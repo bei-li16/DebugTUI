@@ -950,9 +950,58 @@ name = "PMCR"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "Performance monitor configuration and implemented event-counter count."
+description = "PMU implementation and counting controls. PMCR.N from EL0/EL1 can reflect HDCR.HPMN; only current Debug EL2 proves the physical count. PMCR.E=0 does not mean absent."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 12, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "E"
+segments = [{ offset = 0, width = 1 }]
+description = "Counter enable; a read never starts counting."
+[[registers.fields]]
+name = "P"
+segments = [{ offset = 1, width = 1 }]
+description = "Event reset command; reads as zero, never written by the reader."
+access = "wo"
+[[registers.fields]]
+name = "C"
+segments = [{ offset = 2, width = 1 }]
+description = "Cycle reset command; reads as zero, never written by the reader."
+access = "wo"
+[[registers.fields]]
+name = "D"
+segments = [{ offset = 3, width = 1 }]
+description = "Cycle divider: zero counts each clock, one counts each 64 clocks."
+[[registers.fields]]
+name = "X"
+segments = [{ offset = 4, width = 1 }]
+description = "Event export enable; observing counters does not enable trace export."
+[[registers.fields]]
+name = "DP"
+segments = [{ offset = 5, width = 1 }]
+description = "Disable cycle counting when event counting is prohibited."
+[[registers.fields]]
+name = "LC"
+segments = [{ offset = 6, width = 1 }]
+description = "Select bit 31 or bit 63 overflow detection; PMCCNTR storage remains 64 bits for either value."
+[[registers.fields]]
+name = "N"
+segments = [{ offset = 11, width = 5 }]
+description = "Four event counters at EL2. Lower-EL reads can return the Guest partition; excludes the cycle counter."
+access = "ro"
+[[registers.fields]]
+name = "IDCODE"
+segments = [{ offset = 16, width = 8 }]
+description = "R52 PMU identification code 0x13."
+access = "ro"
+[[registers.fields]]
+name = "IMP"
+segments = [{ offset = 24, width = 8 }]
+description = "Arm implementer 0x41."
+access = "ro"
 
 [[registers]]
 id = "pmceid0"
@@ -960,9 +1009,18 @@ name = "PMCEID0"
 group = "pmu"
 bits = 32
 access = "ro"
-description = "PMCEID0 in the pmu register group."
+description = "Implemented common-event bitmap for event numbers 0-31; this describes event support, not counter count or permission."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 12, op2 = 6 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "EventSupport"
+segments = [{ offset = 0, width = 32 }]
+description = "Bit k declares support for the corresponding common event; observation does not select or start it."
+access = "ro"
 
 [[registers]]
 id = "pmceid1"
@@ -970,9 +1028,18 @@ name = "PMCEID1"
 group = "pmu"
 bits = 32
 access = "ro"
-description = "PMCEID1 in the pmu register group."
+description = "Implemented common-event bitmap for event numbers 32-63; this describes event support, not counter count or permission."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 12, op2 = 7 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "EventSupport"
+segments = [{ offset = 0, width = 32 }]
+description = "Bit k declares support for the corresponding common event; observation does not select or start it."
+access = "ro"
 
 [[registers]]
 id = "pmcntenset"
@@ -980,9 +1047,33 @@ name = "PMCNTENSET"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMCNTENSET in the pmu register group."
+description = "Counter-enable set view; reads observe enabled bits without enabling any counter."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 12, op2 = 1 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Event0"
+segments = [{ offset = 0, width = 1 }]
+description = "Event-counter 0 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event1"
+segments = [{ offset = 1, width = 1 }]
+description = "Event-counter 1 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event2"
+segments = [{ offset = 2, width = 1 }]
+description = "Event-counter 2 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event3"
+segments = [{ offset = 3, width = 1 }]
+description = "Event-counter 3 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Cycle"
+segments = [{ offset = 31, width = 1 }]
+description = "Cycle-counter bit; separate from PMCR.N event-counter capacity."
 
 [[registers]]
 id = "pmcntenclr"
@@ -990,9 +1081,33 @@ name = "PMCNTENCLR"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMCNTENCLR in the pmu register group."
+description = "Counter-enable clear view; reads observe enabled bits without disabling any counter."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 12, op2 = 2 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Event0"
+segments = [{ offset = 0, width = 1 }]
+description = "Event-counter 0 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event1"
+segments = [{ offset = 1, width = 1 }]
+description = "Event-counter 1 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event2"
+segments = [{ offset = 2, width = 1 }]
+description = "Event-counter 2 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event3"
+segments = [{ offset = 3, width = 1 }]
+description = "Event-counter 3 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Cycle"
+segments = [{ offset = 31, width = 1 }]
+description = "Cycle-counter bit; separate from PMCR.N event-counter capacity."
 
 [[registers]]
 id = "pmovsr"
@@ -1000,9 +1115,33 @@ name = "PMOVSR"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMOVSR in the pmu register group."
+description = "Overflow flags (clear-on-write view); read never acknowledges or clears an overflow."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 12, op2 = 3 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Event0"
+segments = [{ offset = 0, width = 1 }]
+description = "Event-counter 0 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event1"
+segments = [{ offset = 1, width = 1 }]
+description = "Event-counter 1 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event2"
+segments = [{ offset = 2, width = 1 }]
+description = "Event-counter 2 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event3"
+segments = [{ offset = 3, width = 1 }]
+description = "Event-counter 3 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Cycle"
+segments = [{ offset = 31, width = 1 }]
+description = "Cycle-counter bit; separate from PMCR.N event-counter capacity."
 
 [[registers]]
 id = "pmselr"
@@ -1010,9 +1149,17 @@ name = "PMSELR"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMSELR in the pmu register group."
+description = "Selected PMU event index. 0-3 select implemented events; 31 makes PMXEVTYPER access PMCCFILTR but does not make PMXEVCNTR a cycle-count register. Indexed reads preserve this selector."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 12, op2 = 5 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "SEL"
+segments = [{ offset = 0, width = 5 }]
+description = "Event index 0-3 or cycle-filter selector 31. No selector write during native PMU reads."
 
 [[registers]]
 id = "pmxevtyper"
@@ -1020,9 +1167,17 @@ name = "PMXEVTYPER"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMXEVTYPER in the pmu register group."
+description = "Current selected event type; SEL=31 instead exposes the cycle filter PMCCFILTR. Reading does not choose an event or modify the selector."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 13, op2 = 1 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "SelectedTypeOrCycleFilter"
+segments = [{ offset = 0, width = 32 }]
+description = "Interpret using the fresh PMSELR evidence; cycle filters do not contain an event selector."
 
 [[registers]]
 id = "pmxevcntr"
@@ -1030,9 +1185,155 @@ name = "PMXEVCNTR"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMXEVCNTR in the pmu register group."
+description = "32-bit count selected by PMSELR. Only indices 0-3 are valid; SEL=31 is UNDEFINED on R52, not PMCCNTR. Prefer PMEVCNTRn direct addressing."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 13, op2 = 2 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "SelectedEventCount"
+segments = [{ offset = 0, width = 32 }]
+description = "One event-count sample from the observed PMSELR, without changing selection."
+
+[[registers]]
+id = "pmuserenr"
+name = "PMUSERENR"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "EL0 PMU access enables. These bits alone do not bypass Hyp traps or establish Debug-state permission."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 14, op2 = 0 }
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "UserAccessControl"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw user-access controls; observing does not grant EL0 access."
+
+[[registers]]
+id = "pmintenset"
+name = "PMINTENSET"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "Overflow-interrupt enable set view; read does not enable interrupts."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 14, op2 = 1 }
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Event0"
+segments = [{ offset = 0, width = 1 }]
+description = "Event-counter 0 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event1"
+segments = [{ offset = 1, width = 1 }]
+description = "Event-counter 1 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event2"
+segments = [{ offset = 2, width = 1 }]
+description = "Event-counter 2 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event3"
+segments = [{ offset = 3, width = 1 }]
+description = "Event-counter 3 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Cycle"
+segments = [{ offset = 31, width = 1 }]
+description = "Cycle-counter bit; separate from PMCR.N event-counter capacity."
+
+[[registers]]
+id = "pmintenclr"
+name = "PMINTENCLR"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "Overflow-interrupt enable clear view; read does not disable interrupts."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 14, op2 = 2 }
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Event0"
+segments = [{ offset = 0, width = 1 }]
+description = "Event-counter 0 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event1"
+segments = [{ offset = 1, width = 1 }]
+description = "Event-counter 1 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event2"
+segments = [{ offset = 2, width = 1 }]
+description = "Event-counter 2 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event3"
+segments = [{ offset = 3, width = 1 }]
+description = "Event-counter 3 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Cycle"
+segments = [{ offset = 31, width = 1 }]
+description = "Cycle-counter bit; separate from PMCR.N event-counter capacity."
+
+[[registers]]
+id = "pmovsset"
+name = "PMOVSSET"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "Overflow flags (set-on-write view); read never sets or clears an overflow."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 9, crm = 14, op2 = 3 }
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "Event0"
+segments = [{ offset = 0, width = 1 }]
+description = "Event-counter 0 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event1"
+segments = [{ offset = 1, width = 1 }]
+description = "Event-counter 1 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event2"
+segments = [{ offset = 2, width = 1 }]
+description = "Event-counter 2 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Event3"
+segments = [{ offset = 3, width = 1 }]
+description = "Event-counter 3 bit; four physical event counters, not five."
+[[registers.fields]]
+name = "Cycle"
+segments = [{ offset = 31, width = 1 }]
+description = "Cycle-counter bit; separate from PMCR.N event-counter capacity."
+
+[[registers]]
+id = "pmccfiltr"
+name = "PMCCFILTR"
+group = "pmu"
+bits = 32
+access = "rw"
+description = "Cycle-count filter, addressed directly without PMSELR selection. Counter enable, filter and debug controls govern counting separately from readable storage."
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 15, op2 = 7 }
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "CycleFilter"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw cycle-filter control word; no automatic filter changes."
 
 [[registers]]
 id = "icc_ctlr"
@@ -4013,9 +4314,17 @@ name = "PMCCNTR"
 group = "pmu"
 bits = 64
 access = "rw"
-description = "PMCCNTR in the pmu register group."
+description = "Full 64-bit cycle counter, one genuine MRRC p15,0,Rt,Rt2,c9. Neither PMCR.LC=0 nor a 32-bit MRC alias truncates this native storage view."
 reader = { kind = "cp15_64", cp = 15, op1 = 0, crm = 9 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "CycleCount"
+segments = [{ offset = 0, width = 64 }]
+description = "Modulo-2^64 cycle count; independent reads are not simultaneous or an elapsed-time measurement."
 
 [[registers]]
 id = "cntpct"
@@ -4211,12 +4520,20 @@ name = "PMEVCNTR0"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMEVCNTR0 in the pmu register group."
+description = "Physical event counter 0, complete 32-bit value. Direct MRC addressing preserves PMSELR; current EL2 and fresh PMCR.N establish capacity."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 8, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
 [[registers.conditions]]
 fact = "pmu.counters"
 min = 1
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "EventCount"
+segments = [{ offset = 0, width = 32 }]
+description = "Modulo-2^32 event sample; overflow flags are separate and never cleared by this read."
 
 [[registers]]
 id = "pmevtyper0"
@@ -4224,12 +4541,20 @@ name = "PMEVTYPER0"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMEVTYPER0 in the pmu register group."
+description = "Physical event type/filter 0, direct MRC addressing. Reader never changes event selection or filters."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 12, op2 = 0 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
 [[registers.conditions]]
 fact = "pmu.counters"
 min = 1
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "EventTypeAndFilter"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw event type and filtering controls; event-code support is described separately by PMCEID0/1."
 
 [[registers]]
 id = "pmevcntr1"
@@ -4237,12 +4562,20 @@ name = "PMEVCNTR1"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMEVCNTR1 in the pmu register group."
+description = "Physical event counter 1, complete 32-bit value. Direct MRC addressing preserves PMSELR; current EL2 and fresh PMCR.N establish capacity."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 8, op2 = 1 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
 [[registers.conditions]]
 fact = "pmu.counters"
 min = 2
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "EventCount"
+segments = [{ offset = 0, width = 32 }]
+description = "Modulo-2^32 event sample; overflow flags are separate and never cleared by this read."
 
 [[registers]]
 id = "pmevtyper1"
@@ -4250,12 +4583,20 @@ name = "PMEVTYPER1"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMEVTYPER1 in the pmu register group."
+description = "Physical event type/filter 1, direct MRC addressing. Reader never changes event selection or filters."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 12, op2 = 1 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
 [[registers.conditions]]
 fact = "pmu.counters"
 min = 2
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "EventTypeAndFilter"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw event type and filtering controls; event-code support is described separately by PMCEID0/1."
 
 [[registers]]
 id = "pmevcntr2"
@@ -4263,12 +4604,20 @@ name = "PMEVCNTR2"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMEVCNTR2 in the pmu register group."
+description = "Physical event counter 2, complete 32-bit value. Direct MRC addressing preserves PMSELR; current EL2 and fresh PMCR.N establish capacity."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 8, op2 = 2 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
 [[registers.conditions]]
 fact = "pmu.counters"
 min = 3
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "EventCount"
+segments = [{ offset = 0, width = 32 }]
+description = "Modulo-2^32 event sample; overflow flags are separate and never cleared by this read."
 
 [[registers]]
 id = "pmevtyper2"
@@ -4276,12 +4625,20 @@ name = "PMEVTYPER2"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMEVTYPER2 in the pmu register group."
+description = "Physical event type/filter 2, direct MRC addressing. Reader never changes event selection or filters."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 12, op2 = 2 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
 [[registers.conditions]]
 fact = "pmu.counters"
 min = 3
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "EventTypeAndFilter"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw event type and filtering controls; event-code support is described separately by PMCEID0/1."
 
 [[registers]]
 id = "pmevcntr3"
@@ -4289,12 +4646,20 @@ name = "PMEVCNTR3"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMEVCNTR3 in the pmu register group."
+description = "Physical event counter 3, complete 32-bit value. Direct MRC addressing preserves PMSELR; current EL2 and fresh PMCR.N establish capacity."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 8, op2 = 3 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
 [[registers.conditions]]
 fact = "pmu.counters"
 min = 4
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "EventCount"
+segments = [{ offset = 0, width = 32 }]
+description = "Modulo-2^32 event sample; overflow flags are separate and never cleared by this read."
 
 [[registers]]
 id = "pmevtyper3"
@@ -4302,12 +4667,20 @@ name = "PMEVTYPER3"
 group = "pmu"
 bits = 32
 access = "rw"
-description = "PMEVTYPER3 in the pmu register group."
+description = "Physical event type/filter 3, direct MRC addressing. Reader never changes event selection or filters."
 reader = { kind = "cp15", cp = 15, op1 = 0, crn = 14, crm = 12, op2 = 3 }
-access_condition = "Halted physical core; access depends on current EL, traps and debug authorization."
+access_condition = "Halted physical core; the checked PMU adapter uses current Debug EL2, not stopped CPSR.M. EL0/EL1 access remains unknown without fresh HDCR.TPM/TPMCR/HPMN and HSTR.T9 permission evidence. Observation never enables, clears or resets counters, changes filters or writes PMSELR. "
 [[registers.conditions]]
 fact = "pmu.counters"
 min = 4
+[[registers.conditions]]
+fact = "pmu.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "EventTypeAndFilter"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw event type and filtering controls; event-code support is described separately by PMCEID0/1."
 
 [[groups]]
 id = "vfp"

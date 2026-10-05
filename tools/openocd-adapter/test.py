@@ -65,6 +65,12 @@ def main():
                     '-o', str(timer_executable)], check=True)
     timer_tested = subprocess.run([str(timer_executable)], capture_output=True, text=True, check=True)
     (out/'timer-transfer-test.log').write_text(timer_tested.stdout+timer_tested.stderr, encoding='utf-8')
+    pmu_executable = out/('pmu-transfer.exe' if os.name == 'nt' else 'pmu-transfer')
+    subprocess.run([args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror',
+                    '-I', str(source/'src/target'), str(here/'tests/pmu-transfer.c'),
+                    '-o', str(pmu_executable)], check=True)
+    pmu_tested = subprocess.run([str(pmu_executable)], capture_output=True, text=True, check=True)
+    (out/'pmu-transfer-test.log').write_text(pmu_tested.stdout+pmu_tested.stderr, encoding='utf-8')
     subprocess.run([sys.executable, str(here/'tests/vfp-write-driver.py'),
                     '--out', str(out/'vfp-write-driver')], check=True)
     report = {'board_tests_executed': False, 'revision': revision,
@@ -77,6 +83,8 @@ def main():
               'vfp_write_transaction_passed': True, 'vfp_write_protocol': lock['vfp_write_protocol'],
               'vfp_write_transaction_binary_sha256': digest(vfp_write_executable),
               'vfp_write_deferred_driver_passed': True,
+              'pmu_transaction_passed': True, 'pmu_protocol': lock['pmu_protocol'],
+              'pmu_transaction_binary_sha256': digest(pmu_executable),
               'timer_transaction_passed': True, 'timer_protocol': lock['timer_protocol'],
               'timer_transaction_binary_sha256': digest(timer_executable),
               'backend_commands_passed': False, 'limitations':
@@ -88,6 +96,7 @@ def main():
         vfp_protocol = lock['vfp_protocol']
         vfp_write_protocol = lock['vfp_write_protocol']
         timer_protocol = lock['timer_protocol']
+        pmu_protocol = lock['pmu_protocol']
         # Initialize only the virtual adapter, keeping the target unexamined.
         # Exact native error codes prevent an init-mode rejection from falsely
         # passing an argument/state-guard test.
@@ -110,6 +119,8 @@ help aarch64 banked
 help aarch64 vfp
 help aarch64 vfp_write
 help aarch64 timer
+if {[aarch64 debugtui_pmu_protocol] ne "%s"} {error "PMU protocol mismatch"}
+help aarch64 pmu
 catch {init} dummy_init_result
 proc expect_error {body expected} {
     if {![catch {uplevel 1 $body} result]} {error "command unexpectedly succeeded"}
@@ -128,6 +139,13 @@ expect_error {aarch64 timer cntpct 0} -601
 foreach invalid {CNTPCT cntp cntpct; cntpct0} {expect_error [list aarch64 timer $invalid] -603}
 foreach reg {cntfrq cntkctl cntp_tval cntp_ctl cntv_tval cntv_ctl cnthctl cnthp_tval cnthp_ctl cntpct cntvct cntp_cval cntv_cval cntvoff cnthp_cval} {
     expect_error [list aarch64 timer $reg] -311
+}
+expect_error {aarch64 debugtui_pmu_protocol 0} -601
+expect_error {aarch64 pmu} -601
+expect_error {aarch64 pmu pmcr 0} -601
+foreach invalid {PMCR pmswinc pmevcntr4 pmevcntr01 pmcr;} {expect_error [list aarch64 pmu $invalid] -603}
+foreach reg {pmcr pmcntenset pmcntenclr pmovsr pmselr pmceid0 pmceid1 pmxevtyper pmxevcntr pmuserenr pmintenset pmintenclr pmovsset pmccfiltr pmevcntr0 pmevcntr1 pmevcntr2 pmevcntr3 pmevtyper0 pmevtyper1 pmevtyper2 pmevtyper3 pmccntr} {
+    expect_error [list aarch64 pmu $reg] -311
 }
 expect_error {aarch64 banked} -601
 expect_error {aarch64 banked sp_irq 0} -601
@@ -158,7 +176,7 @@ for {set index 0} {$index < 16} {incr index} {
 }
 puts "PASS: adapter protocol, command help, encoding bounds, unexamined target guards"
 shutdown
-''' % (protocol, bank_protocol, vfp_protocol, vfp_write_protocol, timer_protocol)
+''' % (protocol, bank_protocol, vfp_protocol, vfp_write_protocol, timer_protocol, pmu_protocol)
         script_file = out/'backend-commands.tcl'
         script_file.write_text(script, encoding='utf-8')
         result = subprocess.run([str(backend), '-f', str(script_file)],

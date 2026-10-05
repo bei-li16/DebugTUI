@@ -222,7 +222,7 @@ fn optional_unknown_encodings_and_cpacr_do_not_invent_absence_or_fpu_enablement(
     ] {
         assert_eq!(p.facts[key].value, 1);
     }
-    assert_eq!(p.facts["pmu.counters"].value, 4);
+    assert!(!p.facts.contains_key("pmu.counters"));
     let p = probe(&[("id_pfr1", 0), ("id_dfr0", 0)]);
     assert_eq!(p.facts["el2.present"].value, 0);
     assert_eq!(p.facts["pmu.present"].value, 0);
@@ -240,16 +240,12 @@ fn pmcr_guest_counts_and_unadapted_hyp_values_never_prove_physical_counter_absen
                 ]);
                 assert_eq!(p.facts["pmu.present"].value, 1);
                 assert_eq!(p.facts["pmu.pmcr_n"].value, count);
-                if mode == 0x1a && count == 4 {
-                    assert_eq!(p.facts["pmu.counters"].value, 4);
-                } else {
-                    assert!(!p.facts.contains_key("pmu.counters"));
-                    assert!(
-                        p.notes
-                            .iter()
-                            .any(|note| note.contains("Physical PMU count remains unknown"))
-                    );
-                }
+                assert!(!p.facts.contains_key("pmu.counters"));
+                assert!(
+                    p.notes
+                        .iter()
+                        .any(|note| note.contains("Physical PMU count remains unknown"))
+                );
             }
         }
     }
@@ -258,6 +254,71 @@ fn pmcr_guest_counts_and_unadapted_hyp_values_never_prove_physical_counter_absen
         !p.facts.contains_key("pmu.counters"),
         "Unknown actual mode cannot prove physical capacity"
     );
+}
+
+#[test]
+fn pmu_physical_capacity_requires_matching_current_native_read_evidence_not_stopped_mode() {
+    use crate::registers::{
+        Reader,
+        provenance::{Access, Phase, Provenance, Route},
+        timer::ReadMethod,
+    };
+    for mode in [0x10, 0x13, 0x1a] {
+        let mut p = probe(&[
+            ("cpsr", mode),
+            ("id_dfr0", 0x03010066),
+            ("pmcr", 0x41132048),
+        ]);
+        let evidence=super::super::pmu::Response::parse("midr 0x411fd134 dscr 0x01000200 dspsr 0xa2000410 dlr 0x81234568 id_dfr0 0x03010066 pmcr 0x41132048 hdcr 0x00400e02 pmselr 0x00000003 value 0x41132048","pmcr",32).unwrap().evidence;
+        let sample = p.samples.iter_mut().find(|s| s.id == "pmcr").unwrap();
+        sample.source = "openocd:aarch64 pmu".into();
+        let mut provenance = Provenance::declared(&Reader::Cp15 {
+            cp: 15,
+            op1: 0,
+            crn: 9,
+            crm: 12,
+            op2: 0,
+        });
+        provenance.access = Some(Access {
+            timer: None,
+            pmu: Some(evidence),
+            route: Route::TclRegister {
+                endpoint: "localhost:1".into(),
+                target: "cpu1".into(),
+                operation: "PMU read pmcr".into(),
+            },
+            phase: Phase::Responded,
+            command: "aarch64 pmu pmcr".into(),
+            context: p.context.clone(),
+            timestamp_ms: 29,
+            completed_ms: Some(30),
+        });
+        sample.provenance = Some(provenance);
+        p.decode();
+        assert_eq!(p.facts["pmu.counters"].value, 4);
+        assert_eq!(p.facts["pmu.guest_partition"].value, 2);
+        for mismatch in 0..9 {
+            let mut bad = p.clone();
+            let sample = bad.samples.iter_mut().find(|s| s.id == "pmcr").unwrap();
+            let access = sample.provenance.as_mut().unwrap().access.as_mut().unwrap();
+            match mismatch {
+                0 => sample.source = "gdb:pmcr".into(),
+                1 => access.context.generation += 1,
+                2 => access.phase = Phase::Started,
+                3 => access.pmu.as_mut().unwrap().dscr = RawValue::parse("0x01000100", 32).unwrap(),
+                4 => access.pmu.as_mut().unwrap().midr = RawValue::parse("0x411fd130", 32).unwrap(),
+                5 => access.pmu.as_mut().unwrap().pmcr = RawValue::parse("0x41132049", 32).unwrap(),
+                6 => access.pmu.as_mut().unwrap().read_method = ReadMethod::Unknown,
+                7 => sample.view = crate::registers::SampleView::SelectedFrame,
+                _ => access.pmu = None,
+            }
+            bad.decode();
+            assert!(
+                !bad.facts.contains_key("pmu.counters"),
+                "mode {mode}, mismatch {mismatch}"
+            );
+        }
+    }
 }
 
 #[test]
