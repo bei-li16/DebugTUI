@@ -348,6 +348,8 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 - [ ] REG-403：验证 64 位结果的高位、低位和采样一致性；仅在架构明确提供分段读取协议时使用该协议，并注明一致性边界。
 
 2026-10-05 Timer 阶段进度见 [目录与读取路径自检](register-timer.md)：补齐十五项字段/访问说明及 timer.present=1 条件，独立软件夹具验证全部精确 MRC/MRRC 编码、不对称高低位、Scope All 选定核心、Unknown/No 零请求与错误隔离。新增 [十二项环境 case](../tests/cases/register-timer.md) 均 SKIPPED；完整 EL1/Guest/User 权限适配、全部固件基线、实际后端与采样一致性尚未完成，REG-401/402/403 继续未勾选，计数仍为已完成／未完成 **20/51**。
+
+同日后续批次补齐十五项只读固件采样及四个稳定 CVAL/offset 独立符号，专用 Hyp/ready 门禁、正常双核基线和三类失败流程已有软件证据；GNU Arm 11.4 离线编译及全部十五项指令编码通过。正常 EL 权限与 Debug state 的 EDSCR.HDD/Hyp debug 授权分开，完整运行时权限适配与真实 RAM/cache 可见性仍待验收，不改变上述勾选和计数。
 - [ ] REG-404：接入 PMU，确认实际计数器数量、位宽和选址方式；查看不自动开始或清空计数。
 - [ ] REG-405：接入 GIC、Debug 等适用寄存器，明确 MMIO、CP15 与每核或共享归属；有读副作用的项目仅手工读取并标明。
 - [ ] REG-406：芯片确有 STM 时接入其适合只读的配置和状态寄存器，区分配置空间与 stimulus 空间；本阶段不实现 Trace 数据流采集与解码。[Arm STM 编程说明](https://developer.arm.com/community/arm-community-blogs/b/tools-software-ides-blog/posts/programming-arm-s-system-trace-macrocell)

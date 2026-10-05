@@ -2,6 +2,9 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04–05，尚未发布）
 
+2026-10-05 Timer 独立基线批次：完整 Cargo **365 单元＋131 集成通过，2 ignored**，F24 **107/107**；严格 Clippy、目录比对、格式及差异检查通过。专用 Hyp/ready 门禁、四个稳定六十四位独立符号、两个计数器和 peer 保持的软件驱动通过；错误模式/未就绪/基线不同在正确阶段停止并清理。GNU Arm 11.4 离线编译全部九项 MRC/六项 MRRC 编码通过，没有 Timer/模式写指令或目标执行。正常 EL 与 Debug state 权限区别已核对，完整应用权限适配仍未完成。其余22套件未选择；[Timer 自检](docs/register-timer.md)、[开发进度](docs/registers-development-status.md) 记录证据，[十二项环境 case](tests/cases/register-timer.md) 均 SKIPPED。总计已完成／未完成 **20/51**，未上板、安装或发布。
+
+
 2026-10-05 Timer 阶段批次：完整 Cargo **365 单元＋130 集成通过，2 ignored**，F24 **106/106**；严格 Clippy、目录重新生成比对、格式及差异检查通过。新增三项单元、一项协调器/MI/真实 Tcl 软件集成，独立验证十五项编码、位宽/字段/访问说明、Unknown/No 零请求、选定物理核、高低位及失败原值保留。首次完整回归发现旧 GDB 夹具没有 Timer 实现声明，修正夹具后保留原断言并重新完整验证；失败与成功报告见 [开发进度](docs/registers-development-status.md)。其余22套件未选择。[Timer 自检](docs/register-timer.md)、[十二项环境 case](tests/cases/register-timer.md) 明确软件证据边界，环境 case 均 SKIPPED，REG-401/402/403 继续未勾选。总计已完成／未完成 **20/51**，未上板、安装或发布。
 
 

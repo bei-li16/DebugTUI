@@ -716,6 +716,8 @@ Status 的条件详情分别保存当前判定、最新尝试和保留原值当�
 
 R52/R52+ Timer 目录含十五项寄存器及字段；`timer.present` 未确定时不自动读取。TVAL 是三十二位有符号差值，可在格式菜单选有符号十进制；Timer 关闭时 TVAL 与 CTL.ISTATUS 的原始位没有有效计时语义。计数器、CVAL 与 CNTVOFF 保留完整六十四位，但分别采样不保证同时性。访问说明区分 Hyp、EL1/Guest 和 EL0 门控，说明本身不证明当前权限已核验；完整范围及未完成项见 [Timer 自检](docs/register-timer.md)。
 
+目录的 EL 条件描述正常执行权限；Debug state 另受 Hyp debug 授权、EDSCR.HDD 及后端执行规则影响，停止前 CPSR 不能独自证明允许或拒绝。延后 Timer 驱动使用专用 Hyp 固件基线，先检查模式及 ready，再核对四个稳定六十四位参考符号；这种验证流程的模式要求不等于应用已有通用 Debug state 权限适配。
+
 Status 的 Sampling view 区分选中栈帧与物理核心状态。GDB 值及其别名随栈帧失效；返回原帧后也需要重新读取，同一停止代次的直接后端值可保留。Reset、Reconnect、更换 ELF 和 Console 会使相关旧值失效；共享 Reset 与原始 Console 在命令发送前使全部核心缓存失效，命令报错也不会恢复旧值为有效。详细规则与验证见 [缓存生命周期](docs/register-cache-lifecycle.md)。
 
 多核项目可用 `[registers.topology]` 的 `chip` 及 `[registers.topology.clusters]` 的核心名称到 cluster 名称映射声明共享归属。目录的 `scope` 使用 `core`、`cluster` 或 `chip`；缺少 cluster 映射时不会按核心编号猜测，条目显示未知归属且不发送读取。chip 优先使用 topology.chip，否则沿用 debug.chip；两者都未声明时保留未知。

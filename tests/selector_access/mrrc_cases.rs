@@ -20,10 +20,19 @@ fn deferred_timer_driver_runs_actual_binary_with_independent_fixture_baseline_an
         "DEBUGTUI_TEST_EXPRESSION_VALUES".into(),
         json!({
             "(unsigned long long)debugtui_timer_reference_cntpct":"0xfedcba9876543210",
-            "(unsigned long long)debugtui_timer_reference_cntvct":"0xfedcba9876543210"
+            "(unsigned long long)debugtui_timer_reference_cntvct":"0xfedcba9876543210",
+            "(unsigned long long)debugtui_timer_ready":"1",
+            "(unsigned long long)debugtui_timer_reference_cntp_cval":"0xfedcba9876543210",
+            "(unsigned long long)debugtui_timer_reference_cntv_cval":"0x0123456789abcdef",
+            "(unsigned long long)debugtui_timer_reference_cntvoff":"0x0000000100000000",
+            "(unsigned long long)debugtui_timer_reference_cnthp_cval":"0x8000000000000001"
         })
         .to_string(),
     );
+    fixture.state.lock().unwrap()["targets"] = json!({"cpu0":{"timer64":{
+        "15 2 14":"0xfedcba9876543210", "15 3 14":"0x0123456789abcdef",
+        "15 4 14":"0x0000000100000000", "15 6 14":"0x8000000000000001"
+    }}});
     let directory = fixture.transcript.parent().unwrap();
     let project = directory.join("timer-driver.toml");
     fs::write(&project, toml::to_string(&fixture.project).unwrap()).unwrap();
@@ -86,6 +95,120 @@ fn adapter(fixture: &mut Fixture) {
     fixture.project.registers.selector_command = "aarch64 mcr".into();
     fixture.project.registers.cp15_64_command = "aarch64 mrrc".into();
     fixture.project.registers.isb_command = "aarch64 isb".into();
+}
+
+#[test]
+fn timer_baseline_driver_rejects_wrong_mode_unready_and_independent_reference_mismatch() {
+    for failure in ["non_hyp", "not_ready", "reference_mismatch"] {
+        let mut fixture = fixture("");
+        adapter(&mut fixture);
+        let mut registers: Value =
+            serde_json::from_str(&fixture.project.gdb.env["DEBUGTUI_TEST_REGISTER_VALUES"])
+                .unwrap();
+        registers["cpsr"] = json!(if failure == "non_hyp" { "0x13" } else { "0x1a" });
+        fixture.project.gdb.env.insert(
+            "DEBUGTUI_TEST_REGISTER_VALUES".into(),
+            registers.to_string(),
+        );
+        fixture.project.gdb.env.insert("DEBUGTUI_TEST_EXPRESSION_VALUES".into(),json!({
+            "(unsigned long long)debugtui_timer_ready":if failure == "not_ready" { "0" } else { "1" },
+            "(unsigned long long)debugtui_timer_reference_cntp_cval":"0x0000000000000001"
+        }).to_string());
+        fixture.state.lock().unwrap()["targets"] = json!({"cpu0":{"timer64":{
+            "15 2 14":"0xfedcba9876543210", "15 3 14":"0x0123456789abcdef",
+            "15 4 14":"0x0000000100000000", "15 6 14":"0x8000000000000001"
+        }}});
+        let directory = fixture.transcript.parent().unwrap();
+        let project = directory.join("timer-negative.toml");
+        fs::write(&project, toml::to_string(&fixture.project).unwrap()).unwrap();
+        let original = fs::read(&project).unwrap();
+        let case = directory.join("timer-negative.json");
+        let mut spec: Value = serde_json::from_str(include_str!(
+            "../fixtures/register-timer-board.example.json"
+        ))
+        .unwrap();
+        spec["frame_function"] = json!("main");
+        spec.as_object_mut().unwrap().remove("control_scope");
+        spec.as_object_mut().unwrap().remove("peer_core");
+        fs::write(&case, serde_json::to_vec_pretty(&spec).unwrap()).unwrap();
+        let output = Command::new("node")
+            .arg(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("scripts/test-register-timer-hardware.cjs"),
+            )
+            .args([
+                "--run",
+                "--software-fixture",
+                "--core",
+                "default",
+                "--binary",
+            ])
+            .arg(env!("CARGO_BIN_EXE_debugtui"))
+            .arg("--project")
+            .arg(&project)
+            .arg("--case")
+            .arg(&case)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(!output.status.success(), "{failure}: {stdout}");
+        let report_directory = stdout
+            .lines()
+            .find(|line| line.starts_with("RESULT "))
+            .unwrap()
+            .rsplit_once("} ")
+            .unwrap()
+            .1;
+        let report: Value = serde_json::from_slice(
+            &fs::read(PathBuf::from(report_directory).join("report.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(report["board_tests_executed"], false);
+        assert_eq!(report["counts"]["failed"], 1);
+        let failed = report["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|case| case["status"] == "failed")
+            .unwrap();
+        assert_eq!(
+            failed["id"],
+            if failure == "reference_mismatch" {
+                "REG-H05-WIDTH"
+            } else {
+                "REG-H05-STOP"
+            }
+        );
+        assert!(
+            report["cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|case| case["id"] == "REG-H05-CLEANUP" && case["status"] == "passed")
+        );
+        assert_eq!(fs::read(&project).unwrap(), original);
+        let state = fixture.state.lock().unwrap();
+        if failure != "reference_mismatch" {
+            assert!(
+                state
+                    .get("trace")
+                    .is_none_or(|trace| trace.as_array().unwrap().is_empty()),
+                "No Timer/control/Probe TCL before a ready Hyp baseline"
+            );
+        } else {
+            assert_eq!(state["current"], "outside");
+            assert!(selector_writes(&state).is_empty());
+            assert_eq!(
+                state["trace"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|entry| entry[1] == "mrrc")
+                    .count(),
+                4
+            );
+        }
+    }
 }
 
 #[test]

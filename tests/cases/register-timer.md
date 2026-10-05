@@ -19,4 +19,4 @@
 | TIMER-H11 | 有有效值后在隔离后端注入权限拒绝、缺少 MRRC、截断六十四位、断连与取消；另行验证恢复结果未知 | 最新原因与原值/依据分开；未知原因不猜测缺失；截断不 Valid；其他合法项继续，取消不发布新值；恢复未知进入 FAULT 并需重连 | SKIPPED |
 | TIMER-H12 | 核对实际 GDB target description 六十四位 Timer 声明与值；PowerShell/VS Code 宽窄终端查看字段、完整高位、条件和长说明 | 名称可见与真实可读分开记录；全部字段说明可查看，进制及高位完整；查看不触发 Probe/read；不据本项单独勾选 REG-208 或完整后端验收 | SKIPPED |
 
-已有 `scripts/test-register-timer-hardware.cjs` 默认只生成 SKIPPED 报告，不连接目标。当前 `REG-H05` 自动驱动仅覆盖声明的稳定值、两个计数器及保持检查；以上权限、全部稳定基线和时序场景仍需逐项执行并留证，不能把六阶段软件驱动通过换算成十二项上板 PASS。未实现或缺少环境时记录原因并保持 SKIPPED。
+已有 `scripts/test-register-timer-hardware.cjs` 默认只生成五项 SKIPPED 报告，不连接目标。`REG-H05` 示例已覆盖四个 CVAL/offset 的独立符号、两个计数器及保持检查；先核对专用正常执行 Hyp 固件的模式与 ready，错误模式或未就绪不继续访问。九项 MRC/六项 MRRC 固件样本按每核独立保存，动态 TVAL 及禁用位不能作为稳定期待值。实际使用前替换所有软件期待值，并保存正常执行与 Debug state 的区别：EDSCR.HDD/Hyp invasive debug 授权不能由停止前 CPSR 推断。以上完整权限及跨时间场景仍需逐项留证，不能把六阶段软件驱动通过换算成十二项上板 PASS。未实现或缺少环境时记录原因并保持 SKIPPED。

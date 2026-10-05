@@ -5,7 +5,11 @@ Access: DDI0568A.c Table E1-1. The unchanged timer fields are defined in
 DDI0406C.b B4.1.21-35 and B8.1. No Armv8-A-only extensions are imported.
 """
 
-COMMON_ACCESS = "Halted physical core; subject to current EL, traps and debug authorization. "
+COMMON_ACCESS = (
+    "Halted physical core. Normal-execution EL rules follow; Debug-state access "
+    "requires separate backend evidence, including Hyp debug authorization/EDSCR.HDD; "
+    "the stopped CPSR alone does not establish debugger permission. "
+)
 PHYSICAL_ACCESS = COMMON_ACCESS + (
     "EL2: accessible. EL1: CNTHCTL.PL1PCEN controls physical timer access. "
     "EL0: also requires CNTKCTL.PL0PTEN; a permission failure does not prove absence."

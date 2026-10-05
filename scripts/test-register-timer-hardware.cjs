@@ -22,11 +22,16 @@ assert(Array.isArray(spec.stable_registers) && spec.stable_registers.includes('c
 assert(Array.isArray(spec.stable64) && spec.stable64.length, 'Declare a known stable 64-bit Timer register');
 assert(Array.isArray(spec.counters) && spec.counters.length, 'Declare independent counter baselines');
 const raw = (text, bits) => { assert(new RegExp(`^0x[0-9a-f]{${bits/4}}$`, 'i').test(text), `Exact ${bits}-bit raw required: ${text}`); return BigInt(text); };
-for (const entry of spec.stable64) { assert(['cntp_cval','cntv_cval','cnthp_cval','cntvoff'].includes(entry.id)); raw(entry.expected,64); }
+const reference = value => assert(/^[a-zA-Z_]\w*(\[\d+\])?$/.test(value), 'Reference must be one firmware variable/array element');
+if (spec.ready) reference(spec.ready);
+for (const entry of spec.stable64) {
+  assert(['cntp_cval','cntv_cval','cnthp_cval','cntvoff'].includes(entry.id)); raw(entry.expected,64);
+  if (entry.reference) reference(entry.reference);
+}
 assert(spec.stable64.some(e => raw(e.expected,64) >> 32n), 'At least one stable expected high word must be nonzero');
 for (const entry of spec.counters) {
   assert(['cntpct','cntvct'].includes(entry.id));
-  assert(/^[a-zA-Z_]\w*(\[\d+\])?$/.test(entry.reference), 'Reference must be one firmware variable/array element');
+  reference(entry.reference);
   assert(BigInt(entry.max_delta_ticks) > 0n && BigInt(entry.max_delta_ticks) < (1n<<63n));
 }
 const projectHash = hash(project);
@@ -47,14 +52,24 @@ const read = async (ids, bits) => {
 };
 const halted = async () => { const s=await session.command('status'); assert.equal(s.state,'STOPPED'); assert.equal(s.frame.level,0); assert.equal(s.frame.function,spec.frame_function); };
 const select = async core => { if (core !== 'default' || spec.peer_core) await session.command('select_core',{name:core}); await halted(); };
+// This fixture captures normal-execution Hyp-only firmware baselines. It is
+// not a generic Debug-state permission decision for EL0/EL1 or EDSCR.HDD.
+const hyp = async () => assert.equal(raw((await read(['cpsr'],32)).cpsr,32)&31n,26n, 'Dedicated firmware baseline requires Hyp; no mode change performed');
+const firmware = async symbol => {
+  const result = await session.command('evaluate',{expression:`(unsigned long long)${symbol}`});
+  assert(/^(0x[0-9a-f]+|\d+)$/i.test(result.value), 'Firmware sample must be an exact unsigned integer');
+  const value = BigInt(result.value); assert(value>=0n&&value<(1n<<64n)); return value;
+};
 (async () => {
   try {
     session = new Session(binary,project,out); await session.command('connect');
     if (spec.control_scope) { assert(['core','all'].includes(spec.control_scope)); await session.command('control_scope',{scope:spec.control_scope}); }
     if (!await suite.test(phases[0],'Capture current-core controls and optional peer',async()=>{
-      if (spec.peer_core) { assert.notEqual(spec.peer_core,options.core); await select(spec.peer_core); peerBefore=await read(spec.stable_registers,32); }
+      await select(options.core); await hyp();
+      if (spec.ready) assert.equal(await firmware(spec.ready),1n,'Independent firmware baseline is not ready');
+      if (spec.peer_core) { assert.notEqual(spec.peer_core,options.core); await select(spec.peer_core); await hyp(); peerBefore=await read(spec.stable_registers,32); }
       await select(options.core); context=(await session.command('registers_list')).context;
-      assert.equal(context.core,options.core); before=await read(spec.stable_registers,32);
+      assert.equal(context.core,options.core); await hyp(); before=await read(spec.stable_registers,32);
       return {context,before,peerBefore};
     })) return;
     if (!await suite.test(phases[1],'Observe actual R52 identity on this core',async()=>{
@@ -65,18 +80,23 @@ const select = async core => { if (core !== 'default' || spec.peer_core) await s
     })) return;
     if (!await suite.test(phases[2],'Independently validate complete 64-bit stable values and high words',async()=>{
       const values=await read(spec.stable64.map(e=>e.id),64);
+      const references={};
       for (const entry of spec.stable64) {
+        if(entry.reference) {
+          const baseline=await firmware(entry.reference);
+          assert.equal(baseline,raw(entry.expected,64),'Independent firmware baseline differs from declared expected value');
+          assert.equal(raw(values[entry.id],64),baseline);
+          references[entry.id]=`0x${baseline.toString(16).padStart(16,'0')}`;
+        }
         assert.equal(raw(values[entry.id],64),raw(entry.expected,64));
         assert.equal(raw(values[entry.id],64)>>32n,raw(entry.expected,64)>>32n);
       }
-      return values;
+      return {values,references};
     })) return;
     if (!await suite.test(phases[3],'Bound counter deltas against firmware samples and a second read',async()=>{
       const baseline={};
       for (const entry of spec.counters) {
-        const result=await session.command('evaluate',{expression:`(unsigned long long)${entry.reference}`});
-        assert(/^(0x[0-9a-f]+|\d+)$/i.test(result.value), 'Firmware sample must be an exact unsigned integer');
-        baseline[entry.id]=BigInt(result.value); assert(baseline[entry.id]>=0n&&baseline[entry.id]<(1n<<64n));
+        baseline[entry.id]=await firmware(entry.reference);
       }
       const ids=spec.counters.map(e=>e.id), first=await read(ids,64), second=await read(ids,64);
       const delta=(newer,older)=>(newer-older+(1n<<64n))% (1n<<64n);

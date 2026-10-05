@@ -5,8 +5,14 @@
   "evidence_source": "Replace with separately built firmware samples and startup CVAL evidence; software values are not board evidence",
   "control_scope": "all",
   "peer_core": "core1",
+  "ready": "debugtui_timer_ready",
   "stable_registers": ["cpsr", "sctlr", "hsctlr", "cntp_ctl", "cntv_ctl", "cnthp_ctl", "prselr", "hprselr", "pmselr"],
-  "stable64": [{"id": "cntp_cval", "expected": "0xfedcba9876543210"}],
+  "stable64": [
+    {"id": "cntp_cval", "expected": "0xfedcba9876543210", "reference": "debugtui_timer_reference_cntp_cval"},
+    {"id": "cntv_cval", "expected": "0x0123456789abcdef", "reference": "debugtui_timer_reference_cntv_cval"},
+    {"id": "cntvoff", "expected": "0x0000000100000000", "reference": "debugtui_timer_reference_cntvoff"},
+    {"id": "cnthp_cval", "expected": "0x8000000000000001", "reference": "debugtui_timer_reference_cnthp_cval"}
+  ],
   "counters": [
     {"id": "cntpct", "reference": "debugtui_timer_reference_cntpct", "max_delta_ticks": "100000000000", "require_progress": true},
     {"id": "cntvct", "reference": "debugtui_timer_reference_cntvct", "max_delta_ticks": "100000000000", "require_progress": true}

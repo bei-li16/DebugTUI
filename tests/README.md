@@ -55,6 +55,10 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --only c
 
 ## 开发分支寄存器与内存夹具
 
+Timer 的 `node scripts/test-register-timer-hardware.cjs` 默认五项 skipped；显式运行需 `--run --project FILE --core NAME --case JSON --binary FILE`。以 `tests/fixtures/register-timer-board.example.json` 为起点，在专用 Hyp 固件 ready 循环暂停，替换四个稳定 CVAL/offset 期待值和每核独立参考符号，并记录计数器 debug freeze 与允许时间窗。`register-timer-board.c` 先检查正常执行 Hyp，再只读采样全部九项 MRC、六项 MRRC；TVAL 是动态项，关闭时 TVAL/ISTATUS 为 UNKNOWN。实际 EXE 双核软件基线六阶段通过，SVC/未就绪/参考值不同在正确阶段停止并清理。GNU Arm 11.4 离线编译及全部十五项指令编码核对通过，没有目标代码执行。正常 EL 权限与 Debug state 的 EDSCR.HDD/Hyp debug 授权分开验收，不能把该 Hyp 基线流程当作通用权限适配；[详细范围](../docs/register-timer.md)、[十二项环境 case](cases/register-timer.md) 明确未执行项。
+
+单核 case 去掉 `peer_core` 和 `control_scope`，使用实际核心名。固件参考值必须为每核独立存储；ready 前的 DMB 只保证存储排序，不清理缓存，实际 GDB/CPU/AP 对参考 RAM 的可见性和缓存行为须独立核验。
+
 银行读取使用 `registers::banked::tests` 和 `tests/selector_access/banked_cases.rs`：覆盖全部 23 个内置银行、旧协议／配置拒绝、精确宽度、权限与身份拒绝、传输故障隔离、不重试、实际线程／帧变化和双核 Scope All 归属。`tools/openocd-adapter/test.py` 编译生产 C 银行事务，验证 20 个故障点、R0 回读、完整 DSPSR 停止状态一致（含 T／IT／模式／标志变化）和独立 GNU Arm 指令编码；真实 OpenOCD 的离线命令测试只使用进程内 dummy。
 
 延后 REG-H02 驱动 `node scripts/test-register-banked-hardware.cjs` 默认 4 skipped、不连接；显式运行参数为 `--run --project FILE --core NAME --case JSON --binary FILE`。独立样本来自 `tests/fixtures/register-banked-board.S`，用 `-mcpu=cortex-r52 -mthumb -DDEBUGTUI_BANKED_MODE=MODE` 编译，共 8 个实际模式均已汇编通过。以 `register-banked-board.example.json` 为起点，替换证据并去掉 `software_example`；只在 ready 循环暂停，参考数组须为每核独立存储，案例需填写真实 mode、MIDR、peer 和全部银行引用。非 Hyp 的三个 Hyp 银行标为 `unavailable=true`；User 的所有银行标为 unavailable，不进行特权 Probe。工程连接／退出不得自动运行、复位或下载，设置 `on_exit="disconnect"`。实际二进制在双核软件模型运行 Hyp 基线和 User 拒绝两种五阶段流程，明确 `board_tests_executed=false`。

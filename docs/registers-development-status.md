@@ -1,5 +1,18 @@
 # 寄存器功能实现进度
 
+## 2026-10-05：Timer 独立固件基线与 Debug state 权限边界
+
+自检发现正常执行 EL 权限不能直接作为 Debug state 读取门禁：完整 DDI0568A.c F1.3.3–4 区分 EDSCR.HDD 与 Hyp invasive debug 授权，HDD=1 时低 EL 的 EL2 trap 可成为 UNDEFINED。目录访问说明现明确正常执行规则与后端 Debug state 证据的区别，不用停止前 CPSR 或配置值猜测通用读取权限。完整运行时权限适配仍未完成。
+
+专用 REG-H05 基线驱动先核对 Hyp 与 ready，再访问选定核/peer 控制；该要求限定正常执行固件基线，不代替应用的通用权限判断。独立固件先 MRS 检查 Hyp，再只读采样十五项 Timer；四个 CVAL/offset 有独立符号，驱动分别比较符号、期待值和完整 MRRC 值，两个动态计数器按窗口核对。实际 EXE 双核软件基线六阶段通过；新增一项 Rust 集成执行 SVC、未就绪、独立基线不同三种失败流程，验证正确 STOP/WIDTH 阶段与正常清理，前两类零 TCL 访问。最初单核夹具误带多核 control_scope 的失败保留为 `artifacts/register-timer-baseline-fixture-before.log`，修正配置后保留完整断言通过；聚焦日志 `artifacts/register-timer-baseline-focused.log`。
+
+GNU Arm 11.4.0 的离线 R52 对象以严格 C 警告编译通过；实际反汇编与独立手写九项 MRC、六项 MRRC 编码一致，MRS 在前，无 MCR/MCRR/MSR，未执行目标代码。源/对象/反汇编 SHA256 与限制记录在 [`artifacts/register-timer-firmware-report.json`](../artifacts/register-timer-firmware-report.json)。默认硬件驱动仍是五项 SKIPPED，报告 [`artifacts/register-timer-hardware-1791202201841-d4a6e6af/report.json`](../artifacts/register-timer-hardware-1791202201841-d4a6e6af/report.json)。
+
+最终完整 `node scripts/test-functional.cjs --only unit` 为 **365 单元＋131 集成通过，2 ignored**（共 **496 通过**），**F24 107/107**；其余 **22 套件未选择**。报告 [`artifacts/functional-1791201882470-b0adc186/report.json`](../artifacts/functional-1791201882470-b0adc186/report.json)，完整 Cargo 日志为同目录 `unit.log`；整套 328333 ms，无超时。严格 Clippy、目录重新生成比对、格式与差异检查通过，日志 `artifacts/register-timer-baseline-clippy.log`。
+
+具体范围见 [Timer 自检](register-timer.md)，[十二项环境 case](../tests/cases/register-timer.md) 均 SKIPPED，当前 **已完成／未完成 20/51**，本批未新增勾选。REG-401/402/403 的完整 Debug state/EL1/Guest/User 权限、实际后端及采样一致性、REG-208、其余系统/工具整合/writer 和最终升版/安装/Release 仍待完成。提交并推送 `codex/register-debugging`，未上板、修改全局安装或发布，目标保持 active。
+
+
 ## 2026-10-05：Timer 十五项目录与 Unknown 读取约束
 
 按 R52 TRM 表 11-1、完整 Armv8-R supplement 表 E1-1 和基础 Timer 字段定义，补齐九项三十二位与六项六十四位的描述、访问说明、字段及 `timer.present=1` 条件。Unknown 不自动读取，No 手动也不请求；实际 Probe 的观察和原声明分别保存。TVAL 明确为三十二位有符号差值；ENABLE=0 时 TVAL/ISTATUS 为架构 UNKNOWN，保留原始位但不提供误导的 ISTATUS 枚举。字段访问可覆盖整寄存器，全部六十四位高低位保留，未增加 Timer writer。
