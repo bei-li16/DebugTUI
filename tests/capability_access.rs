@@ -41,7 +41,7 @@ fn fixture(flags: &[(&str, &str)]) -> (Project, PathBuf) {
         "DEBUGTUI_TEST_REGISTER_VALUES".into(),
         json!({
             "cpsr":"0x1a", "midr":"0x411fd134", "id_pfr1":"0x10111001", "id_dfr0":"0x03010066",
-            "mpuir":"0x1800", "hmpuir":"0x14", "cpacr":"0xf00000", "pmcr":"0x41003000",
+            "mpuir":"0x1800", "hmpuir":"0x14", "cpacr":"0xf00000", "pmcr":"0x41132000",
             "icc_ctlr":"0x400", "ich_vtr":"0xd4180003"
         })
         .to_string(),
@@ -103,6 +103,188 @@ fn reads(path: &PathBuf) -> Vec<String> {
         .collect()
 }
 
+fn conditional_catalogue(
+    project: &mut Project,
+    transcript: &std::path::Path,
+    fact: &str,
+    min: u64,
+    max: Option<u64>,
+) {
+    use debugtui::registers::{Catalogue, Condition, Reader};
+    let mut catalogue = Catalogue::builtin("cortex-r52").unwrap();
+    let parent = catalogue
+        .registers
+        .iter_mut()
+        .find(|r| r.id == "cpsr")
+        .unwrap();
+    parent.conditions = vec![Condition {
+        fact: fact.into(),
+        min,
+        max,
+    }];
+    let mut alias = parent.clone();
+    alias.id = "conditional_alias".into();
+    alias.name = "Conditional CPSR alias".into();
+    alias.reader = Reader::Alias {
+        source: "cpsr".into(),
+        offset: 0,
+    };
+    alias.conditions.clear();
+    alias.writer = None;
+    alias.write = None;
+    catalogue.registers.push(alias);
+    catalogue.validate().unwrap();
+    project.registers.catalogue = transcript.parent().unwrap().join("conditional.toml");
+    fs::write(
+        &project.registers.catalogue,
+        toml::to_string(&catalogue).unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
+fn alias_parent_unknown_conditions_block_automatic_reads_but_keep_explicit_manual_reads() {
+    let (mut project, transcript) = fixture(&[]);
+    conditional_catalogue(&mut project, &transcript, "fixture.count", 1, None);
+    let engine = session::spawn(project);
+    ok(&engine, 1, "connect", json!({}));
+    let automatic = ok(
+        &engine,
+        2,
+        "registers_read",
+        json!({"ids":["conditional_alias"]}),
+    );
+    assert_eq!(automatic["samples"][0]["state"], "not_read");
+    assert_eq!(automatic["samples"][0]["implementation"], "unknown");
+    assert!(
+        reads(&transcript).is_empty(),
+        "An alias must not bypass its parent's missing capability"
+    );
+    let manual = ok(
+        &engine,
+        3,
+        "registers_read",
+        json!({"ids":["conditional_alias"],"manual":true}),
+    );
+    assert_eq!(manual["samples"][0]["state"], "valid");
+    assert_eq!(manual["samples"][0]["implementation"], "unknown");
+    assert_eq!(reads(&transcript).len(), 1);
+    ok(&engine, 4, "quit", json!({}));
+}
+
+#[test]
+fn register_eligibility_sources_survive_success_expiry_and_retained_values() {
+    let (mut project, transcript) = fixture(&[]);
+    conditional_catalogue(
+        &mut project,
+        &transcript,
+        "icc.physical.prebits",
+        5,
+        Some(5),
+    );
+    let engine = session::spawn(project);
+    ok(&engine, 1, "connect", json!({}));
+    let listed = ok(&engine, 2, "registers_list", json!({}));
+    ok(
+        &engine,
+        3,
+        "registers_probe",
+        json!({"context":listed["context"]}),
+    );
+    let read = ok(
+        &engine,
+        4,
+        "registers_read",
+        json!({"ids":["conditional_alias"]}),
+    );
+    let sample = &read["samples"][0];
+    assert_eq!(sample["state"], "valid");
+    assert_eq!(sample["eligibility"]["implementation"], "yes");
+    assert_eq!(
+        sample["eligibility"]["conditions"][0]["source"],
+        "observation"
+    );
+    assert_eq!(sample["eligibility"]["conditions"][0]["value"], 5);
+    assert_eq!(
+        sample["eligibility"]["conditions"][0]["configured_value"],
+        7
+    );
+    assert_eq!(sample["eligibility"]["conditions"][0]["register"], "cpsr");
+    assert_eq!(sample["eligibility"]["context"], listed["context"]);
+    let preserved = sample["eligibility"].clone();
+    ok(&engine, 5, "step", json!({}));
+    ok(&engine, 6, "wait_stopped", json!({}));
+    let before_rejection = reads(&transcript).len();
+    let rejected = ok(
+        &engine,
+        7,
+        "registers_read",
+        json!({"ids":["conditional_alias"],"manual":true}),
+    );
+    assert_eq!(rejected["samples"][0]["implementation"], "no");
+    assert_eq!(rejected["samples"][0]["reason"], "hardware_not_implemented");
+    assert_eq!(
+        reads(&transcript).len(),
+        before_rejection,
+        "Manual intent cannot override a known exclusion"
+    );
+    let status = ok(&engine, 8, "status", json!({}));
+    let cached = status["register_samples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "conditional_alias")
+        .unwrap();
+    assert_eq!(cached["value"]["hex"], "0x0000001a");
+    assert_eq!(
+        cached["eligibility"]["conditions"][0]["source"],
+        "configuration"
+    );
+    assert_eq!(cached["eligibility"]["conditions"][0]["value"], 7);
+    assert!(cached["eligibility"]["probe"].is_null());
+    assert_eq!(cached["last_value_eligibility"]["kind"], "known");
+    assert_eq!(cached["last_value_eligibility"]["evidence"], preserved);
+    assert_ne!(cached["eligibility"]["context"], preserved["context"]);
+    ok(&engine, 9, "quit", json!({}));
+}
+
+#[test]
+fn write_only_alias_dependencies_never_issue_value_reads_even_with_manual_intent() {
+    let (mut project, transcript) = fixture(&[]);
+    conditional_catalogue(&mut project, &transcript, "fixture.present", 1, None);
+    project.registers.facts.insert("fixture.present".into(), 1);
+    let mut catalogue: debugtui::registers::Catalogue =
+        toml::from_str(&fs::read_to_string(&project.registers.catalogue).unwrap()).unwrap();
+    catalogue
+        .registers
+        .iter_mut()
+        .find(|r| r.id == "cpsr")
+        .unwrap()
+        .access = debugtui::registers::Access::Wo;
+    catalogue.validate().unwrap();
+    fs::write(
+        &project.registers.catalogue,
+        toml::to_string(&catalogue).unwrap(),
+    )
+    .unwrap();
+    let engine = session::spawn(project);
+    ok(&engine, 1, "connect", json!({}));
+    for (id, manual) in [(2, false), (3, true)] {
+        let result = ok(
+            &engine,
+            id,
+            "registers_read",
+            json!({"ids":["conditional_alias"],"manual":manual}),
+        );
+        assert_eq!(result["samples"][0]["reason"], "write_only");
+        assert_eq!(result["samples"][0]["state"], "not_read");
+        assert!(result["samples"][0]["value"].is_null());
+        assert_eq!(result["samples"][0]["eligibility"]["implementation"], "yes");
+        assert!(reads(&transcript).is_empty());
+    }
+    ok(&engine, 4, "quit", json!({}));
+}
+
 #[test]
 fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop() {
     let (project, transcript) = fixture(&[]);
@@ -127,7 +309,7 @@ fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop
     assert_eq!(result["facts"]["icc.physical.prebits"], 5);
     assert_eq!(result["facts"]["icv.virtual.prebits"], 6);
     assert_eq!(result["facts"]["icv.virtual.pribits"], 7);
-    assert_eq!(result["facts"]["pmu.counters"], 6);
+    assert_eq!(result["facts"]["pmu.counters"], 4);
     assert!(result["facts"]["vfp.present"].is_null());
     assert!(result["facts"]["vfp.enabled"].is_null());
     assert_eq!(
@@ -338,6 +520,7 @@ fn non_hyp_probe_never_reads_el2_or_attributes_virtual_icc_as_physical() {
     let mut values: Value =
         serde_json::from_str(&project.gdb.env["DEBUGTUI_TEST_REGISTER_VALUES"]).unwrap();
     values["cpsr"] = json!("0x13");
+    values["pmcr"] = json!("0x41130000");
     project
         .gdb
         .env
@@ -355,10 +538,32 @@ fn non_hyp_probe_never_reads_el2_or_attributes_virtual_icc_as_physical() {
         "mpu.el2.regions",
         "icc.physical.prebits",
         "icv.virtual.prebits",
+        "pmu.counters",
     ] {
         assert!(result["probe"]["facts"][key].is_null());
     }
     let actual_reads = reads(&transcript);
+    assert_eq!(result["facts"]["pmu.pmcr_n"], 0);
+    assert_eq!(result["facts"]["pmu.present"], 1);
+    let id = debugtui::registers::Catalogue::builtin("cortex-r52")
+        .unwrap()
+        .registers
+        .into_iter()
+        .find(|r| {
+            r.conditions
+                .iter()
+                .any(|c| c.fact == "pmu.counters" && c.min == 1)
+        })
+        .unwrap()
+        .id;
+    let unknown = ok(&engine, 20, "registers_read", json!({"ids":[id]}));
+    assert_eq!(unknown["samples"][0]["implementation"], "unknown");
+    assert_eq!(unknown["samples"][0]["state"], "not_read");
+    assert_eq!(
+        reads(&transcript),
+        actual_reads,
+        "Guest-visible zero cannot justify physical absence or speculative reads"
+    );
     for index in [5, 8, 9] {
         assert!(!actual_reads.contains(&format!("-data-list-register-values r {index}")));
     }
@@ -535,7 +740,7 @@ fn target_scoped_tcl_probe_uses_exact_mrcs_and_quarantines_failed_restoration() 
             "0x1800",
             "0x14",
             "0xf00000",
-            "0x41003000",
+            "0x41132000",
             "0x400",
             "0xd4180003",
         ];
@@ -657,6 +862,13 @@ fn target_scoped_tcl_probe_uses_exact_mrcs_and_quarantines_failed_restoration() 
 #[test]
 fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() {
     let (mut project, transcript) = fixture(&[]);
+    conditional_catalogue(
+        &mut project,
+        &transcript,
+        "icc.physical.prebits",
+        5,
+        Some(5),
+    );
     project.cores = (0..2)
         .map(|i| Core {
             name: format!("core{i}"),
@@ -693,10 +905,41 @@ fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() 
             .iter()
             .all(|s| s["owner"] == "core:core0")
     );
+    let first_read = ok(
+        &engine,
+        21,
+        "registers_read",
+        json!({"ids":["conditional_alias"]}),
+    );
+    assert_eq!(
+        first_read["samples"][0]["eligibility"]["context"],
+        first["context"]
+    );
+    assert_eq!(
+        first_read["samples"][0]["eligibility"]["conditions"][0]["source"],
+        "observation"
+    );
+    assert_eq!(reads(&transcript).len(), 11);
     ok(&engine, 7, "select_core", json!({"index":1}));
     let second = ok(&engine, 8, "registers_list", json!({}));
     assert!(second["probe"].is_null());
     assert_ne!(second["context"]["session"], first["context"]["session"]);
+    let second_read = ok(
+        &engine,
+        22,
+        "registers_read",
+        json!({"ids":["conditional_alias"]}),
+    );
+    assert_eq!(second_read["samples"][0]["implementation"], "no");
+    assert_eq!(
+        second_read["samples"][0]["eligibility"]["context"],
+        second["context"]
+    );
+    assert_eq!(
+        second_read["samples"][0]["eligibility"]["conditions"][0]["source"],
+        "configuration"
+    );
+    assert!(second_read["samples"][0]["eligibility"]["probe"].is_null());
     assert!(
         request(
             &engine,
@@ -706,7 +949,7 @@ fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() 
         )
         .is_err()
     );
-    assert_eq!(reads(&transcript).len(), 10);
+    assert_eq!(reads(&transcript).len(), 11);
     let probe = ok(
         &engine,
         10,
@@ -720,6 +963,23 @@ fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() 
             .iter()
             .all(|s| s["owner"] == "core:core1")
     );
-    assert_eq!(reads(&transcript).len(), 20);
+    assert_eq!(reads(&transcript).len(), 21);
+    let second_read = ok(
+        &engine,
+        23,
+        "registers_read",
+        json!({"ids":["conditional_alias"]}),
+    );
+    assert_eq!(second_read["samples"][0]["state"], "valid");
+    assert_eq!(second_read["samples"][0]["owner"], "core:core1");
+    assert_eq!(
+        second_read["samples"][0]["eligibility"]["context"],
+        second["context"]
+    );
+    assert_eq!(
+        second_read["samples"][0]["eligibility"]["conditions"][0]["source"],
+        "observation"
+    );
+    assert_eq!(reads(&transcript).len(), 22);
     ok(&engine, 11, "quit", json!({}));
 }

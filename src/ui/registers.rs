@@ -135,8 +135,15 @@ impl RegisterView {
             Some("Configure the independent registers.vfp_write_command and this core's TCL target before editing VFP storage.".into())
         } else if !register.access.writable() {
             Some("Register is read-only.".into())
-        } else if register.implementation(&self.facts).0 == Implementation::No {
-            Some("Hardware capability is explicitly absent.".into())
+        } else if self
+            .catalogue
+            .as_ref()
+            .unwrap()
+            .implementation(register, &self.facts)
+            .0
+            == Implementation::No
+        {
+            Some("Capability conditions exclude this register; see Status for their source.".into())
         } else {
             None
         };
@@ -199,7 +206,13 @@ impl RegisterView {
     fn matches(&self, index: usize) -> bool {
         let register = &self.catalogue.as_ref().unwrap().registers[index];
         (self.all_definitions
-            || (register.implementation(&self.facts).0 != Implementation::No
+            || (self
+                .catalogue
+                .as_ref()
+                .unwrap()
+                .implementation(register, &self.facts)
+                .0
+                != Implementation::No
                 && !self.runtime_absent.contains(&register.id)))
             && (self.query.is_empty()
                 || format!("{} {} {}", register.name, register.description, register.id)
@@ -1068,8 +1081,7 @@ impl App {
                 continue;
             };
             let register = &catalogue.registers[index];
-            let implementation = register.implementation(&self.register_view.facts).0;
-            if register.auto_read(implementation)
+            if catalogue.automatic_read(register, &self.register_view.facts)
                 && self.register_view.category(
                     &self.project,
                     &context,
@@ -1077,7 +1089,6 @@ impl App {
                     self.snapshot.state == "STOPPED",
                 ) != status::Category::Valid
                 && !self.register_view.runtime_absent.contains(&register.id)
-                && (register.conditions.is_empty() || implementation == Implementation::Yes)
                 && !self.register_view.attempts.contains(&(
                     context.session,
                     context.generation,
@@ -1147,6 +1158,8 @@ impl App {
                         owner_generation: None,
                         provenance: None,
                         last_value_provenance: None,
+                        eligibility: None,
+                        last_value_eligibility: None,
                         timestamp_ms: 0,
                         source: "selector".into(),
                     });
@@ -1155,6 +1168,7 @@ impl App {
                     // A whole-request error has no new value-route evidence.
                     // Keep the previous raw value's origin separately.
                     sample.provenance = None;
+                    sample.eligibility = None;
                     if let Some(old) = &previous {
                         sample.inherit_value_origin(old);
                     }
@@ -1632,6 +1646,8 @@ mod tests {
             owner_generation: None,
             provenance: None,
             last_value_provenance: None,
+            eligibility: None,
+            last_value_eligibility: None,
             timestamp_ms: 23,
             source: format!("gdb:{id}"),
         }

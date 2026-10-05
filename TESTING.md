@@ -2,6 +2,8 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04–05，尚未发布）
 
+2026-10-05 REG-110 条件依据批次：完整 Cargo **362 单元＋129 集成通过，2 ignored**，F24 **102/102**；严格 Clippy 通过。覆盖全父链条件/WO、数量边界、声明与当前观察、成功保存依据、连续失败原值依据、双核及共享拒绝、旧 JSON 和只读详情。R52 Hyp 物理 PMU 数量限于四个，EL0/EL1 的 PMCR.N 受限值保留但不推断物理缺失；物理 ICC 限于 TRM 五位。首次完整回归的 VFP 清理失败已保留；修复测试助手 exit 早于 stdout 排空的顺序，四项确定性 Node 回归及原 VFP 驱动通过后重新完整验证。其余22套件未选择。[条件自检](docs/register-eligibility.md)、[开发进度](docs/registers-development-status.md) 给出完整报告；[八项环境 case](tests/cases/register-eligibility.md) 均 SKIPPED，未上板、安装或发布。
+
 2026-10-05 REG-107 目录交付批次：完整 Cargo **353 单元＋125 集成通过，2 ignored**，F24 **89/89**；严格 Clippy、优化构建通过。实际生产 npm／EXE／ZIP、空用户扩展目录、postinstall、CMD／PowerShell 入口、客户数据保留、损坏 override 及非连续多核来源的十四项 case 通过；发布方摘要校验后的真实 v0.9.3 包独立替换也十四项通过。代码尚为 0.9.3，历史包验证是同版本不同内容替换；最终升版与公网安装仍待执行。完整报告、此前 300 秒超时及调整为 600 秒后成功回归的记录见 [目录交付自检](docs/register-distribution.md) 和 [开发进度](docs/registers-development-status.md)。[八项环境 case](tests/cases/register-distribution.md) 均 SKIPPED，未上板或改系统安装。
 
 2026-10-05 状态与取消批次：308 项单元、83 项集成通过，2 项 ignored；严格 Clippy 通过。实际 worker／MI 与真实 Tcl 验证取消后整批丢弃、末项丢弃、旧样本／Probe 保留、selector 仍恢复、未知恢复仍 FAULT、直接 MPU／VFP 以及 Scope All 当前 worker 隔离；九项 Ratatui 状态／计数／说明与取消测试通过。统一 runner 的 `--only unit` 记录为 `artifacts/functional-1791150195450-fbd63962/report.json`，F24 42 个模式全部有通过证据；其余 20 suites skipped。上板与实际终端视觉用例 [已准备但未执行](tests/cases/register-status-cancel.md)，不能把软件测试记为该验收完成。

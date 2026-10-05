@@ -70,6 +70,7 @@ impl Coordinator {
             .and_then(|last| last.last_valid.as_ref())
             .and_then(|last| last.value.clone());
         sample.last_value_provenance = None;
+        sample.last_value_eligibility = None;
         if let Some(last) = last.and_then(|last| last.last_valid.as_ref()) {
             sample.timestamp_ms = last.timestamp_ms;
             sample.inherit_value_origin(last);

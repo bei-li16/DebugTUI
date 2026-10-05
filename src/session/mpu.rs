@@ -135,6 +135,14 @@ impl Engine {
                     return Err("Physical MPU context changed; samples discarded".into());
                 }
                 let register = builtin.register(id).unwrap();
+                let eligibility = builtin
+                    .eligibility(
+                        register,
+                        &self.project.registers.facts,
+                        Some(&probe),
+                        &request.context,
+                    )
+                    .with_catalogue_source("builtin:cortex-r52");
                 let result = self.read_register_value(register, &builtin, &mut raw);
                 let mut sample = Sample {
                     id: id.clone(),
@@ -152,6 +160,8 @@ impl Engine {
                         p
                     }),
                     last_value_provenance: None,
+                    eligibility: Some(eligibility),
+                    last_value_eligibility: None,
                     timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                     source: super::registers::route_name(register),
                 };

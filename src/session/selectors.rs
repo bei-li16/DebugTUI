@@ -56,6 +56,24 @@ impl Engine {
             .get(&request.context.core)
             .ok_or("Declare this core's system-register target")?
             .clone();
+        let catalogue = Catalogue::builtin("cortex-r52")?;
+        let eligibility: std::collections::BTreeMap<_, _> = plan
+            .ids
+            .iter()
+            .map(|id| {
+                (
+                    id.clone(),
+                    catalogue
+                        .eligibility(
+                            catalogue.register(id).unwrap(),
+                            &self.project.registers.facts,
+                            Some(&probe),
+                            &request.context,
+                        )
+                        .with_catalogue_source("builtin:cortex-r52"),
+                )
+            })
+            .collect();
         let services = crate::debug_access::for_project(&self.project)?;
         let mut leases = services
             .iter()
@@ -78,7 +96,6 @@ impl Engine {
             &format!("Selector {} index {}", plan.selector, plan.index),
         );
         let access = self.register_value_access.clone();
-        let catalogue = Catalogue::builtin("cortex-r52")?;
         if let Some(error) = self.register_access_fault.clone() {
             for lease in &mut leases {
                 lease.quarantine(&error);
@@ -138,6 +155,8 @@ impl Engine {
                             aliases: vec![],
                         }),
                         last_value_provenance: None,
+                        eligibility: eligibility.get(id).cloned(),
+                        last_value_eligibility: None,
                         timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                         source: format!(
                             "openocd:selector:{target}:{}:{}",
@@ -230,6 +249,8 @@ impl Engine {
                     aliases: vec![],
                 }),
                 last_value_provenance: None,
+                eligibility: eligibility.get(id).cloned(),
+                last_value_eligibility: None,
                 timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                 source: format!("openocd:selector:{target}:{}:{}", plan.selector, plan.index),
             })

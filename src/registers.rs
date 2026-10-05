@@ -14,6 +14,7 @@ pub const OPENOCD_ADAPTER_PROTOCOL: &str =
 pub mod banked;
 pub mod capabilities;
 pub mod display;
+pub mod eligibility;
 pub mod mpu;
 pub mod provenance;
 pub mod selector;
@@ -920,6 +921,11 @@ pub struct Sample {
     /// Kept separately when an unsuccessful attempt retains an earlier raw value.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_value_provenance: Option<provenance::RetainedOrigin>,
+    /// Conditions used for this attempt; separate from read permission and outcome.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub eligibility: Option<eligibility::Evidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_value_eligibility: Option<eligibility::Retained>,
 }
 impl Sample {
     pub fn value_provenance(&self) -> Option<&provenance::Provenance> {
@@ -931,6 +937,14 @@ impl Sample {
     }
     pub fn inherit_value_origin(&mut self, previous: &Self) {
         if self.value.is_some() {
+            self.last_value_eligibility =
+                Some(previous.last_value_eligibility.clone().unwrap_or_else(|| {
+                    previous
+                        .eligibility
+                        .clone()
+                        .map(|evidence| eligibility::Retained::Known(Box::new(evidence)))
+                        .unwrap_or(eligibility::Retained::Unknown)
+                }));
             self.last_value_provenance =
                 Some(previous.last_value_provenance.clone().unwrap_or_else(|| {
                     previous

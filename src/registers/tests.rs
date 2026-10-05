@@ -808,6 +808,8 @@ fn stale_sessions_generations_cores_frames_and_owner_are_rejected() {
         owner_generation: None,
         provenance: None,
         last_value_provenance: None,
+        eligibility: None,
+        last_value_eligibility: None,
         timestamp_ms: 0,
         source: "gdb:r0".into(),
     };

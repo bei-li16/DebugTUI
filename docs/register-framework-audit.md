@@ -34,6 +34,6 @@
 
 ## 仍未完成的验收
 
-上述基础框架批次之后，REG-102 由 [配置自检](register-configuration.md)、REG-106 由 [缓存生命周期自检](register-cache-lifecycle.md)、REG-109 由 [共享归属自检](register-shared-owners.md)、REG-210 由 [读取来源自检](register-read-provenance.md) 单独验收，REG-108 由 [Setup 目录选择自检](register-setup-catalogues.md) 验收配置、完整元数据预览与当前核心身份提示，REG-107 由 [目录交付自检](register-distribution.md) 验收五份载荷、初始化及 npm／EXE／ZIP 隔离替换与客户目录保留，当前总计 **19/52**。REG-110、REG-208 和后续阶段仍未完整验收，完整实际身份／可选类别判定、PowerShell／VS Code 视觉、正式升版后的真实版本升级与公网交付仍需相应证据。
+上述基础框架批次之后，REG-102 由 [配置自检](register-configuration.md)、REG-106 由 [缓存生命周期自检](register-cache-lifecycle.md)、REG-109 由 [共享归属自检](register-shared-owners.md)、REG-210 由 [读取来源自检](register-read-provenance.md) 单独验收，REG-108 由 [Setup 目录选择自检](register-setup-catalogues.md) 验收配置、完整元数据预览与当前核心身份提示，REG-107 由 [目录交付自检](register-distribution.md) 验收五份载荷、初始化及 npm／EXE／ZIP 隔离替换与客户目录保留；REG-110 由 [条件依据自检](register-eligibility.md) 验收全父链条件、WO、模式受限数量及独立当前/原值依据，当前总计 **20/51**。REG-208 和后续阶段仍未完整验收，完整实际身份／可选类别判定、PowerShell／VS Code 视觉、正式升版后的真实版本升级与公网交付仍需相应证据。
 
 R52+ 专有身份／差异、合法 EL1／Guest／User VFP、FP 状态控制 writer、系统／银行 writer、64 位 MMIO、GIC／Debug／STM 完整适配和最终安装／Release 仍待完成。当前 EL1 VFP 限制及架构依据继续见 [状态与取消](register-read-status-and-cancel.md)。本轮没有改动后端指令实现，没有使用 Hyp 软件测试代替其他模式支持。

@@ -12,6 +12,7 @@ use std::sync::atomic::AtomicU64;
 pub(super) struct ReadCache {
     values: BTreeMap<String, RawValue>,
     pub(super) provenance: BTreeMap<String, Provenance>,
+    manual: bool,
 }
 impl std::ops::Deref for ReadCache {
     type Target = BTreeMap<String, RawValue>;
@@ -187,7 +188,7 @@ impl Engine {
             .iter()
             .map(|id| id.as_str().ok_or("Register ID must be text"))
             .collect::<Result<_, _>>()?;
-        let (catalogue, _) = self
+        let (catalogue, catalogue_source) = self
             .register_catalogue
             .as_ref()
             .map_err(Clone::clone)?
@@ -204,14 +205,25 @@ impl Engine {
             .get("manual")
             .and_then(Json::as_bool)
             .unwrap_or(false);
-        let mut values = ReadCache::default();
+        let mut values = ReadCache {
+            manual,
+            ..Default::default()
+        };
         let mut samples = Vec::new();
         let mut frame_proof = None;
         for id in ids {
             self.check_register_read_cancelled()?;
             let register = catalogue.register(id).unwrap();
-            let (implementation, evidence) =
-                register.implementation(&self.effective_register_facts());
+            let evidence = catalogue
+                .eligibility(
+                    register,
+                    &self.project.registers.facts,
+                    self.snapshot.register_probe.as_ref(),
+                    &context,
+                )
+                .with_catalogue_source(&catalogue_source);
+            let implementation = evidence.implementation;
+            let (readable, side_effect) = catalogue.read_policy(register);
             let mut topology = self.project.registers.topology.clone();
             if topology.chip.is_empty() {
                 topology.chip = self.project.debug.chip.clone();
@@ -223,7 +235,7 @@ impl Engine {
                 state: State::NotRead,
                 implementation,
                 reason: Reason::Unknown,
-                detail: evidence,
+                detail: evidence.detail.clone(),
                 value: None,
                 owner,
                 context: context.clone(),
@@ -233,20 +245,25 @@ impl Engine {
                 owner_generation: None,
                 provenance: Some(Provenance::declared(&register.reader)),
                 last_value_provenance: None,
+                eligibility: Some(evidence),
+                last_value_eligibility: None,
             };
             if implementation == Implementation::No {
                 sample.state = State::Unsupported;
                 sample.reason = Reason::HardwareNotImplemented;
-            } else if !register.access.readable() {
+            } else if !readable {
                 sample.reason = Reason::WriteOnly;
-                sample.detail = "Architectural write-only operation; no read sent".into();
+                sample.detail = "Register or alias dependency is write-only; no read sent".into();
             } else if sample.owner.is_none() {
                 sample.state = State::Unavailable;
                 sample.detail = "Register owner is unknown; configure chip/cluster topology".into();
-            } else if register.read_side_effect && !manual {
+            } else if side_effect && !manual {
                 sample.detail = "Reading has side effects; explicit manual read required".into();
             } else if implementation == Implementation::Unknown
-                && !register.conditions.is_empty()
+                && sample
+                    .eligibility
+                    .as_ref()
+                    .is_some_and(|e| !e.conditions.is_empty())
                 && !manual
             {
                 sample.detail =
@@ -408,10 +425,16 @@ impl Engine {
                         )
                     })?;
                     // Alias requests cannot bypass a parent's access or implementation restrictions.
-                    if !parent.access.readable()
-                        || parent.read_side_effect
-                        || parent.implementation(&self.effective_register_facts()).0
-                            == Implementation::No
+                    let (implementation, evidence) =
+                        catalogue.implementation(parent, &self.effective_register_facts());
+                    let (readable, side_effect) = catalogue.read_policy(parent);
+                    if implementation == Implementation::No {
+                        return Err((Reason::HardwareNotImplemented, evidence));
+                    }
+                    if !readable
+                        || (side_effect && !values.manual)
+                        || (!values.manual
+                            && !catalogue.automatic_read(parent, &self.effective_register_facts()))
                     {
                         return Err((
                             Reason::AccessRestricted,

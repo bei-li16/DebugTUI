@@ -15,6 +15,8 @@ fn sample(app: &App, id: &str, value: &str) -> Sample {
         owner_generation: None,
         provenance: None,
         last_value_provenance: None,
+        eligibility: None,
+        last_value_eligibility: None,
         timestamp_ms: 10,
         source: "openocd:cp15".into(),
     }

@@ -34,6 +34,8 @@ fn probe(values: &[(&str, u64)]) -> Probe {
             owner_generation: None,
             provenance: None,
             last_value_provenance: None,
+            eligibility: None,
+            last_value_eligibility: None,
             timestamp_ms: 29,
             source: format!("gdb:{id}"),
         });
@@ -163,6 +165,31 @@ fn gic_virtual_priority_evidence_never_decides_physical_ap_capacity() {
 }
 
 #[test]
+fn unadapted_r52_icc_priority_counts_remain_unknown_without_reusing_virtual_capacity() {
+    for bits in 1..=8 {
+        let p = probe(&[
+            ("cpsr", 0x1a),
+            ("icc_ctlr", (bits - 1) << 8),
+            ("ich_vtr", (6 << 29) | (5 << 26) | 3),
+        ]);
+        assert_eq!(p.facts["icc.ctlr_pribits"].value, bits);
+        assert_eq!(p.facts["icv.virtual.prebits"].value, 6);
+        if bits == 5 {
+            assert_eq!(p.facts["icc.physical.prebits"].value, 5);
+            assert_eq!(p.facts["icc.physical.pribits"].value, 5);
+        } else {
+            assert!(!p.facts.contains_key("icc.physical.prebits"));
+            assert!(!p.facts.contains_key("icc.physical.pribits"));
+            assert!(
+                p.notes
+                    .iter()
+                    .any(|note| note.contains("outside the adapted R52 value"))
+            );
+        }
+    }
+}
+
+#[test]
 fn optional_unknown_encodings_and_cpacr_do_not_invent_absence_or_fpu_enablement() {
     let p = probe(&[
         ("id_pfr1", 0x20222002),
@@ -184,7 +211,8 @@ fn optional_unknown_encodings_and_cpacr_do_not_invent_absence_or_fpu_enablement(
     let p = probe(&[
         ("id_pfr1", 0x10111001),
         ("id_dfr0", 0x03010066),
-        ("pmcr", 0x41003000),
+        ("cpsr", 0x1a),
+        ("pmcr", 0x41132000),
     ]);
     for key in [
         "el2.present",
@@ -194,10 +222,42 @@ fn optional_unknown_encodings_and_cpacr_do_not_invent_absence_or_fpu_enablement(
     ] {
         assert_eq!(p.facts[key].value, 1);
     }
-    assert_eq!(p.facts["pmu.counters"].value, 6);
+    assert_eq!(p.facts["pmu.counters"].value, 4);
     let p = probe(&[("id_pfr1", 0), ("id_dfr0", 0)]);
     assert_eq!(p.facts["el2.present"].value, 0);
     assert_eq!(p.facts["pmu.present"].value, 0);
+}
+
+#[test]
+fn pmcr_guest_counts_and_unadapted_hyp_values_never_prove_physical_counter_absence() {
+    for mode in [0x10, 0x13, 0x1a] {
+        for count in [0, 1, 4, 6, 31] {
+            for enabled in [0, 1] {
+                let p = probe(&[
+                    ("cpsr", mode),
+                    ("id_dfr0", 0x03010066),
+                    ("pmcr", 0x41130000 | (count << 11) | enabled),
+                ]);
+                assert_eq!(p.facts["pmu.present"].value, 1);
+                assert_eq!(p.facts["pmu.pmcr_n"].value, count);
+                if mode == 0x1a && count == 4 {
+                    assert_eq!(p.facts["pmu.counters"].value, 4);
+                } else {
+                    assert!(!p.facts.contains_key("pmu.counters"));
+                    assert!(
+                        p.notes
+                            .iter()
+                            .any(|note| note.contains("Physical PMU count remains unknown"))
+                    );
+                }
+            }
+        }
+    }
+    let p = probe(&[("pmcr", 0x41132000)]);
+    assert!(
+        !p.facts.contains_key("pmu.counters"),
+        "Unknown actual mode cannot prove physical capacity"
+    );
 }
 
 #[test]
@@ -289,6 +349,8 @@ fn observed_context_facts_override_declarations_and_report_retains_raw_sources()
         owner_generation: None,
         provenance: None,
         last_value_provenance: None,
+        eligibility: None,
+        last_value_eligibility: None,
         timestamp_ms: 30,
         source: "gdb:midr".into(),
     });

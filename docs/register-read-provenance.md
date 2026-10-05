@@ -44,4 +44,4 @@ Status 展示目录来源、目录 CPU/架构、配置 CPU 选择、具有当前
 
 前序 REG-109 组合自检发现：worker 保留的共享新字节在 owner 变化时已被协调器丢弃，但下一次失败刷新会把那些字节作为“旧值”放入中间快照。失败已由严格独立字节夹具复现，记录在 `artifacts/register-provenance-rejected-refresh.log`。协调器现在对未获认可的非 Valid 快照同样按该路由的最后已认可样本回填，清除没有保留值时的旧来源；新增断言覆盖失败的中间快照、Response 及后续 frame/status 快照，原始字节、来源和时间均不能复活。
 
-软件证据满足 REG-210 的来源展示范围。所有环境 case 见 [读取来源验收 case](../tests/cases/register-read-provenance.md)，本轮均 SKIPPED；其结果不外推为实板采样成功或实际终端视觉验收。REG-102 后续由 [配置自检](register-configuration.md) 单独验收；REG-001/107/108/110、REG-208、尚未适配类别和 writer、完整工具交付与最终 Release 按 TODO 继续跟踪。
+软件证据满足 REG-210 的来源展示范围。所有环境 case 见 [读取来源验收 case](../tests/cases/register-read-provenance.md)，本轮均 SKIPPED；其结果不外推为实板采样成功或实际终端视觉验收。REG-102 后续由 [配置自检](register-configuration.md)、REG-107 由 [目录交付](register-distribution.md)、REG-108 由 [Setup 目录选择](register-setup-catalogues.md)、REG-110 由 [条件依据自检](register-eligibility.md) 单独验收；REG-001 至 REG-008、REG-208、尚未适配类别和 writer、完整工具交付与最终 Release 按 TODO 继续跟踪。

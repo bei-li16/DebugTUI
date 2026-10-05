@@ -488,6 +488,10 @@ fn peer_activity_during_a_shared_read_discards_new_bytes_and_preserves_last_acce
     );
     assert_eq!(expired["value"], baseline["samples"][0]["value"]);
     assert_eq!(
+        expired["last_value_eligibility"],
+        json!({"kind":"known","evidence":baseline["samples"][0]["eligibility"]})
+    );
+    assert_eq!(
         expired["timestamp_ms"],
         baseline["samples"][0]["timestamp_ms"]
     );
@@ -536,6 +540,10 @@ fn peer_activity_during_a_shared_read_discards_new_bytes_and_preserves_last_acce
                             "even an intermediate failure snapshot must reject the discarded bytes"
                         );
                         assert_eq!(
+                            value["last_value_eligibility"],
+                            json!({"kind":"known","evidence":baseline["samples"][0]["eligibility"]})
+                        );
+                        assert_eq!(
                             value["last_value_provenance"],
                             json!({"status":"known","provenance":baseline["samples"][0]["provenance"]})
                         );
@@ -568,6 +576,10 @@ fn peer_activity_during_a_shared_read_discards_new_bytes_and_preserves_last_acce
     assert_eq!(
         sample(&failure_snapshot, "cluster")["last_value_provenance"],
         json!({"status":"known","provenance":baseline["samples"][0]["provenance"]})
+    );
+    assert_eq!(
+        sample(&failure_snapshot, "cluster")["last_value_eligibility"],
+        json!({"kind":"known","evidence":baseline["samples"][0]["eligibility"]})
     );
     assert_eq!(reads(&out), 4);
     fs::write(

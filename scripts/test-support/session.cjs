@@ -68,7 +68,10 @@ class Session {
     this.child.stdin.on('error', error => this.failPending(error));
     this.exit = new Promise(resolve => {
       this.child.once('error', error => { this.finished = true; this.failPending(error); resolve({code: null, error: error.message}); });
-      this.child.once('exit', (code, signal) => { this.finished = true; this.failPending(Error(`Debugger exited (${code}, ${signal})`)); resolve({code, signal}); });
+      this.child.once('exit', () => { this.finished = true; });
+      // exit can precede buffered stdout. Drain the response pipe before
+      // rejecting a pending quit or closing its evidence file.
+      this.child.once('close', (code, signal) => { this.finished = true; this.failPending(Error(`Debugger exited (${code}, ${signal})`)); resolve({code, signal}); });
     });
     this.stream = fs.createWriteStream(path.join(directory, `events-${crypto.randomUUID().slice(0, 8)}.jsonl`));
     readline.createInterface({input: this.child.stdout}).on('line', line => {

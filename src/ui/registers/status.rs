@@ -65,10 +65,17 @@ impl RegisterView {
         stopped: bool,
     ) -> Category {
         let register = &self.catalogue.as_ref().unwrap().registers[index];
-        if register.implementation(&self.facts).0 == Implementation::No {
+        if self
+            .catalogue
+            .as_ref()
+            .unwrap()
+            .implementation(register, &self.facts)
+            .0
+            == Implementation::No
+        {
             return Category::NotImplemented;
         }
-        if !register.access.readable() {
+        if !self.catalogue.as_ref().unwrap().read_policy(register).0 {
             return Category::WriteOnly;
         }
         let Some(sample) = self.sample(project, context, index) else {
@@ -113,9 +120,12 @@ impl RegisterView {
             let category = self.category(project, context, *index, stopped);
             counts.shown += 1;
             counts.categories[category as usize] += 1;
-            if self.catalogue.as_ref().unwrap().registers[*index]
-                .access
-                .readable()
+            if self
+                .catalogue
+                .as_ref()
+                .unwrap()
+                .read_policy(&self.catalogue.as_ref().unwrap().registers[*index])
+                .0
                 && category != Category::NotImplemented
             {
                 counts.readable += 1;
@@ -219,6 +229,21 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
                 .unwrap_or_else(|| "unknown".into()),
             register.scope
         ));
+        let catalogue = app.register_view.catalogue.as_ref().unwrap();
+        text.extend(
+            catalogue
+                .eligibility(
+                    register,
+                    &app.project.registers.facts,
+                    app.snapshot
+                        .register_probe
+                        .as_ref()
+                        .filter(|_| app.snapshot.state == "STOPPED"),
+                    &context,
+                )
+                .with_catalogue_source(&app.register_view.source)
+                .lines("Current condition evaluation"),
+        );
         if let Some(sample) = app.register_view.sample(&app.project, &context, index) {
             text.push(format!("Sample core: {}", sample.context.core));
             if register.scope != crate::registers::Scope::Core {
@@ -289,6 +314,20 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
                 None => {}
             }
             text.push(format!("Reason: {:?} · {}", sample.reason, sample.detail));
+            if let Some(evidence) = &sample.eligibility {
+                text.extend(evidence.lines("Latest attempt condition evaluation"));
+            } else {
+                text.push("Latest attempt condition evidence: unavailable (older producer or whole-request failure)".into());
+            }
+            match &sample.last_value_eligibility {
+                Some(crate::registers::eligibility::Retained::Known(evidence)) => {
+                    text.extend(evidence.lines("Retained raw value condition evaluation"))
+                }
+                Some(crate::registers::eligibility::Retained::Unknown) => {
+                    text.push("Retained raw value condition evidence: unknown".into())
+                }
+                None => {}
+            }
         }
         text.push(format!("Access condition: {}", register.access_condition));
         if let Some(Row::Field(_, field, _)) = app.register_view.rows.get(app.selected(3)) {

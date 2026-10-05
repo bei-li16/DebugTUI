@@ -43,6 +43,84 @@ fn text(terminal: &Terminal<TestBackend>) -> String {
 }
 
 #[test]
+fn register_status_preserves_current_latest_and_retained_condition_sources_without_io() {
+    let mut app = app();
+    let selected = index(&app, "r0");
+    app.register_view.catalogue.as_mut().unwrap().registers[selected].conditions =
+        vec![crate::registers::Condition {
+            fact: "fixture.count".into(),
+            min: 1,
+            max: Some(2),
+        }];
+    app.project
+        .registers
+        .facts
+        .insert("fixture.count".into(), 1);
+    app.register_view.facts = app.project.registers.facts.clone();
+    app.register_view.rows = vec![Row::Register(selected, 0)];
+    app.selections[3] = 0;
+    let context = app.register_context();
+    let catalogue = app.register_view.catalogue.as_ref().unwrap();
+    let register = &catalogue.registers[selected];
+    let mut value = sample(&app, "r0", "0x80000001");
+    value.state = State::Unavailable;
+    value.reason = Reason::FeatureDisabled;
+    value.eligibility =
+        Some(catalogue.eligibility(register, &app.project.registers.facts, None, &context));
+    let mut old = context.clone();
+    old.generation -= 1;
+    value.last_value_eligibility = Some(crate::registers::eligibility::Retained::Known(Box::new(
+        catalogue.eligibility(
+            register,
+            &BTreeMap::from([("fixture.count".into(), 2)]),
+            None,
+            &old,
+        ),
+    )));
+    app.register_view.values.insert(
+        ("core:default".into(), "r0".into(), "default".into()),
+        value,
+    );
+    let before =
+        serde_json::to_value(app.register_view.values.values().collect::<Vec<_>>()).unwrap();
+    let (engine, requests) = engine();
+    for (width, height) in [(45, 12), (80, 24), (120, 36)] {
+        app.open_register_status();
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        let mut rendered = String::new();
+        loop {
+            terminal.draw(|f| draw(f, &mut app)).unwrap();
+            rendered.push_str(&text(&terminal));
+            let popup = app.register_view.status_popup.as_ref().unwrap();
+            if popup.scroll >= popup.max_scroll {
+                break;
+            }
+            app.register_status_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        }
+        let compact: String = rendered
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '│')
+            .collect();
+        assert!(
+            compact.contains("Currentconditionevaluation:Yes"),
+            "{width}x{height}"
+        );
+        assert!(compact.contains("Latestattemptconditionevaluation:Yes"));
+        assert!(compact.contains("Retainedrawvalueconditionevaluation:Yes"));
+        assert!(compact.contains("fixture.count=1required1..2"));
+        assert!(compact.contains("fixture.count=2required1..2"));
+        assert!(compact.contains("Configuration"));
+        assert!(!app.ensure_registers(Some(&engine)));
+        assert!(requests.try_recv().is_err());
+        app.register_status_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    }
+    assert_eq!(
+        serde_json::to_value(app.register_view.values.values().collect::<Vec<_>>()).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn register_status_warns_on_current_observed_cpu_mismatch_without_probing_or_cross_core_reuse() {
     let mut app = app();
     app.register_view.catalogue = Some(crate::registers::Catalogue::builtin("cortex-m4").unwrap());
@@ -234,6 +312,16 @@ fn register_status_counts_expanded_rows_once_and_separates_failures_from_last_va
         );
     }
     assert_eq!(result.categories.iter().sum::<usize>(), result.shown);
+    let alias = index(&app, "r7");
+    app.register_view.catalogue.as_mut().unwrap().registers[alias].reader =
+        crate::registers::Reader::Alias {
+            source: "r6".into(),
+            offset: 0,
+        };
+    app.register_view.rows.push(Row::Register(alias, 1));
+    assert_eq!(counts(&app).shown, 8);
+    assert_eq!(counts(&app).get(Category::WriteOnly), 2);
+    assert_eq!(counts(&app).readable, 5, "Alias cannot bypass parent WO");
     app.register_view.rows.clear();
     assert_eq!(counts(&app).shown, 0);
     assert_eq!(counts(&app).get(Category::Valid), 0);

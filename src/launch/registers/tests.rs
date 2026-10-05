@@ -30,6 +30,8 @@ fn probe(context: &Context, midr: &str) -> Probe {
         owner_generation: None,
         provenance: None,
         last_value_provenance: None,
+        eligibility: None,
+        last_value_eligibility: None,
         timestamp_ms: 10,
         source: "identity-fixture".into(),
     };

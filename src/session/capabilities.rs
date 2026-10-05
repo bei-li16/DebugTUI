@@ -73,6 +73,8 @@ impl Engine {
                     &register.reader,
                 )),
                 last_value_provenance: None,
+                eligibility: None,
+                last_value_eligibility: None,
                 timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                 source: super::registers::route_name(register),
             };

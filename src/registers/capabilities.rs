@@ -163,12 +163,18 @@ impl Probe {
             );
         }
         if let Some(n) = self.raw("pmcr") {
+            let count = (n >> 11) & 31;
             self.fact(
-                "pmu.counters",
-                (n >> 11) & 31,
+                "pmu.pmcr_n",
+                count,
                 "pmcr",
-                "PMCR.N; only read, never enable/reset counters",
+                "Raw PMCR.N; EL0/EL1 can report HDCR.HPMN instead of the physical count",
             );
+            if self.raw("cpsr").is_some_and(|value| value & 31 == 0x1a) && count == 4 {
+                self.fact("pmu.counters", count, "pmcr", "Physical Hyp PMCR.N; R52 TRM 13.3.1 specifies four event counters; PMCR.E is independent");
+            } else {
+                self.notes.push("Decode: Physical PMU count remains unknown: requires Hyp and the adapted R52 PMCR.N=4; an EL0/EL1 count can be restricted by HDCR.HPMN".into());
+            }
         }
         if let (Some(m0), Some(m1)) = (self.raw("mvfr0"), self.raw("mvfr1")) {
             if let Some(features) = super::vfp::features(m0, m1) {
@@ -206,14 +212,22 @@ impl Probe {
         if self.raw("cpsr").is_some_and(|n| n & 31 == 0x1a) {
             if let Some(n) = self.raw("icc_ctlr") {
                 let bits = ((n >> 8) & 7) + 1;
-                if (5..=7).contains(&bits) {
+                self.fact(
+                    "icc.ctlr_pribits",
+                    bits,
+                    "icc_ctlr",
+                    "Raw ICC_CTLR.PRIbits+1 observed in Hyp; adapted R52 physical value is five",
+                );
+                if bits == 5 {
                     self.fact(
                         "icc.physical.pribits",
                         bits,
                         "icc_ctlr",
-                        "ICC_CTLR.PRIbits+1 observed in Hyp; physical interface",
+                        "Physical Hyp ICC_CTLR.PRIbits+1; R52 TRM Table 10-94 specifies five priority bits",
                     );
                     self.fact("icc.physical.prebits",bits,"icc_ctlr","Maximum physical preemption bits for AP capacity; independent of virtual ICH_VTR");
+                } else {
+                    self.notes.push(format!("Decode: Physical ICC priority capacity remains unknown: ICC_CTLR reports {bits} bits, outside the adapted R52 value of five"));
                 }
             }
             if let Some(n) = self.raw("ich_vtr") {
