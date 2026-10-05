@@ -310,7 +310,16 @@ fn nonphysical_gdb_frame_is_rejected_before_any_bank_protocol_or_instruction() {
         .insert("DEBUGTUI_TEST_CAPABILITY_FRAME_CHANGE".into(), "1".into());
     let engine = session::spawn(f.project.clone());
     ok(&engine, 1, "connect", json!({}));
-    ok(&engine, 2, "registers_read", json!({"ids":["r0"]}));
+    let error = request(&engine, 2, "registers_read", json!({"ids":["r0"]})).unwrap_err();
+    assert!(error.contains("thread/frame changed"), "{error}");
+    let snapshot = ok(&engine, 20, "status", json!({}));
+    assert!(
+        snapshot["register_samples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|sample| sample["id"] != "r0" || sample["state"] != "valid")
+    );
     let result = ok(&engine, 3, "registers_read", json!({"ids":["sp_irq"]}));
     assert_eq!(
         result["samples"][0]["reason"], "access_restricted",

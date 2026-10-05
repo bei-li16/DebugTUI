@@ -845,6 +845,14 @@ pub struct Context {
     pub frame: u32,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SampleView {
+    #[default]
+    SelectedFrame,
+    PhysicalCore,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Sample {
     pub id: String,
@@ -857,6 +865,10 @@ pub struct Sample {
     pub context: Context,
     pub timestamp_ms: u64,
     pub source: String,
+    /// Independent of the transport: a physical frame-0 probe may use GDB too.
+    /// Older/unknown producers default to the conservative selected-frame view.
+    #[serde(default)]
+    pub view: SampleView,
 }
 impl Sample {
     pub fn stale(&mut self) {
@@ -873,7 +885,8 @@ impl Sample {
                 .as_deref()
                 .is_some_and(|s| !s.starts_with("core:"))
                 || self.context.core == context.core)
-            && (!self.source.starts_with("gdb:") || self.context.frame == context.frame)
+            && (matches!(self.view, SampleView::PhysicalCore)
+                || (self.context.frame == context.frame && self.context.core == context.core))
     }
 }
 

@@ -319,6 +319,41 @@ impl RegisterView {
 }
 
 impl App {
+    pub(super) fn sync_register_sample_validity(&mut self) {
+        let context = self.register_context();
+        self.register_view
+            .attempts
+            .retain(|(session, generation, core, frame, _)| {
+                (*session, *generation, core.as_str(), *frame)
+                    == (
+                        context.session,
+                        context.generation,
+                        context.core.as_str(),
+                        context.frame,
+                    )
+            });
+        for (key, sample) in &mut self.register_view.values {
+            if sample.context.core != context.core || sample.state != State::Valid {
+                continue;
+            }
+            let engine_invalidated = self.snapshot.register_samples.iter().any(|item| {
+                item.id == sample.id
+                    && item.owner == sample.owner
+                    && item.context == sample.context
+                    && item.timestamp_ms == sample.timestamp_ms
+                    && item.state == State::Stale
+            });
+            if self.snapshot.state != "STOPPED"
+                || engine_invalidated
+                || !sample.applies(&context, sample.owner.as_deref())
+            {
+                self.register_view
+                    .previous
+                    .insert(key.clone(), sample.clone());
+                sample.stale();
+            }
+        }
+    }
     fn sync_register_absence(&mut self) {
         let context = self.register_context();
         let absent = self
@@ -981,6 +1016,7 @@ impl App {
         self.request_registers(engine, vec![id], true)
     }
     pub(super) fn ensure_registers(&mut self, engine: Option<&EngineHandle>) -> bool {
+        self.sync_register_sample_validity();
         self.sync_register_absence();
         if self.side_pane != 3
             || self.register_view.mpu_popup.is_some()
@@ -1004,6 +1040,12 @@ impl App {
             let register = &catalogue.registers[index];
             let implementation = register.implementation(&self.register_view.facts).0;
             if register.auto_read(implementation)
+                && self.register_view.category(
+                    &self.project,
+                    &context,
+                    index,
+                    self.snapshot.state == "STOPPED",
+                ) != status::Category::Valid
                 && !self.register_view.runtime_absent.contains(&register.id)
                 && (register.conditions.is_empty() || implementation == Implementation::Yes)
                 && !self.register_view.attempts.contains(&(
@@ -1067,6 +1109,7 @@ impl App {
                         value: None,
                         owner: Some(key.0.clone()),
                         context: context.clone(),
+                        view: crate::registers::SampleView::PhysicalCore,
                         timestamp_ms: 0,
                         source: "selector".into(),
                     });
@@ -1191,6 +1234,7 @@ impl App {
         })
     }
     pub(super) fn draw_registers(&mut self, f: &mut UiFrame, rect: Rect) {
+        self.sync_register_sample_validity();
         self.sync_register_preferences();
         self.sync_register_absence();
         if let Some(error) = &self.register_view.error {
@@ -1529,6 +1573,7 @@ mod tests {
             value: Some(RawValue::parse(value, 32).unwrap()),
             owner: Some("core:default".into()),
             context: app.register_context(),
+            view: crate::registers::SampleView::SelectedFrame,
             timestamp_ms: 23,
             source: format!("gdb:{id}"),
         }
@@ -2017,16 +2062,29 @@ mod tests {
     }
     #[test]
     fn late_response_after_core_or_session_change_is_discarded() {
-        let mut app = app();
-        let (engine, requests) = engine();
-        assert!(app.ensure_registers(Some(&engine)));
-        let request = requests.try_recv().unwrap();
-        let old = sample(&app, "r0", "0x12345678");
-        app.snapshot.register_session += 1;
-        app.register_response(request.id, &json!({"samples":[old]}), None);
-        assert!(app.register_view.values.is_empty());
-        assert!(app.register_view.pending.is_none());
-        assert!(app.pending_commands.is_empty());
+        for change in ["core", "session", "generation"] {
+            let mut app = app();
+            let (engine, requests) = engine();
+            assert!(app.ensure_registers(Some(&engine)));
+            let request = requests.try_recv().unwrap();
+            let old = sample(&app, "r0", "0x12345678");
+            match change {
+                "session" => app.snapshot.register_session += 1,
+                "generation" => app.snapshot.generation += 1,
+                _ => {
+                    app.snapshot.core = Some(crate::session::CoreStatus {
+                        index: 1,
+                        name: "core1".into(),
+                        endpoint: "localhost:3334".into(),
+                        state: "STOPPED".into(),
+                    })
+                }
+            }
+            app.register_response(request.id, &json!({"samples":[old]}), None);
+            assert!(app.register_view.values.is_empty());
+            assert!(app.register_view.pending.is_none());
+            assert!(app.pending_commands.is_empty());
+        }
     }
     #[test]
     fn keyboard_mouse_fields_and_search_cancel_do_not_issue_reads() {

@@ -119,6 +119,67 @@ fn register_field_columns_and_details_use_the_field_width_and_access_override() 
 }
 
 #[test]
+fn register_frame_cache_never_resurrects_on_return_or_accepts_late_frame_responses() {
+    let mut app = app();
+    let (engine, requests) = engine();
+    let r0 = index(&app, "r0");
+    let r1 = index(&app, "r1");
+    app.register_view.rows = vec![Row::Register(r0, 1), Row::Register(r1, 1)];
+    let frame_value = sample(&app, "r0", "0x11111111");
+    let mut physical = sample(&app, "r1", "0x22222222");
+    physical.view = crate::registers::SampleView::PhysicalCore;
+    app.register_view
+        .values
+        .insert(("core:default".into(), "r0".into()), frame_value);
+    app.register_view
+        .values
+        .insert(("core:default".into(), "r1".into()), physical);
+    assert!(!app.ensure_registers(Some(&engine)));
+    let mut snapshot = app.snapshot.clone();
+    snapshot.frame.level = 1;
+    app.update(Event::Snapshot {
+        snapshot: Box::new(snapshot),
+    });
+    assert_eq!(
+        app.register_view.values[&("core:default".into(), "r0".into())].state,
+        State::Stale
+    );
+    assert_eq!(
+        app.register_view.values[&("core:default".into(), "r1".into())].state,
+        State::Valid
+    );
+    assert!(app.ensure_registers(Some(&engine)));
+    let request = requests.try_recv().unwrap();
+    assert_eq!(request.params["ids"], json!(["r0"]));
+    let mut late = sample(&app, "r0", "0xffffffff");
+    let mut snapshot = app.snapshot.clone();
+    snapshot.frame.level = 0;
+    app.update(Event::Snapshot {
+        snapshot: Box::new(snapshot),
+    });
+    assert!(app.register_response(request.id, &json!({"samples":[late]}), None));
+    assert_eq!(
+        app.register_view.values[&("core:default".into(), "r0".into())]
+            .value
+            .as_ref()
+            .unwrap()
+            .hex,
+        "0x11111111"
+    );
+    assert_eq!(
+        app.register_view.values[&("core:default".into(), "r0".into())].state,
+        State::Stale
+    );
+    assert!(app.ensure_registers(Some(&engine)));
+    let request = requests.try_recv().unwrap();
+    assert_eq!(request.params["context"]["frame"], 0);
+    late = sample(&app, "r0", "0x33333333");
+    app.register_response(request.id, &json!({"samples":[late]}), None);
+    assert!(!app.ensure_registers(Some(&engine)));
+    assert!(requests.try_recv().is_err());
+}
+
+#[test]
 fn register_change_highlight_compares_same_owner_and_field_bits_only_after_valid_reads() {
     let mut app = app();
     let (engine, requests) = engine();

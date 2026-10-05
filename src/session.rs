@@ -1640,6 +1640,10 @@ impl Engine {
             "registers_select" => self.read_selected_registers(p),
             "registers_mpu" => self.mpu_regions(p),
             "registers_read" => self.read_registers(p),
+            "register_boundary" => {
+                self.invalidate_register_boundary();
+                Ok(json!({"context":self.register_context()}))
+            }
             "memory_channels" => self.memory_channels(),
             "complete" => {
                 self.inactive()?;
@@ -1767,6 +1771,7 @@ impl Engine {
                 if self.project.multicore.restart.is_empty() {
                     return Err("Shared reset is not configured".into());
                 }
+                self.invalidate_register_boundary();
                 self.commands(
                     &self.project.multicore.restart.clone(),
                     Duration::from_millis(self.project.session.timeout_ms),
@@ -1779,6 +1784,7 @@ impl Engine {
                     return Err("Restart is not configured by this environment".into());
                 }
                 self.stopped()?;
+                self.invalidate_register_boundary();
                 self.commands(
                     &self.project.actions.restart.clone(),
                     Duration::from_millis(self.project.session.timeout_ms),
@@ -2017,6 +2023,9 @@ impl Engine {
                 if !matches!(self.snapshot.state.as_str(), "READY" | "STOPPED") {
                     return Err("Console requires a connected inactive or stopped target".into());
                 }
+                // Console may change registers, select a frame, replace symbols or reset a chip;
+                // even an error can follow a partial command. Never retain valid pre-command data.
+                self.invalidate_register_boundary();
                 let r = self.console(&command)?;
                 self.refresh_pending = true;
                 Ok(json!({"result":r.data}))
@@ -2026,6 +2035,7 @@ impl Engine {
                 if self.gdb.is_some() {
                     return Err("Disconnect before changing ELF".into());
                 }
+                self.invalidate_register_boundary();
                 self.project.program.elf = text("path").into();
                 Ok(json!({"elf":self.project.program.elf}))
             }

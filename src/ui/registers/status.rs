@@ -214,6 +214,15 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             register.scope
         ));
         if let Some(sample) = app.register_view.sample(&app.project, &context, index) {
+            text.push(match sample.view {
+                crate::registers::SampleView::SelectedFrame => format!(
+                    "Sampling view: selected stack frame {}",
+                    sample.context.frame
+                ),
+                crate::registers::SampleView::PhysicalCore => {
+                    "Sampling view: physical core state".into()
+                }
+            });
             text.push("Raw (current / last-known):".into());
             text.push(
                 sample

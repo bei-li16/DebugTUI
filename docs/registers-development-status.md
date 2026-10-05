@@ -2,6 +2,10 @@
 
 本文件记录开发分支上的实际实现，配合 [开发 TODO](registers-development-todo.md) 使用。当前仍是未发布的开发版本；下述软件验证不能作为芯片或 OpenOCD 实板能力证明。
 
+2026-10-05 缓存生命周期批次：新增显式 selected_frame／physical_core 采样语义，多层 alias 继承根 reader；无 MRRC 配置时来源记录实际 GDB fallback。实际 GDB 线程／帧变化使整批结果丢弃，不覆盖最近有效原值和时间。切帧及返回原帧不会复活旧值；Reset 和任意 Console 命令发送前清除相关名称缓存、Probe、草稿并使样本失效，共享复位及多核 Console 先使全部受影响 worker 失效，命令仍仅发送一次。复位部分失败、符号索引替换、断开后更换 ELF、双核切换及重连、Scope All 不广播与 UI 迟到回复已有实际管道验证。
+
+完整功能入口 unit suite 通过：**331 单元＋117 集成通过，2 ignored**；严格 Clippy、格式及差异检查通过。F24 的 **60 个模式全部有通过证据**，其余 **22 个功能套件未选择**。报告为 [`artifacts/functional-1791171328667-720b123c/report.json`](../artifacts/functional-1791171328667-720b123c/report.json)，完整 Cargo 日志为同目录 `unit.log`；Clippy 日志为 `artifacts/register-lifecycle-clippy.log`。详见 [REG-106 自检](register-cache-lifecycle.md) 及 [十项人工 case](../tests/cases/register-cache-lifecycle.md)，人工 case 均为 SKIPPED。本批仅新增勾选 REG-106，当前 **已完成／未完成 14/57**；REG-109 的完整共享 owner、REG-210 的完整实际路由、终端视觉、其他系统及 writer 类别、工具交付和最终 Release 仍未完成。安装版本仍为 0.9.3，本轮没有安装、发布或上板。
+
 2026-10-05 基础框架自检批次：补齐目录实际读取的 4 MiB 边界，含增长输入、UTF-8、组／寄存器数量、间接循环和全部 reader 缺参的验证。宽窗口固定四列，长客户名称和 128 位值不挤掉 Size／Access；窄窗口及字段说明使用自身位宽／访问覆盖。增加同 owner／会话／核／帧的前次有效值比较，字段独立高亮；帮助补齐全部枚举、bit segments、父／字段说明及完整原始值。实际 worker／MI 新增 128 位父值和多层别名的一次读取证明，并核对逐项错误、时间及兼容 Snapshot 输出。
 
 完整功能入口 unit suite 为 **328 单元＋113 集成通过，2 ignored**，严格 Clippy 通过；F24 的 53 个模式均有证据，其余 22 个功能套件未选择。报告及逐项要求见 [框架自检](register-framework-audit.md)，对应 [环境 case](../tests/cases/register-framework.md) 均未执行。自检后勾选 REG-101/103/104/105、REG-201/202/203/204/207/209，合计 **已完成／未完成 13/58**。REG-208 实际终端视觉、配置／生命周期／完整共享 owner／交付矩阵、EL1/Guest VFP、系统及银行 writer、完整目标类别与最终安装 Release 仍待完成。本轮在 `codex/register-debugging` 提交并推送；已安装版本仍 0.9.3，未上板或发布。

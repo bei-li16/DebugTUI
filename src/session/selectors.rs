@@ -123,6 +123,7 @@ impl Engine {
                         value: None,
                         owner: Some(format!("core:{}", request.context.core)),
                         context: request.context.clone(),
+                        view: crate::registers::SampleView::PhysicalCore,
                         timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                         source: format!(
                             "openocd:selector:{target}:{}:{}",
@@ -206,6 +207,7 @@ impl Engine {
                 value: Some(value.clone()),
                 owner: Some(format!("core:{}", request.context.core)),
                 context: request.context.clone(),
+                view: crate::registers::SampleView::PhysicalCore,
                 timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                 source: format!("openocd:selector:{target}:{}:{}", plan.selector, plan.index),
             })

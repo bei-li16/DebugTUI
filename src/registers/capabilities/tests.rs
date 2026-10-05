@@ -30,6 +30,7 @@ fn probe(values: &[(&str, u64)]) -> Probe {
             value: Some(RawValue::parse(&format!("0x{value:08x}"), 32).unwrap()),
             owner: Some("core:core1".into()),
             context: context.clone(),
+            view: crate::registers::SampleView::PhysicalCore,
             timestamp_ms: 29,
             source: format!("gdb:{id}"),
         });
@@ -281,6 +282,7 @@ fn observed_context_facts_override_declarations_and_report_retains_raw_sources()
         value: None,
         owner: Some("core:core1".into()),
         context: p.context.clone(),
+        view: crate::registers::SampleView::PhysicalCore,
         timestamp_ms: 30,
         source: "gdb:midr".into(),
     });

@@ -765,6 +765,7 @@ fn stale_sessions_generations_cores_frames_and_owner_are_rejected() {
         value: Some(RawValue::parse("1", 32).unwrap()),
         owner: Some("core:core0".into()),
         context: context.clone(),
+        view: crate::registers::SampleView::SelectedFrame,
         timestamp_ms: 0,
         source: "gdb:r0".into(),
     };
@@ -791,6 +792,7 @@ fn stale_sessions_generations_cores_frames_and_owner_are_rejected() {
     }
     sample.owner = Some("cluster:clusterA".into());
     sample.source = "mmio:stm".into();
+    sample.view = SampleView::PhysicalCore;
     assert!(sample.applies(
         &Context {
             core: "core1".into(),
@@ -802,6 +804,36 @@ fn stale_sessions_generations_cores_frames_and_owner_are_rejected() {
     sample.stale();
     assert_eq!(sample.state, State::Stale);
     assert!(sample.value.is_some());
+}
+
+#[test]
+fn sample_view_is_explicit_inherits_safe_legacy_defaults_and_never_reuses_a_shared_stack_frame() {
+    let mut sample: Sample = serde_json::from_value(serde_json::json!({
+        "id":"alias", "state":"valid", "implementation":"unknown", "reason":"unknown",
+        "detail":"", "value":{"bits":32,"hex":"0x12345678"}, "owner":"cluster:A",
+        "context":{"session":1,"generation":2,"core":"core0","frame":0},
+        "timestamp_ms":1, "source":"alias:parent"
+    }))
+    .unwrap();
+    assert_eq!(sample.view, SampleView::SelectedFrame);
+    let frame = Context {
+        frame: 1,
+        ..sample.context.clone()
+    };
+    let peer = Context {
+        core: "core1".into(),
+        ..sample.context.clone()
+    };
+    assert!(!sample.applies(&frame, Some("cluster:A")));
+    assert!(!sample.applies(&peer, Some("cluster:A")));
+    // The probe has proven physical frame 0; its transport's name does not choose its view.
+    sample.view = SampleView::PhysicalCore;
+    sample.source = "gdb:physical_id".into();
+    assert!(sample.applies(&frame, Some("cluster:A")));
+    assert!(sample.applies(&peer, Some("cluster:A")));
+    assert!(!sample.applies(&peer, Some("cluster:B")));
+    let roundtrip: Sample = serde_json::from_str(&serde_json::to_string(&sample).unwrap()).unwrap();
+    assert_eq!(roundtrip.view, SampleView::PhysicalCore);
 }
 
 #[test]

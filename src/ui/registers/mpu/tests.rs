@@ -11,6 +11,7 @@ fn sample(app: &App, id: &str, value: &str) -> Sample {
         value: Some(RawValue::parse(value, 32).unwrap()),
         owner: Some(format!("core:{}", app.register_context().core)),
         context: app.register_context(),
+        view: crate::registers::SampleView::PhysicalCore,
         timestamp_ms: 10,
         source: "openocd:cp15".into(),
     }

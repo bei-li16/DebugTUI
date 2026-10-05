@@ -704,6 +704,8 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 System Regs 的 Total／Shown／Valid 分别计目录定义、展开筛选后的寄存器行及当前暂停上下文的有效值。Status 按钮、`t` 或 `:register-status` 打开分类计数和目录来源；窄窗口可用方向键／滚轮，Esc 或 Close 关闭。失败可保留旧值，但显示当前原因，不计成功。
 
+Status 的 Sampling view 区分选中栈帧与物理核心状态。GDB 值及其别名随栈帧失效；返回原帧后也需要重新读取，同一停止代次的直接后端值可保留。Reset、Reconnect、更换 ELF 和 Console 会使相关旧值失效；共享 Reset 与原始 Console 在命令发送前使全部核心缓存失效，命令报错也不会恢复旧值为有效。详细规则与验证见 [缓存生命周期](docs/register-cache-lifecycle.md)。
+
 宽窗口固定显示 Name、Value、Size、Access 四列；长名称或过长值以省略号提示。窄窗口保留名称和值，选中说明显示位宽及访问属性。选中字段时使用字段自身的位宽与访问覆盖；按 `t` 可滚动查看父描述、字段说明、全部枚举、bit segments、访问条件、读取原因和完整原始值，包括被主行省略的 128 位高低位。
 
 Cancel read、`:register-cancel` 或非搜索模式的 Esc 取消当前寄存器读取／Probe。MPU 总览关闭或切 bank 也取消未完成读取。当前事务完整恢复后停止后续项、丢弃新结果；会话和其他核心继续可用，需手工重读。恢复结果未知仍进入 FAULT。详见 [计数、取消及限制](docs/register-read-status-and-cancel.md)。尚未进入 v0.9.3 release。

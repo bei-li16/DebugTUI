@@ -1,8 +1,11 @@
 // Strict MI fixture used only in development tests; never shipped with the TUI.
 const fs = require('node:fs');
 const readline = require('node:readline');
-const names = JSON.parse(process.env.DEBUGTUI_TEST_REGISTERS);
+let names = JSON.parse(process.env.DEBUGTUI_TEST_REGISTERS);
 const rawValues = JSON.parse(process.env.DEBUGTUI_TEST_REGISTER_VALUES || '{}');
+const frameRawValues = JSON.parse(process.env.DEBUGTUI_TEST_REGISTER_FRAME_VALUES || '{}');
+const endpointRawValues = JSON.parse(process.env.DEBUGTUI_TEST_REGISTER_ENDPOINT_VALUES || '{}');
+let activeEndpoint = '';
 const unreadableRegisters = JSON.parse(process.env.DEBUGTUI_TEST_REGISTER_ERRORS || '[]');
 const transcript = process.env.DEBUGTUI_TEST_TRANSCRIPT;
 let state = 'ready';
@@ -65,6 +68,7 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
     return done(`memory=[{begin="0x${base.toString(16)}",offset="0x0",end="0x${(base+BigInt(count)).toString(16)}",contents="${contents}"}]`);
   }
   if (cmd.startsWith('-target-select ')) {
+    activeEndpoint = /"([^"]+)"$/.exec(cmd)?.[1] || cmd.split(' ').at(-1);
     state = 'stopped'; send(`${token}^connected`); return;
   }
   if (cmd === '-list-target-features') return done('features=["async"]');
@@ -118,7 +122,7 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
     }
     const overrideFile = process.env.DEBUGTUI_TEST_REGISTER_VALUES_FILE;
     const overrides = overrideFile && fs.existsSync(overrideFile) ? JSON.parse(fs.readFileSync(overrideFile, 'utf8')) : {};
-    const result = 'register-values=[' + indices.map(index => `{number="${index}",value="${overrides[names[index]] || rawValues[names[index]] || '0x12345678'}"}`).join(',') + ']';
+    const result = 'register-values=[' + indices.map(index => `{number="${index}",value="${overrides[names[index]] || frameRawValues[String(frameLevel)]?.[names[index]] || endpointRawValues[activeEndpoint]?.[names[index]] || rawValues[names[index]] || '0x12345678'}"}`).join(',') + ']';
     const delay = Number(process.env.DEBUGTUI_TEST_REGISTER_DELAY_MS || 0);
     if (delay) return setTimeout(() => done(result), delay);
     return done(result);
@@ -138,6 +142,16 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
     return done('memory=' + process.env.DEBUGTUI_TEST_MEMORY_BLOCKS);
   }
   if (cmd === '-interpreter-exec console "delete breakpoints"') return done();
+  if (cmd === '-interpreter-exec console "monitor fixture_reset"') {
+    frameLevel = 0;
+    rawValues.r0 = '0x00000000';
+    if (process.env.DEBUGTUI_TEST_RESET_ERROR) return send(`${token}^error,msg="Fixture error after reset"`);
+    return done();
+  }
+  if (cmd.startsWith('-interpreter-exec console "file ') && process.env.DEBUGTUI_TEST_SYMBOL_REGISTERS) {
+    names = JSON.parse(process.env.DEBUGTUI_TEST_SYMBOL_REGISTERS);
+    return done();
+  }
   // The coordinator refreshes each core after connecting; the fixture has no register cache.
   if (cmd === '-interpreter-exec console "maintenance flush register-cache"') return done();
   if (cmd === '-exec-interrupt --all' && pauseMode) {

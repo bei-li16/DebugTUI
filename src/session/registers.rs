@@ -1,7 +1,8 @@
 //! On-demand register access. No discovery sweep and no implicit core control.
 use super::*;
 use crate::registers::{
-    Catalogue, Context, Implementation, RawValue, Reader, Reason, Register, Sample, State,
+    Catalogue, Context, Implementation, RawValue, Reader, Reason, Register, Sample, SampleView,
+    State,
 };
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicU64;
@@ -51,6 +52,73 @@ impl Engine {
                 });
             }
         }
+    }
+
+    pub(super) fn invalidate_register_boundary(&mut self) {
+        self.write_drafts.clear();
+        self.reg_names.clear();
+        self.snapshot.generation += 1;
+        self.snapshot.register_probe = None;
+        self.invalidate_register_samples();
+        self.snapshot.assembly.clear();
+        self.snapshot.memory.clear();
+        self.publish();
+    }
+
+    pub(super) fn register_sample_origin(
+        &self,
+        register: &Register,
+        catalogue: &Catalogue,
+    ) -> (SampleView, String, Option<String>) {
+        let mut root = register;
+        let mut aliases = Vec::new();
+        for _ in 0..catalogue.registers.len() {
+            let Reader::Alias { source, offset } = &root.reader else {
+                break;
+            };
+            aliases.push(format!("alias:{source}@{offset}"));
+            let Some(parent) = catalogue.register(source) else {
+                return (SampleView::SelectedFrame, route_name(register), None);
+            };
+            root = parent;
+        }
+        let (view, route, gdb_name) = match &root.reader {
+            Reader::Gdb { name } => (
+                SampleView::SelectedFrame,
+                format!("gdb:{name}"),
+                Some(name.clone()),
+            ),
+            Reader::Cp15_64 { .. } if self.project.registers.cp15_64_command.is_empty() => (
+                SampleView::SelectedFrame,
+                format!("gdb:{}", root.id),
+                Some(root.id.clone()),
+            ),
+            Reader::Cp15_64 { .. } => (
+                SampleView::PhysicalCore,
+                format!("openocd:{}", self.project.registers.cp15_64_command),
+                None,
+            ),
+            Reader::Alias { .. } => (SampleView::SelectedFrame, route_name(root), None),
+            _ => (SampleView::PhysicalCore, route_name(root), None),
+        };
+        aliases.push(route);
+        (view, aliases.join(" <- "), gdb_name)
+    }
+
+    fn selected_register_frame(&mut self) -> Result<(String, u32, String), String> {
+        let thread = self.write_thread()?;
+        let record = self.mi("-stack-info-frame")?;
+        let frame = record
+            .data
+            .field("frame")
+            .ok_or("GDB omitted the selected stack frame")?;
+        let level = frame
+            .string("level")
+            .parse()
+            .map_err(|_| "GDB omitted a valid frame level")?;
+        let address = frame.string("addr");
+        self.snapshot.frame = Frame::from_mi(frame);
+        Ok((thread, level, address))
     }
 
     pub(super) fn register_context(&self) -> Context {
@@ -116,6 +184,7 @@ impl Engine {
             .unwrap_or(false);
         let mut values = BTreeMap::new();
         let mut samples = Vec::new();
+        let mut frame_proof = None;
         for id in ids {
             self.check_register_read_cancelled()?;
             let register = catalogue.register(id).unwrap();
@@ -126,6 +195,7 @@ impl Engine {
                 topology.chip = self.project.debug.chip.clone();
             }
             let owner = topology.owner(register.scope, &context.core);
+            let (view, source, gdb_name) = self.register_sample_origin(register, &catalogue);
             let mut sample = Sample {
                 id: id.into(),
                 state: State::NotRead,
@@ -136,13 +206,8 @@ impl Engine {
                 owner,
                 context: context.clone(),
                 timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
-                source: if matches!(register.reader, Reader::Cp15_64 { .. })
-                    && !self.project.registers.cp15_64_command.is_empty()
-                {
-                    format!("openocd:{}", self.project.registers.cp15_64_command)
-                } else {
-                    route_name(register)
-                },
+                source,
+                view,
             };
             if implementation == Implementation::No {
                 sample.state = State::Unsupported;
@@ -162,7 +227,41 @@ impl Engine {
                 sample.detail =
                     "Capability is unknown; verify it or request an explicit manual read".into();
             } else {
-                match self.read_register_value(register, &catalogue, &mut values) {
+                // Missing target-description entries remain isolated Reader unsupported results.
+                // Only an actual GDB value read requires a selected-frame proof.
+                let available = gdb_name
+                    .as_deref()
+                    .map(|name| self.gdb_register_index(name).map(|_| ()))
+                    .unwrap_or(Ok(()));
+                let attempted = available.is_ok();
+                if attempted && sample.view == SampleView::SelectedFrame && frame_proof.is_none() {
+                    match self.selected_register_frame() {
+                        Ok(proof) if proof.1 == context.frame => frame_proof = Some(proof),
+                        result => {
+                            self.invalidate_register_boundary();
+                            self.refresh_pending = true;
+                            return Err(format!(
+                                "Selected register frame could not be verified; samples discarded: {result:?}"
+                            ));
+                        }
+                    }
+                }
+                let result = available
+                    .and_then(|()| self.read_register_value(register, &catalogue, &mut values));
+                if attempted
+                    && sample.view == SampleView::SelectedFrame
+                    && self.snapshot.state == "STOPPED"
+                {
+                    let final_proof = self.selected_register_frame();
+                    if final_proof.as_ref().ok() != frame_proof.as_ref() {
+                        self.invalidate_register_boundary();
+                        self.refresh_pending = true;
+                        return Err(format!(
+                            "GDB thread/frame changed during register read; samples discarded: {final_proof:?}"
+                        ));
+                    }
+                }
+                match result {
                     Ok(value)
                         if self.register_context() == context
                             && self.snapshot.state == "STOPPED" =>
@@ -389,32 +488,7 @@ impl Engine {
         name: &str,
         bits: u16,
     ) -> Result<RawValue, (Reason, String)> {
-        if self.reg_names.is_empty() {
-            let response = self
-                .mi("-data-list-register-names")
-                .map_err(|error| (Reason::TransportError, error))?;
-            self.reg_names = response
-                .data
-                .field("register-names")
-                .map(|names| {
-                    names
-                        .items()
-                        .iter()
-                        .map(|name| name.text().to_owned())
-                        .collect()
-                })
-                .unwrap_or_default();
-        }
-        let index = self
-            .reg_names
-            .iter()
-            .position(|entry| entry == name)
-            .ok_or_else(|| {
-                (
-                    Reason::ReaderUnsupported,
-                    format!("GDB target description does not expose {name}"),
-                )
-            })?;
+        let index = self.gdb_register_index(name)?;
         self.check_register_read_cancelled()
             .map_err(|error| (Reason::Unknown, error))?;
         let response = self
@@ -431,6 +505,33 @@ impl Engine {
             })
             .ok_or_else(|| (Reason::Unknown, format!("GDB did not return {name}")))?;
         RawValue::parse(&value.string("value"), bits).map_err(|error| (Reason::Unknown, error))
+    }
+    fn gdb_register_index(&mut self, name: &str) -> Result<usize, (Reason, String)> {
+        if self.reg_names.is_empty() {
+            let response = self
+                .mi("-data-list-register-names")
+                .map_err(|error| (Reason::TransportError, error))?;
+            self.reg_names = response
+                .data
+                .field("register-names")
+                .map(|names| {
+                    names
+                        .items()
+                        .iter()
+                        .map(|name| name.text().to_owned())
+                        .collect()
+                })
+                .unwrap_or_default();
+        }
+        self.reg_names
+            .iter()
+            .position(|entry| entry == name)
+            .ok_or_else(|| {
+                (
+                    Reason::ReaderUnsupported,
+                    format!("GDB target description does not expose {name}"),
+                )
+            })
     }
     pub(super) fn register_tcl(&mut self, operation: &str) -> Result<String, (Reason, String)> {
         self.register_tcl_tracked(operation, &mut false)

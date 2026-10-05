@@ -39,6 +39,24 @@ impl Coordinator {
                 }
                 .into();
             }
+            if req.method == "console"
+                && matches!(
+                    self.engines[self.active].snapshot.state.as_str(),
+                    "READY" | "STOPPED"
+                )
+            {
+                // An arbitrary monitor command may reset shared hardware, even before an error.
+                // Cache invalidation is local; the command still goes only to the selected core.
+                let mut steps: VecDeque<_> = self
+                    .order
+                    .iter()
+                    .map(|&i| Step::Core(i, "register_boundary".into()))
+                    .collect();
+                steps.push_back(Step::Core(self.active, "console".into()));
+                self.control_batch(req.clone(), steps, false);
+                self.batch.as_mut().unwrap().aggregate = false;
+                return true;
+            }
         }
         if req.method == "control_scope" {
             let scope = match req.params.get("scope").and_then(Json::as_str) {
@@ -138,6 +156,10 @@ impl Coordinator {
             }
         }
         if shared_reset {
+            // Invalidate every affected connection before sending the reset, including failures.
+            for &i in &indices {
+                steps.push_back(Step::Core(i, "register_boundary".into()));
+            }
             let reset = self
                 .engines
                 .iter()
@@ -306,12 +328,32 @@ mod tests {
             [
                 (1, "pause"),
                 (0, "pause"),
+                (1, "register_boundary"),
+                (0, "register_boundary"),
                 (0, "restart_shared"),
                 (1, "synchronize"),
                 (0, "synchronize")
             ]
         );
         assert!(c.engines.iter().all(|e| !e.launched));
+    }
+    #[test]
+    fn console_invalidates_all_local_caches_and_sends_only_one_selected_command() {
+        let (mut c, _rx) = coordinator();
+        c.begin(Request::new(
+            1,
+            "console",
+            json!({"command":"monitor chipreset","scope":"all"}),
+        ));
+        assert_eq!(
+            methods(&c),
+            [
+                (1, "register_boundary"),
+                (0, "register_boundary"),
+                (0, "console")
+            ]
+        );
+        assert!(!c.batch.as_ref().unwrap().aggregate);
     }
     #[test]
     fn breakpoint_focus_and_peer_halt_do_not_steal_focus() {
