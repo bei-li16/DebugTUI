@@ -52,6 +52,14 @@ pub(super) struct Picker {
 
 impl Picker {
     pub fn cpus() -> Result<Self, String> {
+        Self::cpus_in(
+            &crate::devices::catalogue_path()?
+                .parent()
+                .unwrap()
+                .join("registers"),
+        )
+    }
+    fn cpus_in(directory: &Path) -> Result<Self, String> {
         let mut choices = vec![
             Choice::Cpu { id: None, label: "Automatic / inherit profile and chip association".into(), description: "Remove project CPU and catalogue overrides. A user chip association takes precedence over the built-in association.".into() },
             Choice::Cpu { id: Some(String::new()), label: "GDB target description only".into(), description: "Use the original dynamic GDB register list without an architecture catalogue.".into() },
@@ -59,20 +67,20 @@ impl Picker {
         for cpu in ["cortex-m4", "cortex-r52", "cortex-r52+"] {
             choices.push(Choice::Cpu { id: Some(cpu.into()), label: cpu.into(), description: format!("Use the {cpu} register catalogue. User presets with this name override the embedded default; the catalogue does not prove hardware or reader support.") });
         }
-        let directory = crate::devices::catalogue_path()?
-            .parent()
-            .unwrap()
-            .join("registers");
         if directory.is_dir() {
-            let mut presets: Vec<_> = fs::read_dir(&directory)
+            let mut presets: Vec<_> = fs::read_dir(directory)
                 .map_err(|e| e.to_string())?
                 .filter_map(Result::ok)
                 .map(|entry| entry.path())
                 .filter(|path| {
                     path.is_file()
-                        && path
-                            .extension()
-                            .is_some_and(|extension| extension.eq_ignore_ascii_case("toml"))
+                        && path.extension().is_some_and(|extension| {
+                            if cfg!(windows) {
+                                extension.eq_ignore_ascii_case("toml")
+                            } else {
+                                extension == "toml"
+                            }
+                        })
                 })
                 .filter_map(|path| {
                     path.file_stem()
@@ -239,4 +247,79 @@ fn is_project_file(path: &Path) -> bool {
             .any(|key| raw.get(key).is_some())
                 || raw.get("version").is_some_and(toml::Value::is_integer)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::launch::tests::Fixture;
+
+    #[test]
+    fn setup_cpu_picker_discovers_sorted_user_presets_without_loading_or_rewriting_them() {
+        let fixture = Fixture::new();
+        for name in [
+            "z-user.toml",
+            "a-user.toml",
+            "cortex-r52+.toml",
+            "bad name.toml",
+            "customer.txt",
+            "Upper.TOML",
+        ] {
+            fs::write(fixture.0.join(name), "broken=[").unwrap();
+        }
+        fs::create_dir(fixture.0.join("directory.toml")).unwrap();
+        let picker = Picker::cpus_in(&fixture.0).unwrap();
+        let labels: Vec<_> = picker.choices.iter().map(Choice::label).collect();
+        assert_eq!(
+            &labels[..5],
+            [
+                "Automatic / inherit profile and chip association",
+                "GDB target description only",
+                "cortex-m4",
+                "cortex-r52",
+                "cortex-r52+"
+            ]
+        );
+        assert!(labels.contains(&"a-user / user".into()));
+        assert!(labels.contains(&"z-user / user".into()));
+        assert_eq!(
+            labels
+                .iter()
+                .filter(|label| *label == "cortex-r52+")
+                .count(),
+            1
+        );
+        assert!(!labels.iter().any(|label| label.contains("bad name")
+            || label.contains("customer.txt")
+            || label.contains("directory")));
+        assert_eq!(labels.contains(&"Upper / user".into()), cfg!(windows));
+        let a = labels
+            .iter()
+            .position(|label| label == "a-user / user")
+            .unwrap();
+        let z = labels
+            .iter()
+            .position(|label| label == "z-user / user")
+            .unwrap();
+        assert!(a < z);
+        assert!(
+            picker.choices[a]
+                .description()
+                .contains(&fixture.0.join("a-user.toml").display().to_string())
+        );
+        assert_eq!(
+            fs::read_to_string(fixture.0.join("cortex-r52+.toml")).unwrap(),
+            "broken=["
+        );
+        assert_eq!(
+            Picker::cpus_in(&fixture.0.join("missing"))
+                .unwrap()
+                .choices
+                .len(),
+            5
+        );
+        let projects = Fixture::new();
+        fs::write(projects.0.join("debug-upper.TOML"), "version=2").unwrap();
+        assert_eq!(Picker::projects(&projects.0).unwrap().choices.len(), 1);
+    }
 }

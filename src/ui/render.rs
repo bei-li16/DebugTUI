@@ -1456,7 +1456,14 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     a.completion.hits.clear();
     a.completion.area = Rect::default();
     a.scrollbars.fill(Rect::default());
+    let setup_register_context = a.setup.as_ref().map(|_| a.register_context());
     if let Some(setup) = &mut a.setup {
+        setup.observe_register_target(
+            &a.project,
+            a.snapshot.register_probe.as_ref(),
+            &setup_register_context.unwrap(),
+            a.snapshot.state == "STOPPED",
+        );
         setup.draw(f);
         return;
     }

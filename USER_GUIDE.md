@@ -704,6 +704,10 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 寄存器配置先继承 Tools/profile 根设置及选定 backend，再由项目同名字段覆盖；芯片 CPU 关联只在没有显式 CPU/目录选择时填默认值。非空 catalogue 文件优先于 CPU preset，CPU preset 按用户同名文件、内置目录顺序选择。相对目录路径以声明它的项目/profile 为准；已有用户 override 损坏、不可读或为目录时报错，不回退。要改用 CPU preset，清除继承的 `catalogue`；要回到 GDB 列表，同时清空 `cpu` 与 `catalogue`。完整优先级与例证见 [配置自检](docs/register-configuration.md)。
 
+Setup 的 CPU registers 可选 M4、R52、R52+、用户 preset、Automatic 或 GDB；Register catalogue 可输入或 F2 浏览文件。CPU picker 内的 F2 同样浏览目录。F1 查看候选目录的名称、架构、来源、说明、支持条件及各核身份，方向键／翻页／Home／End／滚轮滚动，Esc／Close 返回草稿。选择与预览不启动读取，Ctrl+S 保存项目引用，不改写客户 profile 或目录。使用文件且未选 CPU preset 时显示 Catalogue file，不会误显示成原 GDB 列表。
+
+配置 CPU、目录 CPU、Chip 关联和 Observed CPU 分别显示；差异提示不自动改配置。芯片关联只是配置；当前停止核心没有有效 Probe 时显示 Unknown，其他核及旧 session／stop／frame 的身份不复用。Setup 改目标、工具或 TCL endpoint／target 等访问路由后，旧身份也不用于新草稿。选择 R52+ 目录不证明实际 R52+ 身份、可选扩展或 reader/writer 支持；完整操作及自检见 [Setup 目录选择](docs/register-setup-catalogues.md)。
+
 System Regs 的 Total／Shown／Valid 分别计目录定义、展开筛选后的寄存器行及当前暂停上下文的有效值。Status 按钮、`t` 或 `:register-status` 打开分类计数和目录来源；窄窗口可用方向键／滚轮，Esc 或 Close 关闭。失败可保留旧值，但显示当前原因，不计成功。
 
 Status 的 Sampling view 区分选中栈帧与物理核心状态。GDB 值及其别名随栈帧失效；返回原帧后也需要重新读取，同一停止代次的直接后端值可保留。Reset、Reconnect、更换 ELF 和 Console 会使相关旧值失效；共享 Reset 与原始 Console 在命令发送前使全部核心缓存失效，命令报错也不会恢复旧值为有效。详细规则与验证见 [缓存生命周期](docs/register-cache-lifecycle.md)。

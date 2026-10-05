@@ -355,6 +355,12 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             .and_then(|identity| identity.model.as_deref())
             .unwrap_or("unknown; no current identity evidence");
         text.push(format!("Observed CPU: {observed}"));
+        if observed != "unknown; no current identity evidence"
+            && let Some(warning) =
+                crate::launch::registers::mismatch("observed CPU", observed, &catalogue.cpu)
+        {
+            text.push(warning);
+        }
     }
     let area = f.area();
     let width = area.width.min(72);

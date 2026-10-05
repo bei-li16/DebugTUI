@@ -13,6 +13,6 @@
 | CONFIG-H05 | 非空 catalogue 与 CPU preset 同时声明；随后清除 catalogue，再同时清除 CPU/catalogue | 文件优先，其后用户 CPU override > 内置，全部清除后回到 GDB；不会把配置 CPU 当作实际目录 CPU | SKIPPED |
 | CONFIG-H06 | 用户同名 override 为有效客户文件、损坏文件、目录、不可读或断开的链接，再真正移除该路径 | 有效客户内容优先；损坏/目录/不可读取时必须报错；只有不存在时可选内置；客户文件 SHA256 保持 | SKIPPED |
 | CONFIG-H07 | 项目/profile/选定 backend 添加未知 register 设置；nested topology/component 加未知字段或错误类型；组件只覆盖 channel | 错误包含字段/类型信息且在目标操作前报告；有效局部覆盖继承 base/byte order，未知字段不被静默接受 | SKIPPED |
-| CONFIG-H08 | 选择非连续核心，如 core.0/core.2；逐核列表，再查看 Setup CPU/GDB/Automatic 草稿、取消与保存 | 每核 context/source 对应真正选择的 worker 与目录；不按列表索引猜系统寄存器 target；只查看/取消无文件和硬件动作，保存仅改项目副本；完整目标不匹配提示仍属 REG-108 | SKIPPED |
+| CONFIG-H08 | 选择非连续核心，如 core.0/core.2；逐核列表，再查看 Setup CPU/GDB/Automatic 草稿、取消与保存 | 每核 context/source 对应真正选择的 worker 与目录；不按列表索引猜系统寄存器 target；只查看/取消无文件和硬件动作，保存仅改项目副本；完整目录与目标提示另见 [REG-108 环境 case](register-setup-catalogues.md) | SKIPPED |
 
 涉及不可读文件/链接时仅操作专用测试目录，执行人员选择适合其系统的权限/链接方式。结束核对客户原配置 SHA256 与进程/日志，保留 stderr、目录 list JSON 和 Setup 截图；上板执行不在本任务范围内。

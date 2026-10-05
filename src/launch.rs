@@ -21,6 +21,7 @@ use std::{
 mod channels;
 mod choices;
 mod devices;
+pub(crate) mod registers;
 mod remap;
 use choices::{Choice, Picker};
 
@@ -183,6 +184,19 @@ pub struct Document {
     pub discovered: bool,
 }
 impl Document {
+    fn select_register_cpu(&mut self, id: Option<&str>) {
+        if let Some(id) = id {
+            self.set("registers", "cpu", id.into());
+            self.set("registers", "catalogue", "".into());
+        } else if let Some(registers) = self
+            .raw
+            .get_mut("registers")
+            .and_then(toml::Value::as_table_mut)
+        {
+            registers.remove("cpu");
+            registers.remove("catalogue");
+        }
+    }
     pub fn is_modified(&self) -> bool {
         self.original.as_ref() != Some(&self.raw)
     }
@@ -473,6 +487,8 @@ pub struct Setup {
     mapping: Option<remap::Mapping>,
     devices: Option<devices::Devices>,
     channels: Option<channels::Channels>,
+    register_details: Option<registers::Details>,
+    register_observation: Option<registers::Observation>,
     action_hits: Vec<(Rect, usize)>,
     row_hits: Vec<(Rect, usize)>,
 }
@@ -515,6 +531,8 @@ impl Setup {
             mapping: None,
             devices: None,
             channels: None,
+            register_details: None,
+            register_observation: None,
             action_hits: vec![],
             row_hits: vec![],
         }
@@ -645,7 +663,11 @@ impl Setup {
                 format!("{} -> Source root", p.source_remap.from)
             },
             if p.registers.cpu.is_empty() {
-                "GDB target description".into()
+                if p.registers.catalogue.as_os_str().is_empty() {
+                    "GDB target description".into()
+                } else {
+                    "Catalogue file (no CPU preset)".into()
+                }
             } else {
                 p.registers.cpu
             },
@@ -817,6 +839,21 @@ impl Setup {
         }
     }
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<Launch>, String> {
+        if let Some(details) = &mut self.register_details {
+            if details.key(key.code) {
+                self.register_details = None;
+            }
+            return Ok(None);
+        }
+        if key.code == KeyCode::F(1)
+            && matches!(self.selected, CPU | CATALOGUE)
+            && self.channels.is_none()
+            && self.devices.is_none()
+            && self.mapping.is_none()
+        {
+            self.register_details = Some(registers::Details::default());
+            return Ok(None);
+        }
         if let Some(channels) = &mut self.channels {
             let action = channels.key(key);
             self.channel_action(action)?;
@@ -856,8 +893,12 @@ impl Setup {
                 KeyCode::End => picker.selected = picker.choices.len().saturating_sub(1),
                 KeyCode::Enter => self.apply_choice()?,
                 KeyCode::F(2) => {
+                    let cpu_picker = picker
+                        .choices
+                        .get(picker.selected)
+                        .is_some_and(|choice| matches!(choice, Choice::Cpu { .. }));
                     self.picker = None;
-                    self.selected = 0;
+                    self.selected = if cpu_picker { CATALOGUE } else { 0 };
                     self.open_browser()?;
                 }
                 _ => {}
@@ -1094,17 +1135,7 @@ impl Setup {
             }
             Choice::Cpu { id, .. } => {
                 let mut document = self.document.clone();
-                if let Some(id) = id {
-                    document.set("registers", "cpu", id.clone().into());
-                    document.set("registers", "catalogue", "".into());
-                } else if let Some(registers) = document
-                    .raw
-                    .get_mut("registers")
-                    .and_then(toml::Value::as_table_mut)
-                {
-                    registers.remove("cpu");
-                    registers.remove("catalogue");
-                }
+                document.select_register_cpu(id.as_deref());
                 (
                     document,
                     "Register catalogue selection applied to draft. Start applies; Ctrl+S saves.",
@@ -1155,6 +1186,12 @@ impl Setup {
         }))
     }
     pub fn mouse(&mut self, mouse: MouseEvent) -> Option<Launch> {
+        if let Some(details) = &mut self.register_details {
+            if details.mouse(mouse) {
+                self.register_details = None;
+            }
+            return None;
+        }
         // Exit must remain available even for an invalid editor or an open picker.
         if mouse.kind == MouseEventKind::Down(MouseButton::Left)
             && self
@@ -1258,8 +1295,8 @@ impl Setup {
         } else {
             relative_path(self.document.base(), path)
         };
-        self.browser = None;
         self.set_value(&value)?;
+        self.browser = None;
         self.message = "Selected. Click Start or press Ctrl+R; Ctrl+S saves.".into();
         Ok(())
     }
@@ -1285,21 +1322,24 @@ impl Setup {
         if let Some(mapping) = &self.mapping {
             return mapping.help();
         }
-        if self.picker.is_none() && matches!(self.selected, CPU | CATALOGUE) {
-            let source = self
-                .document
-                .project()
-                .and_then(|project| project.registers.load())
-                .map(|catalogue| {
-                    catalogue
-                        .map(|(catalogue, source)| {
-                            format!("Source: {source}; CPU: {}", catalogue.cpu)
+        if matches!(self.selected, CPU | CATALOGUE) {
+            let preview = self
+                .catalogue_preview()
+                .map(|lines| {
+                    lines
+                        .iter()
+                        .filter(|line| {
+                            line.starts_with("Source:")
+                                || line.starts_with("Warning:")
+                                || line.starts_with("Architecture:")
                         })
-                        .unwrap_or_else(|| "Source: GDB target description".into())
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("\n")
                 })
                 .unwrap_or_else(|error| format!("Catalogue error: {error}"));
             return format!(
-                "{}: {}\n{source}",
+                "F1: catalogue details / support conditions\n{preview}\n{}: {}",
                 LABELS[self.selected], HINTS[self.selected]
             );
         }
@@ -1321,6 +1361,17 @@ impl Setup {
     pub fn draw(&mut self, f: &mut Frame) {
         self.action_hits.clear();
         self.row_hits.clear();
+        if let Some(mut details) = self.register_details.take() {
+            let lines = self.catalogue_preview().unwrap_or_else(|error| {
+                vec![
+                    format!("Catalogue error: {error}"),
+                    "Esc / Close returns to the draft. No file was changed.".into(),
+                ]
+            });
+            details.draw(f, lines);
+            self.register_details = Some(details);
+            return;
+        }
         if let Some(channels) = &mut self.channels {
             channels.draw(f);
             return;
@@ -1721,9 +1772,9 @@ mod tests {
     use ratatui::{Terminal, backend::TestBackend};
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
-    struct Fixture(PathBuf);
+    pub(super) struct Fixture(pub(super) PathBuf);
     impl Fixture {
-        fn new() -> Self {
+        pub(super) fn new() -> Self {
             let root = env::temp_dir().join(format!(
                 "debugtui-launch-{}-{}",
                 std::process::id(),
@@ -1738,7 +1789,7 @@ mod tests {
             let _ = fs::remove_dir_all(&self.0);
         }
     }
-    fn key(code: KeyCode) -> KeyEvent {
+    pub(super) fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 

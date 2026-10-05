@@ -4,7 +4,7 @@
 
 本计划将现有通用寄存器列表扩展为具有 Arm Development Studio 分组、位域和状态展示能力的寄存器窗口，并纳入 GitHub 开放 Issues 中的总线访问 target 配置、展示以及变量/内存/寄存器写入需求。优先服务 THA6206 的 MCAL 与 Bao 调试，同时保持单核、多核以及 STM32 等既有目标的兼容性。寄存器读取按“确认读取能力 → 建立数据模型 → 改造界面 → 扩展读取 → 实板验收”推进；总线入口与写入能力分别跟踪，写入不作为前期只读版本的发布条件。
 
-状态：开发中。2026-10-05 按逐项软件证据核对，71 项中已完成 17 项、未完成 54 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
+状态：开发中。2026-10-05 按逐项软件证据核对，71 项中已完成 18 项、未完成 53 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
 
 ## 当前版本与新功能版本计划
 
@@ -201,11 +201,11 @@ Arm 的 R52 与 R52+ 技术手册在相应 CPU 接口中列出 `ICC_AP0R0`、`IC
 
 保留项目 `debug.toml`、工具环境 `debug-env.toml` 和用户 `profiles/devices.toml` 的现有职责。芯片目录继续声明芯片、核心与 backend；增加可选的 CPU 寄存器目录关联，具体字段名在阶段一确定。backend 负责工具环境匹配，寄存器目录描述 CPU 架构与展示信息。
 
-建议目录格式沿用 TOML。内置目录随发行包提供，允许用户目录扩展和项目显式指定目录。拟采用“项目指定 → 用户芯片关联 → 内置匹配 → 原有 GDB 列表”的选择顺序；缺少显式指定的目录时报告配置错误，未配置新功能的旧项目正常回退。
+目录格式沿用 TOML。内置定义、用户目录与项目显式文件均已接入开发分支。选择先合并 Tools/profile 根及选定 backend，再由项目同名字段覆盖；存在显式 CPU／目录字段（含空值）时不注入芯片默认。未显式选择时用户芯片关联优先，空关联可沿用内置关联。非空目录文件优先于 CPU preset，preset 按用户同名文件、内置定义选择；错误目录不能被默认掩盖。没有 CPU／目录时保留原 GDB 列表。完整优先级见 REG-102 自检。
 
 Setup 增加寄存器目录选择，支持手工选择文件或从已适配 CPU 类型中选择。CPU 类型选择不改变 Chip、Debug cores、backend、下载算法或板级启动脚本；选择与实际目标不匹配时给出提示。目录预览显示名称、架构、来源和支持条件，用户选择的引用在 Save config 时保存。
 
-这些规则属于待实现设计，当前版本不能直接添加尚未定义的新字段。工程只保存目录引用和展示偏好，不复制数百项寄存器定义。路径相对声明它的文件解析，并测试 `/`、`\`、空格、中文和 UNC；内置、用户及项目来源必须在日志中可辨认。
+本节说明设计与兼容约定；开发分支的已实现 schema 和逐项验收分别见配置／Setup 自检，发行版 0.9.3 不代表这些开发功能已经交付。工程只保存目录引用和展示偏好，不复制数百项寄存器定义。路径相对声明它的文件解析，并测试 `/`、`\`、空格、中文和 UNC；内置、用户及项目来源必须在日志中可辨认。
 
 寄存器元数据至少包含以下内容：
 
@@ -298,7 +298,7 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 - [x] REG-105：实现连续和非连续位域、枚举及别名派生；补齐 64、128 位边界和字节序处理。
 - [x] REG-106：实现逐核缓存、会话和 generation 校验；复位、重连、切核、更换 ELF 和切栈帧按设计使相应结果失效。
 - [ ] REG-107：打包内置目录并初始化用户扩展位置；升级保留客户目录，验证 npm、EXE、ZIP 与 `--init-profiles` 路径。
-- [ ] REG-108：实现 Setup 的寄存器目录浏览与已适配 CPU 类型选择；覆盖 cortex-m4、cortex-r52+ 的目录关联、取消、保存、来源显示及目标不匹配提示，对应 Issue #2。
+- [x] REG-108：实现 Setup 的寄存器目录浏览与已适配 CPU 类型选择；覆盖 cortex-m4、cortex-r52+ 的目录关联、取消、保存、来源显示及目标不匹配提示，对应 Issue #2。
 - [x] REG-109：实现 percore、percluster、perchip 的元数据、显式拓扑与 owner 缓存规则；未知归属显示未确定，补齐跨 cluster 和共享结果的隔离测试，对应 Issue #2。
 - [ ] REG-110：实现可选寄存器及数量条件、Yes/No/Unknown 实现状态与读取原因分类，保存判定依据；无法取得能力信息时保留 Unknown，WO 不安排读取，目标版本 v0.10.0。
 
@@ -320,7 +320,7 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 - [x] REG-210：展示当前目录、CPU 类型及条目的 Scope、Owner 和实际读取来源；切核后不将 cluster 或 chip 共享结果伪装为当前核私有结果，对应 Issue #2。
 - [x] REG-211：增加目标实现视图与全部架构定义筛选，分别展示 Not implemented、Unavailable、Reader unsupported、Error 和 Write only；提供原因说明及分类计数，不对明确未实现项目自动试读，目标版本 v0.10.0。
 
-2026-10-05：REG-101/103/104/105、REG-201/202/203/204/207/209 的逐项软件验收见 [框架自检](register-framework-audit.md)；REG-102 见 [配置自检](register-configuration.md)，覆盖旧配置、严格字段、project/profile/backend/chip 优先级、中文/空格路径与实际 EXE 多核目录；REG-106 见 [缓存生命周期](register-cache-lifecycle.md)，覆盖复位成功／失败、重连、切核、ELF／符号替换、换帧及迟到回复；REG-109 见 [共享归属](register-shared-owners.md)，覆盖显式拓扑、四核／跨 cluster、共享代次、读取竞争、失败及界面 owner；REG-210 见 [读取来源](register-read-provenance.md)，覆盖八类 reader、Probe/MPU/selector、实际请求、保留值来源、目录/CPU 与共享归属展示；REG-205/206/211 见 [状态与取消](register-read-status-and-cancel.md)。已完成／未完成为 **17/54**。REG-208 的实际终端视觉验收仍未执行；硬件用例已按用户要求保留延后执行。勾选不表示其余目标类别、完整阶段或全部 TODO 已完成。
+2026-10-05：REG-101/103/104/105、REG-201/202/203/204/207/209 的逐项软件验收见 [框架自检](register-framework-audit.md)；REG-102 见 [配置自检](register-configuration.md)，覆盖旧配置、严格字段、project/profile/backend/chip 优先级、中文/空格路径与实际 EXE 多核目录；REG-106 见 [缓存生命周期](register-cache-lifecycle.md)，覆盖复位成功／失败、重连、切核、ELF／符号替换、换帧及迟到回复；REG-109 见 [共享归属](register-shared-owners.md)，覆盖显式拓扑、四核／跨 cluster、共享代次、读取竞争、失败及界面 owner；REG-210 见 [读取来源](register-read-provenance.md)，覆盖八类 reader、Probe/MPU/selector、实际请求、保留值来源、目录/CPU 与共享归属展示；REG-108 见 [Setup 目录选择](register-setup-catalogues.md)，覆盖 M4／R52／R52+ 及用户目录、来源／架构／条件预览、取消／保存、配置差异与当前核心身份提示；REG-205/206/211 见 [状态与取消](register-read-status-and-cancel.md)。已完成／未完成为 **18/53**。REG-208 的实际终端视觉验收仍未执行；硬件用例已按用户要求保留延后执行。勾选不表示其余目标类别、完整阶段或全部 TODO 已完成。
 
 完成条件：能展示 ADS 参考中的树、字段、位宽与状态；不要求具有相同目录数量。无扩展目录时现有平面列表行为仍可用。
 

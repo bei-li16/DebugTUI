@@ -41,6 +41,158 @@ fn text(terminal: &Terminal<TestBackend>) -> String {
     }
     text
 }
+
+#[test]
+fn register_status_warns_on_current_observed_cpu_mismatch_without_probing_or_cross_core_reuse() {
+    let mut app = app();
+    app.register_view.catalogue = Some(crate::registers::Catalogue::builtin("cortex-m4").unwrap());
+    app.register_view.rows = vec![Row::Register(0, 1)];
+    let mut probe = crate::registers::capabilities::Probe {
+        context: app.register_context(),
+        thread: "1".into(),
+        identity: None,
+        facts: Default::default(),
+        samples: vec![sample(&app, "midr", "0x411fd134")],
+        gdb_names: vec![],
+        notes: vec![],
+    };
+    probe.decode();
+    let (engine, requests) = engine();
+    for change in [
+        "current",
+        "run",
+        "session",
+        "stop",
+        "core",
+        "frame",
+        "unadapted",
+    ] {
+        let mut evidence = probe.clone();
+        app.snapshot.state = "STOPPED".into();
+        match change {
+            "run" => app.snapshot.state = "RUNNING".into(),
+            "session" => evidence.context.session += 1,
+            "stop" => evidence.context.generation += 1,
+            "core" => evidence.context.core = "other".into(),
+            "frame" => evidence.context.frame += 1,
+            "unadapted" => evidence.identity.as_mut().unwrap().model = None,
+            _ => {}
+        }
+        app.snapshot.register_probe = Some(evidence);
+        key(&mut app, KeyCode::Char('t'), &engine);
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        key(&mut app, KeyCode::End, &engine);
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        let compact: String = text(&terminal)
+            .chars()
+            .filter(|ch| !ch.is_whitespace() && *ch != '│')
+            .collect();
+        assert_eq!(
+            compact.contains("Warning:observedCPU"),
+            change == "current",
+            "{change}: {compact}"
+        );
+        if change == "current" {
+            assert!(compact.contains("Cortex-R52differsfromcatalogueCPUcortex-m4"));
+        }
+        key(&mut app, KeyCode::Esc, &engine);
+    }
+    assert!(requests.try_recv().is_err());
+}
+
+#[test]
+fn setup_render_imports_current_identity_and_clears_it_on_run_or_draft_target_change_without_io() {
+    let mut app = app();
+    app.document.set(
+        "registers",
+        "catalogue",
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("profiles/registers/cortex-m4.toml")
+            .to_string_lossy()
+            .into_owned()
+            .into(),
+    );
+    app.document
+        .set("target", "endpoint", "localhost:3333".into());
+    app.project = app.document.project().unwrap();
+    let mut probe = crate::registers::capabilities::Probe {
+        context: app.register_context(),
+        thread: "1".into(),
+        identity: None,
+        facts: Default::default(),
+        samples: vec![sample(&app, "midr", "0x411fd134")],
+        gdb_names: vec![],
+        notes: vec![],
+    };
+    probe.decode();
+    app.snapshot.register_probe = Some(probe);
+    let (engine, requests) = engine();
+    app.open_setup();
+    let mut terminal = Terminal::new(TestBackend::new(100, 30)).unwrap();
+    for _ in 0..18 {
+        app.key(
+            KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        app.key(
+            KeyEvent::new(KeyCode::F(1), KeyModifiers::NONE),
+            Some(&engine),
+        );
+        terminal
+            .draw(|f| crate::ui::render::draw(f, &mut app))
+            .unwrap();
+        if text(&terminal).contains("Register catalogue / preview") {
+            break;
+        }
+    }
+    assert!(text(&terminal).contains("Register catalogue / preview"));
+    for state in ["current", "run", "target-change"] {
+        if state == "run" {
+            app.snapshot.state = "RUNNING".into();
+        }
+        if state == "target-change" {
+            app.snapshot.state = "STOPPED".into();
+            app.setup
+                .as_mut()
+                .unwrap()
+                .document
+                .set("target", "endpoint", "localhost:9999".into());
+        }
+        app.key(
+            KeyEvent::new(KeyCode::Home, KeyModifiers::NONE),
+            Some(&engine),
+        );
+        let mut seen = String::new();
+        for _ in 0..45 {
+            terminal
+                .draw(|f| crate::ui::render::draw(f, &mut app))
+                .unwrap();
+            seen.push_str(&text(&terminal));
+            app.key(
+                KeyEvent::new(KeyCode::Down, KeyModifiers::NONE),
+                Some(&engine),
+            );
+        }
+        let compact: String = seen
+            .chars()
+            .filter(|ch| !ch.is_whitespace() && *ch != '│')
+            .collect();
+        assert_eq!(
+            compact.contains("Warning:observedCPU"),
+            state == "current",
+            "{state}: {compact}"
+        );
+        assert_eq!(
+            compact.contains("ObservedCPU[default]:Cortex-R52"),
+            state == "current"
+        );
+        if state != "current" {
+            assert!(compact.contains("ObservedCPU[default]:Unknown"));
+        }
+    }
+    assert!(requests.try_recv().is_err());
+}
 #[test]
 fn register_status_counts_expanded_rows_once_and_separates_failures_from_last_values() {
     let mut app = app();

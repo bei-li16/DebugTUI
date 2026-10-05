@@ -122,6 +122,23 @@ impl Catalogue {
     pub fn user() -> Result<Self, String> {
         Self::load(&ensure_user_catalogue()?)
     }
+    /// A configured association is a default, never observed CPU identity.
+    pub(crate) fn cpu_association(
+        &self,
+        chip: &str,
+    ) -> Result<Option<(String, &'static str)>, String> {
+        let Some(device) = self.devices.get(chip) else {
+            return Ok(None);
+        };
+        if !device.cpu.is_empty() {
+            return Ok(Some((device.cpu.clone(), "user")));
+        }
+        Ok(Self::parse(DEFAULTS)?
+            .devices
+            .get(chip)
+            .filter(|device| !device.cpu.is_empty())
+            .map(|device| (device.cpu.clone(), "builtin")))
+    }
     pub fn selection(&self, selection: &Selection) -> Result<(), String> {
         let device = self
             .devices
@@ -352,16 +369,10 @@ pub fn resolve(
     };
     catalogue.selection(&selection)?;
     let device = &catalogue.devices[&selection.chip];
-    let defaults = Catalogue::parse(DEFAULTS)?;
-    let cpu = if device.cpu.is_empty() {
-        defaults
-            .devices
-            .get(&selection.chip)
-            .map(|device| device.cpu.as_str())
-            .unwrap_or_default()
-    } else {
-        &device.cpu
-    };
+    let cpu = catalogue
+        .cpu_association(&selection.chip)?
+        .map(|(cpu, _)| cpu)
+        .unwrap_or_default();
     let group = backends
         .as_ref()
         .and_then(|v| v.get(&device.backend))
@@ -421,7 +432,7 @@ pub fn resolve(
             .or_insert_with(|| toml::Value::Table(Default::default()))
             .as_table_mut()
             .unwrap()
-            .insert("cpu".into(), toml::Value::String(cpu.into()));
+            .insert("cpu".into(), toml::Value::String(cpu));
     }
     expand_selection(environment, &selection, device);
     expand_selection(raw, &selection, device);
