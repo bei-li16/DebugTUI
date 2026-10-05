@@ -72,7 +72,20 @@ impl RpcEcho {
     }
 }
 pub(crate) fn transact(stream: &mut TcpStream, command: &str) -> Result<String, String> {
-    transact_with_policy(stream, command, true)
+    transact_with_policy(stream, command, true, &mut TransactionProgress::default())
+}
+
+#[derive(Default)]
+pub(crate) struct TransactionProgress {
+    pub started: Option<Instant>,
+    pub responded: bool,
+}
+pub(crate) fn transact_tracked(
+    stream: &mut TcpStream,
+    command: &str,
+    progress: &mut TransactionProgress,
+) -> Result<String, String> {
+    transact_with_policy(stream, command, true, progress)
 }
 
 /// Only for generated, target-specific read_memory commands. A broken read
@@ -81,17 +94,19 @@ pub(crate) fn read_only_transaction(
     stream: &mut TcpStream,
     command: &str,
 ) -> Result<String, String> {
-    transact_with_policy(stream, command, false)
+    transact_with_policy(stream, command, false, &mut TransactionProgress::default())
 }
 
 fn transact_with_policy(
     stream: &mut TcpStream,
     command: &str,
     uncertain_on_transport_error: bool,
+    progress: &mut TransactionProgress,
 ) -> Result<String, String> {
+    *progress = TransactionProgress::default();
     let service = crate::debug_access::service(stream.peer_addr().map_err(|e| e.to_string())?)?;
     let mut lease = service.acquire(false)?;
-    let result = transact_unlocked(stream, command);
+    let result = transact_unlocked(stream, command, progress);
     if let Err(error) = &result
         && (error.contains("Target restoration failed")
             || error.contains("Core state restoration failed")
@@ -104,7 +119,11 @@ fn transact_with_policy(
     result
 }
 
-fn transact_unlocked(stream: &mut TcpStream, command: &str) -> Result<String, String> {
+fn transact_unlocked(
+    stream: &mut TcpStream,
+    command: &str,
+    progress: &mut TransactionProgress,
+) -> Result<String, String> {
     if command.contains('\x1a') {
         return Err("TCL command contains a frame terminator".into());
     }
@@ -113,6 +132,7 @@ fn transact_unlocked(stream: &mut TcpStream, command: &str) -> Result<String, St
         "set __dt_code [catch {} __dt_value]; format \"{RPC_MARKER}%d:%s\" $__dt_code $__dt_value\x1a",
         word(command)
     );
+    progress.started = Some(Instant::now());
     stream
         .write_all(packet.as_bytes())
         .map_err(|e| format!("TCL write: {e}"))?;
@@ -137,6 +157,7 @@ fn transact_unlocked(stream: &mut TcpStream, command: &str) -> Result<String, St
             Err(e) => return Err(format!("TCL read: {e}")),
         }
     }
+    progress.responded = true;
     let text = String::from_utf8(buf).map_err(|e| format!("Invalid TCL response: {e}"))?;
     let text = text.strip_prefix(RPC_MARKER).unwrap_or(&text);
     let (code, value) = text.split_once(':').ok_or("Missing TCL response status")?;
@@ -649,6 +670,53 @@ mod tests {
         drop(handle);
         server.join().unwrap();
         fs::remove_file(file).unwrap();
+    }
+    #[test]
+    fn rpc_progress_records_dispatch_and_complete_frames_even_when_value_parsing_fails() {
+        for (reply, responded) in [
+            (None, false),
+            (Some("malformed"), true),
+            (Some("1:denied"), true),
+        ] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut byte = [0];
+                while stream.read_exact(&mut byte).is_ok() && byte[0] != 0x1a {}
+                if let Some(reply) = reply {
+                    stream.write_all(format!("{reply}\x1a").as_bytes()).unwrap();
+                }
+            });
+            let mut stream = connect(&addr.to_string()).unwrap();
+            let mut progress = TransactionProgress::default();
+            assert!(transact_tracked(&mut stream, "read only", &mut progress).is_err());
+            assert!(progress.started.is_some());
+            assert_eq!(progress.responded, responded);
+            server.join().unwrap();
+        }
+    }
+    #[test]
+    fn rpc_progress_never_claims_dispatch_for_invalid_commands_or_a_service_fault() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let mut stream = connect(&addr.to_string()).unwrap();
+        let (mut peer, _) = listener.accept().unwrap();
+        peer.set_read_timeout(Some(Duration::from_millis(50)))
+            .unwrap();
+        let mut progress = TransactionProgress::default();
+        assert!(transact_tracked(&mut stream, "invalid\x1a", &mut progress).is_err());
+        assert!(progress.started.is_none() && !progress.responded);
+        let service = crate::debug_access::service(addr).unwrap();
+        let mut lease = service.acquire(false).unwrap();
+        lease.quarantine("independent service fault");
+        drop(lease);
+        assert!(transact_tracked(&mut stream, "valid command", &mut progress).is_err());
+        assert!(progress.started.is_none() && !progress.responded);
+        assert!(
+            peer.read(&mut [0]).is_err(),
+            "neither refusal should send a byte"
+        );
     }
     #[test]
     fn incomplete_rpc_times_out_instead_of_succeeding() {

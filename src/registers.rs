@@ -15,6 +15,7 @@ pub mod banked;
 pub mod capabilities;
 pub mod display;
 pub mod mpu;
+pub mod provenance;
 pub mod selector;
 pub mod vfp;
 
@@ -903,8 +904,32 @@ pub struct Sample {
     /// Shared coordinator lifetime; None for standalone/local worker samples.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_generation: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<provenance::Provenance>,
+    /// Kept separately when an unsuccessful attempt retains an earlier raw value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_value_provenance: Option<provenance::RetainedOrigin>,
 }
 impl Sample {
+    pub fn value_provenance(&self) -> Option<&provenance::Provenance> {
+        match &self.last_value_provenance {
+            Some(provenance::RetainedOrigin::Known(source)) => Some(source),
+            Some(provenance::RetainedOrigin::Unknown) => None,
+            None => self.provenance.as_ref(),
+        }
+    }
+    pub fn inherit_value_origin(&mut self, previous: &Self) {
+        if self.value.is_some() {
+            self.last_value_provenance =
+                Some(previous.last_value_provenance.clone().unwrap_or_else(|| {
+                    previous
+                        .provenance
+                        .clone()
+                        .map(|source| provenance::RetainedOrigin::Known(Box::new(source)))
+                        .unwrap_or(provenance::RetainedOrigin::Unknown)
+                }));
+        }
+    }
     /// UI/API caches must additionally check the shared owner's published lifetime.
     pub fn applies_at(
         &self,

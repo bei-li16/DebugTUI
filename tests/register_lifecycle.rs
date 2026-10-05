@@ -249,6 +249,22 @@ reader={kind="alias",source="physical",offset=8}
         "alias:d1@32 <- alias:q0@64 <- gdb:q0"
     );
     assert_eq!(read["samples"][2]["source"], "gdb:cntpct");
+    assert_eq!(
+        read["samples"][2]["provenance"]["catalogue_reader"]["kind"],
+        "cp15_64"
+    );
+    assert_eq!(
+        read["samples"][2]["provenance"]["access"]["route"]["kind"],
+        "gdb_register"
+    );
+    assert_eq!(
+        read["samples"][2]["provenance"]["access"]["route"]["name"],
+        "cntpct"
+    );
+    assert_eq!(
+        read["samples"][2]["provenance"]["access"]["phase"],
+        "responded"
+    );
     assert_eq!(read["samples"][2]["view"], "selected_frame");
     assert_eq!(read["samples"][3]["view"], "physical_core");
     assert_eq!(read["samples"][3]["value"]["hex"], "0x3456");

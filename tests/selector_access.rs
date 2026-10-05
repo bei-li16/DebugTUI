@@ -290,6 +290,24 @@ fn real_tcl_selector_transactions_read_pairs_and_restore_each_selector_and_targe
             result["evidence"]["restored"]
         );
         assert_eq!(result["samples"].as_array().unwrap().len(), 2);
+        for sample in result["samples"].as_array().unwrap() {
+            let provenance = &sample["provenance"];
+            assert_eq!(provenance["acquisition"], "selector_bank");
+            let access = &provenance["access"];
+            assert_eq!(access["route"]["target"], "cpu0");
+            assert_eq!(
+                access["route"]["endpoint"],
+                fixture.project.registers.tcl_endpoint
+            );
+            assert_eq!(access["phase"], "responded");
+            assert_eq!(access["context"], context);
+            assert!(
+                access["route"]["operation"]
+                    .as_str()
+                    .unwrap()
+                    .contains(&format!("index {index}"))
+            );
+        }
         assert!(
             result["samples"]
                 .as_array()

@@ -69,8 +69,10 @@ impl Coordinator {
         sample.value = last
             .and_then(|last| last.last_valid.as_ref())
             .and_then(|last| last.value.clone());
+        sample.last_value_provenance = None;
         if let Some(last) = last.and_then(|last| last.last_valid.as_ref()) {
             sample.timestamp_ms = last.timestamp_ms;
+            sample.inherit_value_origin(last);
         }
     }
     pub(super) fn filter_shared_snapshot(&self, core: usize, snapshot: &mut Snapshot) {
@@ -96,7 +98,10 @@ impl Coordinator {
                 sample.stale();
                 sample.detail = "Shared sample awaits owner lifetime validation".into();
                 self.retain_last_shared(core, sample);
-            } else if sample.state == State::Stale && !accepted {
+            } else if !accepted {
+                // Non-valid worker snapshots may retain a value rejected by the
+                // coordinator at an earlier owner boundary. Only the last value
+                // accepted on this route is a trustworthy retained origin.
                 self.retain_last_shared(core, sample);
             }
         }
@@ -140,6 +145,9 @@ impl Coordinator {
                 };
                 if sample.value.is_none() {
                     sample.value = last_valid.as_ref().and_then(|last| last.value.clone());
+                    if let Some(last) = &last_valid {
+                        sample.inherit_value_origin(last);
+                    }
                 }
                 self.shared_samples.insert(
                     (core, owner, sample.id.clone()),

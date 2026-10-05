@@ -1,11 +1,29 @@
 //! On-demand register access. No discovery sweep and no implicit core control.
 use super::*;
+use crate::registers::provenance::{Access, Derivation, Phase, Provenance, Route};
 use crate::registers::{
     Catalogue, Context, Implementation, RawValue, Reader, Reason, Register, Sample, SampleView,
     State,
 };
 use std::collections::BTreeMap;
 use std::sync::atomic::AtomicU64;
+
+#[derive(Default)]
+pub(super) struct ReadCache {
+    values: BTreeMap<String, RawValue>,
+    pub(super) provenance: BTreeMap<String, Provenance>,
+}
+impl std::ops::Deref for ReadCache {
+    type Target = BTreeMap<String, RawValue>;
+    fn deref(&self) -> &Self::Target {
+        &self.values
+    }
+}
+impl std::ops::DerefMut for ReadCache {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.values
+    }
+}
 
 static NEXT_SESSION: AtomicU64 = AtomicU64::new(1);
 pub(super) fn new_session() -> u64 {
@@ -186,7 +204,7 @@ impl Engine {
             .get("manual")
             .and_then(Json::as_bool)
             .unwrap_or(false);
-        let mut values = BTreeMap::new();
+        let mut values = ReadCache::default();
         let mut samples = Vec::new();
         let mut frame_proof = None;
         for id in ids {
@@ -213,6 +231,8 @@ impl Engine {
                 source,
                 view,
                 owner_generation: None,
+                provenance: Some(Provenance::declared(&register.reader)),
+                last_value_provenance: None,
             };
             if implementation == Implementation::No {
                 sample.state = State::Unsupported;
@@ -253,6 +273,9 @@ impl Engine {
                 }
                 let result = available
                     .and_then(|()| self.read_register_value(register, &catalogue, &mut values));
+                if let Some(provenance) = values.provenance.get(id) {
+                    sample.provenance = Some(provenance.clone());
+                }
                 if attempted
                     && sample.view == SampleView::SelectedFrame
                     && self.snapshot.state == "STOPPED"
@@ -319,6 +342,7 @@ impl Engine {
                 && let Some(index) = previous
             {
                 stored.value = self.snapshot.register_samples[index].value.clone();
+                stored.inherit_value_origin(&self.snapshot.register_samples[index]);
             }
             if let Some(index) = previous {
                 self.snapshot.register_samples[index] = stored.clone();
@@ -359,134 +383,167 @@ impl Engine {
         &mut self,
         register: &Register,
         catalogue: &Catalogue,
-        values: &mut BTreeMap<String, RawValue>,
+        values: &mut ReadCache,
     ) -> Result<RawValue, (Reason, String)> {
         self.check_register_read_cancelled()
             .map_err(|error| (Reason::Unknown, error))?;
         if let Some(value) = values.get(&register.id) {
+            self.register_value_access = values
+                .provenance
+                .get(&register.id)
+                .and_then(|p| p.access.clone());
             return Ok(value.clone());
         }
-        let value = match &register.reader {
-            Reader::Gdb { name } => self.gdb_register_value(name, register.bits)?,
-            Reader::Banked { name } => self.read_banked_register(name)?,
-            Reader::Vfp { name } => self.read_vfp_register(name, values)?,
-            Reader::Alias { source, offset } => {
-                let parent = catalogue.register(source).ok_or_else(|| {
-                    (
-                        Reason::ReaderUnsupported,
-                        format!("Unknown alias source {source}"),
-                    )
-                })?;
-                // Alias requests cannot bypass a parent's access or implementation restrictions.
-                if !parent.access.readable()
-                    || parent.read_side_effect
-                    || parent.implementation(&self.effective_register_facts()).0
-                        == Implementation::No
-                {
-                    return Err((
-                        Reason::AccessRestricted,
-                        "Alias source is not available for an automatic read".into(),
-                    ));
-                }
-                self.read_register_value(parent, catalogue, values)?
-                    .slice(*offset, register.bits)
-                    .map_err(|error| (Reason::TransportError, error))?
-            }
-            Reader::Cp15 {
-                cp,
-                op1,
-                crn,
-                crm,
-                op2,
-            } => {
-                if self.project.registers.cp15_command.is_empty() {
-                    return Err((
-                        Reason::ReaderUnsupported,
-                        "Configure a verified registers.cp15_command for this backend".into(),
-                    ));
-                }
-                let command = format!(
-                    "{} {cp} {op1} {crn} {crm} {op2}",
-                    self.project.registers.cp15_command
-                );
-                let text = self.register_tcl(&command)?;
-                RawValue::parse(&text, register.bits)
-                    .map_err(|error| (Reason::TransportError, error))?
-            }
-            Reader::Cp15_64 { cp, op1, crm } => {
-                // A named GDB register may already provide a genuine MRRC-backed value.
-                // Never synthesize a 64-bit system register from unrelated 32-bit MRC reads.
-                if self.project.registers.cp15_64_command.is_empty() {
-                    self.gdb_register_value(&register.id, register.bits)?
-                } else {
-                    let command = format!(
-                        "if {{[catch {{aarch64 debugtui_adapter}} __dt_adapter] || $__dt_adapter ne \"{}\"}} {{error \"MRRC adapter protocol unsupported\"}}; {} {cp} {op1} {crm}",
-                        crate::registers::OPENOCD_ADAPTER_PROTOCOL,
-                        self.project.registers.cp15_64_command
-                    );
-                    let text = self.register_tcl(&command).map_err(|(reason, error)| {
-                        if error.contains("adapter protocol unsupported") {
-                            (Reason::ReaderUnsupported, error)
-                        } else {
-                            (reason, error)
-                        }
+        self.register_value_access = None;
+        let result = (|| {
+            Ok(match &register.reader {
+                Reader::Gdb { name } => self.gdb_register_value(name, register.bits)?,
+                Reader::Banked { name } => self.read_banked_register(name)?,
+                Reader::Vfp { name } => self.read_vfp_register(name, values)?,
+                Reader::Alias { source, offset } => {
+                    let parent = catalogue.register(source).ok_or_else(|| {
+                        (
+                            Reason::ReaderUnsupported,
+                            format!("Unknown alias source {source}"),
+                        )
                     })?;
-                    let text = text.trim();
-                    if text.len() != 18
-                        || !text.starts_with("0x")
-                        || !text[2..].bytes().all(|b| b.is_ascii_hexdigit())
+                    // Alias requests cannot bypass a parent's access or implementation restrictions.
+                    if !parent.access.readable()
+                        || parent.read_side_effect
+                        || parent.implementation(&self.effective_register_facts()).0
+                            == Implementation::No
                     {
                         return Err((
-                            Reason::ReaderUnsupported,
-                            "MRRC adapter must return exactly 16 hexadecimal digits".into(),
+                            Reason::AccessRestricted,
+                            "Alias source is not available for an automatic read".into(),
                         ));
                     }
-                    RawValue::parse(text, register.bits)
+                    self.read_register_value(parent, catalogue, values)?
+                        .slice(*offset, register.bits)
                         .map_err(|error| (Reason::TransportError, error))?
                 }
-            }
-            Reader::Backend { name } => {
-                let text = self.register_tcl(&format!(
-                    "dict get [get_reg -force [list {}]] {}",
-                    crate::live_watch::word(name),
-                    crate::live_watch::word(name)
-                ))?;
-                RawValue::parse(&text, register.bits)
-                    .map_err(|error| (Reason::TransportError, error))?
-            }
-            Reader::Mmio { component, offset } => {
-                let binding = self
-                    .project
-                    .registers
-                    .components
-                    .get(component)
-                    .cloned()
-                    .ok_or_else(|| {
-                        (
+                Reader::Cp15 {
+                    cp,
+                    op1,
+                    crn,
+                    crm,
+                    op2,
+                } => {
+                    if self.project.registers.cp15_command.is_empty() {
+                        return Err((
                             Reason::ReaderUnsupported,
-                            format!("Component {component} has no board mapping"),
-                        )
+                            "Configure a verified registers.cp15_command for this backend".into(),
+                        ));
+                    }
+                    let command = format!(
+                        "{} {cp} {op1} {crn} {crm} {op2}",
+                        self.project.registers.cp15_command
+                    );
+                    let text = self.register_tcl_value(&command, &command)?;
+                    RawValue::parse(&text, register.bits)
+                        .map_err(|error| (Reason::TransportError, error))?
+                }
+                Reader::Cp15_64 { cp, op1, crm } => {
+                    // A named GDB register may already provide a genuine MRRC-backed value.
+                    // Never synthesize a 64-bit system register from unrelated 32-bit MRC reads.
+                    if self.project.registers.cp15_64_command.is_empty() {
+                        self.gdb_register_value(&register.id, register.bits)?
+                    } else {
+                        let command = format!(
+                            "if {{[catch {{aarch64 debugtui_adapter}} __dt_adapter] || $__dt_adapter ne \"{}\"}} {{error \"MRRC adapter protocol unsupported\"}}; {} {cp} {op1} {crm}",
+                            crate::registers::OPENOCD_ADAPTER_PROTOCOL,
+                            self.project.registers.cp15_64_command
+                        );
+                        let label = format!(
+                            "{} {cp} {op1} {crm}",
+                            self.project.registers.cp15_64_command
+                        );
+                        let text = self.register_tcl_value(&command, &label).map_err(
+                            |(reason, error)| {
+                                if error.contains("adapter protocol unsupported") {
+                                    (Reason::ReaderUnsupported, error)
+                                } else {
+                                    (reason, error)
+                                }
+                            },
+                        )?;
+                        let text = text.trim();
+                        if text.len() != 18
+                            || !text.starts_with("0x")
+                            || !text[2..].bytes().all(|b| b.is_ascii_hexdigit())
+                        {
+                            return Err((
+                                Reason::ReaderUnsupported,
+                                "MRRC adapter must return exactly 16 hexadecimal digits".into(),
+                            ));
+                        }
+                        RawValue::parse(text, register.bits)
+                            .map_err(|error| (Reason::TransportError, error))?
+                    }
+                }
+                Reader::Backend { name } => {
+                    let text = self.register_tcl_value(
+                        &format!(
+                            "dict get [get_reg -force [list {}]] {}",
+                            crate::live_watch::word(name),
+                            crate::live_watch::word(name)
+                        ),
+                        &format!("get_reg {name}"),
+                    )?;
+                    RawValue::parse(&text, register.bits)
+                        .map_err(|error| (Reason::TransportError, error))?
+                }
+                Reader::Mmio { component, offset } => {
+                    let binding = self
+                        .project
+                        .registers
+                        .components
+                        .get(component)
+                        .cloned()
+                        .ok_or_else(|| {
+                            (
+                                Reason::ReaderUnsupported,
+                                format!("Component {component} has no board mapping"),
+                            )
+                        })?;
+                    let address = binding.base.checked_add(*offset).ok_or_else(|| {
+                        (Reason::TransportError, "Component address overflows".into())
                     })?;
-                let address = binding.base.checked_add(*offset).ok_or_else(|| {
-                    (Reason::TransportError, "Component address overflows".into())
-                })?;
-                let result = self.read_memory_channel(&json!({"channel":binding.channel,"address":address,"bits":register.bits,"little_endian":binding.little_endian})).map_err(|error|(Reason::TransportError,error))?;
-                let raw = result
-                    .get("value")
-                    .and_then(Json::as_u64)
-                    .map(u128::from)
-                    .ok_or_else(|| {
-                        (
-                            Reason::TransportError,
-                            "Memory response lacks an exact integer value".into(),
-                        )
-                    })?;
-                RawValue::from_integer(raw, register.bits)
-                    .map_err(|error| (Reason::TransportError, error))?
-            }
-        };
-        values.insert(register.id.clone(), value.clone());
-        Ok(value)
+                    let result = self.read_memory_channel(&json!({"channel":binding.channel,"address":address,"bits":register.bits,"little_endian":binding.little_endian})).map_err(|error|(Reason::TransportError,error))?;
+                    let raw = result
+                        .get("value")
+                        .and_then(Json::as_u64)
+                        .map(u128::from)
+                        .ok_or_else(|| {
+                            (
+                                Reason::TransportError,
+                                "Memory response lacks an exact integer value".into(),
+                            )
+                        })?;
+                    RawValue::from_integer(raw, register.bits)
+                        .map_err(|error| (Reason::TransportError, error))?
+                }
+            })
+        })();
+        let mut provenance = Provenance::declared(&register.reader);
+        provenance.access = self.register_value_access.clone();
+        if let Reader::Alias { source, offset } = &register.reader {
+            provenance.aliases = values
+                .provenance
+                .get(source)
+                .map(|p| p.aliases.clone())
+                .unwrap_or_default();
+            provenance.aliases.push(Derivation {
+                source: source.clone(),
+                offset: *offset,
+                bits: register.bits,
+            });
+        }
+        values.provenance.insert(register.id.clone(), provenance);
+        if let Ok(value) = &result {
+            values.insert(register.id.clone(), value.clone());
+        }
+        result
     }
     pub(super) fn gdb_register_value(
         &mut self,
@@ -496,8 +553,18 @@ impl Engine {
         let index = self.gdb_register_index(name)?;
         self.check_register_read_cancelled()
             .map_err(|error| (Reason::Unknown, error))?;
+        let command = format!("-data-list-register-values r {index}");
+        self.plan_register_value_access(
+            Route::GdbRegister {
+                endpoint: self.connected_gdb_endpoint.clone(),
+                configured_endpoint: self.project.target.endpoint.clone(),
+                name: name.into(),
+                index,
+            },
+            command.clone(),
+        );
         let response = self
-            .mi(&format!("-data-list-register-values r {index}"))
+            .mi(&command)
             .map_err(|error| (Reason::Unknown, error))?;
         let value = response
             .data
@@ -538,13 +605,25 @@ impl Engine {
                 )
             })
     }
-    pub(super) fn register_tcl(&mut self, operation: &str) -> Result<String, (Reason, String)> {
-        self.register_tcl_tracked(operation, &mut false)
+    pub(super) fn register_tcl_value(
+        &mut self,
+        operation: &str,
+        label: &str,
+    ) -> Result<String, (Reason, String)> {
+        self.register_tcl_value_tracked(operation, label, &mut false)
     }
     /// True once entering transport: errors afterwards may follow a hardware write.
     pub(super) fn register_tcl_tracked(
         &mut self,
         operation: &str,
+        submitted: &mut bool,
+    ) -> Result<String, (Reason, String)> {
+        self.register_tcl_value_tracked(operation, "OpenOCD register transaction", submitted)
+    }
+    fn register_tcl_value_tracked(
+        &mut self,
+        operation: &str,
+        label: &str,
         submitted: &mut bool,
     ) -> Result<String, (Reason, String)> {
         *submitted = false;
@@ -574,14 +653,26 @@ impl Engine {
         }
         // One server-side Tcl evaluation encloses selection, access and restoration.
         // OpenOCD cannot dispatch another client's command between these statements.
+        let target_name = target.clone();
         let target = crate::live_watch::word(target);
         let script = format!(
             "set __dt_old [target current]; set __dt_rc [catch {{targets {target}; if {{[{target} curstate] ne \"halted\"}} {{error \"Physical core is not halted\"}}; {operation}}} __dt_result]; set __dt_restore [catch {{targets $__dt_old; if {{[target current] ne $__dt_old}} {{error \"Target restore readback mismatch\"}}}} __dt_restore_error]; if {{$__dt_restore}} {{error \"Target restoration failed: $__dt_restore_error\"}}; if {{$__dt_rc}} {{error $__dt_result}}; set __dt_result"
         );
+        self.plan_register_value_access(
+            Route::TclRegister {
+                endpoint: endpoint.clone(),
+                target: target_name,
+                operation: label.into(),
+            },
+            script.clone(),
+        );
         let mut stream = crate::live_watch::connect(&endpoint)
             .map_err(|error| (Reason::TransportError, error))?;
-        *submitted = true;
-        match crate::live_watch::transact(&mut stream, &script) {
+        let mut progress = crate::live_watch::TransactionProgress::default();
+        let result = crate::live_watch::transact_tracked(&mut stream, &script, &mut progress);
+        *submitted = progress.started.is_some();
+        self.register_value_progress(&progress);
+        match result {
             Ok(value) => Ok(value),
             Err(error) => {
                 if error.contains("Target restoration failed")
@@ -595,6 +686,32 @@ impl Engine {
                     Err((Reason::Unknown, error))
                 }
             }
+        }
+    }
+    pub(super) fn plan_register_value_access(&mut self, route: Route, command: String) {
+        self.register_value_access = Some(Access {
+            route,
+            command,
+            phase: Phase::Planned,
+            context: self.register_context(),
+            timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
+        });
+    }
+    pub(super) fn register_value_progress(
+        &mut self,
+        progress: &crate::live_watch::TransactionProgress,
+    ) {
+        if let Some(access) = &mut self.register_value_access
+            && let Some(started) = progress.started
+        {
+            access.phase = if progress.responded {
+                Phase::Responded
+            } else {
+                Phase::Started
+            };
+            access.timestamp_ms = started
+                .saturating_duration_since(self.session_started)
+                .as_millis() as u64;
         }
     }
 }
@@ -716,11 +833,49 @@ mod tests {
         assert_eq!(result["samples"][0]["state"], "valid");
         assert_eq!(result["samples"][0]["value"]["hex"], "0x12345678");
         assert_eq!(result["samples"][0]["owner"], "core:default");
+        let access = &result["samples"][0]["provenance"]["access"];
+        assert_eq!(access["route"]["kind"], "tcl_register");
+        assert_eq!(access["route"]["target"], "cpu0");
+        assert_eq!(
+            access["route"]["endpoint"],
+            engine.project.registers.tcl_endpoint
+        );
+        assert_eq!(access["route"]["operation"], "aarch64 mrc 15 0 1 0 0");
+        assert_eq!(access["phase"], "responded");
         let packet = worker.join().unwrap();
         assert!(packet.contains("aarch64 mrc 15 0 1 0 0"));
         assert!(packet.contains("target current"));
         assert!(packet.contains("curstate"));
         assert!(packet.contains("targets \\$__dt_old"));
+    }
+    #[test]
+    fn generic_backend_reader_records_its_target_request_without_claiming_banked_access() {
+        let mut engine = engine();
+        let (endpoint, worker) = server("__DEBUGTUI_RPC__0:0x01020304\x1a");
+        engine.project.registers.tcl_endpoint = endpoint;
+        engine
+            .register_catalogue
+            .as_mut()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .0
+            .registers[0]
+            .reader = Reader::Backend {
+            name: "custom".into(),
+        };
+        let result = engine.read_registers(&json!({"ids":["r0"]})).unwrap();
+        let sample = &result["samples"][0];
+        assert_eq!(sample["state"], "valid");
+        assert_eq!(sample["value"]["hex"], "0x01020304");
+        assert_eq!(sample["provenance"]["catalogue_reader"]["kind"], "backend");
+        let access = &sample["provenance"]["access"];
+        assert_eq!(access["phase"], "responded");
+        assert_eq!(access["route"]["target"], "cpu0");
+        assert_eq!(access["route"]["operation"], "get_reg custom");
+        let packet = worker.join().unwrap();
+        assert!(packet.contains("get_reg -force") && packet.contains("custom"));
+        assert!(!packet.contains("aarch64 banked"));
     }
     #[test]
     fn restoration_failure_quarantines_channel_until_reconnect() {

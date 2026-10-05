@@ -4,13 +4,12 @@ use crate::registers::{
     RawValue, Reason,
     vfp::{self, Kind, Response},
 };
-use std::collections::BTreeMap;
 
 impl Engine {
     pub(super) fn read_vfp_register(
         &mut self,
         name: &str,
-        values: &mut BTreeMap<String, RawValue>,
+        values: &mut super::registers::ReadCache,
     ) -> Result<RawValue, (Reason, String)> {
         if self.project.registers.vfp_command.is_empty() {
             return Err((
@@ -29,6 +28,8 @@ impl Engine {
                 values.get(&format!(":vfp_mvfr0:{pair}")),
                 values.get(&format!(":vfp_mvfr1:{pair}")),
             ) {
+                self.register_value_access =
+                    values.provenance.get(&key).and_then(|p| p.access.clone());
                 let features = vfp::features(
                     m0.integer().unwrap_or(0) as u64,
                     m1.integer().unwrap_or(0) as u64,
@@ -57,27 +58,27 @@ impl Engine {
             self.project.registers.vfp_command,
             crate::live_watch::word(name)
         );
-        let text =
-            self.physical_adapter_read(&operation, "VFP read")
-                .map_err(|(reason, error)| {
-                    let observed = if error.contains("debugtui-vfp:feature-disabled") {
-                        Some(Reason::FeatureDisabled)
-                    } else if error.contains("debugtui-vfp:not-implemented") {
-                        Some(Reason::HardwareNotImplemented)
-                    } else if error.contains("debugtui-vfp:access-restricted") {
-                        Some(Reason::AccessRestricted)
-                    } else if error.contains("VFP access unsupported")
-                        || error.contains("VFP adapter protocol unsupported")
-                    {
-                        Some(Reason::ReaderUnsupported)
-                    } else {
-                        None
-                    };
-                    if observed.is_some() {
-                        self.snapshot.register_probe = None;
-                    }
-                    (observed.unwrap_or(reason), error)
-                })?;
+        let text = self
+            .physical_adapter_read(&operation, &format!("VFP read {name}"))
+            .map_err(|(reason, error)| {
+                let observed = if error.contains("debugtui-vfp:feature-disabled") {
+                    Some(Reason::FeatureDisabled)
+                } else if error.contains("debugtui-vfp:not-implemented") {
+                    Some(Reason::HardwareNotImplemented)
+                } else if error.contains("debugtui-vfp:access-restricted") {
+                    Some(Reason::AccessRestricted)
+                } else if error.contains("VFP access unsupported")
+                    || error.contains("VFP adapter protocol unsupported")
+                {
+                    Some(Reason::ReaderUnsupported)
+                } else {
+                    None
+                };
+                if observed.is_some() {
+                    self.snapshot.register_probe = None;
+                }
+                (observed.unwrap_or(reason), error)
+            })?;
         let response =
             Response::parse(&text, kind).map_err(|error| (Reason::ReaderUnsupported, error))?;
         if name == "fpscr" && response.fpexc.integer().unwrap_or(0) & (1 << 30) == 0 {
@@ -90,6 +91,13 @@ impl Engine {
             .view(&response.value)
             .map_err(|error| (Reason::TransportError, error))?;
         if let Some(pair) = kind.pair() {
+            let mut provenance = crate::registers::provenance::Provenance::declared(
+                &crate::registers::Reader::Vfp { name: name.into() },
+            );
+            provenance.access = self.register_value_access.clone();
+            values
+                .provenance
+                .insert(format!(":vfp_pair:{pair}"), provenance);
             values.insert(format!(":vfp_pair:{pair}"), response.value);
             values.insert(format!(":vfp_mvfr0:{pair}"), response.mvfr0);
             values.insert(format!(":vfp_mvfr1:{pair}"), response.mvfr1);

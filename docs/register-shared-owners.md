@@ -56,6 +56,6 @@ UI 按 `(owner, register ID, sample core)` 保存当前及前次样本；样本�
 
 完整回归还发现并修复既有 MPU 夹具的输入污染：Windows 复用了进程 ID，旧测试目录中的 CPSR 覆盖文件使故障注入前已处于 SVC，模式变化断言因而失败。selector 夹具改用唯一目录且拒绝复用既存目录；MPU case 显式初始化覆盖文件并断言从 Hyp 开始再切至 SVC。MPU 生产逻辑未改动。失败记录保留在 `artifacts/functional-1791175916813-69363838/unit.log`，最终回归结果见下方。
 
-完整功能入口、Clippy 和验收总数记录在 [开发进度](registers-development-status.md)。本批不完成 REG-210 的完整 endpoint／target／通道 provenance，亦不完成 shared writer 的全部验证或其他硬件类别；那些要求继续按独立 TODO 跟踪。
+完整功能入口、Clippy 和验收总数记录在 [开发进度](registers-development-status.md)。本批的 REG-109 范围不包括完整 endpoint／target／通道 provenance；REG-210 后续由 [读取来源自检](register-read-provenance.md) 单独验收。shared writer 的全部验证和其他硬件类别继续按独立 TODO 跟踪。
 
 2026-10-05 完整软件验证：`node scripts/test-functional.cjs --only unit` 为 **335 单元＋122 集成通过，2 ignored**；F24 的 **69 个模式均有通过证据**，其余 **22 个功能套件未选择**。报告为 [`artifacts/functional-1791176224477-eaabe71a/report.json`](../artifacts/functional-1791176224477-eaabe71a/report.json)，完整 Cargo 日志为同目录 `unit.log`；严格 Clippy 日志为 `artifacts/register-shared-clippy.log`。Clippy、格式及差异检查通过。本批仅新增勾选 REG-109，总计 **已完成／未完成 15/56**。人工 case 全部 SKIPPED，未上板、安装或发布。

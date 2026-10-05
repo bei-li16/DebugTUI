@@ -106,6 +106,7 @@ fn reads(path: &PathBuf) -> Vec<String> {
 #[test]
 fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop() {
     let (project, transcript) = fixture(&[]);
+    let endpoint = project.target.endpoint.clone();
     let engine = session::spawn(project);
     ok(&engine, 1, "connect", json!({}));
     let listed = ok(&engine, 2, "registers_list", json!({}));
@@ -150,12 +151,20 @@ fn explicit_probe_decodes_evidence_filters_ap_registers_and_expires_at_next_stop
     let samples = result["probe"]["samples"].as_array().unwrap();
     assert_eq!(samples.len(), 15);
     for sample in samples {
+        assert_eq!(sample["provenance"]["acquisition"], "capability_probe");
+        let access = &sample["provenance"]["access"];
         if NAMES.iter().any(|name| sample["id"] == *name) {
             assert_eq!(sample["state"], "valid");
+            assert_eq!(access["phase"], "responded");
+            assert_eq!(access["route"]["kind"], "gdb_register");
+            assert_eq!(access["route"]["endpoint"], endpoint);
+            assert_eq!(access["route"]["name"], sample["id"]);
+            assert_eq!(access["context"], listed["context"]);
         } else {
             assert_eq!(sample["state"], "unsupported");
             assert_eq!(sample["reason"], "reader_unsupported");
             assert!(sample["value"].is_null());
+            assert!(access.is_null());
         }
         assert_eq!(sample["context"], listed["context"]);
         assert_eq!(sample["owner"], "core:default");

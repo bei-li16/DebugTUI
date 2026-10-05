@@ -426,7 +426,30 @@ reader = { kind = "alias", source = "d1", offset = 32 }
         assert_eq!(sample["value"]["hex"], hex);
         assert_eq!(sample["owner"], "core:default");
         assert_eq!(sample["context"], read["context"]);
+        let access = &sample["provenance"]["access"];
+        assert_eq!(access["route"]["kind"], "gdb_register");
+        assert_eq!(access["route"]["name"], "q0");
+        assert_eq!(access["route"]["index"], 0);
+        assert_eq!(access["route"]["endpoint"], "localhost:1234");
+        assert_eq!(access["command"], "-data-list-register-values r 0");
+        assert_eq!(access["phase"], "responded");
+        assert_eq!(access["context"], read["context"]);
+        assert_eq!(access, &read["samples"][2]["provenance"]["access"]);
     }
+    assert_eq!(
+        read["samples"][0]["provenance"]["aliases"],
+        json!([
+            {"source":"q0","offset":64,"bits":64},
+            {"source":"d1","offset":32,"bits":32}
+        ])
+    );
+    assert_eq!(
+        read["samples"][1]["provenance"]["aliases"],
+        json!([
+            {"source":"q0","offset":64,"bits":64}
+        ])
+    );
+    assert!(read["samples"][2]["provenance"].get("aliases").is_none());
     let commands = fs::read_to_string(&transcript).unwrap();
     assert_eq!(
         commands
@@ -443,7 +466,35 @@ reader = { kind = "alias", source = "d1", offset = 32 }
             "name":"q0", "value":"0xfedcba98765432100123456789abcdef", "changed":false, "error":false
         }])
     );
-    response(&engine, 4, "quit", json!({}));
+    engine
+        .send(Request::new(
+            4,
+            "console",
+            json!({"command":"target remote localhost:9999"}),
+        ))
+        .unwrap();
+    loop {
+        if let Event::Response {
+            id: 4, ok, error, ..
+        } = engine.events.recv_timeout(Duration::from_secs(10)).unwrap()
+        {
+            assert!(!ok && error.unwrap().contains("Unsupported fixture command"));
+            break;
+        }
+    }
+    let stale = response(&engine, 5, "status", json!({}));
+    assert_eq!(
+        stale["register_samples"][2]["provenance"],
+        read["samples"][2]["provenance"]
+    );
+    let reread = response(&engine, 6, "registers_read", json!({"ids":["q0"]}));
+    let route = &reread["samples"][0]["provenance"]["access"]["route"];
+    assert!(
+        route["endpoint"].is_null(),
+        "opaque CLI is not proof of the active connection"
+    );
+    assert_eq!(route["configured_endpoint"], "localhost:1234");
+    response(&engine, 7, "quit", json!({}));
 }
 
 #[test]

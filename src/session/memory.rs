@@ -169,10 +169,6 @@ impl Engine {
         if self.cancellation.load(Ordering::Relaxed) {
             return Err("Memory read cancelled".into());
         }
-        if !self.memory_connections.contains_key(channel) {
-            self.memory_connections
-                .insert(channel.into(), connect(&access.tcl_endpoint)?);
-        }
         // 64-bit values use two 32-bit bus transactions, never an unsupported AP width.
         let width = bits.min(32);
         let count = bits / width;
@@ -180,7 +176,36 @@ impl Engine {
             "{} read_memory 0x{address:x} {width} {count}",
             word(&access.target)
         );
-        let result = transact(self.memory_connections.get_mut(channel).unwrap(), &command);
+        self.plan_register_value_access(
+            crate::registers::provenance::Route::TclMemory {
+                endpoint: access.tcl_endpoint.clone(),
+                target: access.target.clone(),
+                channel: channel.into(),
+                configuration_source: self.project.memory_access_source.clone(),
+                address: format!("0x{address:x}"),
+                bits: bits as u16,
+                bus_width: width as u16,
+                count: count as u16,
+                atomic: false,
+                byte_order: if little {
+                    crate::registers::provenance::ByteOrder::Little
+                } else {
+                    crate::registers::provenance::ByteOrder::Big
+                },
+            },
+            command.clone(),
+        );
+        if !self.memory_connections.contains_key(channel) {
+            self.memory_connections
+                .insert(channel.into(), connect(&access.tcl_endpoint)?);
+        }
+        let mut progress = crate::live_watch::TransactionProgress::default();
+        let result = crate::live_watch::transact_tracked(
+            self.memory_connections.get_mut(channel).unwrap(),
+            &command,
+            &mut progress,
+        );
+        self.register_value_progress(&progress);
         let text = match result {
             Ok(text) => text,
             Err(error) => {

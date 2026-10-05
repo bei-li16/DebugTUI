@@ -450,6 +450,8 @@ struct Engine {
     unresolved_breakpoints: Vec<Breakpoint>,
     breakpoint_groups: std::collections::HashMap<String, String>,
     reg_names: Vec<String>,
+    connected_gdb_endpoint: Option<String>,
+    register_value_access: Option<crate::registers::provenance::Access>,
     register_catalogue: Result<Option<(crate::registers::Catalogue, String)>, String>,
     register_session: u64,
     register_access_fault: Option<String>,
@@ -607,6 +609,8 @@ impl Engine {
             unresolved_breakpoints: vec![],
             breakpoint_groups: Default::default(),
             reg_names: vec![],
+            connected_gdb_endpoint: None,
+            register_value_access: None,
             register_catalogue,
             register_session: registers::new_session(),
             register_access_fault: None,
@@ -833,6 +837,22 @@ impl Engine {
         let gdb = self.gdb.as_mut().ok_or("Not connected")?;
         gdb.token += 1;
         let token = gdb.token;
+        if command.starts_with("-interpreter-exec ")
+            || command.starts_with("-target-select ")
+            || matches!(
+                command,
+                "-target-disconnect" | "-target-detach" | "-gdb-exit"
+            )
+        {
+            // Opaque CLI/configuration commands can redirect a GDB connection.
+            self.connected_gdb_endpoint = None;
+        }
+        if let Some(access) = self.register_value_access.as_mut()
+            && access.command == command
+        {
+            access.phase = crate::registers::provenance::Phase::Started;
+            access.timestamp_ms = Stamp::now().elapsed_ms(self.session_started);
+        }
         writeln!(gdb.input, "{token}{command}")
             .and_then(|_| gdb.input.flush())
             .map_err(|e| format!("GDB input: {e}"))?;
@@ -858,6 +878,11 @@ impl Engine {
                 .recv_timeout(remaining.min(Duration::from_millis(50)));
             match incoming {
                 Ok(Incoming::Record(r)) if r.kind == '^' && r.token == Some(token) => {
+                    if let Some(access) = self.register_value_access.as_mut()
+                        && access.command == command
+                    {
+                        access.phase = crate::registers::provenance::Phase::Responded;
+                    }
                     self.log(
                         "mi<",
                         format!(
@@ -1077,6 +1102,7 @@ impl Engine {
         let result = self.connect_inner();
         if result.is_err() {
             self.gdb.take();
+            self.connected_gdb_endpoint = None;
             self.server.take();
             self.state("FAULT");
         }
@@ -1176,6 +1202,7 @@ impl Engine {
                 "-target-select {} {}",
                 self.project.target.mode, self.project.target.endpoint
             ))?;
+            self.connected_gdb_endpoint = Some(self.project.target.endpoint.clone());
         }
         self.commands(
             &self.project.target.after_connect.clone(),
@@ -1485,6 +1512,7 @@ impl Engine {
         Ok(())
     }
     fn disconnect(&mut self) -> Result<Json, String> {
+        self.connected_gdb_endpoint = None;
         self.memory_connections.clear();
         self.rpc_echo = Default::default();
         // Remote all-stop GDB refuses detach after continue. Release that
@@ -1779,7 +1807,11 @@ impl Engine {
             }
             "synchronize" => {
                 self.inactive()?;
+                // This fixed internal command only invalidates GDB's value cache.
+                // Arbitrary user Console commands still clear endpoint evidence.
+                let endpoint = self.connected_gdb_endpoint.clone();
                 self.console("maintenance flush register-cache")?;
+                self.connected_gdb_endpoint = endpoint;
                 self.sync_target_state()?;
                 Ok(json!({"state":self.snapshot.state}))
             }
@@ -1897,10 +1929,22 @@ impl Engine {
                 if !matches!(bits, 8 | 16 | 32 | 64) || !address.is_multiple_of(bits / 8) {
                     return Err("Unsupported or unaligned register width".into());
                 }
-                let r = self.mi(&format!(
-                    "-data-read-memory-bytes 0x{address:x} {}",
-                    bits / 8
-                ))?;
+                let command = format!("-data-read-memory-bytes 0x{address:x} {}", bits / 8);
+                self.plan_register_value_access(
+                    crate::registers::provenance::Route::GdbMemory {
+                        endpoint: self.connected_gdb_endpoint.clone(),
+                        configured_endpoint: self.project.target.endpoint.clone(),
+                        address: format!("0x{address:x}"),
+                        bits: bits as u16,
+                        byte_order: if little {
+                            crate::registers::provenance::ByteOrder::Little
+                        } else {
+                            crate::registers::provenance::ByteOrder::Big
+                        },
+                    },
+                    command.clone(),
+                );
+                let r = self.mi(&command)?;
                 let blocks = r.data.field("memory").map(Value::items).unwrap_or_default();
                 if blocks.len() != 1 {
                     return Err("Incomplete register memory response".into());

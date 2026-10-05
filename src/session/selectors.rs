@@ -72,7 +72,13 @@ impl Engine {
         {
             return Err("Actual physical GDB context changed since capability probe".into());
         }
-        let response = self.register_tcl(&operation);
+        self.register_value_access = None;
+        let response = self.register_tcl_value(
+            &operation,
+            &format!("Selector {} index {}", plan.selector, plan.index),
+        );
+        let access = self.register_value_access.clone();
+        let catalogue = Catalogue::builtin("cortex-r52")?;
         if let Some(error) = self.register_access_fault.clone() {
             for lease in &mut leases {
                 lease.quarantine(&error);
@@ -125,6 +131,13 @@ impl Engine {
                         context: request.context.clone(),
                         view: crate::registers::SampleView::PhysicalCore,
                         owner_generation: None,
+                        provenance: Some(crate::registers::provenance::Provenance {
+                            acquisition: crate::registers::provenance::Acquisition::SelectorBank,
+                            catalogue_reader: catalogue.register(id).unwrap().reader.clone(),
+                            access: access.clone(),
+                            aliases: vec![],
+                        }),
+                        last_value_provenance: None,
                         timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                         source: format!(
                             "openocd:selector:{target}:{}:{}",
@@ -210,6 +223,13 @@ impl Engine {
                 context: request.context.clone(),
                 view: crate::registers::SampleView::PhysicalCore,
                 owner_generation: None,
+                provenance: Some(crate::registers::provenance::Provenance {
+                    acquisition: crate::registers::provenance::Acquisition::SelectorBank,
+                    catalogue_reader: catalogue.register(id).unwrap().reader.clone(),
+                    access: access.clone(),
+                    aliases: vec![],
+                }),
+                last_value_provenance: None,
                 timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                 source: format!("openocd:selector:{target}:{}:{}", plan.selector, plan.index),
             })

@@ -712,6 +712,10 @@ Status 显示 Scope／Owner、实际 **Sample core**，共享条目还显示 **O
 
 Headless 的 `registers_list` 返回配置 `topology` 及 `topology_source = "configuration"`；多核 `registers_list`／`registers_read` 还返回 `owner_generations`，Snapshot 返回 `register_owner_generations`。缓存共享值时须同时核对样本的 worker context、owner 和 `owner_generation`；配置拓扑不证明实际硬件身份。
 
+Status 还分别显示 Catalogue CPU／架构、Configured CPU choice 和有当前停止上下文证据的 Observed CPU。Latest read attempt 显示实际 GDB 名称／索引或 TCL endpoint／请求 target；MMIO 同时显示地址、通道来源、字节序与 bus width/count。64 位 AP 读由两个 32 位读组成，不保证原子性。请求 target 名称不能证明物理 CPU 身份。
+
+路由状态区分未开始发送、发送后结果未确认、收到完整响应；收到错误响应仍不计 Valid。失败刷新保留旧值时，Retained raw value origin 独立显示旧值来源。别名和 VFP 重叠视图保留父值的实际请求与时间；任意 Console 后的新 GDB 请求不猜测已连接 endpoint，配置地址另列。Headless 在 Sample 的 `provenance`／`last_value_provenance` 中提供对应元数据及原始命令，旧 JSON 兼容且来源缺失时保持 Unknown。打开来源详情不会访问目标。完整规则见 [读取来源自检](docs/register-read-provenance.md)。
+
 宽窗口固定显示 Name、Value、Size、Access 四列；长名称或过长值以省略号提示。窄窗口保留名称和值，选中说明显示位宽及访问属性。选中字段时使用字段自身的位宽与访问覆盖；按 `t` 可滚动查看父描述、字段说明、全部枚举、bit segments、访问条件、读取原因和完整原始值，包括被主行省略的 128 位高低位。
 
 Cancel read、`:register-cancel` 或非搜索模式的 Esc 取消当前寄存器读取／Probe。MPU 总览关闭或切 bank 也取消未完成读取。当前事务完整恢复后停止后续项、丢弃新结果；会话和其他核心继续可用，需手工重读。恢复结果未知仍进入 FAULT。详见 [计数、取消及限制](docs/register-read-status-and-cancel.md)。尚未进入 v0.9.3 release。

@@ -767,6 +767,8 @@ fn stale_sessions_generations_cores_frames_and_owner_are_rejected() {
         context: context.clone(),
         view: crate::registers::SampleView::SelectedFrame,
         owner_generation: None,
+        provenance: None,
+        last_value_provenance: None,
         timestamp_ms: 0,
         source: "gdb:r0".into(),
     };

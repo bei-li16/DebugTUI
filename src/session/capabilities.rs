@@ -52,7 +52,7 @@ impl Engine {
             "GDB names prove visibility only; unspecified widths and unprobed classes remain unknown".into(),
             "FPU presence, FPEXC.EN, banked-register and genuine MRRC capabilities are not inferred from CPACR or a read failure".into(),
             "Identity/MPU/GIC/VFP decoding uses Cortex-R52 TRM 100026_0104_01_en §§4.3, 10.3, 16.5–16.6 and DDI 0568 D1.3; target responses retained separately".into()]};
-        let mut values = BTreeMap::new();
+        let mut values = super::registers::ReadCache::default();
         for &id in PROBE_IDS {
             self.check_register_read_cancelled()?;
             let register = catalogue
@@ -69,9 +69,15 @@ impl Engine {
                 context: context.clone(),
                 view: crate::registers::SampleView::PhysicalCore,
                 owner_generation: None,
+                provenance: Some(crate::registers::provenance::Provenance::declared(
+                    &register.reader,
+                )),
+                last_value_provenance: None,
                 timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                 source: super::registers::route_name(register),
             };
+            sample.provenance.as_mut().unwrap().acquisition =
+                crate::registers::provenance::Acquisition::CapabilityProbe;
             let hyp = probe.raw("cpsr").is_some_and(|n| n & 31 == 0x1a);
             let gic = probe
                 .facts
@@ -121,12 +127,16 @@ impl Engine {
                 sample.detail = detail.into();
             } else {
                 // A genuine named GDB register is an independent read route.
+                self.register_value_access = None;
                 let result = if self.reg_names.iter().any(|n| n == id) {
                     sample.source = format!("gdb:{id}");
                     self.gdb_register_value(id, 32)
                 } else {
                     self.read_register_value(register, &catalogue, &mut values)
                 };
+                let provenance = sample.provenance.as_mut().unwrap();
+                provenance.acquisition = crate::registers::provenance::Acquisition::CapabilityProbe;
+                provenance.access = self.register_value_access.clone();
                 match result {
                     Ok(value)
                         if self.register_context() == context

@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 #[cfg(test)]
 mod framework_tests;
 mod mpu;
+mod provenance;
 #[cfg(test)]
 mod shared_tests;
 mod status;
@@ -1144,11 +1145,19 @@ impl App {
                         context: context.clone(),
                         view: crate::registers::SampleView::PhysicalCore,
                         owner_generation: None,
+                        provenance: None,
+                        last_value_provenance: None,
                         timestamp_ms: 0,
                         source: "selector".into(),
                     });
                     sample.state = State::Unavailable;
                     sample.context = context.clone();
+                    // A whole-request error has no new value-route evidence.
+                    // Keep the previous raw value's origin separately.
+                    sample.provenance = None;
+                    if let Some(old) = &previous {
+                        sample.inherit_value_origin(old);
+                    }
                     sample.reason = if error.contains("synchronization unsupported") {
                         crate::registers::Reason::ReaderUnsupported
                     } else {
@@ -1215,6 +1224,7 @@ impl App {
                     && let Some(previous) = self.register_view.previous.get(&key)
                 {
                     sample.value = previous.value.clone();
+                    sample.inherit_value_origin(previous);
                     sample.detail = format!(
                         "{}; last valid sample at {} ms",
                         sample.detail, previous.timestamp_ms
@@ -1620,6 +1630,8 @@ mod tests {
             context: app.register_context(),
             view: crate::registers::SampleView::SelectedFrame,
             owner_generation: None,
+            provenance: None,
+            last_value_provenance: None,
             timestamp_ms: 23,
             source: format!("gdb:{id}"),
         }
@@ -1967,10 +1979,33 @@ mod tests {
         assert!(app.notice.contains("MCR"));
         app.project.registers.selector_command = "arm mcr".into();
         for id in ["r0", "prbar23", "prlar23"] {
-            app.register_view.values.insert(
-                ("core:default".into(), id.into(), "default".into()),
-                sample(&app, id, "0x1234"),
-            );
+            let mut value = sample(&app, id, "0x1234");
+            if id == "prlar23" {
+                let mut provenance = crate::registers::provenance::Provenance::declared(
+                    &crate::registers::Reader::Cp15 {
+                        cp: 15,
+                        op1: 0,
+                        crn: 6,
+                        crm: 3,
+                        op2: 1,
+                    },
+                );
+                provenance.access = Some(crate::registers::provenance::Access {
+                    route: crate::registers::provenance::Route::TclRegister {
+                        endpoint: "127.0.0.1:6666".into(),
+                        target: "cpu0".into(),
+                        operation: "arm mrc".into(),
+                    },
+                    phase: crate::registers::provenance::Phase::Responded,
+                    command: "last accepted request".into(),
+                    context: value.context.clone(),
+                    timestamp_ms: 23,
+                });
+                value.provenance = Some(provenance);
+            }
+            app.register_view
+                .values
+                .insert(("core:default".into(), id.into(), "default".into()), value);
         }
         app.command(Some(&engine), ":register-bank-read");
         let request = requests.try_recv().unwrap();
@@ -1990,6 +2025,27 @@ mod tests {
             assert_eq!(value.state, State::Unavailable);
             assert_eq!(value.value.as_ref().unwrap().hex, "0x00001234");
             assert!(value.detail.contains("last sample at 23 ms"));
+            assert!(
+                value.provenance.is_none(),
+                "whole-request errors cannot relabel old source as the latest attempt"
+            );
+            if id == "prlar23" {
+                assert_eq!(
+                    value
+                        .value_provenance()
+                        .unwrap()
+                        .access
+                        .as_ref()
+                        .unwrap()
+                        .command,
+                    "last accepted request"
+                );
+            } else {
+                assert!(matches!(
+                    value.last_value_provenance,
+                    Some(crate::registers::provenance::RetainedOrigin::Unknown)
+                ));
+            }
         }
         assert_eq!(
             app.register_view.values[&("core:default".into(), "r0".into(), "default".into())].state,

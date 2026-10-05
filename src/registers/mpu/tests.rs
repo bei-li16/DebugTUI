@@ -20,6 +20,8 @@ fn sample(id: &str, n: &str) -> Sample {
         context: context(),
         view: crate::registers::SampleView::PhysicalCore,
         owner_generation: None,
+        provenance: None,
+        last_value_provenance: None,
         timestamp_ms: 10,
         source: "openocd:cp15".into(),
     }

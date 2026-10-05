@@ -201,6 +201,22 @@ fn direct_mpu_overview_reads_implemented_regions_and_current_mair_without_mcr() 
     for (bank, count, samples) in [("el1", 24, 54), ("el2", 20, 48)] {
         let response = read(&engine, 5, &context, bank);
         assert_eq!(response["samples"].as_array().unwrap().len(), samples);
+        for sample in response["samples"].as_array().unwrap() {
+            assert_eq!(sample["provenance"]["acquisition"], "mpu_regions");
+            let access = &sample["provenance"]["access"];
+            assert_eq!(access["phase"], "responded", "{sample}");
+            assert_eq!(access["context"], context);
+            if access["route"]["kind"] == "tcl_register" {
+                assert_eq!(access["route"]["target"], "cpu0");
+                assert_eq!(
+                    access["route"]["endpoint"],
+                    fixture.project.registers.tcl_endpoint
+                );
+            } else {
+                assert_eq!(access["route"]["kind"], "gdb_register");
+                assert_eq!(access["route"]["endpoint"], fixture.project.target.endpoint);
+            }
+        }
         assert_eq!(response["view"]["regions"].as_array().unwrap().len(), count);
         assert_eq!(
             response["view"]["regions"][count - 1]["decoded"]["limit_inclusive"],

@@ -265,6 +265,29 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
                 text.push(format!("Last valid sample at {} ms", previous.timestamp_ms));
             }
             text.push(format!("Reader source: {}", sample.source));
+            if let Some(provenance) = &sample.provenance {
+                text.extend(super::provenance::details(
+                    "Latest read attempt",
+                    provenance,
+                ));
+            } else {
+                text.push("Value route evidence: unavailable".into());
+            }
+            match &sample.last_value_provenance {
+                Some(crate::registers::provenance::RetainedOrigin::Known(provenance)) => {
+                    text.extend(super::provenance::details(
+                        "Retained raw value origin",
+                        provenance,
+                    ));
+                }
+                Some(crate::registers::provenance::RetainedOrigin::Unknown) => {
+                    text.push(
+                        "Retained raw value origin: unknown; the latest attempt is not its source"
+                            .into(),
+                    );
+                }
+                None => {}
+            }
             text.push(format!("Reason: {:?} · {}", sample.reason, sample.detail));
         }
         text.push(format!("Access condition: {}", register.access_condition));
@@ -310,6 +333,29 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         }
     }
     text.push(format!("Catalogue: {}", app.register_view.source));
+    if let Some(catalogue) = &app.register_view.catalogue {
+        text.push(format!(
+            "Catalogue CPU: {} / architecture {}",
+            catalogue.cpu, catalogue.architecture
+        ));
+        text.push(format!(
+            "Configured CPU choice: {}",
+            if app.project.registers.cpu.is_empty() {
+                "unspecified; catalogue file or GDB defaults"
+            } else {
+                &app.project.registers.cpu
+            }
+        ));
+        let observed = app
+            .snapshot
+            .register_probe
+            .as_ref()
+            .filter(|probe| probe.context == context && app.snapshot.state == "STOPPED")
+            .and_then(|probe| probe.identity.as_ref())
+            .and_then(|identity| identity.model.as_deref())
+            .unwrap_or("unknown; no current identity evidence");
+        text.push(format!("Observed CPU: {observed}"));
+    }
     let area = f.area();
     let width = area.width.min(72);
     let height = area.height.min(22);

@@ -4,7 +4,6 @@ use crate::registers::{
     Catalogue, Context, Implementation, Sample, State,
     mpu::{Bank, View},
 };
-use std::collections::BTreeMap;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -100,7 +99,7 @@ impl Engine {
             if thread != probe.thread {
                 return Err("Actual physical GDB thread changed since capability probe".into());
             }
-            let mut raw = BTreeMap::new();
+            let mut raw = super::registers::ReadCache::default();
             // Fresh mode, identity and implementation count must precede every indexed read.
             self.read_register_value(builtin.register("cpsr").unwrap(), &builtin, &mut raw)
                 .map_err(|(_, e)| e)?;
@@ -148,6 +147,11 @@ impl Engine {
                     context: request.context.clone(),
                     view: crate::registers::SampleView::PhysicalCore,
                     owner_generation: None,
+                    provenance: raw.provenance.get(id).cloned().map(|mut p| {
+                        p.acquisition = crate::registers::provenance::Acquisition::MpuRegions;
+                        p
+                    }),
+                    last_value_provenance: None,
                     timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                     source: super::registers::route_name(register),
                 };

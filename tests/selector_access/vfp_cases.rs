@@ -48,7 +48,30 @@ fn every_vfp_storage_view_uses_shared_physical_pairs_with_exact_alias_bits() {
     for sample in samples {
         assert_eq!(sample["state"], "valid", "{sample}");
         assert_eq!(sample["owner"], "core:default");
+        let access = &sample["provenance"]["access"];
+        assert_eq!(access["route"]["target"], "cpu0");
+        assert_eq!(
+            access["route"]["endpoint"],
+            f.project.registers.tcl_endpoint
+        );
+        assert_eq!(access["phase"], "responded");
+        assert!(
+            access["route"]["operation"]
+                .as_str()
+                .unwrap()
+                .starts_with("VFP read ")
+        );
     }
+    let access =
+        |id: &str| &samples.iter().find(|s| s["id"] == id).unwrap()["provenance"]["access"];
+    for id in ["d1", "s0", "s1", "q0"] {
+        assert_eq!(
+            access(id),
+            access("d0"),
+            "cached physical pair must preserve its original request"
+        );
+    }
+    assert_eq!(access("d0")["route"]["operation"], "VFP read d0");
     let hex = |name: &str| {
         samples.iter().find(|s| s["id"] == name).unwrap()["value"]["hex"]
             .as_str()

@@ -23,7 +23,7 @@ impl Engine {
             self.project.registers.banked_command,
             crate::live_watch::word(name),
         );
-        let response = self.physical_adapter_read(&operation, "banked read");
+        let response = self.physical_adapter_read(&operation, &format!("banked read {name}"));
         let text = response.map_err(|(reason, error)| {
             if error.contains("Banked access unsupported") {
                 self.snapshot.register_probe = None;

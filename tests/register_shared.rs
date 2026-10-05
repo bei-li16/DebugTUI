@@ -188,6 +188,48 @@ fn four_core_cluster_chip_alias_and_unknown_owners_use_exact_routes_without_cros
             );
             contexts.push(read["context"].clone());
             let samples = read["samples"].as_array().unwrap();
+            for (index, address) in [
+                (0, "0x20000000"),
+                (1, "0x20000004"),
+                (2, "0x20000004"),
+                (3, "0x20000008"),
+                (4, "0x20000008"),
+            ] {
+                let access = &samples[index]["provenance"]["access"];
+                if (index == 1 || index == 2) && core == 3 || (index == 3 || index == 4) && !chip {
+                    assert!(
+                        access.is_null(),
+                        "unknown owners must not inherit a previous row's route"
+                    );
+                    continue;
+                }
+                assert_eq!(access["route"]["kind"], "gdb_memory");
+                assert_eq!(
+                    access["route"]["endpoint"],
+                    format!("localhost:{}", 4330 + core)
+                );
+                assert_eq!(access["route"]["address"], address);
+                assert_eq!(access["route"]["bits"], 32);
+                assert_eq!(access["route"]["byte_order"], "little");
+                assert_eq!(access["context"], read["context"]);
+                assert_eq!(access["phase"], "responded");
+                assert_eq!(
+                    access["command"],
+                    format!("-data-read-memory-bytes {address} 4")
+                );
+            }
+            if core != 3 {
+                assert_eq!(
+                    samples[1]["provenance"]["access"],
+                    samples[2]["provenance"]["access"]
+                );
+            }
+            if chip {
+                assert_eq!(
+                    samples[3]["provenance"]["access"],
+                    samples[4]["provenance"]["access"]
+                );
+            }
             for value in samples {
                 if let Some(owner) = value["owner"].as_str() {
                     if owner.starts_with("core:") {
@@ -435,6 +477,15 @@ fn peer_activity_during_a_shared_read_discards_new_bytes_and_preserves_last_acce
     assert_eq!(result["samples"][0]["state"], "valid");
     let expired = &result["samples"][1];
     assert_eq!(expired["state"], "stale");
+    assert_eq!(
+        expired["last_value_provenance"],
+        json!({"status":"known","provenance":baseline["samples"][0]["provenance"]})
+    );
+    assert_eq!(expired["provenance"]["access"]["phase"], "responded");
+    assert_ne!(
+        expired["provenance"]["access"],
+        baseline["samples"][0]["provenance"]["access"]
+    );
     assert_eq!(expired["value"], baseline["samples"][0]["value"]);
     assert_eq!(
         expired["timestamp_ms"],
@@ -458,6 +509,67 @@ fn peer_activity_during_a_shared_read_discards_new_bytes_and_preserves_last_acce
     assert_eq!(sample(&snapshot, "cluster")["state"], "stale");
     assert_eq!(sample(&snapshot, "private")["state"], "valid");
     assert_eq!(reads(&out), 3);
+    // The worker still holds rejected bytes; a subsequent failed refresh must
+    // never publish those bytes or their origin as the last accepted sample.
+    bytes["localhost:4330"]
+        .as_object_mut()
+        .unwrap()
+        .remove("0x20000004");
+    fs::write(out.join("memory.json"), bytes.to_string()).unwrap();
+    engine
+        .send(Request::new(
+            6,
+            "registers_read",
+            json!({"ids":["cluster"]}),
+        ))
+        .unwrap();
+    loop {
+        match engine.events.recv_timeout(Duration::from_secs(15)).unwrap() {
+            Event::Snapshot { snapshot }
+                if snapshot.core.as_ref().is_some_and(|c| c.name == "core0") =>
+            {
+                for value in &snapshot.register_samples {
+                    if value.id == "cluster" && value.state == debugtui::registers::State::Error {
+                        let value = serde_json::to_value(value).unwrap();
+                        assert_eq!(
+                            value["value"], baseline["samples"][0]["value"],
+                            "even an intermediate failure snapshot must reject the discarded bytes"
+                        );
+                        assert_eq!(
+                            value["last_value_provenance"],
+                            json!({"status":"known","provenance":baseline["samples"][0]["provenance"]})
+                        );
+                    }
+                }
+            }
+            Event::Response {
+                id: 6,
+                ok,
+                result,
+                error,
+            } => {
+                assert!(ok, "{error:?}");
+                assert_eq!(result["samples"][0]["state"], "error");
+                assert_eq!(
+                    result["samples"][0]["value"],
+                    baseline["samples"][0]["value"]
+                );
+                break;
+            }
+            _ => {}
+        }
+    }
+    call(&engine, 7, "frame", json!({"level":0}));
+    let failure_snapshot = call(&engine, 8, "status", json!({}));
+    assert_eq!(
+        sample(&failure_snapshot, "cluster")["value"],
+        baseline["samples"][0]["value"]
+    );
+    assert_eq!(
+        sample(&failure_snapshot, "cluster")["last_value_provenance"],
+        json!({"status":"known","provenance":baseline["samples"][0]["provenance"]})
+    );
+    assert_eq!(reads(&out), 4);
     fs::write(
         &notifications,
         json!({"localhost:4331":"stopped"}).to_string(),

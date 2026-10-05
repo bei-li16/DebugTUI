@@ -152,6 +152,24 @@ fn all_builtin_banks_use_exact_words_preserve_target_and_avoid_legacy_get_reg() 
             sample["source"],
             format!("openocd:aarch64 banked:{}", sample["id"].as_str().unwrap())
         );
+        let access = &sample["provenance"]["access"];
+        assert_eq!(access["route"]["kind"], "tcl_register");
+        assert_eq!(
+            access["route"]["endpoint"],
+            f.project.registers.tcl_endpoint
+        );
+        assert_eq!(access["route"]["target"], "cpu0");
+        assert_eq!(
+            access["route"]["operation"],
+            format!("banked read {}", sample["id"].as_str().unwrap())
+        );
+        assert_eq!(access["phase"], "responded");
+        assert!(
+            access["command"]
+                .as_str()
+                .unwrap()
+                .contains("aarch64 banked")
+        );
     }
     let state = f.state.lock().unwrap().clone();
     assert_eq!(state["current"], "outside");

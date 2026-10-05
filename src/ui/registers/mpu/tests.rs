@@ -13,6 +13,8 @@ fn sample(app: &App, id: &str, value: &str) -> Sample {
         context: app.register_context(),
         view: crate::registers::SampleView::PhysicalCore,
         owner_generation: None,
+        provenance: None,
+        last_value_provenance: None,
         timestamp_ms: 10,
         source: "openocd:cp15".into(),
     }

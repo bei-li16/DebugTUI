@@ -8,7 +8,7 @@ use crate::{
     },
     writes::{Input, OnceState, Outcome, Prepared, Selection},
 };
-use std::{collections::BTreeMap, path::PathBuf};
+use std::path::PathBuf;
 
 #[derive(Clone, PartialEq, Eq)]
 struct Route {
@@ -71,7 +71,7 @@ impl Engine {
         Ok(thread)
     }
     fn vfp_write_pair(&mut self, register: &Register, view: WriteView) -> Result<RawValue, String> {
-        let mut values = BTreeMap::new();
+        let mut values = super::registers::ReadCache::default();
         self.read_vfp_register(&view.reader_name(), &mut values)
             .map_err(|(_, error)| error)?;
         let m0 = values

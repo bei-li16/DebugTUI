@@ -206,6 +206,21 @@ fn mrrc_scope_all_reads_only_selected_core_with_full_width_and_rejects_old_conte
         assert_eq!(sample["value"]["hex"], "0x81234567abcdef01");
         assert_eq!(sample["owner"], "core:core1");
         assert_eq!(sample["source"], "openocd:aarch64 mrrc");
+        let access = &sample["provenance"]["access"];
+        assert_eq!(access["route"]["target"], "cpu1");
+        assert_eq!(
+            access["route"]["endpoint"],
+            fixture.project.registers.tcl_endpoint
+        );
+        assert_eq!(access["context"], context);
+        assert_eq!(access["phase"], "responded");
+        assert!(
+            access["route"]["operation"]
+                .as_str()
+                .unwrap()
+                .starts_with("aarch64 mrrc ")
+        );
+        assert!(access["command"].as_str().unwrap().contains("aarch64 mrrc"));
     }
     let state = fixture.state.lock().unwrap().clone();
     let reads: Vec<_> = state["trace"]

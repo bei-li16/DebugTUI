@@ -40,7 +40,7 @@ impl Engine {
                 "Actual GDB frame is not current physical frame 0".into(),
             ));
         }
-        let response = self.register_tcl(operation);
+        let response = self.register_tcl_value(operation, label);
         if let Some(error) = self.register_access_fault.clone() {
             for lease in &mut leases {
                 lease.quarantine(&error);
