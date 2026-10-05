@@ -180,7 +180,12 @@
         "vfp_current_hyp_proof_accepts_all_stopped_modes_without_granting_lower_el_access",
         "vfp_current_proof_rejects_legacy_missing_forged_and_faulted_evidence",
         "current_vfp_proof_tracks_selected_core_and_all_stopped_modes_under_scope_all",
-        "forged_or_legacy_vfp_current_proof_cannot_replace_a_valid_origin"
+        "forged_or_legacy_vfp_current_proof_cannot_replace_a_valid_origin",
+        "registers::matrix::tests::",
+        "actual_binary_register_matrix_is_read_only_and_preserves_isolated_configuration",
+        "register_matrix_scope_all_uses_one_core_and_expires_shared_receipts_after_peer_activity",
+        "register_matrix_exports_native_vfp_receipts_and_quarantined_failures_without_target_io",
+        "deferred_register_matrix_driver_runs_actual_binary_and_rejects_bad_independent_values"
       ],
       "sources": [
         "src/registers.rs",
@@ -342,7 +347,17 @@
         "docs/register-backend-source.md",
         "src/registers/vfp/access_tests.rs",
         "docs/register-vfp-proof.md",
-        "tests/cases/register-vfp-proof.md"
+        "tests/cases/register-vfp-proof.md",
+        "src/registers/matrix.rs",
+        "src/registers/matrix/tests.rs",
+        "src/session/register_matrix.rs",
+        "tests/register_matrix.rs",
+        "tests/selector_access/matrix_cases.rs",
+        "scripts/test-register-matrix.cjs",
+        "scripts/test-register-matrix-hardware.cjs",
+        "tests/fixtures/register-matrix-board.example.json",
+        "docs/register-capability-matrix.md",
+        "tests/cases/register-matrix.md"
       ],
       "limits": [
         "目录及 MI/TCL 软件夹具不证明目标实现或实际后端能力",

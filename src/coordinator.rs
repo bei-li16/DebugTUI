@@ -592,9 +592,9 @@ impl Coordinator {
             }
             Event::Response {
                 id,
-                ok,
+                mut ok,
                 mut result,
-                error,
+                mut error,
             } => {
                 if !self.batch.as_ref().is_some_and(|b| {
                     b.waiting
@@ -611,6 +611,14 @@ impl Coordinator {
                 if b.current_method == "registers_probe" && ok {
                     self.accept_probe_response(i, &b.shared_epochs, &mut result);
                     self.publish();
+                }
+                if b.current_method == "registers_matrix"
+                    && ok
+                    && let Err(failure) = self.filter_register_matrix(i, &mut result)
+                {
+                    ok = false;
+                    error = Some(failure);
+                    result = Json::Null;
                 }
                 if matches!(
                     b.current_method.as_str(),

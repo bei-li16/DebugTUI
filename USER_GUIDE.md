@@ -732,6 +732,8 @@ Status 显示 Scope／Owner、实际 **Sample core**，共享条目还显示 **O
 
 Headless 的 `registers_list` 返回配置 `topology` 及 `topology_source = "configuration"`；多核 `registers_list`／`registers_read` 还返回 `owner_generations`，Snapshot 返回 `register_owner_generations`。缓存共享值时须同时核对样本的 worker context、owner 和 `owner_generation`；配置拓扑不证明实际硬件身份。
 
+`registers_matrix` 可导出当前核心的只读能力矩阵，包含类别、位宽、配置通道/target/协议、状态条件、支持状态和完整缓存证据；离线、运行或故障时也可调用，导出本身不访问目标。`plan.available` 是配置完整性，`observed_value` 只代表当前缓存读取，整类实板能力仍为 `unverified`。旧值来源和共享 owner 代次保留；`Scope All` 不广播。详情见 [能力矩阵](docs/register-capability-matrix.md)。
+
 Status 还分别显示 Catalogue CPU／架构、Configured CPU choice 和有当前停止上下文证据的 Observed CPU。Latest read attempt 显示实际 GDB 名称／索引或 TCL endpoint／请求 target；MMIO 同时显示地址、通道来源、字节序与 bus width/count。64 位 AP 读由两个 32 位读组成，不保证原子性。请求 target 名称不能证明物理 CPU 身份。
 
 路由状态区分未开始发送、发送后结果未确认、收到完整响应；收到错误响应仍不计 Valid。失败刷新保留旧值时，Retained raw value origin 独立显示旧值来源。别名和 VFP 重叠视图保留父值的实际请求与时间；任意 Console 后的新 GDB 请求不猜测已连接 endpoint，配置地址另列。Headless 在 Sample 的 `provenance`／`last_value_provenance` 中提供对应元数据及原始命令，旧 JSON 兼容且来源缺失时保持 Unknown。打开来源详情不会访问目标。完整规则见 [读取来源自检](docs/register-read-provenance.md)。

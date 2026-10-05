@@ -166,6 +166,95 @@ fn reads(out: &Path) -> usize {
 }
 
 #[test]
+fn register_matrix_scope_all_uses_one_core_and_expires_shared_receipts_after_peer_activity() {
+    let (project, out) = fixture("matrix", true);
+    let engine = coordinator::spawn(project);
+    call(&engine, 1, "connect", json!({}));
+    call(&engine, 2, "control_scope", json!({"scope":"all"}));
+    select(&engine, 1);
+    let baseline = call(
+        &engine,
+        3,
+        "registers_read",
+        json!({"ids":["private","cluster_alias","chip_alias"],"scope":"all"}),
+    );
+    let commands = fs::read_to_string(out.join("commands.txt")).unwrap();
+    let matrix = call(&engine, 4, "registers_matrix", json!({"scope":"all"}));
+    assert_eq!(matrix["context"]["core"], "core1");
+    for id in ["private", "cluster_alias", "chip_alias"] {
+        let row = matrix["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == id)
+            .unwrap();
+        assert_eq!(row["support"], "observed_value", "{row}");
+        let observed = &matrix["observations"][row["observation"].as_u64().unwrap() as usize];
+        assert_eq!(
+            observed["provenance"]["access"]["route"]["endpoint"],
+            "localhost:4331"
+        );
+        if id != "private" {
+            assert_eq!(
+                observed["owner_generation"],
+                matrix["owner_generations"][observed["owner"].as_str().unwrap()]
+            );
+        }
+    }
+    assert_eq!(
+        fs::read_to_string(out.join("commands.txt")).unwrap(),
+        commands
+    );
+    select(&engine, 0);
+    call(&engine, 5, "continue", json!({"scope":"core"}));
+    select(&engine, 1);
+    let commands = fs::read_to_string(out.join("commands.txt")).unwrap();
+    let expired = call(&engine, 6, "registers_matrix", json!({}));
+    for id in ["private", "cluster_alias", "chip_alias"] {
+        let row = expired["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == id)
+            .unwrap();
+        assert_eq!(
+            row["support"],
+            if id == "private" {
+                "observed_value"
+            } else {
+                "stale"
+            }
+        );
+        let observed = &expired["observations"][row["observation"].as_u64().unwrap() as usize];
+        assert_eq!(
+            observed["value"],
+            baseline["samples"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["id"] == id)
+                .unwrap()["value"]
+        );
+    }
+    assert_eq!(
+        fs::read_to_string(out.join("commands.txt")).unwrap(),
+        commands
+    );
+    select(&engine, 3);
+    let unknown = call(&engine, 7, "registers_matrix", json!({}));
+    assert_eq!(
+        unknown["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == "cluster")
+            .unwrap()["support"],
+        "unknown_owner"
+    );
+    call(&engine, 8, "quit", json!({}));
+}
+
+#[test]
 fn four_core_cluster_chip_alias_and_unknown_owners_use_exact_routes_without_cross_cluster_values() {
     for chip in [true, false] {
         let (project, out) = fixture(&format!("owners-{chip}"), chip);

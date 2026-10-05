@@ -25,6 +25,8 @@ mod banked_cases;
 mod cancel_cases;
 #[path = "selector_access/gic_cases.rs"]
 mod gic_cases;
+#[path = "selector_access/matrix_cases.rs"]
+mod matrix_cases;
 #[path = "selector_access/mpu_cases.rs"]
 mod mpu_cases;
 #[path = "selector_access/mrrc_cases.rs"]

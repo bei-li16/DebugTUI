@@ -1,0 +1,11 @@
+{
+  "software_example": true,
+  "evidence_source": "Replace with an independently sampled stopped firmware baseline for this physical core",
+  "control_scope": "all",
+  "entries": [
+    {"id": "r0", "bits": 32, "support": "observed_value", "expected_hex": "0x11223344"},
+    {"id": "s0", "bits": 32, "support": "observed_value", "expected_hex": "0x01234567"},
+    {"id": "d0", "bits": 64, "support": "observed_value", "expected_hex": "0x89abcdef01234567"},
+    {"id": "q0", "bits": 128, "support": "observed_value", "expected_hex": "0xfedcba987654321089abcdef01234567"}
+  ]
+}

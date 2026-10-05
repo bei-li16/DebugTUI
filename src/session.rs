@@ -28,6 +28,7 @@ mod mmio_probe;
 mod mpu;
 mod pmu;
 mod register_adapter;
+mod register_matrix;
 mod registers;
 mod selectors;
 mod symbols;
@@ -1673,6 +1674,7 @@ impl Engine {
             }
             "status" => Ok(serde_json::to_value(&self.snapshot).unwrap()),
             "registers_list" => self.registers_list(),
+            "registers_matrix" => self.register_matrix(),
             "registers_probe" => self.probe_register_capabilities(p),
             "registers_select" => self.read_selected_registers(p),
             "registers_mpu" => self.mpu_regions(p),

@@ -1,5 +1,11 @@
 # DebugTUI 验证记录
 
+## REG-007只读能力矩阵（2026-10-06，开发分支）
+
+完整Cargo **398单元＋169集成通过，2 ignored，共567通过**；F24 **154/154**证据模式匹配，531352 ms无超时，其余22外层套件未选择。总报告/Markdown/unit.log逐字节镜像 `artifacts/functional-1791241698266-d38320e0/`，56份原始子报告在F盘，核对 `artifacts/register-matrix-report-mirror.json`。严格Clippy通过，日志 `artifacts/register-matrix-clippy.log`；后端源锁静态核对通过，见 `artifacts/register-matrix-static-audit.json`。
+
+七项新单元、四项新集成验证完整类别/位宽/条件、配置路线、旧或不完整receipt、MMIO核心映射/非原子宽度、共享peer失效、实际CLI六项离线配置和FAULT导出。实际二进制软件环境驱动四阶段通过，并拒绝错误独立高字值；原失败夹具记录保留。[八项环境case](tests/cases/register-matrix.md)均SKIPPED，默认驱动四阶段SKIPPED，未上板。只勾选REG-007，27完成／44待完成；配置和观察不等于整类实板支持，见[能力矩阵](docs/register-capability-matrix.md)。未安装或发布Release。
+
 ## VFP当前Debug状态与独立源码包（2026-10-06，开发分支）
 
 完整Cargo **391单元＋165集成通过，2 ignored，共556通过**；F24 **149/149**个证据模式匹配，538354 ms无超时，其余22外层套件未选择。总报告、Markdown及unit.log逐字节镜像到 `artifacts/functional-1791238088481-8911e18d/`，原53份子报告在F盘，核对 `artifacts/vfp-proof-report-mirror.json`。严格Clippy通过，日志 `artifacts/vfp-proof-clippy.log`。

@@ -20,6 +20,7 @@ pub mod capabilities;
 pub mod display;
 pub mod eligibility;
 pub mod gic;
+pub mod matrix;
 pub mod mmio_probe;
 #[cfg(test)]
 mod mmio_tests;

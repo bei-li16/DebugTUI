@@ -4,6 +4,8 @@
 
 ## 统一运行
 
+REG-007 的只读能力矩阵由 `registers::matrix::tests::`、`tests/register_matrix.rs`、`tests/register_shared.rs` 和 `tests/selector_access/matrix_cases.rs` 验证；包括七项单元、实际 CLI 六项离线配置、当前核/共享代次、原生证据和故障隔离导出。`node scripts/test-register-matrix-hardware.cjs` 默认四阶段 SKIPPED，无目标访问；实际二进制软件驱动验证正向独立全位值及错误基线拒绝。[八项环境 case](cases/register-matrix.md) 均未执行；[能力矩阵](../docs/register-capability-matrix.md) 不把配置或一次成功样本当整类实板支持。
+
 Timer 单项一致性新增 `timer_samples_keep_extreme_u64_values_native_reads_and_legacy_evidence` 和 `timer_counter_driver_validates_carry_wrap_freeze_regression_and_sample_windows`。后者以实际 EXE 分别运行全 64 位回绕/低字进位、允许冻结，以及冻结必须进展/倒退/异常高字/过旧基线四种失败流程；固件变量由独立软件夹具供给，不算上板。原有传输故障测试同时核对请求完成时间只在收到完整帧后出现，旧来源 JSON 不制造终点。生产 C 另验证 48 个动态 pair 回读，源与候选二进制沿用已固定构建；详见 [一致性边界](../docs/register-timer.md)。
 
 专用 Timer 后端的软件验证见 [Timer 自检](../docs/register-timer.md)。`cargo test --locked timer_` 覆盖独立协议、编码/位宽、完整物理证据、权限未知与拒绝、选定核、旧值来源、恢复未知、取消和读取期间实际线程/帧变化。REG-H05 驱动以实际 EXE 分别执行旧 MRRC 和新 Timer 双核软件流程；case 的 `require_timer_adapter=true` 要求并记录各次 Timer 的 MIDR/EDSCR/DSPSR/DLR，同时保留独立固件基线比较。`node scripts/test-register-timer-hardware.cjs` 默认五项 SKIPPED，无目标访问；[十四项环境 case](cases/register-timer.md) 均未执行。生产 C 事务及 Windows/Linux 候选构建另见 [后端说明](../tools/openocd-adapter/README.md)，软件模型不代表芯片验证。

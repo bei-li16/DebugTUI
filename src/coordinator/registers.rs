@@ -15,6 +15,24 @@ fn shared(sample: &Sample) -> bool {
         .is_some_and(|owner| owner.starts_with("cluster:") || owner.starts_with("chip:"))
 }
 impl Coordinator {
+    pub(super) fn filter_register_matrix(
+        &self,
+        core: usize,
+        result: &mut Json,
+    ) -> Result<(), String> {
+        let mut report = serde_json::from_value::<crate::registers::matrix::Report>(result.clone())
+            .map_err(|error| format!("Invalid register matrix: {error}"))?;
+        self.filter_shared_samples(core, &mut report.observations);
+        if let Some(probe) = &mut report.probe {
+            self.filter_shared_samples(core, &mut probe.samples);
+            probe.decode();
+        }
+        report.owner_generations = self.shared_epochs.clone();
+        report.refresh();
+        *result = json!(report);
+        Ok(())
+    }
+
     fn register_topology(&self) -> Topology {
         let mut topology = self.project.registers.topology.clone();
         if topology.chip.is_empty() {
