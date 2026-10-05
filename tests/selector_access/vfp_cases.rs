@@ -61,6 +61,17 @@ fn every_vfp_storage_view_uses_shared_physical_pairs_with_exact_alias_bits() {
                 .unwrap()
                 .starts_with("VFP read ")
         );
+        if sample["id"].as_str().unwrap().starts_with(['s', 'd', 'q']) {
+            let id = sample["id"].as_str().unwrap();
+            let proof: debugtui::registers::vfp::PairEvidence =
+                serde_json::from_value(access["vfp_pair"].clone()).unwrap();
+            let value: debugtui::registers::RawValue =
+                serde_json::from_value(sample["value"].clone()).unwrap();
+            assert_eq!(proof.view(id).unwrap(), value, "{id}");
+            assert_eq!(proof.features().unwrap().d_registers, 32);
+        } else {
+            assert!(access["vfp_pair"].is_null());
+        }
     }
     let access =
         |id: &str| &samples.iter().find(|s| s["id"] == id).unwrap()["provenance"]["access"];
@@ -103,6 +114,204 @@ fn every_vfp_storage_view_uses_shared_physical_pairs_with_exact_alias_bits() {
             .contains("get_reg")
     );
     ok(&engine, 3, "quit", json!({}));
+}
+
+#[test]
+fn all_d16_storage_samples_keep_pair_capacity_without_publishing_high_d_or_q() {
+    let f = configured("vfp_d16");
+    let engine = session::spawn(f.project.clone());
+    ok(&engine, 1, "connect", json!({}));
+    let ids: Vec<String> = (0..32)
+        .map(|n| format!("s{n}"))
+        .chain((0..32).map(|n| format!("d{n}")))
+        .chain((0..16).map(|n| format!("q{n}")))
+        .collect();
+    let read = ok(
+        &engine,
+        2,
+        "registers_read",
+        json!({"ids":ids,"manual":true}),
+    );
+    for sample in read["samples"].as_array().unwrap() {
+        let id = sample["id"].as_str().unwrap();
+        let index = id[1..].parse::<u8>().unwrap();
+        if id.starts_with('q') || (id.starts_with('d') && index >= 16) {
+            assert_eq!(sample["reason"], "hardware_not_implemented", "{sample}");
+            assert_eq!(sample["implementation"], "no");
+            assert!(sample["value"].is_null());
+        } else {
+            assert_eq!(sample["state"], "valid", "{sample}");
+            let proof: debugtui::registers::vfp::PairEvidence =
+                serde_json::from_value(sample["provenance"]["access"]["vfp_pair"].clone()).unwrap();
+            assert_eq!(proof.features().unwrap().d_registers, 16);
+            assert!(!proof.features().unwrap().neon);
+            assert_eq!(proof.view(id).unwrap().hex, sample["value"]["hex"]);
+        }
+    }
+    let trace = vfp_trace(&f.state.lock().unwrap());
+    // Eight shared data pairs plus 16 high-D and 8 uncached high-Q refusals.
+    assert_eq!(trace.len(), 32);
+    for index in (0..16).step_by(2) {
+        assert_eq!(
+            trace
+                .iter()
+                .filter(|id| **id == format!("d{index}"))
+                .count(),
+            1
+        );
+    }
+    assert!(
+        trace
+            .iter()
+            .filter(|id| id.starts_with('q'))
+            .all(|id| id[1..].parse::<u8>().unwrap() >= 8)
+    );
+    assert!(selector_writes(&f.state.lock().unwrap()).is_empty());
+    ok(&engine, 3, "quit", json!({}));
+}
+
+#[test]
+fn failed_vfp_refresh_retains_original_pair_capacity_and_raw_origin() {
+    let f = configured("");
+    let engine = session::spawn(f.project.clone());
+    ok(&engine, 1, "connect", json!({}));
+    let first = ok(
+        &engine,
+        2,
+        "registers_read",
+        json!({"ids":["q0","s0","d1"],"manual":true}),
+    );
+    let origins: Vec<_> = first["samples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|sample| (sample["value"].clone(), sample["provenance"].clone()))
+        .collect();
+    f.state.lock().unwrap()["fault"] = json!("vfp_short");
+    let failed = ok(
+        &engine,
+        3,
+        "registers_read",
+        json!({"ids":["q0","s0","d1"],"manual":true}),
+    );
+    let status = ok(&engine, 4, "status", json!({}));
+    for (sample, (value, origin)) in failed["samples"].as_array().unwrap().iter().zip(origins) {
+        assert_eq!(sample["reason"], "reader_unsupported", "{sample}");
+        assert!(sample["value"].is_null());
+        assert!(sample["provenance"]["access"]["vfp_pair"].is_null());
+        let retained = status["register_samples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|old| old["id"] == sample["id"])
+            .unwrap();
+        assert_eq!(retained["value"], value);
+        assert_eq!(retained["last_value_provenance"]["provenance"], origin);
+    }
+    assert_eq!(status["state"], "STOPPED");
+    ok(&engine, 5, "quit", json!({}));
+}
+
+#[test]
+fn independent_fp_patterns_prove_all_raw_and_float_views_on_the_selected_owner() {
+    use debugtui::registers::{
+        RawValue,
+        display::{Format, Lane},
+        vfp::PairEvidence,
+    };
+    let baseline: Value =
+        serde_json::from_str(include_str!("../fixtures/register-storage-patterns.json")).unwrap();
+    let mut f = configured("");
+    f.project.cores = (0..2)
+        .map(|i| Core {
+            name: format!("core{i}"),
+            endpoint: format!("localhost:{}", 27900 + i),
+            ..Default::default()
+        })
+        .collect();
+    f.project.registers.targets = [
+        ("core0".into(), "cpu0".into()),
+        ("core1".into(), "cpu1".into()),
+    ]
+    .into();
+    let engine = debugtui::coordinator::spawn(f.project.clone());
+    ok(&engine, 1, "connect", json!({}));
+    ok(&engine, 2, "select_core", json!({"index":0}));
+    ok(
+        &engine,
+        3,
+        "registers_read",
+        json!({"ids":["fpexc"],"manual":true}),
+    );
+    let peer_before = f.state.lock().unwrap()["targets"]["cpu0"].clone();
+    let trace_start = f.state.lock().unwrap()["trace"].as_array().unwrap().len();
+    for index in 0..16 {
+        let expected = RawValue::parse(
+            baseline["views"][format!("q{index}")].as_str().unwrap(),
+            128,
+        )
+        .unwrap();
+        f.state.lock().unwrap()["targets"]["cpu1"]["vfp_pairs"][index.to_string()] =
+            json!(expected.integer().unwrap().to_string());
+    }
+    ok(&engine, 4, "control_scope", json!({"scope":"all"}));
+    ok(&engine, 5, "select_core", json!({"index":1}));
+    let ids: Vec<_> = (0..16)
+        .map(|n| format!("q{n}"))
+        .chain((0..32).map(|n| format!("d{n}")))
+        .chain((0..32).map(|n| format!("s{n}")))
+        .collect();
+    let read = ok(
+        &engine,
+        6,
+        "registers_read",
+        json!({"ids":ids,"manual":true}),
+    );
+    assert_eq!(read["samples"].as_array().unwrap().len(), 80);
+    for sample in read["samples"].as_array().unwrap() {
+        let id = sample["id"].as_str().unwrap();
+        assert_eq!(sample["state"], "valid", "{sample}");
+        assert_eq!(sample["owner"], "core:core1");
+        assert_eq!(sample["value"]["hex"], baseline["views"][id]);
+        let value: RawValue = serde_json::from_value(sample["value"].clone()).unwrap();
+        let access = &sample["provenance"]["access"];
+        assert_eq!(access["context"], sample["context"]);
+        assert_eq!(access["route"]["target"], "cpu1");
+        let proof: PairEvidence = serde_json::from_value(access["vfp_pair"].clone()).unwrap();
+        assert_eq!(proof.view(id).unwrap(), value);
+        if let Some(expected) = baseline["scalar_float"].get(id) {
+            assert_eq!(
+                Format::Float { bits: value.bits }.render(&value).unwrap(),
+                expected.as_str().unwrap()
+            );
+        }
+        for (section, bits) in [("float32_vectors", 32), ("float64_vectors", 64)] {
+            if let Some(expected) = baseline[section].get(id) {
+                assert_eq!(
+                    Format::Vector {
+                        lane_bits: bits,
+                        interpretation: Lane::Float
+                    }
+                    .render(&value)
+                    .unwrap(),
+                    expected.as_str().unwrap()
+                );
+            }
+        }
+    }
+    let state = f.state.lock().unwrap().clone();
+    assert_eq!(state["targets"]["cpu0"], peer_before);
+    let new_trace: Vec<_> = state["trace"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(trace_start)
+        .filter(|row| row[1] == "vfp")
+        .collect();
+    assert_eq!(new_trace.len(), 16);
+    assert!(new_trace.iter().all(|row| row[0] == "cpu1"));
+    assert!(selector_writes(&state).is_empty());
+    ok(&engine, 7, "quit", json!({}));
 }
 #[test]
 fn disabled_vfp_retains_presence_evidence_and_never_enables_or_breaks_core_control() {

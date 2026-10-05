@@ -4,7 +4,7 @@
 
 本计划将现有通用寄存器列表扩展为具有 Arm Development Studio 分组、位域和状态展示能力的寄存器窗口，并纳入 GitHub 开放 Issues 中的总线访问 target 配置、展示以及变量/内存/寄存器写入需求。优先服务 THA6206 的 MCAL 与 Bao 调试，同时保持单核、多核以及 STM32 等既有目标的兼容性。寄存器读取按“确认读取能力 → 建立数据模型 → 改造界面 → 扩展读取 → 实板验收”推进；总线入口与写入能力分别跟踪，写入不作为前期只读版本的发布条件。
 
-状态：开发中。2026-10-06 按逐项软件证据核对，71 项中已完成 24 项、未完成 47 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md)、[GIC 自检](register-gic.md)、[新鲜 MMIO Probe](register-mmio-probe.md) 和开发进度。MMIO Probe是 REG-405/BUS-006 的子集，不单独增加完成项。本计划不代表扩展寄存器已经在实板上读取成功。
+状态：开发中。2026-10-06 按逐项软件证据核对，71 项中已完成 26 项、未完成 45 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md)、[GIC 自检](register-gic.md)、[新鲜 MMIO Probe](register-mmio-probe.md)、[存储视图](register-storage-views.md)、[后端源码](register-backend-source.md) 和开发进度。MMIO Probe是 REG-405/BUS-006 的子集，不单独增加完成项。本计划不代表扩展寄存器已经在实板上读取成功。
 
 ## 当前版本与新功能版本计划
 
@@ -281,7 +281,10 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 - [ ] REG-003：验证目标限定的 `mrc`、`get_reg` 等命令；分别检查 core0、core1，保留原始响应与 OpenOCD 日志。
 - [ ] REG-004：确认 64 位系统寄存器是否可经 GDB、`get_reg` 或其他已支持接口读取；记录缺口，不用两次任意 MRC 冒充 MRRC。
 - [ ] REG-005：核对 EL1、EL2、MPU 区域数量、FPU 启用状态和 Generic Timer 能力；不可访问不自动判为未实现。
-- [ ] REG-006：确认 OpenOCD 源码及构建方法是否可获得。需要增加驱动能力时建立独立修改清单、构建产物和版本依赖。
+- [x] REG-006：确认 OpenOCD 源码及构建方法是否可获得。需要增加驱动能力时建立独立修改清单、构建产物和版本依赖。
+
+2026-10-06自检：固定Git源树重新应用补丁，十一项源锁、七独立协议、Windows/Linux既有完整构建、本机DLL/CFG与对应源码/运行包已核对；见[后端源码](register-backend-source.md)。这里只验收源码和构建可获得性，实际芯片身份/完整工具安装与板级能力仍由其余前置项/REG-505跟踪。
+
 - [ ] REG-007：形成“寄存器类别、读通道、位宽、状态条件、目标核心、支持状态、证据”的能力矩阵。
 - [ ] REG-008：核对 ADS 通用目录与 R52/R52+ 实现差异，采集目标身份及适用的 GIC 能力信息，逐项解释图五 AP 寄存器和其他 Unavailable；明确物理与虚拟视图及原始错误，作为 v0.10.0 前置核对。
 
@@ -335,7 +338,10 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 2026-10-06 银行状态自检：外部MIDR/EDSCR的独立协议v2纠正停止前DSPSR当前银行推断；EL2三十项和EL0七项当前User银行有软件证据，EL1具体模式未知，不注入不可预测的当前CPSR读取。前后DSPSR/DLR、物理R0恢复、逐核来源/上下文/实际传输方法和失败旧值证据已补齐；完整EL1访问仍待完成，因此REG-303不勾选。Windows/Linux重建及本机离线包验证、独立三十项编码/八模式固件已准备，[八项环境case](../tests/cases/register-banked-proof.md)保持SKIPPED。总进度仍为24完成／47待完成，详见[银行自检](register-banked-proof.md)。
 
 - [ ] REG-304：接入 VFP 数据与 FPSCR 等控制寄存器，支持原始十六进制和浮点格式；覆盖未使能时的失败处理，不自动修改 CPACR、FPEXC。
-- [ ] REG-305：实现 S、D 和可支持的 Q 视图；仅按目标能力建立对应关系，覆盖 NaN、无穷、负零及向量分量显示。
+- [x] REG-305：实现 S、D 和可支持的 Q 视图；仅按目标能力建立对应关系，覆盖 NaN、无穷、负零及向量分量显示。
+
+2026-10-06软件验收：同次MVFR/FPEXC/完整pair来源、D16/D32完整标准视图、Unknown/矛盾/缺失/禁用/失败旧值、NaN/无穷/负零与向量分量、双核Scope All、实际EXE四种软件流程和四种正常启动标本对象已核对。完整552通过、2ignored、F24 145/145、严格Clippy通过；[八项环境case](../tests/cases/register-storage-views.md)全部SKIPPED。REG-304完整读取权限/新鲜Debug状态仍待完成，存储元数据不授予权限。见[存储视图](register-storage-views.md)。完整进度**26/45**。
+
 - [ ] REG-306：接入 EL1、EL2 MPU，依据实际区域数量构造目录，解析基址、限址、使能及权限；优先使用直接区域访问。
 - [ ] REG-307：补齐必须使用选择器时的服务级事务和失败恢复，验证与多核、Live Watch、Console、Continue、Reset 的调度关系。
 - [ ] REG-308：复现并分析此前讨论的可选寄存器读取故障；读取失败不持续刷错误、不拖垮通用寄存器和后续调试控制。

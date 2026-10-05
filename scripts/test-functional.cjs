@@ -71,7 +71,9 @@ async function execute(suite) {
   if(suite.windows&&!powershell) return {id:suite.id,status:'skipped',reason:'Requires PowerShell 7 (pwsh in PATH)'};
   if(suite.native&&(!gdb||!cc)) return {id:suite.id,status:'skipped',reason:'Provide --gdb and --cc for real native GDB acceptance'};
   console.log(`RUN ${suite.id}`);
-  const start=Date.now(), logFile=path.join(out,`${suite.id}.log`), before=new Set(fs.readdirSync(path.join(root,'artifacts')));
+  const artifactRoots=[...new Set([path.join(root,'artifacts'),env.DEBUGTUI_TEST_ARTIFACT_ROOT,env.DEBUGTUI_DISTRIBUTION_ARTIFACT_ROOT].filter(Boolean).map(directory=>path.resolve(directory)))];
+  for(const directory of artifactRoots)fs.mkdirSync(directory,{recursive:true});
+  const start=Date.now(), logFile=path.join(out,`${suite.id}.log`), before=new Map(artifactRoots.map(directory=>[directory,new Set(fs.readdirSync(directory))]));
   return await new Promise(resolve=>{
     const child=spawn(suite.command,suite.args,{cwd:root,env:suite.env||env,windowsHide:true});
     const log=fs.createWriteStream(logFile); let output='',timedOut=false,done=false;
@@ -85,7 +87,7 @@ async function execute(suite) {
     },suite.id==='unit'?600000:180000);
     const finish=async(code,error)=>{
       if(done)return;done=true;clearTimeout(timer); await new Promise(r=>log.end(r));
-      const artifacts=fs.readdirSync(path.join(root,'artifacts')).filter(name=>!before.has(name)).map(name=>path.join(root,'artifacts',name));
+      const artifacts=artifactRoots.flatMap(directory=>fs.readdirSync(directory).filter(name=>!before.get(directory).has(name)).map(name=>path.join(directory,name)));
       const reports=[];
       for(const directory of artifacts) for(const name of ['report.json','verification.json','result.json']) { const file=path.join(directory,name); if(fs.existsSync(file)) reports.push(file); }
       const result={id:suite.id,status:code===0&&!error&&!timedOut?'passed':'failed',exit_code:code,duration_ms:Date.now()-start,log:logFile,reports,error:error?.message,timed_out:timedOut};

@@ -169,7 +169,14 @@
         "physical_bank_proof_distinguishes_current_mode_from_saved_dspsr",
         "bank_proof_rejects_legacy_missing_forged_and_contradictory_fields",
         "current_debug_el_governs_all_thirty_banks_independently_of_stopped_user_dspsr",
-        "malformed_bank_refresh_retains_the_previous_physical_proof_with_its_value"
+        "malformed_bank_refresh_retains_the_previous_physical_proof_with_its_value",
+        "all_aarch32_storage_views_follow_observed_d16_or_d32_capacity",
+        "malformed_pair_evidence_cannot_invent_capacity_views_or_enable",
+        "floating_storage_vectors_preserve_special_bits_and_lane_order",
+        "floating_pair_details_explain_capacity_raw_bits_and_mapping_without_permissions",
+        "all_d16_storage_samples_keep_pair_capacity_without_publishing_high_d_or_q",
+        "failed_vfp_refresh_retains_original_pair_capacity_and_raw_origin",
+        "independent_fp_patterns_prove_all_raw_and_float_views_on_the_selected_owner"
       ],
       "sources": [
         "src/registers.rs",
@@ -322,7 +329,13 @@
         "tests/cases/register-mmio-probe.md",
         "docs/register-mmio-probe.md",
         "docs/register-banked-proof.md",
-        "tests/cases/register-banked-proof.md"
+        "tests/cases/register-banked-proof.md",
+        "src/registers/vfp/view_tests.rs",
+        "tests/fixtures/register-storage-patterns.S",
+        "tests/fixtures/register-storage-patterns.json",
+        "tests/cases/register-storage-views.md",
+        "docs/register-storage-views.md",
+        "docs/register-backend-source.md"
       ],
       "limits": [
         "目录及 MI/TCL 软件夹具不证明目标实现或实际后端能力",

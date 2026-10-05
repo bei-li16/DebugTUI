@@ -91,6 +91,9 @@ impl Engine {
             .view(&response.value)
             .map_err(|error| (Reason::TransportError, error))?;
         if let Some(pair) = kind.pair() {
+            if let Some(access) = &mut self.register_value_access {
+                access.vfp_pair = response.pair_evidence(kind);
+            }
             let mut provenance = crate::registers::provenance::Provenance::declared(
                 &crate::registers::Reader::Vfp { name: name.into() },
             );

@@ -1,5 +1,6 @@
 //! R52 VFP evidence and fixed adapter wire format; no permissions inferred from CPACR.
 use super::RawValue;
+use serde::{Deserialize, Serialize};
 mod writes;
 pub use writes::{WRITE_PROTOCOL, WriteResponse, WriteView};
 
@@ -89,6 +90,67 @@ pub struct Response {
     pub mvfr1: RawValue,
     pub fpexc: RawValue,
 }
+
+/// Capacity and raw storage from one successful pair request. This describes
+/// bit views, not permission to execute floating-point or SIMD instructions.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PairEvidence {
+    pub first_d: u8,
+    pub mvfr0: RawValue,
+    pub mvfr1: RawValue,
+    pub fpexc: RawValue,
+    pub raw: RawValue,
+}
+impl PairEvidence {
+    pub fn features(&self) -> Result<Features, String> {
+        for raw in [&self.mvfr0, &self.mvfr1, &self.fpexc] {
+            if raw.bits != 32 || exact_raw(&raw.hex, 32)? != *raw {
+                return Err("VFP pair requires exact 32-bit feature evidence".into());
+            }
+        }
+        if self.raw.bits != 128 || exact_raw(&self.raw.hex, 128)? != self.raw {
+            return Err("VFP pair requires all 128 storage bits".into());
+        }
+        let features = features(self.mvfr0.integer()? as u64, self.mvfr1.integer()? as u64)
+            .ok_or("Unadapted or contradictory VFP pair capacity")?;
+        if !self.first_d.is_multiple_of(2)
+            || u64::from(self.first_d) + 1 >= features.d_registers
+            || self.fpexc.integer()? & (1 << 30) == 0
+        {
+            return Err("VFP pair contradicts capacity or enable evidence".into());
+        }
+        Ok(features)
+    }
+
+    /// AArch32 lane zero is at the least significant bits, independently of
+    /// target memory byte order. S registers overlap only D0-D15.
+    pub fn view(&self, name: &str) -> Result<RawValue, String> {
+        let features = self.features()?;
+        let (first_bit, bits) = if let Some(kind) = Kind::parse(name) {
+            match kind {
+                Kind::Double(index) if u64::from(index) < features.d_registers => {
+                    (u16::from(index) * 64, 64)
+                }
+                Kind::Quad(index) if features.neon => (u16::from(index) * 128, 128),
+                _ => return Err("Requested VFP storage view is not implemented".into()),
+            }
+        } else {
+            let index = name
+                .strip_prefix('s')
+                .ok_or("Unknown VFP storage view")?
+                .parse::<u8>()
+                .map_err(|_| "Unknown VFP storage view")?;
+            if index >= 32 || name != format!("s{index}") {
+                return Err("Unknown VFP storage view".into());
+            }
+            (u16::from(index) * 32, 32)
+        };
+        let offset = first_bit
+            .checked_sub(u16::from(self.first_d) * 64)
+            .ok_or("Requested view belongs to another VFP pair")?;
+        self.raw.slice(offset, bits)
+    }
+}
 fn exact_raw(text: &str, bits: u16) -> Result<RawValue, String> {
     if text.len() != usize::from(bits / 4) + 2
         || !text.starts_with("0x")
@@ -101,6 +163,15 @@ fn exact_raw(text: &str, bits: u16) -> Result<RawValue, String> {
     RawValue::parse(text, bits)
 }
 impl Response {
+    pub fn pair_evidence(&self, kind: Kind) -> Option<PairEvidence> {
+        kind.pair().map(|pair| PairEvidence {
+            first_d: pair * 2,
+            mvfr0: self.mvfr0.clone(),
+            mvfr1: self.mvfr1.clone(),
+            fpexc: self.fpexc.clone(),
+            raw: self.value.clone(),
+        })
+    }
     pub fn parse(text: &str, kind: Kind) -> Result<Self, String> {
         let words: Vec<_> = text.split_whitespace().collect();
         if words.len() != 8
@@ -134,6 +205,10 @@ impl Response {
         })
     }
 }
+
+#[cfg(test)]
+#[path = "vfp/view_tests.rs"]
+mod view_tests;
 
 #[cfg(test)]
 mod tests {

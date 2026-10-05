@@ -86,6 +86,16 @@ const word=async index=>{
         assert.equal(sample.state,'valid',`${id}: ${sample.detail}`);
         const expected=!data?reference[id]:id[0]==='d'?d[index]:id[0]==='s'?(d[Math.floor(index/2)]>>BigInt(32*(index%2)))&0xffffffffn:d[index*2]|(d[index*2+1]<<64n);
         assert.equal(exact(sample.value.hex,data?(id[0]==='d'?64:id[0]==='q'?128:32):32),expected,id);
+        if(data){
+          const access=sample.provenance?.access, proof=access?.vfp_pair;
+          assert.equal(access?.phase,'responded');assert.deepEqual(access?.context,context);
+          assert.equal(access?.route?.kind,'tcl_register');assert(access.route.operation.startsWith('VFP read '));
+          const first=id[0]==='q'?2*index:id[0]==='d'?2*Math.floor(index/2):2*Math.floor(index/4);
+          assert.equal(proof?.first_d,first);assert.equal(proof.raw.bits,128);
+          assert.equal(exact(proof.raw.hex,128),d[first]|(d[first+1]<<64n));
+          for(const field of ['mvfr0','mvfr1','fpexc']){assert.equal(proof[field].bits,32);assert.equal(exact(proof[field].hex),reference[field]);}
+          assert(Number.isInteger(access.timestamp_ms)&&Number.isInteger(access.completed_ms)&&access.completed_ms>=access.timestamp_ms);
+        }
       }
       return read;
     }))return;

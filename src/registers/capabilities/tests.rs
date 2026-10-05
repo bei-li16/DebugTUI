@@ -192,6 +192,7 @@ fn gic_capacities_require_independent_current_native_interface_evidence() {
                 timer: None,
                 pmu: None,
                 banked: None,
+                vfp_pair: None,
                 gic: Some(Response::parse(&wire, id, 32).unwrap().evidence),
                 route: Route::TclRegister {
                     endpoint: "localhost:1".into(),
@@ -354,6 +355,7 @@ fn pmu_physical_capacity_requires_matching_current_native_read_evidence_not_stop
             pmu: Some(evidence),
             gic: None,
             banked: None,
+            vfp_pair: None,
             route: Route::TclRegister {
                 endpoint: "localhost:1".into(),
                 target: "cpu1".into(),

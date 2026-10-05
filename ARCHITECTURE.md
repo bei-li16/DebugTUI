@@ -209,3 +209,5 @@ GIC 的独立 `gic_command` 同样按精确 reader 编码分发，禁止任意�
 R52 MMIO 目录通过统一 session/registers → read_memory_channel 进入 GDB/AP 路线，owner 先由显式拓扑决定，再查 registers.component_owners 的完整 core:/cluster:/chip: 键；缺失即拒绝，不按数值核心标签推导 base。新 reader.require_owner_mapping 防止私有窗口落到旧全局静态 base；旧用户定义默认 false。GICD cluster 共享和 GICR/Debug core 私有沿用既有上下文与协调器 owner_generation，实际请求来源与保留原值来源继续分开。内置目录解析由 OnceLock 持有，用户目录仍按明确文件来源加载；没有地址自动发现。[MMIO 自检](docs/register-mmio.md) 与默认无 I/O 的延后驱动记录软件证据和剩余范围。
 
 可选 registers.mmio_probe=true 通过固定三组件有界 RO 请求形成当前物理身份证明；数据路径要求同 context 的有效组件证明。独立 mmio_probe.ID/.after 样本保留实际 memory route/aperture、前后区间及 owner；GIC组被Debug前后复核包围，按手册精确 R52字段解码，不使用逻辑core名称推断地址或affinity。coordinator对 Probe 和普通样本同样绑定/验证共享owner epoch；peer生命周期、请求期间epoch变化和worker FIFO失效均清除相关共享事实。原配置单独保存、未知不变成No、64位两字非原子；完整范围见 [MMIO Probe](docs/register-mmio-probe.md)。
+
+VFP数据响应在 `provenance.access.vfp_pair` 记录首个D编号、完整128位pair和同次MVFR0/MVFR1/FPEXC。`PairEvidence`验证存储容量/位宽/视图范围；session请求级ReadCache共享完整原始来源，Alias继续记录独立的source/offset/bits。S/D/Q的派生及显示使用逻辑位序，lane0是低位，不依赖内存端序。该元数据描述已取得的存储，不授予执行权限；新鲜Debug状态/低EL后端适配继续在REG-304跟踪。[存储视图自检](docs/register-storage-views.md)。

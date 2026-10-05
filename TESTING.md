@@ -1,5 +1,11 @@
 # DebugTUI 验证记录
 
+## S/D/Q存储视图与后端源码（2026-10-06，开发分支）
+
+四新单元、三新集成补齐同次物理pair/容量raw、D16/D32完整视图、特殊值和双核Scope All、失败原值来源；实际EXE延后驱动四种软件场景通过。四种正常startup标本对象离线编译，64字数据节独立核对；八项环境case均SKIPPED。固定Git基线重新应用补丁，十一项源锁与Windows/Linux候选/源码包一致，后端源码可获得/可构建证据完整。[存储视图](docs/register-storage-views.md)、[后端源码](docs/register-backend-source.md)。
+
+完整 Cargo **389 单元＋163 集成通过，2 ignored，共552通过**；**F24 145/145**为证据匹配模式数，非用例数。完整运行496515 ms，无超时；其余**22外层功能套件未选择**。原始完整报告与53份子报告位于F盘，完整总报告/日志的逐字节镜像为 `artifacts/functional-1791235241817-19eb948a/report.json` 和同目录 `unit.log`；镜像核对见 `artifacts/storage-views-report-mirror.json`。严格Clippy通过，日志 `artifacts/storage-views-clippy.log`。REG-305软件范围与REG-006源码/构建自检已验收，完整TODO为**26完成／45待完成**，目标active；未执行上板、安装或发布Release。
+
 ## 银行当前Debug状态（2026-10-06，开发分支）
 
 生产C模型37成功、41受限、162未知、1110故障点与三十条GNU编码、八模式正常固件三十参考槽已验证；Windows/Linux重建、七协议/事务、Windows本机DLL/离线配置与对应源码包逐字节检查通过。没有目标指令执行或上板结果。EL1具体模式保持Unknown，REG-303不勾选。详见[自检](docs/register-banked-proof.md)和[八项环境case](tests/cases/register-banked-proof.md)。

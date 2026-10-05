@@ -1,5 +1,13 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：S/D/Q存储来源与固定后端源码自检
+
+VFP数据现在保存同次MVFR0/MVFR1/FPEXC、首个D编号及完整128位pair，S/D/Q共享原请求/owner/上下文与区间，失败保留原值/原依据。全部D16/D32视图、能力矛盾/Unknown、特殊浮点/向量、双核Scope All与实际EXE驱动有软件证据。正常测试startup标本D16/D32×大小端四对象离线编译及数据节核对通过，对象未执行；[八项环境case](../tests/cases/register-storage-views.md)保持SKIPPED。详见[存储视图自检](register-storage-views.md)。REG-304完整权限/当前Debug状态仍待完成。
+
+固定OpenOCD源码重新导出、应用补丁及十一项源锁一致；Windows/Linux既有完整构建、七协议/生产事务、本机DLL/CFG与对应源码/运行包证据核对通过。REG-006的源码可获得/可构建范围见[后端源码自检](register-backend-source.md)，不能代替安装或板级能力。
+
+完整 Cargo **389 单元＋163 集成通过，2 ignored，共552通过**；**F24 145/145**为证据匹配模式数，非用例数。完整运行496515 ms，无超时；其余**22外层功能套件未选择**。原始完整报告与53份子报告位于F盘，完整总报告/日志的逐字节镜像为 `artifacts/functional-1791235241817-19eb948a/report.json` 和同目录 `unit.log`；镜像核对见 `artifacts/storage-views-report-mirror.json`。严格Clippy通过，日志 `artifacts/storage-views-clippy.log`。REG-305软件范围与REG-006源码/构建自检已验收，完整TODO为**26完成／45待完成**，目标active；未执行上板、安装或发布Release。
+
 ## 2026-10-06：银行读取当前 Debug EL 与原始证明
 
 自检纠正原银行后端以停止前 DSPSR.M 选择当前银行、在低 EL注入MIDR的缺口。新独立协议v2从外部AP取得当前MIDR/EDSCR，每次检查HALT；EL2/Hyp支持三十项，EL0/User支持七项当前User银行。架构将调试态直接CPSR读取定义为受约束不可预测，因此不以MRS CPSR证明模式。EL1中Hyp项受限、其余Unknown，在CPU指令前拒绝，完整EL1银行支持仍未完成。内置目录仍为二十三项，User扩展用自定义目录；旧协议/裸值不回退。

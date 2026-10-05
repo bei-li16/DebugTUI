@@ -795,6 +795,7 @@ impl Engine {
             pmu: None,
             gic: None,
             banked: None,
+            vfp_pair: None,
             completed_ms: None,
             route,
             command,

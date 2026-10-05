@@ -69,6 +69,7 @@ fn fixture() -> Probe {
                 pmu: None,
                 gic: None,
                 banked: None,
+                vfp_pair: None,
                 route: Route::GdbMemory {
                     endpoint: Some("localhost:6330".into()),
                     configured_endpoint: "localhost:6330".into(),

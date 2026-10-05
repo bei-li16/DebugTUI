@@ -776,7 +776,7 @@ R52 目录将 Single、Double、Quad 分组，并以独立 `vfp` reader 读取 D
 
 MVFR0/1 确认 SP-only D16 或 DP/NEON D32；D16 仍有 64 位 D 存储，但不支持双精度运算或 Q 视图。FPEXC.EN=0 时标识和 FPEXC 可读，数据与 FPSCR 显示 Feature disabled。程序不修改模式、CPACR/HCPTR/FPEXC/FPSCR 或 FP 数据。未知／矛盾 MVFR 保留原始证据，不授权高 D 或 Q 读取。
 
-同一请求内 S/D/Q 共享精确 128 位物理 pair，保留 NaN 载荷、负零及高位；缓存不跨请求／核心／停止点／帧。Scope All 只读选中核。后端恢复回读 R0/R1，并复核 DSPSR、HCPTR、FPEXC；异常未知进入 FAULT，重连前不重试。软件用例和 Windows/Linux 构建通过，物理执行按本任务要求未测试。REG-H03 驱动和独立固件钩子见 [测试说明](tests/README.md)。
+同一请求内 S/D/Q 共享精确 128 位物理 pair，保留 NaN 载荷、负零及高位；详情中可查看该pair的D编号、完整原始位和同次MVFR/FPEXC容量依据，失败后的最近有效值保留原依据。缓存不跨请求／核心／停止点／帧。Scope All 只读选中核。后端恢复回读 R0/R1，并复核 DSPSR、HCPTR、FPEXC；异常未知进入 FAULT，重连前不重试。软件用例和 Windows/Linux 构建通过，物理执行按本任务要求未测试。REG-H03 驱动和独立固件钩子见 [测试说明](tests/README.md)。
 
 ### 编辑 R52 浮点与向量原始位（开发分支）
 

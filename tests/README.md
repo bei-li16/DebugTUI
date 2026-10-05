@@ -185,3 +185,5 @@ GIC：`selector_access/gic_cases.rs` 通过实际 worker/TCP/MI/Tcl 检查 29 �
 R52 MMIO：register_mmio.rs 验证四个非连续 worker/两 cluster、显式 owner/base、缺失映射无回退，以及真实 TCP AP 的字序/地址/target/来源和错误旧值。另通过实际 DebugTUI EXE 执行二十四项独立 RAM 驱动，正常流程及未就绪/错误 owner/身份/参考高字拒绝均正常清理。node scripts/test-register-mmio-hardware.cjs 默认五阶段 SKIPPED；[十二项环境 case](cases/register-mmio.md)、只读 GNU Arm 固件和 JSON 模板已准备。[自检](../docs/register-mmio.md) 明确配置容量与非原子总线对；不把软件夹具或离线对象当作上板通过。
 
 新鲜 MMIO Probe：四项独立手册数据单元验证身份、容量、请求/owner/context/AP来源、拒绝字段和旧配置兼容；五项真实worker/EXE测试覆盖42请求、普通读保持Proof、peer在请求中及发布后使共享事实失效、失败旧值保留、big-endian AP两字与独立RAM驱动正/负向流程。入口 node scripts/test-register-mmio-probe-hardware.cjs 默认五项 SKIPPED；[六项环境case](cases/register-mmio-probe.md)、独立21项C/JSON仅准备及离线编译。[范围与证据](../docs/register-mmio-probe.md) 不代表完整REG-405/BUS-006或上板完成。
+
+S/D/Q视图证据见[自检](../docs/register-storage-views.md)，包含同次128位pair/容量raw、独立64字/80视图及四种正常startup对象；[八项环境case](cases/register-storage-views.md)均SKIPPED。`DEBUGTUI_TEST_ARTIFACT_ROOT`可把Node测试产物放到其他磁盘；功能入口同时收集工程/该目录/独立分发目录的本轮报告，默认仍用工程artifacts。Rust/Tcl夹具仍保留工程内的命令日志，不改变用例或断言。

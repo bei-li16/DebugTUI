@@ -123,6 +123,30 @@ pub(super) fn details(label: &str, provenance: &Provenance) -> Vec<String> {
             ));
         }
     }
+    if let Some(pair) = &access.vfp_pair {
+        match pair.features() {
+            Ok(features) => {
+                text.push(format!(
+                    "FP storage pair: D{} / D{}; {} D registers; Q views: {}",
+                    pair.first_d,
+                    pair.first_d + 1,
+                    features.d_registers,
+                    if features.neon {
+                        "supported"
+                    } else {
+                        "not implemented"
+                    }
+                ));
+                text.push(format!("FP pair raw: {}", pair.raw.hex));
+                text.push(format!(
+                    "FP capacity MVFR0: {} / MVFR1: {} / FPEXC: {}",
+                    pair.mvfr0.hex, pair.mvfr1.hex, pair.fpexc.hex
+                ));
+                text.push("S0-S31 overlap D0-D15; Qn overlaps D(2n)/D(2n+1). Lane 0 uses low bits; display interpretation does not grant execution permission. Different pairs are separate samples.".into());
+            }
+            Err(error) => text.push(format!("FP storage evidence invalid: {error}")),
+        }
+    }
     if let Some(banked) = &access.banked {
         text.push(format!(
             "Banked transfer: {:?}; current Debug mode: {:?}",
@@ -243,6 +267,63 @@ fn endian(order: ByteOrder) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn floating_pair_details_explain_capacity_raw_bits_and_mapping_without_permissions() {
+        use crate::registers::{
+            Context, Reader,
+            provenance::Access,
+            vfp::{Kind, Response},
+        };
+        let response = Response::parse("mvfr0 0x10110222 mvfr1 0x12111111 fpexc 0x40000700 value 0x7ff8000000000042800000003f800000", Kind::Quad(0)).unwrap();
+        let mut origin = Provenance::declared(&Reader::Vfp { name: "q0".into() });
+        origin.access = Some(Access {
+            banked: None,
+            vfp_pair: response.pair_evidence(Kind::Quad(0)),
+            timer: None,
+            pmu: None,
+            gic: None,
+            route: Route::TclRegister {
+                endpoint: "localhost:6666".into(),
+                target: "cpu1".into(),
+                operation: "VFP read q0".into(),
+            },
+            phase: Phase::Responded,
+            command: "physical transaction".into(),
+            context: Context {
+                session: 1,
+                generation: 2,
+                core: "core1".into(),
+                frame: 0,
+            },
+            timestamp_ms: 20,
+            completed_ms: Some(24),
+        });
+        let text = details("Current value", &origin).join("\n");
+        for expected in [
+            "D0 / D1; 32 D registers; Q views: supported",
+            "0x7ff8000000000042800000003f800000",
+            "0x10110222",
+            "0x12111111",
+            "0x40000700",
+            "S0-S31 overlap D0-D15",
+            "Lane 0 uses low bits",
+            "does not grant execution permission",
+            "Different pairs are separate samples",
+        ] {
+            assert!(text.contains(expected), "{expected}: {text}");
+        }
+        origin
+            .access
+            .as_mut()
+            .unwrap()
+            .vfp_pair
+            .as_mut()
+            .unwrap()
+            .first_d = 1;
+        let malformed = details("Current value", &origin).join("\n");
+        assert!(malformed.contains("FP storage evidence invalid"));
+        assert!(!malformed.contains("Q views: supported"));
+    }
     use crate::registers::{Reader, Scope, State};
     use crate::ui::registers::{
         Row, draw_status,
@@ -271,6 +352,7 @@ mod tests {
             );
             provenance.access = Some(Access {
                 banked: None,
+                vfp_pair: None,
                 gic: Some(Response::parse(&wire, id, 32).unwrap().evidence),
                 timer: None,
                 pmu: None,
@@ -360,6 +442,7 @@ mod tests {
                 pmu: None,
                 gic: None,
                 banked: None,
+                vfp_pair: None,
                 route: Route::TclMemory {
                     endpoint: "127.0.0.1:6666".into(),
                     target: "ap.actual".into(),
