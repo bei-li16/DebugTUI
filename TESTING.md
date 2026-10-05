@@ -2,6 +2,8 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04–05，尚未发布）
 
+2026-10-05 REG-107 目录交付批次：完整 Cargo **353 单元＋125 集成通过，2 ignored**，F24 **89/89**；严格 Clippy、优化构建通过。实际生产 npm／EXE／ZIP、空用户扩展目录、postinstall、CMD／PowerShell 入口、客户数据保留、损坏 override 及非连续多核来源的十四项 case 通过；发布方摘要校验后的真实 v0.9.3 包独立替换也十四项通过。代码尚为 0.9.3，历史包验证是同版本不同内容替换；最终升版与公网安装仍待执行。完整报告、此前 300 秒超时及调整为 600 秒后成功回归的记录见 [目录交付自检](docs/register-distribution.md) 和 [开发进度](docs/registers-development-status.md)。[八项环境 case](tests/cases/register-distribution.md) 均 SKIPPED，未上板或改系统安装。
+
 2026-10-05 状态与取消批次：308 项单元、83 项集成通过，2 项 ignored；严格 Clippy 通过。实际 worker／MI 与真实 Tcl 验证取消后整批丢弃、末项丢弃、旧样本／Probe 保留、selector 仍恢复、未知恢复仍 FAULT、直接 MPU／VFP 以及 Scope All 当前 worker 隔离；九项 Ratatui 状态／计数／说明与取消测试通过。统一 runner 的 `--only unit` 记录为 `artifacts/functional-1791150195450-fbd63962/report.json`，F24 42 个模式全部有通过证据；其余 20 suites skipped。上板与实际终端视觉用例 [已准备但未执行](tests/cases/register-status-cancel.md)，不能把软件测试记为该验收完成。
 
 2026-10-05 VFP 批次：专用 Hyp VFP 通道、十五项能力采样、D16/D32 与 S/D/Q 共享物理 pair 已接入。生产 C 事务覆盖 63 个故障点、R0/R1 恢复、完整 DSPSR／FPEXC／HCPTR 变化拒绝、未使能与安全权限拒绝；Windows/Linux 全新目录构建和真实离线协议／参数／状态检查通过。REG-H03 默认 4 skipped；实际二进制双核软件驱动的 D32、D16、未使能、TCP10 受限四种流程各 5 阶段通过，独立 GNU Arm 固件钩子编译通过。没有执行上板测试；EL1/Guest 合法 VFP 读取和其他 TODO 缺口仍保留。完整测试和打包记录见 [开发进度](docs/registers-development-status.md)。
@@ -16,7 +18,7 @@
 
 `node scripts/test-register-display.cjs --binary target/debug/debugtui.exe` 使用两个独立的实际 DebugTUI 进程和故意不存在的 GDB 路径，六阶段通过：并发保存不同核心、旧全局设置保留双方记录、无效输入不修改文件、目标上下文及 MI 无访问、两客户端退出。用例发现并修复 Windows 跨进程保存导致的配置覆盖及部分 TOML 写入：保存现使用独占句柄、重新合并最新配置和原子替换。既有 capability TCP 夹具的接收连接也显式改为阻塞模式，避免 Windows 非阻塞状态继承引起的超时失败。
 
-本批开发结果先保留本地；按用户更新后的交付要求，完整 TODO 开发、测试和自检完成后才统一推送非主分支并发布 Release。
+该历史批次当时先保留本地。当前交付约定是每轮开发、测试和自检后提交并推送非主分支；完整 TODO 完成后才发布 Release，最新提交和进度以开发记录为准。
 
 选择器批次：完整测试通过 273 项单元测试、43 项集成测试，另 2 项既有环境测试 ignored；严格 Clippy 通过。新增实际 Tcl 8.6／worker／TCP 软件测试：EL1／EL2 MPU 和 PMU 的原选择器／target 保存、索引边界、成对读取及恢复；MCR 已接受后报错、ISB 错误、恢复写／回读／屏障失败分别覆盖。恢复未知时 FAULT 且不重试，普通失败的旧值标不可用，数量变化清除 Probe；双核 Scope All 只改当前物理核心。界面显式操作、单个在途请求和迟到错误隔离也有测试。
 

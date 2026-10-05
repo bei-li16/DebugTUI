@@ -32,6 +32,12 @@ $verified = Join-Path $artifactRoot ('release-verify-' + [Guid]::NewGuid().ToStr
 [IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $verified)
 $exe = Join-Path $verified 'debugtui.exe'
 if ((Get-FileHash -LiteralPath $exe).Hash -ne (Get-FileHash -LiteralPath "$projectRoot\bin\debugtui.exe").Hash) { throw 'ZIP executable differs from tested executable' }
+foreach ($required in @('profiles/install.cjs','profiles/devices.toml','profiles/registers/cortex-m4.toml','profiles/registers/cortex-r52.toml','profiles/registers/cortex-r52+.toml')) {
+    $shipped = Join-Path $verified $required
+    if (-not (Test-Path -LiteralPath $shipped -PathType Leaf) -or (Get-FileHash -LiteralPath $shipped).Hash -ne (Get-FileHash -LiteralPath (Join-Path $projectRoot $required)).Hash) {
+        throw "ZIP register catalogue/profile asset differs or is missing: $required"
+    }
+}
 if (Test-Path -LiteralPath "$verified\tools") { throw 'Environment tools leaked into standalone ZIP' }
 if ((& $exe --version) -ne "debugtui $version") { throw 'ZIP version check failed' }
 & $exe --snapshot "$artifactRoot\release-demo.txt"

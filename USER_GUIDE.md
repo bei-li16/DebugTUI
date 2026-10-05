@@ -250,6 +250,8 @@ actions 支持 restart、run、download、before_disconnect；target.after_conne
 
 安装 npm 包时创建 `%LOCALAPPDATA%/debugtui/profiles/devices.toml`；直接运行 EXE/ZIP 时首次启动创建。已有文件原样保留，升级、卸载不会删除客户条目。可用 `debugtui --init-profiles` 检查/补建；`DEBUGTUI_CONFIG_DIR` 可指定配置根目录（最终路径为其下的 `profiles/devices.toml`）。不依赖 VS Code，PowerShell 中同样可用。
 
+开发分支的 `--init-profiles` 同时创建用户 `profiles/registers/` 扩展目录。目录默认为空；M4／R52／R52+ 默认定义编译进 EXE，npm／ZIP 另提供原始 TOML 模板。把客户修改放在用户扩展目录或工程中，程序与配置根分开保存；升级、卸载、重装保留外部客户文件，包括损坏目录文件。无效同名 override 会报错，不能自动回退内置；扩展路径被普通文件占用时初始化失败并保留原文件。[目录交付及当前验证范围](docs/register-distribution.md) 不代表这些开发功能已随正式 Release 发布。
+
 默认目录包含 tha6104 `[0]`、tha6206 `[0,1]`、tha6412 `[0,1,2,3]`、stm32f429 `[0]`。它是用户维护的能力声明，不自动探测板卡。
 
 1. Setup 的 **Chip**（Tools / profile 后）按 Enter，选择芯片。

@@ -645,6 +645,27 @@ mod tests {
         );
     }
     #[test]
+    fn register_extension_initialization_failure_does_not_replace_customer_files() {
+        let fixture = Fixture::new();
+        let directory = fixture.0.join("profiles");
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("devices.toml");
+        let blocked = directory.join("registers");
+        let customer = "# Preserve formatting and the customer's chip\nversion=1\n[devices.customer]\ncores=[0,2]\nbackend='generic'\n";
+        fs::write(&path, customer).unwrap();
+        fs::write(
+            &blocked,
+            "Customer file occupies the extension directory path",
+        )
+        .unwrap();
+        let before = fs::read(&blocked).unwrap();
+        let error = ensure_at(&path).unwrap_err();
+        assert!(error.starts_with("Initialize register extension directory:"));
+        assert_eq!(fs::read_to_string(&path).unwrap(), customer);
+        assert_eq!(fs::read(&blocked).unwrap(), before);
+        assert!(blocked.is_file());
+    }
+    #[test]
     fn cpu_association_priority_and_register_extensions_survive_upgrade() {
         let fixture = Fixture::new();
         let path = fixture.0.join("devices.toml");

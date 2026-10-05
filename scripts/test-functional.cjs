@@ -80,7 +80,9 @@ async function execute(suite) {
       timedOut=true;
       if(process.platform==='win32') spawnSync('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,timeout:10000});
       else child.kill('SIGKILL');
-    },suite.id==='unit'?300000:180000);
+    // Cargo includes sequential integration tests with real npm/ZIP packaging.
+    // Keep a bounded budget for the whole suite; child-process limits still apply.
+    },suite.id==='unit'?600000:180000);
     const finish=async(code,error)=>{
       if(done)return;done=true;clearTimeout(timer); await new Promise(r=>log.end(r));
       const artifacts=fs.readdirSync(path.join(root,'artifacts')).filter(name=>!before.has(name)).map(name=>path.join(root,'artifacts',name));

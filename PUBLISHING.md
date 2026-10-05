@@ -8,6 +8,8 @@ npm tgz 和便携 ZIP 只包含 TUI，不包含 GDB、J-Link 或 tools。DebugTU
 
 运行 `./scripts/release-assets.ps1` 构建 TUI 附件；加 -IncludeTools 同时生成可选工具 ZIP，或运行 `./tools/package.ps1` 单独打包工具。两者可以独立更新。已发布的 v0.1.0 附件保留。
 
+开发分支的生产打包门禁要求 `profiles/install.cjs`、`profiles/devices.toml` 和 `profiles/registers/` 下 M4／R52／R52+ 三份 TOML；npm 清单缺项或 ZIP 解压后内容与源码不一致时失败。发布前运行 `node scripts/test-register-distribution.cjs --binary target/release/debugtui.exe`，以真实生产脚本、独立 npm prefix/config 验证初始化、升级保留及多核目录来源。默认旧包是显式模拟 fixture；真实历史包验证需同时提供 `--previous-package`、`--previous-sha256` 和 `--previous-version`，摘要先对照该 Release 的 SHA256SUMS。[目录交付自检](docs/register-distribution.md) 记录证据与限制；它不代替正式升版、最终安装或发布后的公网验收。
+
 ## 当前发布方式：GitHub Release + npm URL 安装
 
 安装和升级使用同一个地址：

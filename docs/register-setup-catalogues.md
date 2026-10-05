@@ -35,4 +35,4 @@ Source 沿用 REG-102 的 `file:`、`user:`、`builtin:` 和原 GDB 列表语义
 | 实际 App 渲染接入 | `setup_render_imports_current_identity_and_clears_it_on_run_or_draft_target_change_without_io`：从 App snapshot 到 Setup 的当前身份，运行／换目标变 Unknown；请求队列为空 |
 | Registers status 的当前身份警告 | `register_status_warns_on_current_observed_cpu_mismatch_without_probing_or_cross_core_reuse`：匹配当前 R52／M4 的警告、运行和五类失效条件、不适配身份、请求队列为空 |
 
-预览遵守已有 REG-102 选择优先级与 REG-106 生命周期。前序配置、共享 owner、来源及取消测试在完整回归中继续执行；本批不以局部测试代替它们的验收。最终完整回归与 F24 记录见 [开发进度](registers-development-status.md)。[十二项环境 case](../tests/cases/register-setup-catalogues.md) 均 SKIPPED；TestBackend 不是实际 PowerShell／VS Code 视觉证据，REG-208、升级交付和最终 Release 仍待完成。
+预览遵守已有 REG-102 选择优先级与 REG-106 生命周期。前序配置、共享 owner、来源及取消测试在完整回归中继续执行；本批不以局部测试代替它们的验收。最终完整回归与 F24 记录见 [开发进度](registers-development-status.md)。[十二项环境 case](../tests/cases/register-setup-catalogues.md) 均 SKIPPED；TestBackend 不是实际 PowerShell／VS Code 视觉证据，REG-208 与最终 Release 仍待完成。此后 [REG-107 自检](register-distribution.md) 已核对目录打包／初始化／隔离替换与客户文件保留；最终升版后的真实版本升级、完整工具集和公网交付仍需后续验收。
