@@ -62,7 +62,13 @@ const read = async (ids, bits) => {
       assert.equal(evidence.midr.hex,spec.expected_midr);
       assert.equal((raw(evidence.dscr.hex,32)>>8n)&3n,2n,'Dedicated baseline requires current Debug EL2 evidence');
       assert.equal(raw(evidence.dspsr.hex,32)&31n,26n,'Dedicated firmware baseline stopped in Hyp');
-      timerEvidence.push({id,core:current.core,value:sample.value,evidence});
+      assert.equal(evidence.read_method,bits===64?'mrrc64':'mrc32');
+      const access=sample.provenance.access;
+      assert.equal(access.phase,'responded');
+      assert(Number.isSafeInteger(access.timestamp_ms) && Number.isSafeInteger(access.completed_ms));
+      assert(access.completed_ms >= access.timestamp_ms);
+      timerEvidence.push({id,core:current.core,value:sample.value,evidence,
+        host_request_interval_ms:[access.timestamp_ms,access.completed_ms]});
     } else if (bits === 64) assert.equal(sample.source, 'openocd:aarch64 mrrc', 'Use the pinned genuine MRRC adapter');
     return [id,sample.value.hex];
   }));
@@ -119,7 +125,8 @@ const firmware = async symbol => {
       const delta=(newer,older)=>(newer-older+(1n<<64n))% (1n<<64n);
       for (const entry of spec.counters) {
         const a=raw(first[entry.id],64), b=raw(second[entry.id],64), max=BigInt(entry.max_delta_ticks);
-        assert(delta(a,baseline[entry.id])<=max); assert(delta(b,baseline[entry.id])<=max);
+        assert(delta(a,baseline[entry.id])<=max, 'First counter outside firmware sample window');
+        assert(delta(b,baseline[entry.id])<=max, 'Second counter outside firmware sample window');
         assert(delta(b,a)<=max, 'Counter regression or implausible interval');
         if (entry.require_progress) assert(delta(b,a)>0n, 'Counter did not progress; record any debug freeze condition');
       }

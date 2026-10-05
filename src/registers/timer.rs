@@ -109,6 +109,21 @@ pub struct Evidence {
     pub dscr: RawValue,
     pub dspsr: RawValue,
     pub dlr: RawValue,
+    #[serde(default, skip_serializing_if = "ReadMethod::is_unknown")]
+    pub read_method: ReadMethod,
+}
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ReadMethod {
+    #[default]
+    Unknown,
+    Mrc32,
+    Mrrc64,
+}
+impl ReadMethod {
+    fn is_unknown(&self) -> bool {
+        *self == Self::Unknown
+    }
 }
 pub struct Response {
     pub value: RawValue,
@@ -125,6 +140,15 @@ fn exact(text: &str, bits: u16) -> Result<RawValue, String> {
 }
 impl Response {
     pub fn parse(text: &str, name: &str, bits: u16) -> Result<Self, String> {
+        let native_bits = match name {
+            "cntfrq" | "cntkctl" | "cntp_tval" | "cntp_ctl" | "cntv_tval" | "cntv_ctl"
+            | "cnthctl" | "cnthp_tval" | "cnthp_ctl" => 32,
+            "cntpct" | "cntvct" | "cntp_cval" | "cntv_cval" | "cntvoff" | "cnthp_cval" => 64,
+            _ => return Err("Unknown Timer register in physical response".into()),
+        };
+        if bits != native_bits {
+            return Err("Timer response requires its native register width".into());
+        }
         let words: Vec<_> = text.split_whitespace().collect();
         if words.len() != 10
             || [words[0], words[2], words[4], words[6], words[8]]
@@ -137,6 +161,11 @@ impl Response {
             dscr: exact(words[3], 32)?,
             dspsr: exact(words[5], 32)?,
             dlr: exact(words[7], 32)?,
+            read_method: if bits == 64 {
+                ReadMethod::Mrrc64
+            } else {
+                ReadMethod::Mrc32
+            },
         };
         let midr = evidence.midr.integer()?;
         let dscr = evidence.dscr.integer()?;
@@ -241,5 +270,46 @@ mod tests {
             assert!(Response::parse(&guest, "cntvoff", 64).is_err());
         }
         assert!(Response::parse(text, "cntpct", 32).is_err());
+    }
+
+    #[test]
+    fn timer_samples_keep_extreme_u64_values_native_reads_and_legacy_evidence() {
+        let prefix = "midr 0x411fd134 dscr 0x01000200 dspsr 0xa2000410 dlr 0x81234568 value ";
+        for name in [
+            "cntpct",
+            "cntvct",
+            "cntp_cval",
+            "cntv_cval",
+            "cntvoff",
+            "cnthp_cval",
+        ] {
+            for hex in [
+                "0x0000000000000000",
+                "0x00000000ffffffff",
+                "0x0000000100000000",
+                "0x7fffffffffffffff",
+                "0x8000000000000000",
+                "0xffffffff00000000",
+                "0xffffffffffffffff",
+            ] {
+                let response = Response::parse(&format!("{prefix}{hex}"), name, 64).unwrap();
+                assert_eq!(response.value.hex, hex);
+                assert_eq!(response.evidence.read_method, ReadMethod::Mrrc64);
+                assert_eq!(
+                    response.value.integer().unwrap(),
+                    u128::from_str_radix(&hex[2..], 16).unwrap()
+                );
+            }
+        }
+        let response = Response::parse(&format!("{prefix}0xffffffff"), "cntp_tval", 32).unwrap();
+        assert_eq!(response.evidence.read_method, ReadMethod::Mrc32);
+        assert!(Response::parse(&format!("{prefix}0x00000001"), "cntpct", 32).is_err());
+        assert!(Response::parse(&format!("{prefix}0x0000000000000001"), "cntfrq", 64).is_err());
+        assert!(Response::parse(&format!("{prefix}0x0000000000000001"), "unknown", 64).is_err());
+        let mut old = serde_json::to_value(response.evidence).unwrap();
+        old.as_object_mut().unwrap().remove("read_method");
+        let decoded: Evidence = serde_json::from_value(old.clone()).unwrap();
+        assert_eq!(decoded.read_method, ReadMethod::Unknown);
+        assert_eq!(serde_json::to_value(decoded).unwrap(), old);
     }
 }

@@ -14,6 +14,10 @@
 
 `session/register_adapter.rs` 为银行／VFP 共用物理线程、frame 0、服务租约和迟到上下文检查。`session/vfp.rs` 验证独立 VFP 协议及严格元数据／位宽，单个请求内按物理 pair 缓存 D/S/Q，并保留 pair 的 MVFR 证据防止 D16 缓存授权 Q。`registers/vfp.rs` 只识别手册规定的 R52 两种配置；控制原始值可保留未知字段，数据不依据未知字段授权。十五项 Probe 增加真实 MVFR/FPEXC 事实，未使能与未实现、工具不支持、访问受限分别保留原因。C 事务用 VMRS／两个 GP 与 D 的 VMOV，R0/R1 保存恢复后物理回读，前后完整 DSPSR、HCPTR、FPEXC 一致才发布结果；无模式或 FPU 写入。当前 Hyp 路径有软件证据，EL1/Guest 合法读取仍待适配。
 
+`session/timer.rs` 接入按 CP15 编码选择的独立 Timer 协议，复用 `register_adapter.rs` 的服务租约/实际线程/物理 frame 0 前后检查。生产后端从所选 core 的 debug AP 获取当前 MIDR/EDSCR，再在同一状态内读取单项 MRC/MRRC；前后完整 DSPSR/DLR、暂存恢复回读与状态一致才发布。低 EL 不可证明的上层使能保持 Unknown；未知恢复隔离服务并进入 FAULT。`registers/timer.rs` 严格检查原生名称/宽度及新鲜身份/权限，证据写入该次 `provenance.access.timer`，不成为可跨 stop 复用的 implementation 事实。
+
+一次 MRRC 将同一值的两字放入 R0/R1，后续传输取得这个已复制的 pair；不同 Timer 条目分别请求，没有跨条目/跨核原子快照。`live_watch::TransactionProgress` 在开始写入和收到完整帧时记录 Instant；TCL 来源将终点写到 `Access.completed_ms`，MI 来源只在匹配请求 token 的结果记录后填充。起止都换算到当前 worker 的 session_started 单调时钟，记录传输区间，不声明精确核心时间；不同 worker 的数字不能作同步证据。未响应、未发送和旧 JSON 没有终点，不制造完成时间；失败与旧原值保留各自来源。Timer 新证据的 read_method 指明一次 MRC32/MRRC64，旧证据缺失该字段时保持 Unknown。详细一致性与环境限制见 [Timer 自检](docs/register-timer.md)。
+
 ## 0.8.3-local.3 多核断点
 
 `ui/breakpoints/cores.rs` 提供选中断点的核心复选列表；新建源码断点不带核心范围。`coordinator/breakpoints.rs` 为显式关联的断点分配稳定 group 标识，各核仍拥有自己的 GDB 编号。`BreakpointOptions.group` 保存在各自 `[[cores]].breakpoints` 中；Session 维护本次连接的编号到 group 的映射，重连通过保存的定义重建。快照中的 `cores` 来自真实每核断点列表，不根据地址相同推测关联。
@@ -90,7 +94,7 @@ flowchart LR
     C -.->|"可选通用进程启动"| S
 ~~~
 
-核心没有芯片、探针品牌、寄存器白名单或预设 monitor 命令。GDB 路径、资源目录、服务程序、就绪标记、连接方式和特殊动作由配置决定。tools 是可选环境层，可以来自另一个目录或仓库。
+基础连接与服务启动流程不硬编码芯片、探针品牌或预设 monitor 命令。扩展寄存器由目录和经过验证的架构 reader 决定支持范围；专用 Timer/VFP 等路径有各自编码与实际身份检查。GDB 路径、资源目录、服务程序、就绪标记、连接方式和特殊动作由配置决定。tools 是可选环境层，可以来自另一个目录或仓库。
 
 环境文件是数据驱动的通用协议：核心只知道如何启动命令、等待配置声明的就绪标记、发送配置声明的 GDB 命令。STM32/J-Link 具体内容集中在 tools/debug-env.toml。不配置服务时只启动 GDB。
 

@@ -718,6 +718,8 @@ R52/R52+ Timer 目录含十五项寄存器及字段；`timer.present` 未确定�
 
 使用专用后端时，在 `[registers]` 中显式设置 `timer_command="aarch64 timer"`；实际 OpenOCD 必须符合 [源码锁](tools/openocd-adapter/source.lock.json) 的独立 Timer 协议，版本号本身不能证明支持。当前适配实际 R52：Debug EL2 允许十五项，EL1 允许频率、CNTKCTL 和虚拟 Timer；EL1 物理 Timer 及 EL0 中未证明的上层使能保持权限未知。详情与 headless JSON 保存实际 MIDR、当前 Debug EDSCR 和停止 DSPSR/DLR；停止前 CPSR 不代替当前 EL。选用后端后，协议不符、访问拒绝或截断不会回退其他命令。未设置该字段的工程保留原读取路径。
 
+Timer 的详情和 headless 来源会记录单项 `mrc32`/`mrrc64` 及主机请求起止时间。一次 MRRC 保留同一项的完整高低位；不同项分别采样。请求区间属于当前核的主机会话时钟，包含传输和检查耗时，不是硬件时间戳，也不能用来证明跨核同步或由先后两个计数值推导精确 CNTVOFF。旧值保留原来的时间来源；缺少旧证据时保持未知。
+
 目录的 EL 条件描述正常执行权限；Debug state 另受 Hyp debug 授权、EDSCR.HDD 及后端执行规则影响，停止前 CPSR 不能独自证明允许或拒绝。延后 Timer 驱动使用专用 Hyp 固件基线，先检查模式及 ready，再核对四个稳定六十四位参考符号；这种验证流程的模式要求不等于应用已有通用 Debug state 权限适配。
 
 Status 的 Sampling view 区分选中栈帧与物理核心状态。GDB 值及其别名随栈帧失效；返回原帧后也需要重新读取，同一停止代次的直接后端值可保留。Reset、Reconnect、更换 ELF 和 Console 会使相关旧值失效；共享 Reset 与原始 Console 在命令发送前使全部核心缓存失效，命令报错也不会恢复旧值为有效。详细规则与验证见 [缓存生命周期](docs/register-cache-lifecycle.md)。

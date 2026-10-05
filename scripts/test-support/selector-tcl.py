@@ -68,6 +68,10 @@ def evaluate(data):
             if reason:
                 return (1, 'debugtui-timer:' + reason, -300 if reason == 'reader-unsupported' else -308)
             raw = cpu.get('timer_values', {}).get(reg, '0xfedcba9876543210')
+            sequence = cpu.get('timer_sequences', {}).get(reg)
+            if sequence:
+                raw = sequence.pop(0)
+                cpu.setdefault('timer_values', {})[reg] = raw
             if fault == 'timer_short': raw = '0x76543210'
             dscr = cpu.get('timer_dscr', '0x01000200')
             if fault == 'timer_forged_el': dscr = '0x01000100'

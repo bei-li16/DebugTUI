@@ -79,6 +79,7 @@ pub(crate) fn transact(stream: &mut TcpStream, command: &str) -> Result<String, 
 pub(crate) struct TransactionProgress {
     pub started: Option<Instant>,
     pub responded: bool,
+    pub completed: Option<Instant>,
 }
 pub(crate) fn transact_tracked(
     stream: &mut TcpStream,
@@ -158,6 +159,7 @@ fn transact_unlocked(
         }
     }
     progress.responded = true;
+    progress.completed = Some(Instant::now());
     let text = String::from_utf8(buf).map_err(|e| format!("Invalid TCL response: {e}"))?;
     let text = text.strip_prefix(RPC_MARKER).unwrap_or(&text);
     let (code, value) = text.split_once(':').ok_or("Missing TCL response status")?;
@@ -693,6 +695,10 @@ mod tests {
             assert!(transact_tracked(&mut stream, "read only", &mut progress).is_err());
             assert!(progress.started.is_some());
             assert_eq!(progress.responded, responded);
+            assert_eq!(progress.completed.is_some(), responded);
+            if let Some(completed) = progress.completed {
+                assert!(completed >= progress.started.unwrap());
+            }
             server.join().unwrap();
         }
     }
@@ -707,12 +713,14 @@ mod tests {
         let mut progress = TransactionProgress::default();
         assert!(transact_tracked(&mut stream, "invalid\x1a", &mut progress).is_err());
         assert!(progress.started.is_none() && !progress.responded);
+        assert!(progress.completed.is_none());
         let service = crate::debug_access::service(addr).unwrap();
         let mut lease = service.acquire(false).unwrap();
         lease.quarantine("independent service fault");
         drop(lease);
         assert!(transact_tracked(&mut stream, "valid command", &mut progress).is_err());
         assert!(progress.started.is_none() && !progress.responded);
+        assert!(progress.completed.is_none());
         assert!(
             peer.read(&mut [0]).is_err(),
             "neither refusal should send a byte"

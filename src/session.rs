@@ -853,6 +853,7 @@ impl Engine {
         {
             access.phase = crate::registers::provenance::Phase::Started;
             access.timestamp_ms = Stamp::now().elapsed_ms(self.session_started);
+            access.completed_ms = None;
         }
         writeln!(gdb.input, "{token}{command}")
             .and_then(|_| gdb.input.flush())
@@ -883,6 +884,7 @@ impl Engine {
                         && access.command == command
                     {
                         access.phase = crate::registers::provenance::Phase::Responded;
+                        access.completed_ms = Some(Stamp::now().elapsed_ms(self.session_started));
                     }
                     self.log(
                         "mi<",

@@ -1,5 +1,18 @@
 # 寄存器功能实现进度
 
+## 2026-10-05：Timer 单项完整读取与请求时间界限
+
+新增 `Access.completed_ms`，分别在完整 TCL 帧和匹配 MI token 的结果记录到达后写入；与已有实际 dispatch 起点共用当前 worker 的单调时钟。未发送/断帧/旧 JSON 不制造终点。新 Timer 的 `read_method` 严格绑定原生宽度与一次 MRC32/MRRC64，旧证据缺失时为 Unknown；失败保留原值的完整时间/物理来源，详情与 headless 可查。单项 MRRC 复制同一值到 Rt 低字/Rt2 高字，再从 pair 传输取回；不把请求中点/响应时刻当硬件时间戳，跨条目/跨核不能视作同时采样。手册依据为 R52 TRM 表 11-1、§4.2.18 和完整 DDI0487 M.b F5.1.117（PDF 12139–12140）。[架构](../ARCHITECTURE.md) 与 [Timer 自检](register-timer.md) 已同步。
+
+新增一项单元覆盖六项极限 u64、原生方法/位宽与旧证据 roundtrip；原有十五项双核测试核对请求区间/方法，失败来源保留测试核对原始完整 access。新增一项 Rust 集成启动实际 EXE/MI/Tcl，执行全 64 位回绕与低字进位、允许冻结，以及冻结必须进展/倒退/异常高字/超过固件窗口四种失败流程。合法两流程各六阶段通过，四个失败在 COUNTERS 阶段拒绝并正常清理；target/配置保持、无回退。两个既有传输边界测试同时验证完整帧/拒绝/断帧的终点语义，F24 新增四个模式，完整证据 **118/118**。
+
+生产 C 测试增加六项×八个边界值共 **48 个动态回读**，模型 Timer 在物理 R0/R1 回读之间前进，输出仍等于单次指令复制的原值、暂存恢复完整。Windows/Linux 同一生产头文件测试、真实 dummy 命令及 Windows 原生包/依赖/配置验证通过；后端源码/补丁和候选二进制未改变，当前源码/测试重新封装。证明为 `artifacts/openocd-timer-coherence-linux/report.json`、同目录 `timer-transfer-test.log`、`artifacts/openocd-timer-coherence-windows-native.log` 和 `.dev/openocd-windows-timer/windows-tests/report.json`；没有新后端重编译、实际探针或目标指令执行。
+
+完整 `node scripts/test-functional.cjs --only unit` 为 **368 单元＋137 集成通过，2 ignored**，共 **505 通过**，**F24 118/118**，292198 ms 无超时；其余 **22 套件未选择**。最终报告 [`artifacts/functional-1791208232338-ede8d32d/report.json`](../artifacts/functional-1791208232338-ede8d32d/report.json)，完整 Cargo 为同目录 unit.log；严格 Clippy 通过，日志 `artifacts/register-timer-coherence-clippy.log`，聚焦证据 `artifacts/register-timer-coherence-focused.log`。首轮在隔离安装复制 EXE 时因 G: ENOSPC 失败，失败 Cargo 日志 `artifacts/functional-1791207380838-4751fdcf/unit.log` 与 runner 错误 `artifacts/register-timer-coherence-enospc.log` 保留；当轮 JSON 未写完，不计为通过。删除生成缓存/重复副本被自动审批阻止后，改为完整归档三个已结束的缓存/安装夹具目录到 F:，恢复约 5.46 GiB，已完成测试报告/日志仍在原位置且与归档逐字节一致；位置映射 `artifacts/register-timer-coherence-space-archive.json`。最终整套重新运行通过，没有用跳过安装测试掩盖空间错误。
+
+只新增勾选 **REG-403**，当前 **已完成／未完成 22/49**；按本任务要求不执行上板，[十四项环境 case](../tests/cases/register-timer.md) 均已准备且 SKIPPED，默认驱动仍五项 SKIPPED，报告 [`artifacts/register-timer-hardware-1791208752908-504a502c/report.json`](../artifacts/register-timer-hardware-1791208752908-504a502c/report.json)。REG-401 的低 EL 权限、其余模块/工具整合/writer、REG-208 及最终版本/安装/Release 仍未完成。源码与安装仍为 0.9.3，本批交付位于非主分支 `codex/register-debugging`，目标保持 active。
+
+
 ## 2026-10-05：专用 Timer 生产后端、当前物理 Debug 证据与最低协议
 
 新增显式 `registers.timer_command="aarch64 timer"` 与独立协议；按精确 CP15 编码路由十五项，旧配置保留原通道，选用后端后不回退 GDB/旧 MRC/MRRC。依据完整 R52 TRM、DDI0568A.c 以及工作区 DDI0487 M.b H2.4.5/H2.4.8，系统寄存器保持当前 EL 权限与 trap，HDD=0 不表示豁免。当前 core 的外部 AP MIDR/EDSCR 提供身份与 Debug EL，停止 DSPSR 不代替当前 EL。实际 Arm D13/AArch32 的 EL2 支持全部十五项；EL1 支持频率、CNTKCTL 和四项 CNTV，其他未证明使能分别保留 Unknown 或明确拒绝，不改变模式/控制位。完整 EL0、EL1 物理权限与 R52+ 身份仍未完成。
@@ -169,7 +182,7 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 
 ## 完整任务仍需完成的部分
 
-2026-10-05 按逐项软件证据自检：TODO 有 71 项开发条目，当前已完成／未完成为 21/50；逐项范围见框架、配置、Setup、目录交付、条件依据、生命周期、共享归属、读取来源及状态与取消自检，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新完整 Cargo 和实际 GDB 回归见上方批次记录。其他功能 suite 仍需在完整任务验收时统一运行。F24／F26 的银行、MRRC、VFP 和变量写入测试映射不能替代整份 TODO 验收。
+2026-10-05 按逐项软件证据自检：TODO 有 71 项开发条目，当前已完成／未完成为 22/49；逐项范围见框架、配置、Setup、目录交付、条件依据、生命周期、共享归属、读取来源及状态与取消自检，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新完整 Cargo 和实际 GDB 回归见上方批次记录。其他功能 suite 仍需在完整任务验收时统一运行。F24／F26 的银行、MRRC、VFP 和变量写入测试映射不能替代整份 TODO 验收。
 
 | 条目范围 | 已有实现与证据 | 尚未完成／需补验收 |
 |---|---|---|
@@ -177,7 +190,7 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 | REG-101–110 | 严格目录、精确原始值/字段/别名、逐项 reader、上下文/owner、四核显式拓扑与独立共享代次／路由缓存、CPU/目录 Setup、内置与用户目录、三态条件；REG-102 的配置层/路径/芯片关联、REG-108 的完整目录预览／取消／保存／配置差异与当前核心身份提示、REG-107 的目录载荷／初始化／隔离安装／客户文件保留、REG-110 的全父链条件／WO／当前与原值依据已核对；`registers.rs`、`tests/register_access.rs`、覆盖矩阵 F24 | 正式升版后重新验证完整产物、真实版本升级与公网安装；各新增类别的身份/条件/别名适配仍需完成 |
 | REG-201–211 | 树、字段、列、说明、搜索、逐核偏好、MPU 总览；新增总数/显示/当前有效/分类计数、完整原因弹窗、实际缺失筛选、请求取消及恢复／Scope All 软件证据；REG-201/202/203/204/205/206/207/209/210/211 已核对，实际路由与保留值来源分开记录 | REG-208 的实际 PowerShell/VS Code 宽窄中文/对比度视觉验收仍需补足；全部目标类别仍需完整验收，不以软件缓冲截图代替终端验收 |
 | REG-301–308 | R52 目录、32 位 MRC、直接 EL1/EL2 MPU 与 MAIR、保存/恢复选择器、故障隔离与完整服务锁；真实 ISB／MRRC 和专用银行后端的新目录构建与离线验证；REG-H02 驱动与 8 模式钩子；`session/banked.rs` 及银行事务测试；Hyp VFP/FPSCR 与 MVFR/FPEXC、D16/D32 别名、REG-H03 四类软件用例 | 合法 EL1/Guest/User 读取、更多模式延后用例及未知 R52+ 身份仍未完成 |
-| REG-401–408 | Timer/PMU/GIC 部分目录、PMU 数量与直接/选择器读取、物理/虚拟 GIC 能力分离和 AP 条件软件夹具；REG-402 六项真正 MRRC、独立 Timer 协议/当前物理证据与 Windows/Linux 新候选已核对 | 完整 Timer 权限/一致性适配，完整 GIC/Debug/STM 类别及显式板级映射，Bao EL2/Guest 场景及全部延后驱动 |
+| REG-401–408 | Timer/PMU/GIC 部分目录、PMU 数量与直接/选择器读取、物理/虚拟 GIC 能力分离和 AP 条件软件夹具；REG-402 六项真正 MRRC、独立 Timer 协议/当前物理证据与 Windows/Linux 新候选已核对 | 完整低 EL Timer 权限与环境时序验证，完整 GIC/Debug/STM 类别及显式板级映射，Bao EL2/Guest 场景及全部延后驱动 |
 | REG-501–506 | 软件回归、严格 Clippy、F24–F26 覆盖来源和限制、增量用户手册/开发记录/示例 | 全部延后案例与原功能回归，完整架构/环境/mcal-vsconfig 配套文档，最终升版、产物/profile 一致性、安装升级、非主分支推送与 Release |
 | BUS-001–008 | Setup 通道编辑、各面板入口、路由/来源、范围和绑定失效、运行限制/无回退；`src/launch/channels.rs`、`src/ui/monitor.rs`、`src/session/memory.rs`、F25 | 新增系统寄存器 MMIO 模块的完整接入及相应 BUS 延后场景/Issue #1 完整验收 |
 | WRITE-001–012 | Core 整数、声明 RAM、8/16/32 位 MMIO、typed Watch/Locals writer；正负 Infinity、精确 NaN payload 的 GDB 常量检查及条件 Python buffer；C++ RAM 引用、实际 DWARF signed/unsigned 128 位和 1–64 位位域／新鲜邻接事务软件后端；Hyp S/D/Q 独立 raw writer、物理 pair／邻接和旧别名失效、实际二进制延后主机流程；草稿/权限/owner/服务锁/结果/取消；SVD 字段及部分特殊语义；F26 | 系统/状态/银行、合法 EL1/Guest/User VFP 和 64 位 MMIO writer；变量 long double／完整继承成员映射，配套 ARM GDB 的精确 NaN 主机接口；一次写、解锁、自清零等实际策略；全部类别的重叠缓存及 WRITE-T/H 和最终版本化交付 |

@@ -2,6 +2,9 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04–05，尚未发布）
 
+2026-10-05 Timer 一致性批次：完整 Cargo **368 单元＋137 集成通过，2 ignored**，共 **505 通过**，F24 **118/118**；严格 Clippy、格式及差异检查通过。新增 u64 极限/原生位宽/旧证据单元与实际 EXE 的回绕、冻结、倒退/异常高字/过旧基线集成；生产 C 新增48个动态 pair 回读，Windows/Linux同头文件模型/离线命令通过，原有候选未重编译、当前源码包已更新并原生验证。主机起止区间与单项 MRC32/MRRC64 绑定来源，不推导跨项/跨核同时性。首轮 G: ENOSPC 失败日志保留，完整归档生成目录释放空间后整套重新通过；证明见 [开发进度](docs/registers-development-status.md) 和 [一致性自检](docs/register-timer.md)。仅新增 REG-403，已完成／未完成 **22/49**；其余22套件未选择，[十四项环境 case](tests/cases/register-timer.md) 均 SKIPPED，未上板、安装或发布。
+
+
 2026-10-05 专用 Timer 后端批次：完整 Cargo **367 单元＋136 集成通过，2 ignored**，F24 **114/114**；严格 Clippy、格式及差异检查通过。生产 C 覆盖十五项独立编码/474 故障点，Windows/Linux 新目录候选构建及原生 Windows 验证通过；双核实际 EXE/MI/Tcl 覆盖完整原始值/当前 Debug 证据、权限原因、旧值来源、取消/上下文变化及恢复未知 FAULT。旧 MRRC 与新 Timer 独立固件基线驱动各六软件阶段通过，未执行目标代码。完整报告和限制见 [开发进度](docs/registers-development-status.md) 与 [Timer 自检](docs/register-timer.md)。仅完成 REG-402，已完成／未完成 **21/50**；完整低 EL 权限与采样一致性仍待完成，其余22套件未选择，[十三项环境 case](tests/cases/register-timer.md) 均 SKIPPED，未上板、安装或发布。
 
 

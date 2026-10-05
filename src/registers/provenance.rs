@@ -71,6 +71,10 @@ pub struct Access {
     pub context: Context,
     /// Route resolution time until dispatch, then the actual write-start time.
     pub timestamp_ms: u64,
+    /// Host response completion, in the same session-relative monotonic clock.
+    /// A request interval bounds transport execution, not the hardware clock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_ms: Option<u64>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Derivation {

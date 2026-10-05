@@ -43,6 +43,12 @@ pub(super) fn details(label: &str, provenance: &Provenance) -> Vec<String> {
         },
         access.timestamp_ms
     ));
+    if let Some(completed) = access.completed_ms {
+        text.push(format!(
+            "Host request interval: {}..{} ms; not a hardware timestamp",
+            access.timestamp_ms, completed
+        ));
+    }
     match &access.route {
         Route::GdbRegister {
             endpoint,
@@ -118,6 +124,14 @@ pub(super) fn details(label: &str, provenance: &Provenance) -> Vec<String> {
         }
     }
     if let Some(timer) = &access.timer {
+        text.push(format!(
+            "Timer transfer: {}",
+            match timer.read_method {
+                crate::registers::timer::ReadMethod::Unknown => "unknown in older evidence",
+                crate::registers::timer::ReadMethod::Mrc32 => "one MRC / full 32-bit register",
+                crate::registers::timer::ReadMethod::Mrrc64 => "one MRRC / full 64-bit register",
+            }
+        ));
         text.push(format!(
             "Timer physical MIDR: {} / current Debug EDSCR: {}",
             timer.midr.hex, timer.dscr.hex
@@ -205,6 +219,7 @@ mod tests {
                 .copied();
             let mut provenance = Provenance::declared(&reader);
             provenance.access = Some(crate::registers::provenance::Access {
+                completed_ms: None,
                 timer: None,
                 route: Route::TclMemory {
                     endpoint: "127.0.0.1:6666".into(),

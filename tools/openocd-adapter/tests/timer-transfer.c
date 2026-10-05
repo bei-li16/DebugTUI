@@ -15,6 +15,8 @@ struct fixture {
 	unsigned int operations, fail_at, dscr_reads, midr_reads, status_reads, pc_reads;
 	unsigned int timer_reads, index, corrupt_restore;
 	uint32_t dscr_change, midr_change, status_change, pc_change;
+	bool moving;
+	uint64_t counter;
 };
 static int step(struct fixture *f)
 {
@@ -40,6 +42,10 @@ static int read_gpr(void *context, unsigned int reg, uint32_t *value)
 	if (step(f))
 		return -7;
 	*value = f->gpr[reg];
+	/* The timer advances after the instruction has latched both destination
+	 * words, including between the separate physical R0/R1 transport reads. */
+	if (f->moving && f->timer_reads)
+		f->counter++;
 	return 0;
 }
 static int write_gpr(void *context, unsigned int reg, uint32_t value)
@@ -67,7 +73,7 @@ static int execute(void *context, uint32_t opcode)
 	else {
 		assert(opcode == encodings[f->index]);
 		f->timer_reads++;
-		uint64_t value = timer_value(f->index);
+		uint64_t value = f->moving ? f->counter : timer_value(f->index);
 		f->gpr[0] = value;
 		if (f->index >= 9)
 			f->gpr[1] = value >> 32;
@@ -161,7 +167,27 @@ int main(void)
 		assert(transfer(&f, &result, &uncertain) != 0);
 		assert(uncertain == (invalid_state == 4) && result.value == 11 && f.timer_reads == 0);
 	}
+	const uint64_t edges[] = {
+		0, 1, UINT64_C(0x00000000ffffffff), UINT64_C(0x0000000100000000),
+		UINT64_C(0x7fffffffffffffff), UINT64_C(0x8000000000000000),
+		UINT64_C(0xffffffff00000000), UINT64_MAX,
+	};
+	unsigned int moving_reads = 0;
+	for (unsigned int index = 9; index < 15; index++) {
+		for (unsigned int edge = 0; edge < sizeof(edges) / sizeof(edges[0]); edge++) {
+			struct fixture f = fresh(index, 2);
+			f.moving = true; f.counter = edges[edge];
+			struct armv8_debugtui_timer_result result = {.value = 11};
+			bool uncertain = true;
+			assert(transfer(&f, &result, &uncertain) == 0 && !uncertain);
+			assert(result.value == edges[edge] && f.timer_reads == 1);
+			assert(f.counter != edges[edge]);
+			assert(f.gpr[0] == 0x11223344 && f.gpr[1] == 0x55667788);
+			moving_reads++;
+		}
+	}
 	printf("PASS: 15 Timer encodings, %u fault points, %u legal EL1/HDD views, %u permission refusals, DSPSR/DLR/identity/EL preservation\n",
 		fault_points, legal, refusals);
+	printf("PASS: %u moving 64-bit reads, latched words across low-word carry and full counter wrap\n", moving_reads);
 	return 0;
 }

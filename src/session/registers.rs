@@ -735,6 +735,7 @@ impl Engine {
     pub(super) fn plan_register_value_access(&mut self, route: Route, command: String) {
         self.register_value_access = Some(Access {
             timer: None,
+            completed_ms: None,
             route,
             command,
             phase: Phase::Planned,
@@ -757,6 +758,11 @@ impl Engine {
             access.timestamp_ms = started
                 .saturating_duration_since(self.session_started)
                 .as_millis() as u64;
+            access.completed_ms = progress.completed.map(|completed| {
+                completed
+                    .saturating_duration_since(self.session_started)
+                    .as_millis() as u64
+            });
         }
     }
 }

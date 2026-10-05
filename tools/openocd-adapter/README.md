@@ -43,6 +43,8 @@ EL2 允许全部十五项。EL1 在 HDD=0/1 时允许 CNTFRQ、CNTKCTL、CNTV_TV
 
 `tests/timer-transfer.c` 编译同一生产头文件，独立手写十五项指令字，验证 474 个失败点、12 个合法 EL1/HDD 组合、48 个权限拒绝及身份/完整状态/PC/暂存值变化。最新 Windows/Linux 候选哈希以 `source.lock.json` 为准，此前 VFP writer 候选记录在 previous_candidates。软件模型与离线命令检查没有执行目标指令，新候选未安装或发布。
 
+Timer 一致性自检另覆盖 48 个动态回读模型（六项×八个边界值）。在 MRRC 已复制 pair 后，模型计数器在物理 R0/R1 回读之间前进，低字进位/全值回绕不能撕裂输出。两字都来自同一次指令，后端不追加计数器试读或重试。Windows/Linux 同一生产头文件测试通过，固定源码/补丁和候选 EXE 均未改变；当前测试与源码重新封装、原生 Windows 验证和 Linux dummy 命令证明在 `artifacts/openocd-timer-coherence-windows-native.log`、`artifacts/openocd-timer-coherence-linux/report.json`。对应源码 ZIP 保留新测试，运行文件哈希仍以 source.lock 为准。DebugTUI 另保存请求起止主机区间与单项 MRC32/MRRC64 方法，不能据此声称跨项同时性或真实硬件采样时间。
+
 ## VFP 原始值与别名
 
 `aarch64 debugtui_vfp_protocol` 返回 `debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault`。`aarch64 vfp NAME` 接受 FPSID、FPSCR、MVFR0/1/2、FPEXC（小写名称）以及 D0–31、Q0–15。控制值为 32 位，数据始终返回两个 D 寄存器组成的 128 位物理采样，并附 MVFR0、MVFR1 和 FPEXC 原始证据。DebugTUI 按请求缓存物理 pair，D 的两个 lane、S 的低／高 32 位和 Q 共用同一值；不会把截断的 GDB 输出补成宽值，也不回退旧 get_reg。

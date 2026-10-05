@@ -1,6 +1,6 @@
 # R52 Timer 目录与读取路径自检
 
-内置 R52/R52+ Timer 有十五项描述、字段和实现条件，独立数据验证全部 MRC/MRRC 路径。生产后端现增加当前 Debug state 权限、外部身份及 PC/状态保持检查；REG-401/403 的完整低 EL 与跨时间验收继续保留，上板用例未执行。
+内置 R52/R52+ Timer 有十五项描述、字段和实现条件，独立数据验证全部 MRC/MRRC 路径。生产后端现增加当前 Debug state 权限、外部身份及 PC/状态保持检查；REG-403 的单项完整读取/采样界限有软件证据，REG-401 的完整低 EL 权限仍待适配，上板用例未执行。
 
 ## 手册与目录
 
@@ -48,6 +48,18 @@
 
 TVAL 是三十二位有符号差值 `(CompareValue - counter)[31:0]`，可选择有符号格式查看，不能当成六十四位计数器。ENABLE=0 时 TVAL 读值和 ISTATUS 都是架构 UNKNOWN；目录保留原始位并说明限制，不为 ISTATUS 设置可能误导的条件枚举。Valid 仅说明完整原始值读取成功，不证明禁用 Timer 的这些位有有效含义。IMASK 独立于 ISTATUS。CVAL/计数/offset 的字段保留全部六十四位；不同条目分别采样，不能把它们视为同一时刻的原子快照，也不能从先后读取的 CNTPCT/CNTVCT 推导精确 CNTVOFF。
 
+## 单项一致性与采样时间边界
+
+R52 TRM 表 11-1 与 §4.2.18 定义六项 64 位 Timer；工作区完整 DDI0487 M.b F5.1.117（PDF 12139–12140）明确 MRRC 将所选系统寄存器的低 32 位送到 Rt、高 32 位送到 Rt2。生产路径采用 Rt=R0、Rt2=R1 且每项只有一次 MRRC。两次物理通用寄存器传输回读取得的是该指令已经复制的 pair，未再次读取 Timer；未实现高/低两次 MRC 拼值或额外 retry。
+
+每份新 Timer 证据的 `read_method` 为 `mrc32` 或 `mrrc64`，解析同时检查名称与原生位宽；旧 JSON 中缺少该字段时为 Unknown，不凭旧标签推断。`provenance.access.timestamp_ms` 是实际开始发送请求的主机单调时间；`completed_ms` 是完整 TCL 帧/GDB 结果记录收到的时间。两个端点同属该 worker 的 session_started 时钟原点，完整 Timer 事务位于该界限内；等待、传输与状态检查使区间宽于核心指令，不把中点/响应时间冒充精确硬件采样时间。跨核 worker 的时钟原点不同，不能据相同数字推导同时性；旧证据没有终点时保留 Unknown，失败/旧值各保存自己的请求区间。
+
+单次完整 MRRC 值与跨寄存器采样分别处理。CNTPCT/CNTVCT/CVAL/CNTVOFF 是独立请求；即使每项完整，也不能由先后读取的两个计数值计算同一时刻的精确偏移。本批只核对原始完整值和以模 2^64 差值表达的独立允许窗口，不把各核或各项组合成原子快照。
+
+生产 C 的 48 个附加动态模型覆盖六项×八个边界值：0/1、低字进位前后、最高符号位、极大高字及全 1。Timer 在 R0/R1 的两次物理回读之间继续变化，结果仍必须等于单次指令复制的原始值，计数器已前进且暂存恢复完整。Linux/Windows 编译同一生产头文件执行这些模型；后端源码/补丁和两份可执行文件未变，沿用已核对的新目录构建，仅重新验证 C 模型/离线命令并重新封装当前源码与测试。
+
+`timer_counter_driver_validates_carry_wrap_freeze_regression_and_sample_windows` 启动实际 EXE/MI/Tcl，分别验证物理全 64 位回绕与虚拟低字进位、允许冻结、要求进展而冻结、倒退、异常高字、超出独立固件窗口六种流程。两种合法流程各六阶段通过，四种错误在 COUNTERS 阶段失败且正常清理；所有流程检查 target/配置保持、不回退 MRRC。新驱动报告绑定各次 Timer 的传输方式与主机区间，软件符号仍是软件基线。[十四项环境 case](../tests/cases/register-timer.md) 均 SKIPPED，实际回绕可构造条件、RAM/cache 可见性、debug freeze 和真实计数器时序须按相应环境记录，不由模型结果代替。
+
 ## 软件证据与自检
 
 | 验证 | 实际检查 |
@@ -74,6 +86,8 @@ TVAL 是三十二位有符号差值 `(CompareValue - counter)[31:0]`，可选择
 
 参考值全部存储后才执行 DMB 并发布 ready；DMB 不是 cache clean。实际 GDB/CPU/AP 读取参考 RAM 的一致性仍需独立核验，不能把软件夹具的变量值当作缓存可见性证明。单核 case 去掉 peer_core/control_scope；多核 case 为各核提供独立参考存储及符号，不让 peer 覆盖所选核基线。
 
-[十三项环境 case](../tests/cases/register-timer.md) 均 SKIPPED。本批按不执行上板、准备相应用例的任务范围完成 REG-402：六项真正 MRRC 及最低独立协议均有生产 C/候选/运行时证据。REG-401/403 的完整 EL0/EL1 物理权限与采样一致性、实际 GDB 目标描述位宽、REG-208 真实终端、其余系统及 writer、最终安装/Release 仍待完成；当前已完成／未完成 **21/50**。没有把软件模型或 SKIPPED 当作芯片成功。
+[十四项环境 case](../tests/cases/register-timer.md) 均 SKIPPED。按不执行上板、准备相应用例的任务范围，REG-402 的真正 MRRC/最低独立协议与 REG-403 的单项高低位/一致性界限均有生产 C/候选/运行时证据。REG-401 的完整 EL0/EL1 物理权限、实际 GDB 目标描述位宽、REG-208 真实终端、其余系统及 writer、最终安装/Release 仍待完成；当前已完成／未完成 **22/49**。真实环境时序/cache/debug freeze 另按用例记录，没有把模型或 SKIPPED 当作芯片成功。
 
 本批最终完整回归为 **367 单元＋136 集成通过，2 ignored**，F24 **114/114**，耗时 344536 ms，无超时；其余 22 功能套件未选择。报告 [`artifacts/functional-1791205816814-cf34d3cc/report.json`](../artifacts/functional-1791205816814-cf34d3cc/report.json)，完整 Cargo 为同目录 unit.log。仅调整 F24 的来源文件列表和限制说明后，逐项核对当前 manifest 与该完整回归的 114 模式一致，补充证明 `artifacts/register-timer-adapter-f24.json`。严格 Clippy 日志 `artifacts/register-timer-adapter-clippy.log`；其首次发现测试中多余借用，失败保留 `artifacts/register-timer-adapter-clippy-before.log`，删除多余借用后严格检查及两项单元复测通过（`artifacts/register-timer-adapter-unit-final.log`），未改变生产行为。早期新夹具 selector 配置、目录分组断言错误日志保留 `artifacts/register-timer-adapter-worker-before.log` 与 `artifacts/register-timer-adapter-unit-before.log`；最终聚焦日志 `artifacts/register-timer-adapter-focused.log`。
+
+一致性批次最终完整回归 **368 单元＋137 集成通过，2 ignored**，F24 **118/118**，292198 ms 无超时，其余 22 功能 suite 未选择。报告 [`artifacts/functional-1791208232338-ede8d32d/report.json`](../artifacts/functional-1791208232338-ede8d32d/report.json)，完整 Cargo 同目录 unit.log；严格 Clippy `artifacts/register-timer-coherence-clippy.log`。首轮 ENOSPC 的失败 unit.log 和未完成 JSON 保留；完整归档临时目录释放空间后重新运行整套通过，归档映射 `artifacts/register-timer-coherence-space-archive.json`，详见 [开发进度](registers-development-status.md)。本批未再改变生产后端源码或最低协议；Windows/Linux 可执行文件 SHA256 与源码锁保持一致。

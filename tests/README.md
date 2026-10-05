@@ -4,7 +4,9 @@
 
 ## 统一运行
 
-专用 Timer 后端的软件验证见 [Timer 自检](../docs/register-timer.md)。`cargo test --locked timer_` 覆盖独立协议、编码/位宽、完整物理证据、权限未知与拒绝、选定核、旧值来源、恢复未知、取消和读取期间实际线程/帧变化。REG-H05 驱动以实际 EXE 分别执行旧 MRRC 和新 Timer 双核软件流程；case 的 `require_timer_adapter=true` 要求并记录各次 Timer 的 MIDR/EDSCR/DSPSR/DLR，同时保留独立固件基线比较。`node scripts/test-register-timer-hardware.cjs` 默认五项 SKIPPED，无目标访问；[十三项环境 case](cases/register-timer.md) 均未执行。生产 C 事务及 Windows/Linux 候选构建另见 [后端说明](../tools/openocd-adapter/README.md)，软件模型不代表芯片验证。
+Timer 单项一致性新增 `timer_samples_keep_extreme_u64_values_native_reads_and_legacy_evidence` 和 `timer_counter_driver_validates_carry_wrap_freeze_regression_and_sample_windows`。后者以实际 EXE 分别运行全 64 位回绕/低字进位、允许冻结，以及冻结必须进展/倒退/异常高字/过旧基线四种失败流程；固件变量由独立软件夹具供给，不算上板。原有传输故障测试同时核对请求完成时间只在收到完整帧后出现，旧来源 JSON 不制造终点。生产 C 另验证 48 个动态 pair 回读，源与候选二进制沿用已固定构建；详见 [一致性边界](../docs/register-timer.md)。
+
+专用 Timer 后端的软件验证见 [Timer 自检](../docs/register-timer.md)。`cargo test --locked timer_` 覆盖独立协议、编码/位宽、完整物理证据、权限未知与拒绝、选定核、旧值来源、恢复未知、取消和读取期间实际线程/帧变化。REG-H05 驱动以实际 EXE 分别执行旧 MRRC 和新 Timer 双核软件流程；case 的 `require_timer_adapter=true` 要求并记录各次 Timer 的 MIDR/EDSCR/DSPSR/DLR，同时保留独立固件基线比较。`node scripts/test-register-timer-hardware.cjs` 默认五项 SKIPPED，无目标访问；[十四项环境 case](cases/register-timer.md) 均未执行。生产 C 事务及 Windows/Linux 候选构建另见 [后端说明](../tools/openocd-adapter/README.md)，软件模型不代表芯片验证。
 
 共享寄存器归属验证见 [REG-109 自检](../docs/register-shared-owners.md)。`cargo test --locked --test register_shared` 的五项四核 MI 管道集成覆盖三种 scope、两个 cluster、未知归属、alias 单次读取、peer 生命周期、迟到值、失败及重连、首个通知中的兼容投影；两项模型、一项故障边界和一项 UI 测试另核对身份边界、旧 JSON、逐路由缓存、失败退避及宽窄键盘帮助。F24 本批增加九个证据模式，当前累计 69 个。[八项人工 case](cases/register-shared-owners.md) 全部 SKIPPED。
 

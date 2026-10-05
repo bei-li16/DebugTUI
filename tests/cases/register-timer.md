@@ -1,6 +1,6 @@
 # R52 Timer 环境 case
 
-初始状态：以下十三项均 **SKIPPED**。本批只执行软件验证，不上板。使用审核过的工程与固件，为每核保存提交、EXE/目录/profile/ELF 摘要、实际 GDB/OpenOCD 版本与后端协议、物理核、模式、停止位置、完整 MI/TCL/JSON 日志和截图。软件期望值不得作为芯片结果。
+初始状态：以下十四项均 **SKIPPED**。本批只执行软件验证，不上板。使用审核过的工程与固件，为每核保存提交、EXE/目录/profile/ELF 摘要、实际 GDB/OpenOCD 版本与后端协议、物理核、模式、停止位置、完整 MI/TCL/JSON 日志和截图。软件期望值不得作为芯片结果。
 
 固件预先建立需要的合法权限、计时配置和独立基线；调试器不能为测试改变 CPU 模式、Timer enable/mask/compare/offset、计数器或选择器。自然停止于物理 frame 0，先核对模式，再显式 Probe；非法或未核验权限的项保持未读。每次运行、切核、换帧和重连后重新取得 context。读操作及取独立固件变量时不调用目标函数。
 
@@ -19,7 +19,9 @@
 | TIMER-H11 | 有有效值后在隔离后端注入权限拒绝、缺少 MRRC、截断六十四位、断连与取消；另行验证恢复结果未知 | 最新原因与原值/依据分开；未知原因不猜测缺失；截断不 Valid；其他合法项继续，取消不发布新值；恢复未知进入 FAULT 并需重连 | SKIPPED |
 | TIMER-H12 | 核对实际 GDB target description 六十四位 Timer 声明与值；PowerShell/VS Code 宽窄终端查看字段、完整高位、条件和长说明 | 名称可见与真实可读分开记录；全部字段说明可查看，进制及高位完整；查看不触发 Probe/read；不据本项单独勾选 REG-208 或完整后端验收 | SKIPPED |
 | TIMER-H13 | 使用源码锁指定的新 Timer 候选及独立协议；核对 debug AP 的 MIDR、EDSCR.EL/RW/HDD、停止 DSPSR/DLR，分别覆盖实际 EL2、EL1/HDD=0/1 与 EL0；低 EL 未知场景不注入 Timer 指令 | EL2 十五项及 EL1 六项在合法条件下有新鲜证据；EL1 物理项保持权限未知，Hyp-only/EL0 必须拒绝的项明确受限；不以停止 CPSR、旧 Probe 或配置猜测当前 EL；前后完整状态与 PC 保持、R0/R1 恢复回读；case 的 require_timer_adapter=true 将每次值和物理证据写入报告，无旧通道回退 | SKIPPED |
+| TIMER-H14 | 使用独立固件基线与新协议，以实际所选核执行低字自然进位、允许冻结/要求进展、超出记录窗口场景；审核过的虚拟偏移初始化可建立 CNTVCT 回绕边界；保存完整值、单项传输方式及各次主机请求区间 | 六项 64 位各一次 MRRC；Rt 低字/Rt2 高字，回读期间计数变化不撕裂单次值；模 2^64 差值按独立窗口核对，冻结不误判必然进展，旧基线/异常高字/倒退有失败原因；主机区间仅是当前核工作会话的传输界限，不推导跨条目/跨核同时性或精确 CNTVOFF；没有合法构造物理 64 位回绕的板级条件时记录该子场景 SKIPPED，调试器不改计数器/偏移/模式 | SKIPPED |
 
-已有 `scripts/test-register-timer-hardware.cjs` 默认只生成五项 SKIPPED 报告，不连接目标。`REG-H05` 示例已覆盖四个 CVAL/offset 的独立符号、两个计数器及保持检查；先核对专用正常执行 Hyp 固件的模式与 ready，错误模式或未就绪不继续访问。九项 MRC/六项 MRRC 固件样本按每核独立保存，动态 TVAL 及禁用位不能作为稳定期待值。实际使用前替换所有软件期待值，并保存正常执行与 Debug state 的区别：EDSCR.HDD/Hyp invasive debug 授权不能由停止前 CPSR 推断。以上完整权限及跨时间场景仍需逐项留证，不能把六阶段软件驱动通过换算成十三项上板 PASS。未实现或缺少环境时记录原因并保持 SKIPPED。
+
+已有 `scripts/test-register-timer-hardware.cjs` 默认只生成五项 SKIPPED 报告，不连接目标。`REG-H05` 示例已覆盖四个 CVAL/offset 的独立符号、两个计数器及保持检查；先核对专用正常执行 Hyp 固件的模式与 ready，错误模式或未就绪不继续访问。九项 MRC/六项 MRRC 固件样本按每核独立保存，动态 TVAL 及禁用位不能作为稳定期待值。实际使用前替换所有软件期待值，并保存正常执行与 Debug state 的区别：EDSCR.HDD/Hyp invasive debug 授权不能由停止前 CPSR 推断。以上完整权限及跨时间场景仍需逐项留证，不能把六阶段软件驱动通过换算成十四项上板 PASS。未实现或缺少环境时记录原因并保持 SKIPPED。
 
 新 Timer 后端的已实现权限范围以上述 TIMER-H13 为准；TIMER-H03/H04 的完整 EL1 物理及 EL0 enable 适配仍未完成，不能在当前实现下要求其成功。专用 Hyp 基线示例默认 `require_timer_adapter=true`；仅用于验证旧 MRRC 时可在隔离 case 中显式设为 false。该基线要求实际停止 Hyp 和当前 Debug EL2，通用应用仍分别判断两种状态。
