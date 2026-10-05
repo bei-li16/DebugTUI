@@ -42,13 +42,23 @@ R52 TRM §§16.5–16.6 的两种配置为 SP-only D16（MVFR0=`0x10110021`、MV
 
 ## 构建和软件验证
 
+### VFP 原始位写入后端（DebugTUI 编辑接入待完成）
+
+`aarch64 debugtui_vfp_write_protocol` 返回独立协议 `debugtui-armv8-vfp-write-1 vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault`。`aarch64 vfp_write NAME RAW` 只接受 S0–31、D0–31、Q0–15 的小写名称和精确 32/64/128 位十六进制原始值，不执行表达式或浮点数值转换。FPSCR、FPEXC 和标识控制不在 writer 允许名单中。当前只支持实际 R52 D13 的 Hyp／TCP10=0／EN=1；其他模式的合法路径仍待适配，不自动改变 CPU 模式或使能 FPU。
+
+事务复用已校验的物理 pair 读取，在发送前重新确认实际权限／能力。S 从新鲜 D 保留另一半 32 位，D 保留 pair 的另一 D；Q 用两次 VMOV 写入，明确非原子。每次都保存／恢复／物理回读 R0/R1，写后再读取完整 pair，比较前后 DSPSR、HCPTR、FPEXC 和 MVFR；NaN payload、符号和高字直接按位搬运。结果为 `outcome verified|mismatch before RAW128 expected RAW128 value RAW128 mvfr0 RAW32 mvfr1 RAW32 fpexc RAW32`。前置条件安全拒绝为 `outcome not_sent reason REASON`。任何传输、恢复或状态结果未知都立即停止并把 target 标为 unknown，不重试、补写或猜测回滚。
+
+同一 pair 或 PC/CPSR/FP 状态的 OpenOCD GDB cache 有待写值时，注入前拒绝为 pending-register-write；不删除用户的待写值。实际发送后使该 pair 及两个 ARM32 D alias 的有效标记失效，避免显示旧样本。只访问当前明确 target，无跨核广播。DebugTUI 尚未声明该 writer 或接入 preview/apply、编辑 UI、服务锁与全部跨面板缓存，这个后端不能代替 WRITE-005/008–012 完整验收。
+
+`tests/vfp-write-transfer.c` 编译生产头文件，验证 80 个视图、144 个故障点、两次 Q 写入的部分完成、临时寄存器恢复、完整 pair 及控制一致性、D16/未知身份/未使能/陷阱拒绝；GNU Arm 独立核对 VMOV 写入编码。`tests/vfp-write-driver.py` 用真实 TCP 的严格双核模型验证三种位宽、明确恢复和失败后不读／重试／回滚，5 项通过。硬件驱动 `tests/vfp-write-hardware.py` 默认 4 skipped；模板和八类延后用例见 [VFP 写入 case](../../tests/cases/register-vfp-writes.md)。上板执行未做，外部物理 PC/GPR、待写 cache 及独立固件写后样本仍需额外记录。
+
 在具备 Git、GCC、make、autoconf、automake、libtool 和 pkg-config 的 Unix 构建环境中执行：
 
 ```sh
 sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 ```
 
-输出目录必须是新路径。脚本保留固定版本源码、安装目录、GPL 许可和测试报告；可追加 configure 选项选择探针及交叉工具链。USB 接口需要对应开发依赖。默认包含 dummy/remote-bitbang，关闭 J-Link 子模块。本 VFP 批次已用上述 Linux 一键脚本在全新目录完成 WSL Ubuntu 22.04 构建和真实命令检查。Windows 使用下面单独经过全新目录构建验证的脚本。
+输出目录必须是新路径。脚本保留固定版本源码、安装目录、GPL 许可和测试报告；可追加 configure 选项选择探针及交叉工具链。USB 接口需要对应开发依赖。默认包含 dummy/remote-bitbang，关闭 J-Link 子模块。本 VFP 写入后端批次已用上述 Linux 一键脚本在全新目录完成 WSL Ubuntu 22.04 构建，最终修复增量重编译后重新完成真实命令检查。Windows 使用下面单独经过全新目录构建验证的脚本。
 
 检查已应用补丁的源码和后端：
 
@@ -56,9 +66,9 @@ sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 python3 tools/openocd-adapter/test.py --source PATH_TO_PINNED_SOURCE --out artifacts/openocd-adapter-tests --openocd PATH_TO_BACKEND
 ```
 
-事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，另验证银行事务的 20 个故障点、R0 恢复／CPSR 变化及安全权限拒绝，以及 VFP 的 63 个故障点、R0/R1 恢复、DSPSR／FPEXC／HCPTR 变化、D16/D32、未使能和原始未知 MVFR；严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对三项协议、帮助以及参数和全部 23 个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用 GNU Arm 汇编器独立确认 MRRC、Thumb ISB 及银行／当前寄存器编码；`tests/vfp-encoding.s` 核对 VMRS／VMOV／HCPTR。
+事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，另验证银行事务的 20 个故障点、R0 恢复／CPSR 变化及安全权限拒绝，以及 VFP 的 63 个故障点、R0/R1 恢复、DSPSR／FPEXC／HCPTR 变化、D16/D32、未使能和原始未知 MVFR；严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对四项协议、帮助以及参数和全部 23 个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用 GNU Arm 汇编器独立确认 MRRC、Thumb ISB 及银行／当前寄存器编码；`tests/vfp-encoding.s` 核对 VMRS／VMOV／HCPTR。
 
-本 VFP 批次 Linux 候选后端 SHA-256 为 `e9147a1bf9252ac182fa093342427c5f9b42e311930a110cad79619c893877ef`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-04-20:32)`。dirty 来自尚未成为上游提交的适配补丁，构建时间为 UTC。上一批 MRRC／ISB 候选哈希保留在 lock 的 previous_candidates，不能用于当前补丁。候选产物未安装或发布，未来分发须保留源码、补丁与许可，不能把其能力写到现有 Windows 二进制上。
+本 VFP 写入后端批次 Linux 候选后端 SHA-256 为 `1dd04e403485c254431ea6f47a3690f2453c682f23b0901ac9d3e321d180ccda`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-05-01:04)`。dirty 来自尚未成为上游提交的适配补丁，构建时间为 UTC。上一批 MRRC／ISB 候选哈希保留在 lock 的 previous_candidates，不能用于当前补丁。候选产物未安装或发布，未来分发须保留源码、补丁与许可，不能把其能力写到现有 Windows 二进制上。
 
 ## Windows 后端、依赖和候选包
 
@@ -87,7 +97,7 @@ python tools/openocd-adapter/tests/windows-package.py --candidate G:/Build/openo
 
 原生检查先验证清单、配方和源码 ZIP，再执行生产事务测试及真实后端命令检查，核对 J-Link、CMSIS-DAP、ST-Link、FTDI 的注册，以及两份 F429 配置和 HID／USB bulk 后端能离线加载。物理配置加载在 config 阶段结束，显式 init 被拒绝；只在前面的独立事务检查中初始化进程内 dummy，不连接真实探针或打开调试端口。检查成功后才把 `native_windows_verified` 标为 true 并重新生成候选 ZIP。九项包检查包含缺失 DLL、非 PE、同大小篡改、新增 DLL、有效 ZIP 内补丁篡改和 Git 空目录遗失拒绝。
 
-本 VFP 批次 Windows 候选后端 SHA-256 为 `26336038fc2790a42e575e6d28f1e8ee5b8aea5d82025cb9f9b78b1f880c75b6`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-04-20:33)`，构建时间为 UTC。本批完整的新目录 Windows 构建及原生命令、依赖、配置检查通过；源码 ZIP 固定提交回读已核对，仍不代表探针通信或 R52 实板指令执行通过。现有 `tools/bin/openocd`、依赖锁及安装未改动。最终 tools/profile 合并、安装升级和整个任务完成后的 Release 仍待完成；不能只分发运行 ZIP 而遗漏对应源码与许可。
+本 VFP 写入后端批次 Windows 候选后端 SHA-256 为 `4e75d9878062b2f33d4377005f1a1bcbc71f4f4aa37ac3f3d8281e91b32afc00`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-05-01:05)`，构建时间为 UTC。本批新目录 Windows 构建、最终修复的增量重编译及原生命令、依赖、配置检查通过；源码 ZIP 固定提交回读已核对，仍不代表探针通信或 R52 实板指令执行通过。现有 `tools/bin/openocd`、依赖锁及安装未改动。最终 tools/profile 合并、安装升级和整个任务完成后的 Release 仍待完成；不能只分发运行 ZIP 而遗漏对应源码与许可。
 
 ## 延后执行的物理核心用例
 

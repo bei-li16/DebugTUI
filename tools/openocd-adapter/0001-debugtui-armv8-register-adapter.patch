@@ -1,31 +1,33 @@
 diff --git a/src/target/Makefile.am b/src/target/Makefile.am
-index 3d855ab..c2eebba 100644
+index 3d855ab..b8d1c24 100644
 --- a/src/target/Makefile.am
 +++ b/src/target/Makefile.am
-@@ -187,6 +187,9 @@ ARC_SRC = \
+@@ -187,6 +187,10 @@ ARC_SRC = \
  	%D%/armv7m_trace.h \
  	%D%/armv8.h \
  	%D%/armv8_dpm.h \
 +	%D%/armv8_debugtui.h \
 +	%D%/armv8_debugtui_banked.h \
 +	%D%/armv8_debugtui_vfp.h \
++	%D%/armv8_debugtui_vfp_write.h \
  	%D%/armv8_opcodes.h \
  	%D%/armv8_cache.h \
  	%D%/avrt.h \
 diff --git a/src/target/aarch64.c b/src/target/aarch64.c
-index 19ab923..672d88f 100644
+index 19ab923..4cb6e65 100644
 --- a/src/target/aarch64.c
 +++ b/src/target/aarch64.c
-@@ -15,6 +15,8 @@
+@@ -15,6 +15,9 @@
  #include "target_request.h"
  #include "target_type.h"
  #include "armv8_opcodes.h"
 +#include "armv8_debugtui_banked.h"
 +#include "armv8_debugtui_vfp.h"
++#include "armv8_debugtui_vfp_write.h"
  #include "armv8_cache.h"
  #include "arm_coresight.h"
  #include "arm_semihosting.h"
-@@ -3154,6 +3156,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3154,6 +3157,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  		command_print(CMD, "%s: not an ARM", target_name(target));
  		return ERROR_FAIL;
  	}
@@ -36,7 +38,7 @@ index 19ab923..672d88f 100644
  
  	if (target->state != TARGET_HALTED) {
  		command_print(CMD, "Error: [%s] not halted", target_name(target));
-@@ -3212,16 +3218,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3212,16 +3219,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  
  		/* NOTE: parameters reordered! */
  		/* ARMV4_5_MCR(cpnum, op1, 0, crn, crm, op2) */
@@ -65,7 +67,7 @@ index 19ab923..672d88f 100644
  
  		command_print(CMD, "0x%" PRIx32, value);
  	}
-@@ -3229,7 +3243,189 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3229,7 +3244,272 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  	return ERROR_OK;
  }
  
@@ -206,7 +208,90 @@ index 19ab923..672d88f 100644
 +	return ERROR_OK;
 +}
 +
++COMMAND_HANDLER(aarch64_debugtui_vfp_write_protocol_command)
++{
++	if (CMD_ARGC)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	command_print(CMD, "%s", DEBUGTUI_VFP_WRITE_PROTOCOL);
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(aarch64_debugtui_vfp_write_command)
++{
++	if (CMD_ARGC != 2)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	struct armv8_debugtui_vfp_write_request request;
++	if (!armv8_debugtui_vfp_write_request(CMD_ARGV[0], CMD_ARGV[1], &request))
++		return ERROR_COMMAND_ARGUMENT_INVALID;
++	struct target *target = get_current_target(CMD_CTX);
++	if (!target || !target_was_examined(target))
++		return ERROR_TARGET_NOT_EXAMINED;
++	struct arm *arm = target_to_arm(target);
++	if (!is_arm(arm) || !arm->arch_info || !is_armv8(arm->arch_info) || !arm->dpm)
++		return ERROR_TARGET_INVALID;
++	if (target->state != TARGET_HALTED)
++		return ERROR_TARGET_NOT_HALTED;
++	struct reg_cache *cache = arm->core_cache;
++	unsigned int index = ARMV8_V0 + request.read.pair;
++	if (!cache || cache->num_regs <= ARMV8_FPCR)
++		return ERROR_TARGET_INVALID;
++	/* GDB register assignments are deferred until resume. Do not discard them
++	 * or let a dirty vector/status cache overwrite this physical transaction. */
++	const unsigned int guarded[] = {index, ARMV8_PC, ARMV8_XPSR, ARMV8_FPSR, ARMV8_FPCR};
++	for (unsigned int i = 0; i < ARRAY_SIZE(guarded); i++) {
++		if (cache->reg_list[guarded[i]].dirty) {
++			command_print(CMD, "outcome not_sent reason pending-register-write");
++			return ERROR_OK;
++		}
++	}
++	struct armv8_debugtui_vfp_write_result result;
++	bool sent = false, uncertain = false;
++	int retval = armv8_dpm_debugtui_vfp_write(arm->dpm, &request, &result, &sent, &uncertain);
++	if (sent) {
++		struct reg *pair = &cache->reg_list[index];
++		pair->valid = false;
++		/* ARM32 D aliases share the pair's storage, but have separate validity. */
++		for (struct reg_cache *shadow = cache->next; shadow; shadow = shadow->next) {
++			for (unsigned int i = 0; i < shadow->num_regs; i++) {
++				if (shadow->reg_list[i].arch_info == pair->arch_info)
++					shadow->reg_list[i].valid = false;
++			}
++		}
++	}
++	if (uncertain) {
++		target->state = TARGET_UNKNOWN;
++		command_print(CMD, "Core state restoration failed: VFP write outcome unknown; reconnect required");
++		return retval == ERROR_OK ? ERROR_FAIL : retval;
++	}
++	if (retval > 0 && retval != DEBUGTUI_VFP_WRITE_MISMATCH) {
++		const char *reason = retval == DEBUGTUI_VFP_RESTRICTED ? "access-restricted" :
++			retval == DEBUGTUI_VFP_DISABLED ? "feature-disabled" :
++			retval == DEBUGTUI_VFP_NOT_IMPLEMENTED ? "not-implemented" : "writer-unsupported";
++		command_print(CMD, "outcome not_sent reason %s", reason);
++		return ERROR_OK;
++	}
++	if (retval != ERROR_OK && retval != DEBUGTUI_VFP_WRITE_MISMATCH)
++		return retval;
++	command_print(CMD, "outcome %s before 0x%016" PRIx64 "%016" PRIx64
++		" expected 0x%016" PRIx64 "%016" PRIx64 " value 0x%016" PRIx64 "%016" PRIx64
++		" mvfr0 0x%08" PRIx32 " mvfr1 0x%08" PRIx32 " fpexc 0x%08" PRIx32,
++		retval == ERROR_OK ? "verified" : "mismatch", result.before.words[1], result.before.words[0],
++		result.expected[1], result.expected[0], result.observed.words[1], result.observed.words[0],
++		result.observed.mvfr0, result.observed.mvfr1, result.observed.fpexc);
++	return ERROR_OK;
++}
++
  static const struct command_registration aarch64_exec_command_handlers[] = {
++	{
++		.name = "debugtui_vfp_write_protocol", .mode = COMMAND_ANY,
++		.handler = aarch64_debugtui_vfp_write_protocol_command,
++		.help = "report the independent raw VFP writer protocol without target access", .usage = "",
++	},
++	{
++		.name = "vfp_write", .mode = COMMAND_EXEC, .handler = aarch64_debugtui_vfp_write_command,
++		.help = "write R52 S/D/Q raw bits in proven Hyp permissions; preserve fresh sibling bits; Q is not atomic",
++		.usage = "s0..s31|d0..d31|q0..q15 fixed_width_raw_hex",
++	},
 +	{
 +		.name = "debugtui_vfp_protocol", .mode = COMMAND_ANY,
 +		.handler = aarch64_debugtui_vfp_protocol_command,
@@ -477,10 +562,10 @@ index 0000000..f293869
 +#endif
 diff --git a/src/target/armv8_debugtui_vfp.h b/src/target/armv8_debugtui_vfp.h
 new file mode 100644
-index 0000000..a320c89
+index 0000000..70f517c
 --- /dev/null
 +++ b/src/target/armv8_debugtui_vfp.h
-@@ -0,0 +1,176 @@
+@@ -0,0 +1,177 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_VFP_H
 +#define OPENOCD_TARGET_ARMV8_DEBUGTUI_VFP_H
@@ -502,7 +587,7 @@ index 0000000..a320c89
 +
 +struct armv8_debugtui_vfp_result {
 +	uint64_t words[2];
-+	uint32_t mvfr0, mvfr1, fpexc, hcptr;
++	uint32_t mvfr0, mvfr1, fpexc, hcptr, dspsr;
 +	bool neon;
 +};
 +
@@ -646,6 +731,7 @@ index 0000000..a320c89
 +	sample.mvfr1 = mvfr1;
 +	sample.fpexc = fpexc;
 +	sample.hcptr = hcptr;
++	sample.dspsr = before;
 +	sample.neon = neon;
 +	*result = sample;
 +	return 0;
@@ -657,21 +743,183 @@ index 0000000..a320c89
 +}
 +
 +#endif
+diff --git a/src/target/armv8_debugtui_vfp_write.h b/src/target/armv8_debugtui_vfp_write.h
+new file mode 100644
+index 0000000..636b2c7
+--- /dev/null
++++ b/src/target/armv8_debugtui_vfp_write.h
+@@ -0,0 +1,155 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_VFP_WRITE_H
++#define OPENOCD_TARGET_ARMV8_DEBUGTUI_VFP_WRITE_H
++
++#include "armv8_debugtui_vfp.h"
++
++#define DEBUGTUI_VFP_WRITE_PROTOCOL "debugtui-armv8-vfp-write-1 vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault"
++#define DEBUGTUI_VFP_WRITE_MISMATCH 5
++
++struct armv8_debugtui_vfp_write_request {
++	struct armv8_debugtui_vfp_request read;
++	unsigned int bits, shift;
++	uint64_t value[2];
++};
++
++struct armv8_debugtui_vfp_write_result {
++	struct armv8_debugtui_vfp_result before, observed;
++	uint64_t expected[2];
++};
++
++/* Only canonical fixed-width raw bits reach an instruction. No expression,
++ * floating-point conversion, control register, sign, whitespace or Tcl input. */
++static inline bool armv8_debugtui_vfp_write_request(const char *name, const char *raw,
++	struct armv8_debugtui_vfp_write_request *request)
++{
++	memset(request, 0, sizeof(*request));
++	if (name[0] == 's') {
++		char alias[4];
++		size_t length = strlen(name);
++		if ((length != 2 && length != 3) || name[1] < '0' || name[1] > '9' ||
++			(length == 3 && (name[1] == '0' || name[2] < '0' || name[2] > '9')))
++			return false;
++		unsigned int index = name[1] - '0';
++		if (length == 3)
++			index = index * 10 + name[2] - '0';
++		if (index >= 32)
++			return false;
++		unsigned int d = index / 2;
++		alias[0] = 'd';
++		alias[1] = '0' + (d >= 10 ? d / 10 : d);
++		alias[2] = d >= 10 ? '0' + d % 10 : '\0';
++		alias[3] = '\0';
++		if (!armv8_debugtui_vfp_request(alias, &request->read))
++			return false;
++		request->bits = 32;
++		request->shift = (index % 2) * 32;
++	} else {
++		if (!armv8_debugtui_vfp_request(name, &request->read) || !request->read.data)
++			return false;
++		request->bits = request->read.quad ? 128 : 64;
++	}
++	unsigned int digits = request->bits / 4;
++	if (strlen(raw) != digits + 2 || raw[0] != '0' || raw[1] != 'x')
++		return false;
++	for (unsigned int i = 0; i < digits; i++) {
++		char c = raw[i + 2];
++		unsigned int digit;
++		if (c >= '0' && c <= '9')
++			digit = c - '0';
++		else if (c >= 'a' && c <= 'f')
++			digit = c - 'a' + 10;
++		else if (c >= 'A' && c <= 'F')
++			digit = c - 'A' + 10;
++		else
++			return false;
++		unsigned int word = (digits - 1 - i) / 16;
++		request->value[word] = (request->value[word] << 4) | digit;
++	}
++	return true;
++}
++
++/* VMOV Dn,R0,R1 is a bit transfer permitted in the D16 SP-only subset.
++ * Save physical scratch registers and verify restoration before proceeding.
++ * A failing write/execute may have completed: stop, never retry or roll back. */
++static inline int armv8_debugtui_vfp_write_double(const struct armv8_debugtui_io *io,
++	unsigned int index, uint64_t value, bool *sent)
++{
++	uint32_t saved[2], restored;
++	int retval;
++	for (unsigned int i = 0; i < 2; i++) {
++		retval = io->read_gpr(io->context, i, &saved[i]);
++		if (retval)
++			return retval;
++	}
++	for (unsigned int i = 2; i > 0; i--) {
++		retval = io->write_gpr(io->context, i - 1, (uint32_t)(value >> ((i - 1) * 32)));
++		if (retval)
++			return retval;
++	}
++	*sent = true;
++	retval = io->execute(io->context, ARMV5_T_MCRR(11, 1 | ((index >> 4) << 1), 0, 1, index & 15));
++	if (retval)
++		return retval;
++	for (unsigned int i = 2; i > 0; i--) {
++		retval = io->write_gpr(io->context, i - 1, saved[i - 1]);
++		if (retval)
++			return retval;
++	}
++	for (unsigned int i = 0; i < 2; i++) {
++		retval = io->read_gpr(io->context, i, &restored);
++		if (retval)
++			return retval;
++		if (restored != saved[i])
++			return -1;
++	}
++	return 0;
++}
++
++static inline int armv8_debugtui_vfp_write_transfer(const struct armv8_debugtui_io *io,
++	const struct armv8_debugtui_vfp_write_request *request,
++	struct armv8_debugtui_vfp_write_result *result, bool *sent, bool *uncertain)
++{
++	struct armv8_debugtui_vfp_write_result sample = {0};
++	*sent = false;
++	*uncertain = false;
++	int retval = armv8_debugtui_vfp_transfer(io, &request->read, &sample.before, uncertain);
++	if (retval)
++		return retval;
++	memcpy(sample.expected, sample.before.words, sizeof(sample.expected));
++	unsigned int lane = request->read.lane;
++	if (request->bits == 32) {
++		uint64_t mask = UINT64_C(0xffffffff) << request->shift;
++		sample.expected[lane] = (sample.expected[lane] & ~mask) | (request->value[0] << request->shift);
++	} else if (request->bits == 64) {
++		sample.expected[lane] = request->value[0];
++	} else {
++		memcpy(sample.expected, request->value, sizeof(sample.expected));
++	}
++	/* S/D write one D only. Q is explicitly two physical writes, not atomic. */
++	unsigned int count = request->bits == 128 ? 2 : 1;
++	for (unsigned int i = 0; i < count; i++) {
++		unsigned int selected = request->bits == 128 ? i : lane;
++		retval = armv8_debugtui_vfp_write_double(io, request->read.pair * 2 + selected,
++			sample.expected[selected], sent);
++		if (retval)
++			goto fault;
++	}
++	retval = armv8_debugtui_vfp_transfer(io, &request->read, &sample.observed, uncertain);
++	if (retval)
++		goto fault; /* Even a safe refusal now follows a possibly completed write. */
++	if (sample.before.dspsr != sample.observed.dspsr || sample.before.hcptr != sample.observed.hcptr ||
++		sample.before.fpexc != sample.observed.fpexc || sample.before.mvfr0 != sample.observed.mvfr0 ||
++		sample.before.mvfr1 != sample.observed.mvfr1) {
++		retval = -1;
++		goto fault;
++	}
++	*result = sample;
++	return memcmp(sample.expected, sample.observed.words, sizeof(sample.expected)) ?
++		DEBUGTUI_VFP_WRITE_MISMATCH : 0;
++fault:
++	*uncertain = true;
++	return retval < 0 ? retval : -1;
++}
++
++#endif
 diff --git a/src/target/armv8_dpm.c b/src/target/armv8_dpm.c
-index 508ec97..d833969 100644
+index 508ec97..04b5ef0 100644
 --- a/src/target/armv8_dpm.c
 +++ b/src/target/armv8_dpm.c
-@@ -16,6 +16,9 @@
+@@ -16,6 +16,10 @@
  #include "breakpoints.h"
  #include "target_type.h"
  #include "armv8_opcodes.h"
 +#include "armv8_debugtui.h"
 +#include "armv8_debugtui_banked.h"
 +#include "armv8_debugtui_vfp.h"
++#include "armv8_debugtui_vfp_write.h"
  
  #include "helper/time_support.h"
  
-@@ -194,8 +197,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
+@@ -194,8 +198,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
  	return ERROR_OK;
  }
  
@@ -682,7 +930,7 @@ index 508ec97..d833969 100644
  {
  	struct armv8_common *armv8 = dpm->arm->arch_info;
  	uint32_t dscr = dpm->dscr;
-@@ -203,6 +206,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -203,6 +207,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  
  	if (p_dscr)
  		dscr = *p_dscr;
@@ -691,7 +939,7 @@ index 508ec97..d833969 100644
  
  	/* Wait for InstrCompl bit to be set */
  	long long then = timeval_ms();
-@@ -249,9 +254,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -249,9 +255,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  
  	if (dscr & DSCR_ERR) {
  		LOG_ERROR("Opcode 0x%08" PRIx32 ", DSCR.ERR=1, DSCR.EL=%i", opcode, dpm->last_el);
@@ -705,7 +953,7 @@ index 508ec97..d833969 100644
  
  	if (p_dscr)
  		*p_dscr = dscr;
-@@ -259,6 +267,185 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -259,6 +268,217 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  	return retval;
  }
  
@@ -871,6 +1119,38 @@ index 508ec97..d833969 100644
 +	return retval;
 +}
 +
++int armv8_dpm_debugtui_vfp_write(struct arm_dpm *dpm,
++	const struct armv8_debugtui_vfp_write_request *request,
++	struct armv8_debugtui_vfp_write_result *result, bool *sent, bool *uncertain)
++{
++	*sent = false;
++	*uncertain = false;
++	int retval = dpmv8_debugtui_prepare(dpm);
++	if (retval != ERROR_OK) {
++		*uncertain = retval != ERROR_TARGET_NOT_HALTED;
++		return retval;
++	}
++	if (armv8_dpm_get_core_state(dpm) == ARM_STATE_AARCH64)
++		return DEBUGTUI_VFP_UNSUPPORTED;
++	struct dpmv8_debugtui_context context = {
++		.dpm = dpm,
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++	};
++	struct armv8_debugtui_io io = {
++		.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
++		.write_gpr = dpmv8_debugtui_write_gpr, .execute = dpmv8_debugtui_execute,
++	};
++	retval = armv8_debugtui_vfp_write_transfer(&io, request, result, sent, uncertain);
++	if (retval != ERROR_OK && retval != DEBUGTUI_VFP_WRITE_MISMATCH)
++		return retval;
++	int finished = dpm->finish(dpm);
++	if (finished != ERROR_OK) {
++		*uncertain = true;
++		return finished;
++	}
++	return retval;
++}
++
 +int armv8_dpm_debugtui_isb(struct arm_dpm *dpm)
 +{
 +	int retval = dpmv8_debugtui_prepare(dpm);
@@ -892,10 +1172,10 @@ index 508ec97..d833969 100644
  {
  	return dpmv8_exec_opcode(dpm, opcode, NULL);
 diff --git a/src/target/armv8_dpm.h b/src/target/armv8_dpm.h
-index 19b33da..161b426 100644
+index 19b33da..69f4a7f 100644
 --- a/src/target/armv8_dpm.h
 +++ b/src/target/armv8_dpm.h
-@@ -23,6 +23,19 @@ struct armv8_common;
+@@ -23,6 +23,24 @@ struct armv8_common;
   */
  int armv8_dpm_setup(struct arm_dpm *dpm);
  int armv8_dpm_initialize(struct arm_dpm *dpm);
@@ -912,6 +1192,11 @@ index 19b33da..161b426 100644
 +int armv8_dpm_debugtui_vfp(struct arm_dpm *dpm,
 +	const struct armv8_debugtui_vfp_request *request,
 +	struct armv8_debugtui_vfp_result *result, bool *uncertain);
++struct armv8_debugtui_vfp_write_request;
++struct armv8_debugtui_vfp_write_result;
++int armv8_dpm_debugtui_vfp_write(struct arm_dpm *dpm,
++	const struct armv8_debugtui_vfp_write_request *request,
++	struct armv8_debugtui_vfp_write_result *result, bool *sent, bool *uncertain);
  
  int armv8_dpm_read_current_registers(struct arm_dpm *dpm);
  int armv8_dpm_modeswitch(struct arm_dpm *dpm, enum arm_mode mode);

@@ -15,4 +15,8 @@ vfp_encodings:
     vmov r0,r1,d15
     vmov r0,r1,d16
     vmov r0,r1,d31
+    vmov d0,r0,r1
+    vmov d15,r0,r1
+    vmov d16,r0,r1
+    vmov d31,r0,r1
     mrc p15,4,r0,c1,c1,2

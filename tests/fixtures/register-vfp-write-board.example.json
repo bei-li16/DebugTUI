@@ -1,0 +1,13 @@
+{
+  "software_example": true,
+  "evidence_source": "Replace with dedicated firmware ready loop, independent GNU VMOV samples and actual per-core control evidence",
+  "fixture_core_private": true,
+  "restore_on_verified": true,
+  "endpoint": {"host": "127.0.0.1", "port": 6666},
+  "target": "board.cpu0",
+  "peer_target": "board.cpu1",
+  "register": "s31",
+  "raw": "0x7fa12345",
+  "expected_before": "0xfedcba987654320ffedcba987654320e",
+  "expected_peer": "0x123456789abcdef00123456789abcdef"
+}

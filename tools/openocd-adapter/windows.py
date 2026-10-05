@@ -161,6 +161,7 @@ def stage(args):
         'native_windows_verified': False, 'protocol': lock['protocol'],
         'banked_protocol': lock['banked_protocol'],
         'vfp_protocol': lock['vfp_protocol'],
+        'vfp_write_protocol': lock['vfp_write_protocol'],
         'source_revision': lock['revision'], 'jimtcl_revision': lock['jimtcl_revision'],
         'patch_sha256': lock['patch_sha256'], 'dependency_sources': deps,
         'compiler_version': checked([str(compiler), '--version']).strip(),
@@ -192,6 +193,8 @@ def verify(args):
         raise ValueError('Candidate does not correspond to the current banked protocol')
     if record.get('vfp_protocol') != lock['vfp_protocol']:
         raise ValueError('Candidate does not correspond to the current VFP protocol')
+    if record.get('vfp_write_protocol') != lock['vfp_write_protocol']:
+        raise ValueError('Candidate does not correspond to the current VFP writer protocol')
     if record['dependency_sources'] != deps:
         raise ValueError('Candidate does not correspond to the current dependency lock')
     for name, expected in record['recipe_sha256'].items():

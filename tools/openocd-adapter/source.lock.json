@@ -4,15 +4,16 @@
   "jimtcl_revision": "d5243a25c488dfe751ef218828f13516e04ea2ba",
   "protocol": "debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault",
   "patch": "0001-debugtui-armv8-register-adapter.patch",
-  "patch_sha256": "a0a51de8f50d3de1caf5587a330a7d1ba5fc13f26fb387e0cfc10755087e6f27",
+  "patch_sha256": "becc30cb2f0f233caa5101dc9e0e8475ea85954af0ca3811368c6db4ffa45f76",
   "patched_sources_sha256": {
-    "src/target/Makefile.am": "443aaf1fef3c0b12fe7f2d1a1a5eaaed50ca19953c66ea1d70c374652bde81a6",
-    "src/target/aarch64.c": "3924c80814b5cdb6519fb1f6f0710c214e7d8dc6762c2b760b9e4e16e813f3cf",
-    "src/target/armv8_dpm.c": "1652afe495fc9b257f293eed445e82af584611e12c05f494df9e11bd5404dbc0",
-    "src/target/armv8_dpm.h": "02662dcd2b2d5a1fdcf4ad313b576701ef5ad94fdb1287ee97cc2aaccf72d6ee",
+    "src/target/Makefile.am": "24d2682e07e23e56db8bd73c13e609080b86d06fdc4412fe73c458e6d7aa8508",
+    "src/target/aarch64.c": "09178d2666c08d81f0dd0b2cbbf9048f1abfbb27b5d2bd30849816000d193539",
+    "src/target/armv8_dpm.c": "dd10b49ccf06e23a13ae26e7764aa27962cf44223c705b509ed3fdde18f45a19",
+    "src/target/armv8_dpm.h": "783b51ff24d1cae7b52fcb3dd12c4e5f6a9e43f29df4efca22ac12bbc754cfcd",
     "src/target/armv8_debugtui.h": "4571b23076bda7cb0dd458ffc2c83bf2489694a5900f2e731b1c356737dc267e",
     "src/target/armv8_debugtui_banked.h": "7403a8b3a4f13bbfc0054b8f90fddffb7a50ab49c8afcc9a39b88b6baa5fbadb",
-    "src/target/armv8_debugtui_vfp.h": "90fba4503822fd527b4b75974daccae75e8c012af8f6de0454efcb9444d6727d"
+    "src/target/armv8_debugtui_vfp.h": "1cfe20720b98485bee2025b71c08fed5e815881ad67fc6e788c842f4cb14c9f6",
+    "src/target/armv8_debugtui_vfp_write.h": "5cd8207dce0dc07fa2852ad5d006122b4c09a47bbb51841b06c434658c1a97bb"
   },
   "board_support_verified": false,
   "installed_xpack_binary_equivalent": false,
@@ -23,9 +24,12 @@
     "windows_mrrc_isb_sha256": "06dbc62b6ddfc52ab88a95cfe608d2a76baf7410653d06f51559c323f25582ab",
     "linux_mrrc_isb_sha256": "80f2c574531855a50c6e4f52e9760d1603a296c3d8cca1579cbd995bfe245bd5",
     "windows_banked_dspsr_sha256": "0c14538d630ac6872fb8e0552f1f1e1c8959cae57e471e33b79d33331d2b87ce",
-    "linux_banked_dspsr_sha256": "ff0a0db439a66b16ad824a4094d6ff9f28033295592cf71402dd7fdd757630e3"
+    "linux_banked_dspsr_sha256": "ff0a0db439a66b16ad824a4094d6ff9f28033295592cf71402dd7fdd757630e3",
+    "windows_vfp_read_sha256": "26336038fc2790a42e575e6d28f1e8ee5b8aea5d82025cb9f9b78b1f880c75b6",
+    "linux_vfp_read_sha256": "e9147a1bf9252ac182fa093342427c5f9b42e311930a110cad79619c893877ef"
   },
   "vfp_protocol": "debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault",
-  "windows_candidate_sha256": "26336038fc2790a42e575e6d28f1e8ee5b8aea5d82025cb9f9b78b1f880c75b6",
-  "linux_candidate_sha256": "e9147a1bf9252ac182fa093342427c5f9b42e311930a110cad79619c893877ef"
+  "vfp_write_protocol": "debugtui-armv8-vfp-write-1 vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault",
+  "linux_candidate_sha256": "1dd04e403485c254431ea6f47a3690f2453c682f23b0901ac9d3e321d180ccda",
+  "windows_candidate_sha256": "4e75d9878062b2f33d4377005f1a1bcbc71f4f4aa37ac3f3d8281e91b32afc00"
 }

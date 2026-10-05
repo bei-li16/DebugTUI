@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 
 def digest(path):
@@ -52,6 +53,14 @@ def main():
                     '-o', str(vfp_executable)], check=True)
     vfp_tested = subprocess.run([str(vfp_executable)], capture_output=True, text=True, check=True)
     (out/'vfp-transfer-test.log').write_text(vfp_tested.stdout+vfp_tested.stderr, encoding='utf-8')
+    vfp_write_executable = out/('vfp-write-transfer.exe' if os.name == 'nt' else 'vfp-write-transfer')
+    subprocess.run([args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror',
+                    '-I', str(source/'src/target'), str(here/'tests/vfp-write-transfer.c'),
+                    '-o', str(vfp_write_executable)], check=True)
+    vfp_write_tested = subprocess.run([str(vfp_write_executable)], capture_output=True, text=True, check=True)
+    (out/'vfp-write-transfer-test.log').write_text(vfp_write_tested.stdout+vfp_write_tested.stderr, encoding='utf-8')
+    subprocess.run([sys.executable, str(here/'tests/vfp-write-driver.py'),
+                    '--out', str(out/'vfp-write-driver')], check=True)
     report = {'board_tests_executed': False, 'revision': revision,
               'patch_sha256': lock['patch_sha256'], 'transaction_passed': True,
               'transaction_binary_sha256': digest(executable),
@@ -59,6 +68,9 @@ def main():
               'banked_transaction_binary_sha256': digest(bank_executable),
               'vfp_transaction_passed': True, 'vfp_protocol': lock['vfp_protocol'],
               'vfp_transaction_binary_sha256': digest(vfp_executable),
+              'vfp_write_transaction_passed': True, 'vfp_write_protocol': lock['vfp_write_protocol'],
+              'vfp_write_transaction_binary_sha256': digest(vfp_write_executable),
+              'vfp_write_deferred_driver_passed': True,
               'backend_commands_passed': False, 'limitations':
               ['Transport/exception execution requires the deferred physical-core cases.']}
     if args.openocd:
@@ -66,6 +78,7 @@ def main():
         protocol = lock['protocol']
         bank_protocol = lock['banked_protocol']
         vfp_protocol = lock['vfp_protocol']
+        vfp_write_protocol = lock['vfp_write_protocol']
         # Initialize only the virtual adapter, keeping the target unexamined.
         # Exact native error codes prevent an init-mode rejection from falsely
         # passing an argument/state-guard test.
@@ -80,10 +93,12 @@ target create dt.cpu armv8r -dap dt.dap -dbgbase 0 -defer-examine
 if {[aarch64 debugtui_adapter] ne "%s"} {error "adapter protocol mismatch"}
 if {[aarch64 debugtui_banked_protocol] ne "%s"} {error "banked protocol mismatch"}
 if {[aarch64 debugtui_vfp_protocol] ne "%s"} {error "VFP protocol mismatch"}
+if {[aarch64 debugtui_vfp_write_protocol] ne "%s"} {error "VFP writer protocol mismatch"}
 help aarch64 mrrc
 help aarch64 isb
 help aarch64 banked
 help aarch64 vfp
+help aarch64 vfp_write
 catch {init} dummy_init_result
 proc expect_error {body expected} {
     if {![catch {uplevel 1 $body} result]} {error "command unexpectedly succeeded"}
@@ -108,9 +123,24 @@ foreach invalid {d32 q16 d01 D0 s0 fpinst fpinst2 d-1} {expect_error [list aarch
 foreach control {fpsid fpscr mvfr0 mvfr1 mvfr2 fpexc} {expect_error [list aarch64 vfp $control] -311}
 for {set index 0} {$index < 32} {incr index} {expect_error [list aarch64 vfp d$index] -311}
 for {set index 0} {$index < 16} {incr index} {expect_error [list aarch64 vfp q$index] -311}
+expect_error {aarch64 debugtui_vfp_write_protocol 0} -601
+foreach operands {{} {s0} {s0 0x00000000 0}} {expect_error [list aarch64 vfp_write {*}$operands] -601}
+foreach invalid {s32 s01 S0 s-1 d32 q16 d01 fpscr fpexc mvfr0} {
+    expect_error [list aarch64 vfp_write $invalid 0x00000000] -603
+}
+foreach invalid {0 0x0 0x000000000 0x0000000g 0x1234567; 0X12345678 -0x12345678} {
+    expect_error [list aarch64 vfp_write s0 $invalid] -603
+}
+for {set index 0} {$index < 32} {incr index} {
+    expect_error [list aarch64 vfp_write s$index 0x7fa12345] -311
+    expect_error [list aarch64 vfp_write d$index 0x7ff0123456789abc] -311
+}
+for {set index 0} {$index < 16} {incr index} {
+    expect_error [list aarch64 vfp_write q$index 0x8123456789abcdef7ff0123456789abc] -311
+}
 puts "PASS: adapter protocol, command help, encoding bounds, unexamined target guards"
 shutdown
-''' % (protocol, bank_protocol, vfp_protocol)
+''' % (protocol, bank_protocol, vfp_protocol, vfp_write_protocol)
         script_file = out/'backend-commands.tcl'
         script_file.write_text(script, encoding='utf-8')
         result = subprocess.run([str(backend), '-f', str(script_file)],
