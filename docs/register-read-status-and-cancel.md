@@ -33,4 +33,4 @@ System Regs 的 Total 是目录全部定义；Shown 是目标／全部定义、�
 
 `src/ui/registers/status/tests.rs` 覆盖分类计数、字段排除、筛选／折叠、owner／session／停止／帧、宽窄中文、键鼠、实际缺失过滤、旧值与迟到结果。`tests/register_cancel.rs` 用实际 worker／MI 验证排队前取消、在途及末项取消、批次丢弃、旧 Probe 保留、无全局退出和新控制请求。`tests/selector_access/cancel_cases.rs` 执行真实 Tcl 控制流，覆盖 selector 恢复、恢复失败优先、直接 MPU、VFP pair 和 Scope All 隔离。
 
-延后人工用例见 [状态与取消验收](../tests/cases/register-status-cancel.md)。本轮未执行上板或 PowerShell／VS Code 终端实际视觉验收。完整 TODO 仍待完成；暂不安装、推送或发布。
+延后人工用例见 [状态与取消验收](../tests/cases/register-status-cancel.md)。此批未执行上板或 PowerShell／VS Code 终端实际视觉验收。后续框架逐项自检见 [审计记录](register-framework-audit.md)。完整 TODO 仍待完成；按用户要求每轮提交并推送开发分支，最终安装和 Release 待全部任务完成。

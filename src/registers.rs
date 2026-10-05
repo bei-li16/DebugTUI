@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
+    io::Read,
     path::{Path, PathBuf},
 };
 
@@ -576,8 +577,23 @@ impl Catalogue {
         if metadata.len() > MAX_CATALOGUE_BYTES {
             return Err("Register catalogue exceeds 4 MiB".into());
         }
-        let text = fs::read_to_string(path).map_err(|e| e.to_string())?;
-        Self::parse(&text).map_err(|e| format!("Register catalogue {}: {e}", path.display()))
+        let file = fs::File::open(path)
+            .map_err(|e| format!("Register catalogue {}: {e}", path.display()))?;
+        Self::read(file).map_err(|e| format!("Register catalogue {}: {e}", path.display()))
+    }
+    fn read(reader: impl Read) -> Result<Self, String> {
+        // Recheck while reading: the file can grow after metadata was sampled.
+        let mut bytes = Vec::new();
+        reader
+            .take(MAX_CATALOGUE_BYTES + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| e.to_string())?;
+        if bytes.len() as u64 > MAX_CATALOGUE_BYTES {
+            return Err("Register catalogue exceeds 4 MiB".into());
+        }
+        let text = String::from_utf8(bytes)
+            .map_err(|e| format!("Register catalogue is not UTF-8: {e}"))?;
+        Self::parse(&text)
     }
     pub fn parse(text: &str) -> Result<Self, String> {
         if text.len() as u64 > MAX_CATALOGUE_BYTES {

@@ -1,3 +1,4 @@
+use super::super::framework_tests::key;
 use super::super::tests::{app, engine, sample};
 use super::*;
 use ratatui::{Terminal, backend::TestBackend};
@@ -28,13 +29,17 @@ fn put(app: &mut App, id: &str, state: State, reason: Reason) {
         .insert(("core:default".into(), id.into()), value);
 }
 fn text(terminal: &Terminal<TestBackend>) -> String {
-    terminal
-        .backend()
-        .buffer()
-        .content
-        .iter()
-        .map(|c| c.symbol())
-        .collect()
+    let buffer = terminal.backend().buffer();
+    let mut text = String::new();
+    for y in 0..buffer.area.height {
+        let mut x = 0;
+        while x < buffer.area.width {
+            let symbol = buffer[(x, y)].symbol();
+            text.push_str(symbol);
+            x += unicode_width::UnicodeWidthStr::width(symbol).max(1) as u16;
+        }
+    }
+    text
 }
 #[test]
 fn register_status_counts_expanded_rows_once_and_separates_failures_from_last_values() {
@@ -334,4 +339,119 @@ fn register_status_details_keep_long_reader_reason_source_and_sample_time_access
         .collect();
     assert!(compact.contains("physicalpermissiondenied"));
     assert!(evidence.contains("0x80000001"));
+}
+
+#[test]
+fn register_help_preserves_the_full_128_bit_raw_value_when_the_main_row_is_clipped() {
+    let mut app = app();
+    let (engine, requests) = engine();
+    let q15 = index(&app, "q15");
+    app.register_view.rows = vec![Row::Register(q15, 2)];
+    let raw = "0xfedcba98765432100123456789abcdef";
+    let mut value = sample(&app, "q15", "0x0");
+    value.value = Some(crate::registers::RawValue::parse(raw, 128).unwrap());
+    app.register_view
+        .values
+        .insert(("core:default".into(), "q15".into()), value);
+    let mut terminal = Terminal::new(TestBackend::new(35, 12)).unwrap();
+    terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
+    assert!(!text(&terminal).contains(raw));
+    key(&mut app, KeyCode::Char('t'), &engine);
+    terminal.draw(|f| draw(f, &mut app)).unwrap();
+    let mut evidence = text(&terminal);
+    let max = app.register_view.status_popup.as_ref().unwrap().max_scroll;
+    for _ in 0..max {
+        key(&mut app, KeyCode::Down, &engine);
+        terminal.draw(|f| draw(f, &mut app)).unwrap();
+        evidence.push_str(&text(&terminal));
+    }
+    let compact = evidence
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '│')
+        .collect::<String>();
+    assert!(compact.contains(raw));
+    assert!(compact.contains("128bitsRW"));
+    assert!(compact.contains("Owner:core:default"));
+    assert!(requests.try_recv().is_err());
+}
+
+#[test]
+fn register_field_help_keeps_all_enums_conditions_bits_and_chinese_description_scrollable() {
+    for (width, height) in [(35, 12), (80, 24)] {
+        for field_name in ["M", "IT"] {
+            let mut app = app();
+            let (engine, requests) = engine();
+            let cpsr = index(&app, "cpsr");
+            let register = &mut app.register_view.catalogue.as_mut().unwrap().registers[cpsr];
+            register.description = "父寄存器描述".into();
+            register.access_condition = "需要当前物理核心暂停，不改变处理器模式".into();
+            let field = register
+                .fields
+                .iter()
+                .position(|f| f.name == field_name)
+                .unwrap();
+            register.fields[field].description =
+                format!("{}字段说明末尾", "中文字段说明；".repeat(12));
+            let enums = register.fields[field]
+                .enums
+                .iter()
+                .map(|e| e.name.clone())
+                .collect::<Vec<_>>();
+            app.register_view.rows = vec![Row::Field(cpsr, field, 2)];
+            let mut value = sample(&app, "cpsr", "0x0400ac13");
+            value.state = State::Unavailable;
+            value.reason = Reason::AccessRestricted;
+            value.detail = "physical access denied for this stopped core".into();
+            let before = serde_json::to_value(&value).unwrap();
+            app.register_view
+                .values
+                .insert(("core:default".into(), "cpsr".into()), value);
+            key(&mut app, KeyCode::Char('t'), &engine);
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal.draw(|f| draw(f, &mut app)).unwrap();
+            let mut evidence = text(&terminal);
+            let max = app.register_view.status_popup.as_ref().unwrap().max_scroll;
+            for _ in 0..max {
+                key(&mut app, KeyCode::Down, &engine);
+                terminal.draw(|f| draw(f, &mut app)).unwrap();
+                evidence.push_str(&text(&terminal));
+            }
+            assert!(evidence.contains("gdb:cpsr"));
+            assert!(evidence.contains("AccessRestricted"));
+            let compact = evidence
+                .chars()
+                .filter(|c| !c.is_whitespace() && *c != '│')
+                .collect::<String>();
+            assert!(
+                compact.contains("父寄存器描述"),
+                "{width}x{height} {field_name}: {compact}"
+            );
+            assert!(compact.contains("字段说明末尾"));
+            assert!(compact.contains("不改变处理器模式"));
+            if field_name == "M" {
+                assert!(compact.contains("Fieldwidth:5bits"));
+                assert!(compact.contains("[4:0]"));
+                assert!(evidence.contains("0x13"));
+                for name in enums {
+                    assert!(evidence.contains(&name), "missing {name}: {evidence}");
+                }
+            } else {
+                assert!(compact.contains("Fieldwidth:8bits"));
+                assert!(compact.contains("[26:25],[15:10]"));
+                assert!(evidence.contains("0xae"));
+            }
+            key(&mut app, KeyCode::Home, &engine);
+            assert_eq!(app.register_view.status_popup.as_ref().unwrap().scroll, 0);
+            key(&mut app, KeyCode::Esc, &engine);
+            assert!(app.register_view.status_popup.is_none());
+            assert_eq!(
+                serde_json::to_value(
+                    &app.register_view.values[&("core:default".into(), "cpsr".into())]
+                )
+                .unwrap(),
+                before
+            );
+            assert!(requests.try_recv().is_err());
+        }
+    }
 }

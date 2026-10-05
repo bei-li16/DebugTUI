@@ -2,6 +2,8 @@
 use super::*;
 use crate::registers::{Catalogue, Context, Implementation, Sample, State};
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(test)]
+mod framework_tests;
 mod mpu;
 mod status;
 pub(super) use mpu::draw as draw_mpu;
@@ -25,6 +27,29 @@ pub(super) enum Row {
     Group(usize, usize),
     Register(usize, usize),
     Field(usize, usize, usize),
+}
+
+// Measure terminal cells, so customer names and Chinese descriptions cannot displace values.
+fn column(text: &str, width: usize) -> String {
+    use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+    let truncated = UnicodeWidthStr::width(text) > width;
+    let limit = width.saturating_sub(usize::from(truncated));
+    let mut result = String::new();
+    let mut used = 0;
+    for ch in text.chars() {
+        let cells = ch.width().unwrap_or(0);
+        if used + cells > limit {
+            break;
+        }
+        result.push(ch);
+        used += cells;
+    }
+    if truncated && width > 0 {
+        result.push('…');
+        used += 1;
+    }
+    result.push_str(&" ".repeat(width.saturating_sub(used)));
+    result
 }
 
 pub(super) struct RegisterView {
@@ -1180,14 +1205,21 @@ impl App {
         }
         let context = self.register_context();
         let wide = rect.width >= 50;
+        let name_width = (usize::from(rect.width).saturating_sub(16) / 3).clamp(12, 32);
+        let value_width = usize::from(rect.width).saturating_sub(name_width + 16);
+        let filter = ["All", "Core", "SIMD", "System"][self.register_view.filter];
         let header = if self.register_view.searching {
             format!("Find: {}▏", self.register_view.query)
-        } else {
+        } else if wide {
             format!(
-                "Name / Value{} · {}",
-                if wide { " / Size / Access" } else { "" },
-                ["All", "Core", "SIMD", "System"][self.register_view.filter]
+                "{}   {} {} {}",
+                column(&format!("Name · {filter}"), name_width),
+                column("Value", value_width),
+                column("Size", 5),
+                column("Access", 6)
             )
+        } else {
+            format!("Name / Value · {filter}")
         };
         f.render_widget(
             Paragraph::new(header).style(Style::default().fg(theme::ACCENT)),
@@ -1285,58 +1317,93 @@ impl App {
                         .map(|field| field.name.as_str())
                         .unwrap_or(&register.name);
                     let value = value.unwrap_or(state.clone());
+                    let marker = if field.is_none() && !register.fields.is_empty() {
+                        if self.register_view.fields.contains(&register.id) {
+                            "▾"
+                        } else {
+                            "▸"
+                        }
+                    } else {
+                        "·"
+                    };
+                    let name = format!("{}{marker} {name}", "  ".repeat(*depth));
+                    let shown_name_width = if wide {
+                        name_width
+                    } else {
+                        unicode_width::UnicodeWidthStr::width(name.as_str())
+                            .min(usize::from(rect.width).saturating_sub(13))
+                    };
+                    let shown_value_width = if wide {
+                        value_width
+                    } else {
+                        usize::from(rect.width).saturating_sub(shown_name_width + 3)
+                    };
                     if let Some(mut item) = self.register_format_item(row_index) {
-                        let prefix_width =
-                            *depth * 2 + 5 + unicode_width::UnicodeWidthStr::width(name);
+                        let prefix_width = shown_name_width + 3;
                         item.rect = Rect::new(
                             rect.x.saturating_add(prefix_width as u16),
                             rows_y + (row_index - self.view_tops[3]) as u16,
-                            rect.width.saturating_sub(prefix_width as u16),
+                            shown_value_width as u16,
                             1,
                         );
                         if item.rect.width > 0 {
                             self.formats.hits.push(item);
                         }
                     }
+                    let value = if current {
+                        value
+                    } else {
+                        format!("{value} [{state}]")
+                    };
+                    let bits = field
+                        .map(|field| field.segments.iter().map(|s| s.width).sum())
+                        .unwrap_or(register.bits);
+                    let access = field
+                        .and_then(|field| field.access)
+                        .unwrap_or(register.access);
                     let text = format!(
-                        "{}{} {} = {}{}{}",
-                        "  ".repeat(*depth),
-                        if field.is_none() && !register.fields.is_empty() {
-                            if self.register_view.fields.contains(&register.id) {
-                                "▾"
-                            } else {
-                                "▸"
-                            }
-                        } else {
-                            "·"
-                        },
-                        name,
-                        value,
-                        if current {
-                            String::new()
-                        } else {
-                            format!(" [{state}]")
-                        },
+                        "{} = {}{}",
+                        column(&name, shown_name_width),
+                        column(&value, shown_value_width),
                         if wide {
                             format!(
-                                "  {} {}",
-                                raw.as_ref().map(|raw| raw.bits).unwrap_or_else(|| field
-                                    .map(|field| field
-                                        .segments
-                                        .iter()
-                                        .map(|segment| segment.width)
-                                        .sum())
-                                    .unwrap_or(register.bits)),
-                                field
-                                    .and_then(|field| field.access)
-                                    .unwrap_or(register.access)
-                                    .label()
+                                " {} {}",
+                                column(&bits.to_string(), 5),
+                                column(access.label(), 6)
                             )
                         } else {
                             String::new()
                         }
                     );
-                    (text, if current { theme::TEXT } else { theme::MUTED })
+                    let previous = self
+                        .register_view
+                        .owner(&self.project, &context, *index)
+                        .and_then(|owner| {
+                            self.register_view
+                                .previous
+                                .get(&(owner, register.id.clone()))
+                        })
+                        .filter(|old| {
+                            old.state == State::Valid
+                                && old.context.session == context.session
+                                && old.context.core == context.core
+                                && old.context.frame == context.frame
+                        })
+                        .and_then(|old| old.value.as_ref())
+                        .and_then(|old| {
+                            field.map_or_else(|| Some(old.clone()), |f| f.extract(old).ok())
+                        });
+                    let changed = current && previous.is_some() && previous != raw;
+                    (
+                        text,
+                        if !current {
+                            theme::MUTED
+                        } else if changed {
+                            theme::AMBER
+                        } else {
+                            theme::TEXT
+                        },
+                    )
                 }
             };
             let style = if row_index == self.selected(3) && self.pane == 3 {
@@ -1365,11 +1432,22 @@ impl App {
                 } else {
                     register.description.as_str()
                 };
+                let (bits, access) = if let Some(Row::Field(_, field, _)) =
+                    self.register_view.rows.get(self.selected(3))
+                {
+                    let field = &register.fields[*field];
+                    (
+                        field.segments.iter().map(|s| s.width).sum(),
+                        field.access.unwrap_or(register.access),
+                    )
+                } else {
+                    (register.bits, register.access)
+                };
                 format!(
                     "{} · {} bits {} · {:?} / {}\n{} {}",
                     catalogue.cpu,
-                    register.bits,
-                    register.access.label(),
+                    bits,
+                    access.label(),
                     register.scope,
                     owner,
                     sample
@@ -2042,7 +2120,7 @@ mod tests {
             assert!(text.contains("CPSR"));
             if width == 100 {
                 assert!(text.contains("AArch32_SVC"));
-                assert!(text.contains("Size / Access"));
+                assert!(text.contains("Size") && text.contains("Access"));
             }
         }
         app.snapshot.state = "RUNNING".into();

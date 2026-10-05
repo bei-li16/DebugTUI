@@ -239,7 +239,41 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         text.push(format!("Access condition: {}", register.access_condition));
         if let Some(Row::Field(_, field, _)) = app.register_view.rows.get(app.selected(3)) {
             let field = &register.fields[*field];
+            text.push(register.description.clone());
             text.push(format!("Field {}: {}", field.name, field.description));
+            let bits: u16 = field.segments.iter().map(|segment| segment.width).sum();
+            text.push(format!(
+                "Field width: {bits} bits · {}",
+                field.access.unwrap_or(register.access).label()
+            ));
+            text.push(format!(
+                "Segments (logical low bits first): {}",
+                field
+                    .segments
+                    .iter()
+                    .map(|segment| format!(
+                        "[{}:{}]",
+                        segment.offset + segment.width - 1,
+                        segment.offset
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            if let Some(value) = app
+                .register_view
+                .sample(&app.project, &context, index)
+                .and_then(|sample| sample.value.as_ref())
+                .and_then(|raw| field.extract(raw).ok())
+            {
+                text.push(format!(
+                    "Field raw (current / last-known): {} · {}",
+                    value.hex,
+                    field.enum_name(&value).unwrap_or("no matching enum")
+                ));
+            }
+            for entry in &field.enums {
+                text.push(format!("Enum {} = {}", entry.value, entry.name));
+            }
         } else {
             text.push(register.description.clone());
         }

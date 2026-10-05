@@ -2,11 +2,15 @@
 
 本文件记录开发分支上的实际实现，配合 [开发 TODO](registers-development-todo.md) 使用。当前仍是未发布的开发版本；下述软件验证不能作为芯片或 OpenOCD 实板能力证明。
 
+2026-10-05 基础框架自检批次：补齐目录实际读取的 4 MiB 边界，含增长输入、UTF-8、组／寄存器数量、间接循环和全部 reader 缺参的验证。宽窗口固定四列，长客户名称和 128 位值不挤掉 Size／Access；窄窗口及字段说明使用自身位宽／访问覆盖。增加同 owner／会话／核／帧的前次有效值比较，字段独立高亮；帮助补齐全部枚举、bit segments、父／字段说明及完整原始值。实际 worker／MI 新增 128 位父值和多层别名的一次读取证明，并核对逐项错误、时间及兼容 Snapshot 输出。
+
+完整功能入口 unit suite 为 **328 单元＋113 集成通过，2 ignored**，严格 Clippy 通过；F24 的 53 个模式均有证据，其余 22 个功能套件未选择。报告及逐项要求见 [框架自检](register-framework-audit.md)，对应 [环境 case](../tests/cases/register-framework.md) 均未执行。自检后勾选 REG-101/103/104/105、REG-201/202/203/204/207/209，合计 **已完成／未完成 13/58**。REG-208 实际终端视觉、配置／生命周期／完整共享 owner／交付矩阵、EL1/Guest VFP、系统及银行 writer、完整目标类别与最终安装 Release 仍待完成。本轮在 `codex/register-debugging` 提交并推送；已安装版本仍 0.9.3，未上板或发布。
+
 2026-10-05 VFP 主机写入批次：S/D/Q 的独立 writer 元数据、显式 `vfp_write_command`、服务锁内 preview/apply/cancel 和物理 owner 绑定已接入。Preview 不写数据；Apply 重新验证实际帧／线程、权限、MVFR、协议和路由，单次发送原始位，以发送时的新鲜 pair 保留邻接位；Q 明确非原子。回执完整宽度、实际特性、expected 原始位及结果必须一致，伪造或结果未知使共享服务 FAULT，不回放或猜测恢复。写后使旧样本／S/D/Q 别名、其他草稿及关联视图失效；上下文变化时 verified 降为 accepted，已有 mismatch 保留。R52/R52+ 目录均声明 80 个原始视图，但实际 R52+ 身份仍不授权；M4 与 FP 控制条目不开放该 writer。同步目录生成器，严格拒绝 S alias 指向普通 GDB reader／错误 D／偏移或非普通写语义。
 
 完整 `cargo test --locked` 为 **319 单元＋112 集成通过，2 ignored**，严格 Clippy 通过；本批 VFP 写入有 9 项 worker/Tcl/TCP 集成，含 Scope All 不广播、权限／实际帧变化、新鲜邻接位、128 位 BE 输入、取消／重复／别名令牌、伪造回执与不确定结果隔离。键鼠及 45×12／80×24 渲染测试核对 32/64/128 位对象和独立配置门禁。实际 DebugTUI 主机延后驱动的 S/D/Q 正常流程各 5 阶段通过，unknown/mismatch 负向流程确认不恢复／重试，并保留 unknown 后共享服务的退出错误。默认 4 skipped；八类 [写入硬件 case](../tests/cases/register-vfp-writes.md) 已更新，均未上板。完整日志为 `artifacts/vfp-host-write-cargo-test.log`、`artifacts/vfp-host-write-clippy.log`，主机报告位于 `artifacts/register-vfp-host-write-*/`。F26 证据映射已加入本批测试；没有据局部测试把完整 feature 勾选。
 
-当前按 71 项 TODO 的完整验收口径，**已完成/未完成仍为 3/68**。合法 EL1/Guest/User VFP、FPSCR/FPEXC 状态 writer、系统／银行写入、64 位 MMIO、完整 GIC/Debug/STM 与最终工具集／版本化安装交付仍待完成。用户要求已改为每轮在 `codex/register-debugging` 提交并推送，前序提交已推送到 `76b0439`；完成全部任务后再发布 Release。已安装工具和项目版本仍是 0.9.3。
+VFP 主机写入批次结束时，按 71 项 TODO 的完整验收口径，**已完成/未完成为 3/68**；最新计数见上述框架自检批次。合法 EL1/Guest/User VFP、FPSCR/FPEXC 状态 writer、系统／银行写入、64 位 MMIO、完整 GIC/Debug/STM 与最终工具集／版本化安装交付仍待完成。用户要求已改为每轮在 `codex/register-debugging` 提交并推送，前序提交已推送到 `40f260b`；完成全部任务后再发布 Release。已安装工具和项目版本仍是 0.9.3。
 
 2026-10-05 VFP 写入后端批次：独立 `aarch64 vfp_write` 协议支持实际 R52 Hyp 的 S/D/Q 原始位写入，重新确认物理权限和能力；新鲜 pair 保留 S/D 相邻位，Q 为两个非原子 D 写入。生产事务物理恢复／回读 R0/R1、完整 pair、DSPSR/HCPTR/FPEXC/MVFR，未知结果停止，不重试或猜测 rollback；有待写 pair／状态 cache 时注入前拒绝，发送后使后端 D alias 有效标记失效。生产 C 测试覆盖 80 个视图、144 个故障点；独立 GNU Arm 编码验证、5 项 TCP 延后驱动测试通过；Windows/Linux 新目录构建后重新编译最终修复，实际命令检查与 Windows 9 项包校验通过。既有 VFP Rust 回归 11 项集成、5 项单元通过；本批未改 Rust writer 接口。证据见 `artifacts/openocd-vfp-write-linux/`、`.dev/openocd-windows-vfp-write/windows-tests/` 与 `artifacts/vfp-write-driver-native/`。
 

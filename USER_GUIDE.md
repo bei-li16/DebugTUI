@@ -704,6 +704,8 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 System Regs 的 Total／Shown／Valid 分别计目录定义、展开筛选后的寄存器行及当前暂停上下文的有效值。Status 按钮、`t` 或 `:register-status` 打开分类计数和目录来源；窄窗口可用方向键／滚轮，Esc 或 Close 关闭。失败可保留旧值，但显示当前原因，不计成功。
 
+宽窗口固定显示 Name、Value、Size、Access 四列；长名称或过长值以省略号提示。窄窗口保留名称和值，选中说明显示位宽及访问属性。选中字段时使用字段自身的位宽与访问覆盖；按 `t` 可滚动查看父描述、字段说明、全部枚举、bit segments、访问条件、读取原因和完整原始值，包括被主行省略的 128 位高低位。
+
 Cancel read、`:register-cancel` 或非搜索模式的 Esc 取消当前寄存器读取／Probe。MPU 总览关闭或切 bank 也取消未完成读取。当前事务完整恢复后停止后续项、丢弃新结果；会话和其他核心继续可用，需手工重读。恢复结果未知仍进入 FAULT。详见 [计数、取消及限制](docs/register-read-status-and-cancel.md)。尚未进入 v0.9.3 release。
 
 ### 寄存器显示格式与视图偏好（开发分支）
@@ -713,6 +715,8 @@ Cancel read、`:register-cancel` 或非搜索模式的 Esc 取消当前寄存器
 方向键或 Tab／Shift+Tab 选择格式，Enter 应用，Esc 取消；菜单支持鼠标及窄窗口滚动。格式只解释现有原始位，不读取目标、不使能 FPU，也不修改样本。可选格式不表示 GDB／OpenOCD 已支持读取相应浮点或向量寄存器。
 
 展开的组和字段、筛选、目标／全部定义选择、已提交的搜索和格式保存到项目 `ui.register_views`。偏好按芯片、实际核心、CPU、架构和目录来源／版本隔离；未知芯片另绑定连接地址。搜索输入按 Enter 才保存，Esc 取消；旧进制偏好仅在首次建立视图时迁移。没有项目路径时只保留本次会话，保存失败显示错误。
+
+同一 owner、会话、核心及栈帧内，当前有效值与前次有效样本不同的行显示琥珀色；字段只比较自身位值。首次读取、未变化、切核／重连／换帧后的首次比较和过期值不作为当前变化高亮。格式切换只改变显示，不改变原始位或变化判断。
 
 Headless 使用 `register_preferences`，提交 `scope` 和单个 `preferences`：`open`／`fields` 为 ID 列表，`filter` 为 0–3，另有 `all_definitions`、`query` 和 `formats`。格式对象使用 `kind`：`unsigned` 加 `radix`，`signed`，`float` 加 `bits`，或 `vector` 加 `lane_bits`／`interpretation`；格式键为 JSON 编码的 `[register_id, field_name_or_null]`。`scope` 为 JSON 编码的 `[chip, core, cpu, architecture, catalogue_source, catalogue_version]`。普通 `ui_preferences` 保留已保存的寄存器视图并拒绝整张非空 `register_views` 替换；Windows 客户端通过独占文件句柄协调保存，重新合并最新配置后原子替换文件。
 

@@ -299,6 +299,175 @@ fn strict_catalogue_validation_and_bom() {
     c.registers.pop();
     c.registers[0].group = "missing".into();
     assert!(c.validate().is_err());
+    c.registers[0].group = "core".into();
+    c.groups.push(c.groups[0].clone());
+    assert!(c.validate().is_err());
+}
+
+#[test]
+fn catalogue_file_and_stream_limits_cover_growth_utf8_and_complete_reader_parameters() {
+    use std::io::Cursor;
+    let valid = toml::to_string(&catalogue()).unwrap();
+    let mut boundary = valid.clone();
+    boundary.push_str(&" ".repeat(MAX_CATALOGUE_BYTES as usize - boundary.len()));
+    assert!(Catalogue::read(Cursor::new(boundary.as_bytes())).is_ok());
+    boundary.push(' ');
+    assert!(Catalogue::parse(&boundary).unwrap_err().contains("4 MiB"));
+    struct GrowingSource(usize);
+    impl std::io::Read for GrowingSource {
+        fn read(&mut self, bytes: &mut [u8]) -> std::io::Result<usize> {
+            bytes.fill(b' ');
+            self.0 += bytes.len();
+            Ok(bytes.len())
+        }
+    }
+    let mut source = GrowingSource(0);
+    assert!(Catalogue::read(&mut source).unwrap_err().contains("4 MiB"));
+    assert_eq!(source.0, MAX_CATALOGUE_BYTES as usize + 1);
+    assert!(
+        Catalogue::read(Cursor::new([0xff, 0xfe]))
+            .unwrap_err()
+            .contains("UTF-8")
+    );
+    for reader in [
+        "{kind='gdb'}",
+        "{kind='backend'}",
+        "{kind='alias',source='cpsr'}",
+        "{kind='cp15',cp=15,op1=0,crn=0,crm=0}",
+        "{kind='cp15_64',cp=15,op1=0}",
+        "{kind='mmio',component='stm'}",
+        "{kind='banked'}",
+        "{kind='vfp'}",
+    ] {
+        let raw = valid.replace(
+            "[registers.reader]\nkind = \"gdb\"\nname = \"cpsr\"",
+            &format!(
+                "[registers.reader]\n{}",
+                reader
+                    .trim_start_matches('{')
+                    .trim_end_matches('}')
+                    .replace(',', "\n")
+            ),
+        );
+        assert_ne!(
+            raw, valid,
+            "reader fixture did not replace the valid reader"
+        );
+        assert!(Catalogue::parse(&raw).is_err(), "{reader}: {raw}");
+    }
+    let directory = std::env::temp_dir().join(format!(
+        "debugtui-catalogue-boundary-{}",
+        std::process::id()
+    ));
+    fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("用户 目录.toml");
+    let file = fs::File::create(&path).unwrap();
+    file.set_len(MAX_CATALOGUE_BYTES + 1).unwrap();
+    assert!(Catalogue::load(&path).unwrap_err().contains("4 MiB"));
+    fs::write(&path, &valid).unwrap();
+    assert_eq!(Catalogue::load(&path).unwrap().cpu, "cortex-r52");
+    fs::remove_file(&path).unwrap();
+    fs::remove_dir(&directory).unwrap();
+}
+
+#[test]
+fn catalogue_entry_limits_and_indirect_cycles_reject_invalid_extensions() {
+    let mut c = catalogue();
+    for i in 1..256 {
+        let mut group = c.groups[0].clone();
+        group.id = format!("group{i}");
+        c.groups.push(group);
+    }
+    assert!(c.validate().is_ok());
+    let mut extra = c.groups[0].clone();
+    extra.id = "extra".into();
+    c.groups.push(extra);
+    assert!(c.validate().unwrap_err().contains("too many entries"));
+    c.groups.pop();
+    c.groups[1].parent = Some("group2".into());
+    c.groups[2].parent = Some("group1".into());
+    assert!(c.validate().unwrap_err().contains("cycle"));
+    c.groups[2].parent = Some("missing".into());
+    assert!(c.validate().unwrap_err().contains("Unknown parent"));
+    c = catalogue();
+    for i in 1..4096 {
+        let mut register = c.registers[0].clone();
+        register.id = format!("register{i}");
+        c.registers.push(register);
+    }
+    assert!(c.validate().is_ok());
+    let mut extra = c.registers[0].clone();
+    extra.id = "extra".into();
+    c.registers.push(extra);
+    assert!(c.validate().unwrap_err().contains("too many entries"));
+    c = catalogue();
+    for bits in [0, 1, 7, 33, 65, 129] {
+        c.registers[0].bits = bits;
+        assert!(c.validate().is_err(), "invalid register width {bits}");
+    }
+    c.registers[0].bits = 32;
+    let mut alias = c.registers[0].clone();
+    alias.id = "alias".into();
+    alias.reader = Reader::Alias {
+        source: "cpsr".into(),
+        offset: 0,
+    };
+    c.registers.push(alias);
+    c.registers[0].reader = Reader::Alias {
+        source: "alias".into(),
+        offset: 0,
+    };
+    assert!(c.validate().unwrap_err().contains("cycle"));
+}
+
+#[test]
+fn asymmetric_bytes_and_cross_half_fields_preserve_bit_order_at_every_width() {
+    let little_bytes = [
+        0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc,
+        0xfe,
+    ];
+    for (bits, hex) in [
+        (8, "0x01"),
+        (16, "0x2301"),
+        (32, "0x67452301"),
+        (64, "0xefcdab8967452301"),
+        (128, "0xfedcba9876543210efcdab8967452301"),
+    ] {
+        let little = little_bytes[..bits as usize / 8].to_vec();
+        let big = little.iter().rev().copied().collect::<Vec<_>>();
+        let raw = RawValue::parse(hex, bits).unwrap();
+        assert_eq!(raw.bytes(true).unwrap(), little);
+        assert_eq!(raw.bytes(false).unwrap(), big);
+        assert_eq!(RawValue::from_bytes(&little, bits, true).unwrap(), raw);
+        assert_eq!(RawValue::from_bytes(&big, bits, false).unwrap(), raw);
+    }
+    let raw = RawValue::parse("0xfedcba9876543210efcdab8967452301", 128).unwrap();
+    assert_eq!(raw.slice(64, 64).unwrap().hex, "0xfedcba9876543210");
+    assert_eq!(raw.slice(60, 16).unwrap().hex, "0x210e");
+    let field = Field {
+        name: "ends".into(),
+        description: String::new(),
+        access: None,
+        segments: vec![
+            Segment {
+                offset: 124,
+                width: 4,
+            },
+            Segment {
+                offset: 0,
+                width: 4,
+            },
+        ],
+        enums: vec![EnumValue {
+            value: "31".into(),
+            name: "FirstAndLast".into(),
+        }],
+    };
+    field.validate(128).unwrap();
+    let derived = field.extract(&raw).unwrap();
+    assert_eq!(derived.hex, "0x1f");
+    assert_eq!(field.enum_name(&derived), Some("FirstAndLast"));
+    assert!(raw.slice(65, 64).is_err());
 }
 
 #[test]
@@ -463,6 +632,31 @@ fn overlapping_and_out_of_bounds_fields_are_rejected() {
         Segment {
             offset: 3,
             width: 2,
+        },
+    ];
+    assert!(field.validate(32).is_err());
+    field.segments = vec![Segment {
+        offset: u16::MAX,
+        width: 128,
+    }];
+    assert!(field.validate(128).is_err());
+    field.segments = vec![Segment {
+        offset: 0,
+        width: 5,
+    }];
+    field.enums = vec![EnumValue {
+        value: "32".into(),
+        name: "outside".into(),
+    }];
+    assert!(field.validate(32).is_err());
+    field.enums = vec![
+        EnumValue {
+            value: "19".into(),
+            name: "SVC".into(),
+        },
+        EnumValue {
+            value: "0x13".into(),
+            name: "duplicate".into(),
         },
     ];
     assert!(field.validate(32).is_err());
