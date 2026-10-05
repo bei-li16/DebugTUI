@@ -14,7 +14,7 @@
 
 ## 自动化软件证据
 
-`scripts/test-register-distribution.cjs --binary <EXE>` 在含中文／空格的独立源码副本运行真正的生产打包脚本，使用专用 npm cache、private prefix 与 config roots。npm 开启真实 postinstall 并离线运行；每个进程 stdout/stderr、资产 SHA256 和 JSON 报告都保存在独立 artifacts 目录。不改系统实际安装、客户文件或原仓库 bin。
+`scripts/test-register-distribution.cjs --binary <EXE>` 在含中文／空格的独立源码副本运行真正的生产打包脚本，使用专用 npm cache、private prefix 与 config roots。npm 开启真实 postinstall 并离线运行；每个进程 stdout/stderr、资产 SHA256 和 JSON 报告都保存在独立 artifacts 目录。 空间不足时可通过 `DEBUGTUI_DISTRIBUTION_ARTIFACT_ROOT` 指定其他磁盘的产物目录；默认位置和全部分发断言保持不变。不改系统实际安装、客户文件或原仓库 bin。
 
 十四项 Case 覆盖：生产 npm／ZIP／EXE／checksums；缺失 profile 的生产门禁；直接 EXE 全部内置模型及空扩展位置；ZIP 的全部模板／内置逐字段一致与非连续核心；重复初始化的客户文件；旧包基线；npm 升级与钩子；CMD／PowerShell 入口和每核 builtin/user 来源；重复安装；卸载；重新安装；EXE 与 ZIP 两种替换升级；损坏文件／同名目录 override 的错误与保留；无效 devices 的 hook 失败。
 

@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn deferred_bank_driver_checks_independent_baselines_peer_and_user_refusals() {
-    for user in [false, true] {
-        let mut f = configured(if user { "bank_unavailable" } else { "" });
+    for mode in [0x1a, 0x10, 0x13] {
+        let mut f = configured("");
         f.project.cores = (0..2)
             .map(|i| Core {
                 name: format!("core{i}"),
@@ -31,12 +31,58 @@ fn deferred_bank_driver_checks_independent_baselines_peer_and_user_refusals() {
                 values[name.as_str().unwrap()] = json!("0x11223344");
             }
         }
-        if user {
-            spec["expected_mode"] = json!("0x10");
-            values["cpsr"] = json!("0x10");
-            for bank in spec["banks"].as_array_mut().unwrap() {
-                bank["unavailable"] = json!(true);
+        spec["expected_mode"] = json!(format!("0x{mode:02x}"));
+        spec["expected_debug_el"] = json!(if mode == 0x10 {
+            0
+        } else if mode == 0x1a {
+            2
+        } else {
+            1
+        });
+        values["cpsr"] = spec["expected_mode"].clone();
+        *f.state.lock().unwrap() =
+            json!({"targets":{"cpu0":{"bank_mode":mode,"bank_dspsr":format!("0x{mode:08x}")}}});
+        for bank in spec["banks"].as_array_mut().unwrap() {
+            let hyp = bank["id"].as_str().unwrap().ends_with("_hyp");
+            bank["unavailable"] = json!(mode == 0x10 || (mode != 0x1a && hyp));
+            bank["unknown"] = json!(mode != 0x1a && mode != 0x10 && !hyp);
+        }
+        if mode == 0x10 {
+            use debugtui::registers::{Catalogue, Reader};
+            let mut catalogue = Catalogue::builtin("cortex-r52").unwrap();
+            catalogue.registers.retain(|reg| {
+                matches!(reg.reader, Reader::Banked { .. })
+                    || spec["stable_registers"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|id| id == &reg.id)
+            });
+            let template = catalogue
+                .registers
+                .iter()
+                .find(|reg| reg.id == "sp_irq")
+                .unwrap()
+                .clone();
+            for (index, name) in [
+                "r8_usr", "r9_usr", "r10_usr", "r11_usr", "r12_usr", "sp_usr", "lr_usr",
+            ]
+            .iter()
+            .enumerate()
+            {
+                let mut reg = template.clone();
+                reg.id = (*name).into();
+                reg.name = (*name).into();
+                reg.fields.clear();
+                reg.reader = Reader::Banked {
+                    name: (*name).into(),
+                };
+                catalogue.registers.push(reg);
+                spec["banks"].as_array_mut().unwrap().push(json!({"id":name,"reference":format!("debugtui_banked_reference[{}]",23+index)}));
             }
+            let file = f.transcript.with_extension("driver-catalogue.toml");
+            fs::write(&file, toml::to_string(&catalogue).unwrap()).unwrap();
+            f.project.registers.catalogue = file;
         }
         f.project.gdb.env.insert(
             "DEBUGTUI_TEST_REGISTERS".into(),
@@ -123,6 +169,123 @@ fn configured(fault: &'static str) -> Fixture {
 }
 
 #[test]
+fn current_debug_el_governs_all_thirty_banks_independently_of_stopped_user_dspsr() {
+    use debugtui::registers::{Catalogue, Reader, banked};
+    for mode in [0x10, 0x11, 0x12, 0x13, 0x17, 0x1a, 0x1b, 0x1f] {
+        let mut f = configured("");
+        let mut catalogue = Catalogue::builtin("cortex-r52").unwrap();
+        catalogue
+            .registers
+            .retain(|r| matches!(r.reader, Reader::Banked { .. }));
+        let template = catalogue.registers[0].clone();
+        for name in banked::NAMES {
+            if catalogue.registers.iter().any(|r| r.id == name) {
+                continue;
+            }
+            let mut register = template.clone();
+            register.id = name.into();
+            register.name = name.into();
+            register.fields.clear();
+            register.reader = Reader::Banked { name: name.into() };
+            catalogue.registers.push(register);
+        }
+        let file = f.transcript.with_extension("catalogue.toml");
+        fs::write(&file, toml::to_string(&catalogue).unwrap()).unwrap();
+        f.project.registers.catalogue = file;
+        *f.state.lock().unwrap() = json!({"targets":{"cpu0":{"bank_mode":mode}}});
+        let engine = session::spawn(f.project.clone());
+        ok(&engine, 1, "connect", json!({}));
+        let listed = ok(&engine, 2, "registers_list", json!({}));
+        let response = ok(
+            &engine,
+            3,
+            "registers_read",
+            json!({"context":listed["context"],"ids":banked::NAMES,"manual":true}),
+        );
+        for sample in response["samples"].as_array().unwrap() {
+            let name = sample["id"].as_str().unwrap();
+            let user = name.ends_with("_usr");
+            let hyp = name.ends_with("_hyp");
+            if mode == 0x1a || (mode == 0x10 && user) {
+                assert_eq!(sample["state"], "valid", "mode={mode:x} {sample}");
+                let proof = &sample["provenance"]["access"]["banked"];
+                assert_eq!(proof["dspsr"]["hex"], "0xa2000410");
+                assert_eq!(
+                    proof["dscr"]["hex"],
+                    if mode == 0x10 {
+                        "0x01000000"
+                    } else {
+                        "0x01000200"
+                    }
+                );
+                assert_eq!(
+                    proof["read_method"],
+                    if mode == 0x10 || (user && name != "sp_usr") || name == "sp_hyp" {
+                        "mov32"
+                    } else if name == "spsr_hyp" {
+                        "mrs32"
+                    } else {
+                        "banked_mrs32"
+                    }
+                );
+                assert_eq!(sample["owner"], "core:default");
+                assert_eq!(sample["provenance"]["access"]["context"], listed["context"]);
+            } else {
+                assert_eq!(
+                    sample["reason"],
+                    if mode == 0x10 || hyp {
+                        "access_restricted"
+                    } else {
+                        "unknown"
+                    },
+                    "{sample}"
+                );
+                assert!(sample["value"].is_null());
+                assert!(sample["provenance"]["access"]["banked"].is_null());
+            }
+        }
+        assert_eq!(ok(&engine, 4, "status", json!({}))["state"], "STOPPED");
+        let state = f.state.lock().unwrap().clone();
+        assert_eq!(state["current"], "outside");
+        assert!(selector_writes(&state).is_empty());
+        assert!(
+            !fs::read_to_string(&f.transcript)
+                .unwrap()
+                .contains("get_reg")
+        );
+        ok(&engine, 5, "quit", json!({}));
+    }
+}
+
+#[test]
+fn malformed_bank_refresh_retains_the_previous_physical_proof_with_its_value() {
+    let f = configured("");
+    let engine = session::spawn(f.project.clone());
+    ok(&engine, 1, "connect", json!({}));
+    let before = ok(&engine, 2, "registers_read", json!({"ids":["sp_irq"]}));
+    assert_eq!(before["samples"][0]["state"], "valid");
+    f.state.lock().unwrap()["fault"] = json!("bank_forged_identity");
+    let failed = ok(&engine, 3, "registers_read", json!({"ids":["sp_irq"]}));
+    assert_eq!(failed["samples"][0]["reason"], "reader_unsupported");
+    assert!(failed["samples"][0]["value"].is_null());
+    assert!(failed["samples"][0]["provenance"]["access"]["banked"].is_null());
+    let status = ok(&engine, 4, "status", json!({}));
+    let retained = status["register_samples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "sp_irq")
+        .unwrap();
+    assert_eq!(retained["value"], before["samples"][0]["value"]);
+    assert_eq!(
+        retained["last_value_provenance"]["provenance"],
+        before["samples"][0]["provenance"]
+    );
+    assert_eq!(status["state"], "STOPPED");
+    ok(&engine, 5, "quit", json!({}));
+}
+
+#[test]
 fn all_builtin_banks_use_exact_words_preserve_target_and_avoid_legacy_get_reg() {
     let f = configured("");
     let engine = session::spawn(f.project.clone());
@@ -164,6 +327,17 @@ fn all_builtin_banks_use_exact_words_preserve_target_and_avoid_legacy_get_reg() 
             format!("banked read {}", sample["id"].as_str().unwrap())
         );
         assert_eq!(access["phase"], "responded");
+        assert_eq!(access["banked"]["midr"]["hex"], "0x411fd134");
+        assert_eq!(access["banked"]["dspsr"]["hex"], "0xa2000410");
+        assert_eq!(access["banked"]["dscr"]["hex"], "0x01000200");
+        assert_eq!(
+            access["banked"]["read_method"],
+            match sample["id"].as_str().unwrap() {
+                "sp_hyp" => "mov32",
+                "spsr_hyp" => "mrs32",
+                _ => "banked_mrs32",
+            }
+        );
         assert!(
             access["command"]
                 .as_str()
@@ -222,6 +396,10 @@ fn safe_bank_refusals_keep_core_register_reads_and_debug_control_available() {
         ("bank_unavailable", "access_restricted"),
         ("bank_identity", "reader_unsupported"),
         ("bank_short", "reader_unsupported"),
+        ("bank_forged_identity", "reader_unsupported"),
+        ("bank_forged_mode", "reader_unsupported"),
+        ("bank_forged_method", "reader_unsupported"),
+        ("bank_legacy_value", "reader_unsupported"),
     ] {
         let f = configured(fault);
         let engine = session::spawn(f.project.clone());

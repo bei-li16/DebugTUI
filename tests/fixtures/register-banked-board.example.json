@@ -3,6 +3,7 @@
   "frame_function": "debugtui_banked_board_fixture",
   "expected_midr": "0x411fd134",
   "expected_mode": "0x1a",
+  "expected_debug_el": 2,
   "evidence_source": "Replace with independent per-core firmware samples; verify the ready loop, actual mode and register contents before physical execution",
   "control_scope": "all",
   "peer_core": "core1",

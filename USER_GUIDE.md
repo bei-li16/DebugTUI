@@ -764,9 +764,9 @@ Headless 先调用 `registers_list` 获取 `context`，再用 `registers_probe` 
 
 内置 R52／R52+ 目录的 23 个模式银行条目使用独立的 `banked` reader。工程需显式配置 `registers.banked_command = "aarch64 banked"`、TCL endpoint 和各核实际 target，并选用 [固定源码适配后端](tools/openocd-adapter/README.md)。默认空配置或协议不符返回 Reader unsupported。普通 **Read**／`registers_read` 即可读取；**Read bank** 是 MPU／PMU 选择器动作。
 
-读取只接受当前暂停核心的物理 frame 0。后端从调试态 DSPSR 读取完整停止 CPSR，以实际 MIDR 确认身份；普通 MRS CPSR 屏蔽执行状态位，不能用于这个检查。当前银行使用普通 MOV／MRS，其他银行使用架构允许的 banked MRS。它不切换模式；在 R52 的非 Hyp 模式下，Hyp 的 SP／ELR／SPSR 返回 Access restricted；User 模式在读取 DSPSR 后拒绝专用银行访问，不尝试 MIDR／banked MRS，当前用户寄存器仍在 Core 中读取。System 模式可读取其他银行。当前仅适配 Arm D13 Cortex-R52，R52+ 专用身份仍待确认。
+读取只接受当前暂停核心的物理 frame 0。后端从调试态 DSPSR 读取完整停止 CPSR，以实际 MIDR 确认身份；普通 MRS CPSR 屏蔽执行状态位，不能用于这个检查。当前银行使用普通 MOV／MRS，其他银行使用架构允许的 banked MRS。它不切换模式；在 R52的专用银行reader要求独立v2协议和每次外部MIDR/EDSCR证明。当前Debug EL2/Hyp可读三十项；当前EL0/User可读七个显式`*_usr`银行，其他银行受限。内置目录仍为原二十三项，七项User扩展可放入自定义目录。EL1的三个Hyp银行受限，其他项权限未知；完整EL1模式适配仍待完成。停止前CPSR/DSPSR不能代替当前Debug模式证明，调试态直接MRS CPSR也不用于该证明。当前仅接受Arm/D13/架构F的Cortex-R52，R52+未知身份保持unsupported。
 
-同一服务租约涵盖前后线程／帧检查和单次 target 事务；Scope All 仍只读选中核。后端保存、恢复并物理回读 R0，再核对 DSPSR 的完整停止状态一致，成功结果固定 8 位十六进制。线程／帧变化丢弃样本；恢复不确定时进入 FAULT、停用共享通道，显式重连前不重试。生产事务和实际二进制软件用例已验证；物理探针和板卡尚未验证，延后驱动见 [测试说明](tests/README.md)。银行 reader 不开放 writer 或使能 FPU。
+同一服务租约涵盖前后实际线程/frame0和单次target事务；Scope All只读选中核。后端保存、恢复并物理回读R0，复核前后外部身份/执行状态、全位DSPSR/DLR。成功值固定32位，原始证明和实际MOV32/MRS32/banked MRS32方法在详情/headless来源中可查，失败旧值保留原证明。旧v1协议/裸值/截短/伪造不回退get_reg。恢复不确定进入FAULT并隔离共享通道，重连前不重试。未执行物理探针/板卡测试；[上板case](tests/cases/register-banked-proof.md)和[自检](docs/register-banked-proof.md)说明现有边界。银行reader不开放writer或使能FPU。
 
 ### 读取 R52 浮点与向量视图（开发分支）
 

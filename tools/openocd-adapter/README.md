@@ -29,9 +29,15 @@ core1 = "board.cpu1"
 
 核心和 target 名称须与实际工程一致。MRRC 与真正 ISB 每次在同一个 target 事务中检查协议；没有命令或协议不符时，先返回 reader unsupported。旧工程不配置新字段时，64 位读仍使用具名 GDB 寄存器，选择器同步仍要求实际 CP15BEN 已开启。配置不能代替硬件身份、Timer 实现或权限证据，也不开启系统寄存器 writer。
 
-`aarch64 debugtui_banked_protocol` 返回独立协议 `debugtui-armv8-banked-1 mrs physical-readback no-mode-change stop-on-fault`。`aarch64 banked NAME` 按实际 CPSR／MIDR 读取 R52 的模式银行，输出固定 8 位十六进制。规则依据 Cortex-R52 TRM 100026_0104_01_en 和 Armv8-R AArch32 架构补充 DDI 0568A.c 的 BankedRegisterAccessValid／SPSRaccessValid；用户提供目录内的完整补充手册共有 356 页，26 页 DEN0130 概述不能代替这些规则。
+`aarch64 debugtui_banked_protocol` 返回独立协议 `debugtui-armv8-banked-2 external-identity current-el dspsr dlr mrs physical-readback no-mode-change stop-on-fault`。旧 v1 不满足新鲜当前 Debug 状态证明，DebugTUI 在数据指令前拒绝旧协议，不回退 `get_reg`。`aarch64 banked NAME` 仍接受三十个小写名称，内置目录仍为二十三项；其余 User 银行可以通过自定义目录显式接入。
 
-状态检查读取调试态可在各 EL 访问的 DSPSR（CP15 op1=3,c4,c5,op2=0），它保存完整停止 CPSR。普通 MRS CPSR 会屏蔽执行位，且 User 模式的模式／中断字段不能可靠使用，因此不用它来判断模式或核对完整状态。当前银行使用 MOV／普通 MRS，其他允许的银行使用 banked MRS。R52 没有 Monitor 模式，SP_hyp／SPSR_hyp 仅在当前 Hyp 通过普通访问读取；ELR_hyp 在 Hyp 可直接 banked MRS。非 Hyp 拒绝三项 Hyp 银行，User 模式读 DSPSR 后不注入 MIDR 或银行指令。只接受 Arm implementer 0x41／part D13，R52+ 未知身份返回 unsupported。每次保存／恢复／物理回读 R0，并核对前后全部 DSPSR 位，包括 T／IT；故障停止、不推测 rollback 或改写模式／FPU 控制。内置目录不再回退旧 get_reg／mode-switch DPM。自定义旧 backend reader 不具有该保证。
+身份取自外部 Debug MIDR（0xD00），当前 EL 取自 EDSCR（0x88），每次外部访问都验证 EDPRSR.HALT。仅接受 Arm/D13/架构F/AArch32。EL2 唯一为 Hyp，允许全部三十项；当前 SP/SPSR 使用 MOV32/MRS32，ELR_hyp 及其他银行用合法 banked MRS。EL0 唯一为 User，只允许七项当前 User 银行的 MOV32，其他银行明确受限。EL1 的具体 FIQ/IRQ/SVC/ABT/UND/System 模式无法由 EDSCR 证明；三个 Hyp 银行受限，其余返回 `debugtui-banked:access-unknown`，在 CPU 指令前停止。完整 EL1 支持保持待完成。
+
+停止前 DSPSR 与当前模式分开：DSPSR/DLR 前后全位复核，不用保存的模式选择当前银行。DDI0487 M.b H2.4.2.2/H2.4.8.2 将调试态直接 CPSR/PSTATE 读取定义为受约束不可预测，因此不注入 MRS CPSR；H2.4.2.2.2 明确允许普通 MRS SPSR。银行访问规则使用 DDI0568A.c H1 BankedRegisterAccessValid/SPSRaccessValid。每次传输保存、恢复并物理回读 R0，前后核对外部身份、当前执行状态及 DSPSR/DLR；无模式/控制写入、重试或推测 rollback。恢复/身份变化/传输不确定立即隔离 target，不发布部分结果。
+
+成功响应固定为 `midr RAW32 dscr RAW32 dspsr RAW32 dlr RAW32 value RAW32 method mov32|mrs32|banked_mrs32`。主机严格核对字段、实际名称、身份/EL、合法方法和位宽；证据绑定当前 owner/context/route/请求时间，详情及 headless JSON 可查，失败旧值保留原有证据。旧 JSON 缺少 banked 字段保持缺失，不制造证明。不同银行和不同核分别采样。
+
+生产 C 模型覆盖37项成功、41项受限、162项 EL1 Unknown 和1110个 I/O失败点，另核对三十条 GNU 指令字与身份/状态/DSPSR/DLR/scratch 变化。Windows/Linux 在新目录重建，七协议及本机 DLL/离线配置校验通过；候选散列见 source.lock。详见 [银行当前 Debug 状态自检](../../docs/register-banked-proof.md)。未执行上板，未替换全局安装，未发布 Release。
 
 ## Timer 当前 Debug state 读取
 
@@ -83,7 +89,7 @@ sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 python3 tools/openocd-adapter/test.py --source PATH_TO_PINNED_SOURCE --out artifacts/openocd-adapter-tests --openocd PATH_TO_BACKEND
 ```
 
-事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，另验证银行事务的 20 个故障点、R0 恢复／CPSR 变化及安全权限拒绝，以及 VFP 的 63 个故障点、R0/R1 恢复、DSPSR／FPEXC／HCPTR 变化、D16/D32、未使能和原始未知 MVFR；严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对七项协议、帮助以及参数和全部 23 个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用 GNU Arm 汇编器独立确认 MRRC、Thumb ISB 及银行／当前寄存器编码；`tests/vfp-encoding.s` 核对 VMRS／VMOV／HCPTR。
+事务测试编译生产使用的同一份头文件，验证完整高字、一次 MRRC、MRC/MCR 的物理恢复、19 个传输失败点和三类恢复值不匹配，另验证银行事务的1110个故障点、R0恢复／完整DSPSR与DLR变化、37项EL0/EL2成功、41项受限及162项EL1 Unknown，以及 VFP 的 63 个故障点、R0/R1 恢复、DSPSR／FPEXC／HCPTR 变化、D16/D32、未使能和原始未知 MVFR；严格 C 警告检查通过。命令检查仅初始化进程内 dummy 虚拟适配器，保持 target 未 examine，核对七项协议、帮助以及参数和全部 23 个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用 GNU Arm 汇编器独立确认 MRRC、Thumb ISB 及银行／当前寄存器编码；`tests/vfp-encoding.s` 核对 VMRS／VMOV／HCPTR。
 
 本 VFP 写入后端批次 Linux 候选后端 SHA-256 为 `1dd04e403485c254431ea6f47a3690f2453c682f23b0901ac9d3e321d180ccda`，版本 `0.12.0+dev-gd3ebb8d-dirty (2026-10-05-01:04)`。dirty 来自尚未成为上游提交的适配补丁，构建时间为 UTC。上一批 MRRC／ISB 候选哈希保留在 lock 的 previous_candidates，不能用于当前补丁。候选产物未安装或发布，未来分发须保留源码、补丁与许可，不能把其能力写到现有 Windows 二进制上。
 

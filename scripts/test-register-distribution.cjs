@@ -7,7 +7,7 @@ const {spawnSync}=require('node:child_process');
 const {root,outputDirectory,parseOptions,Cases,hash}=require('./test-support/session.cjs');
 const options=parseOptions(process.argv.slice(2),['--binary','--previous-package','--previous-sha256','--previous-version']);
 const binary=path.resolve(options.binary||path.join(root,'target/debug/debugtui.exe'));
-const out=outputDirectory('register-distribution'), stage=path.join(out,'project 工程'), config=path.join(out,'npm 客户配置');
+const out=outputDirectory('register-distribution',process.env.DEBUGTUI_DISTRIBUTION_ARTIFACT_ROOT), stage=path.join(out,'project 工程'), config=path.join(out,'npm 客户配置');
 const metadata=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 const cpus=['cortex-m4','cortex-r52','cortex-r52+'];
 const required=['profiles/install.cjs','profiles/devices.toml',...cpus.map(cpu=>`profiles/registers/${cpu}.toml`)];

@@ -1,5 +1,11 @@
 # DebugTUI 验证记录
 
+## 银行当前Debug状态（2026-10-06，开发分支）
+
+生产C模型37成功、41受限、162未知、1110故障点与三十条GNU编码、八模式正常固件三十参考槽已验证；Windows/Linux重建、七协议/事务、Windows本机DLL/离线配置与对应源码包逐字节检查通过。没有目标指令执行或上板结果。EL1具体模式保持Unknown，REG-303不勾选。详见[自检](docs/register-banked-proof.md)和[八项环境case](tests/cases/register-banked-proof.md)。
+
+完整 Cargo **385 单元＋160 集成通过，2 ignored，共545通过**；**F24 138/138** 为证据匹配模式数，非用例数。完整运行489102 ms，无超时；其余**22外层功能套件未选择**。报告 `artifacts/functional-1791232474564-90d658f4/report.json`，完整Cargo为同目录 `unit.log`；严格Clippy通过，日志 `artifacts/banked-proof-clippy-final.log`。
+
 ## R52 MMIO owner 路线（2026-10-06，开发分支）
 
 三个专项单元、三个真实 worker/EXE/MI/TCP 集成通过。独立 TRM 地址、四个非连续 core/两 cluster、缺失 owner 零访问、Scope All 选中核、实际 AP target/endpoint、64 位字序、手工副作用/WO、失败旧值来源与驱动拒绝流程有证据。完整 Cargo **379 单元＋153 集成通过，2 ignored，共 532 通过**；**F24 132/132** 是证据匹配模式数，不能当作用例数。整套 497753 ms，无超时；其余 **22 功能套件未选择**。报告 artifacts/functional-1791225291601-66910f0b/report.json，完整 Cargo 为同目录 unit.log；严格 Clippy 通过，日志 artifacts/register-mmio-clippy-final.log。

@@ -10,8 +10,8 @@ const quote = value => JSON.stringify(value.replaceAll('\\', '/'));
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
-function outputDirectory(name) {
-  const directory = path.join(root, 'artifacts', `${name}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`);
+function outputDirectory(name, artifactRoot = path.join(root, 'artifacts')) {
+  const directory = path.join(path.resolve(artifactRoot), `${name}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`);
   fs.mkdirSync(directory, {recursive: true});
   return directory;
 }

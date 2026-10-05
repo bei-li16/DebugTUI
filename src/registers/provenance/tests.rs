@@ -18,6 +18,7 @@ fn source(sample: &Sample, endpoint: Option<&str>, time: u64) -> Provenance {
         timer: None,
         pmu: None,
         gic: None,
+        banked: None,
         route: Route::GdbRegister {
             endpoint: endpoint.map(str::to_owned),
             configured_endpoint: "configured:3333".into(),
@@ -46,6 +47,7 @@ fn legacy_register_source_labels_never_infer_an_executed_route_or_connected_endp
         "configured:3333"
     );
     assert_eq!(encoded["provenance"]["access"]["route"]["index"], 17);
+    assert!(encoded["provenance"]["access"].get("banked").is_none());
     let decoded: Sample = serde_json::from_value(encoded.clone()).unwrap();
     assert_eq!(serde_json::to_value(decoded).unwrap(), encoded);
 }

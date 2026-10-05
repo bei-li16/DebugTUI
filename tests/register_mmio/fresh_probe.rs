@@ -489,6 +489,10 @@ fn fresh_probe_discards_shared_capacities_when_a_peer_runs_during_or_after_proof
         assert_eq!(r["samples"][0]["reason"], "reader_unsupported");
         assert_eq!(r["samples"][1]["state"], "valid");
         assert_eq!(memory_reads(&out).len(), 43);
+        // All shared/private proof assertions are complete. Remove the fixture's
+        // persistent RUNNING injection so ordinary quit can interrupt the peer
+        // without the mock immediately forcing it back to RUNNING before frame reads.
+        fs::write(&notice, "{}").unwrap();
         call(&e, 6, "quit", json!({}));
     }
 }

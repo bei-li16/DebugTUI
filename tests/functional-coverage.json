@@ -165,7 +165,11 @@
         "mmio_owners::",
         "setup_catalogue_modal_keeps_its_opening_snapshot_and_reopening_reloads_parse_errors",
         "registers::mmio_probe::tests::",
-        "mmio_owners::fresh_probe::"
+        "mmio_owners::fresh_probe::",
+        "physical_bank_proof_distinguishes_current_mode_from_saved_dspsr",
+        "bank_proof_rejects_legacy_missing_forged_and_contradictory_fields",
+        "current_debug_el_governs_all_thirty_banks_independently_of_stopped_user_dspsr",
+        "malformed_bank_refresh_retains_the_previous_physical_proof_with_its_value"
       ],
       "sources": [
         "src/registers.rs",
@@ -316,7 +320,9 @@
         "tests/fixtures/register-mmio-probe-board.c",
         "tests/fixtures/register-mmio-probe-board.example.json",
         "tests/cases/register-mmio-probe.md",
-        "docs/register-mmio-probe.md"
+        "docs/register-mmio-probe.md",
+        "docs/register-banked-proof.md",
+        "tests/cases/register-banked-proof.md"
       ],
       "limits": [
         "目录及 MI/TCL 软件夹具不证明目标实现或实际后端能力",

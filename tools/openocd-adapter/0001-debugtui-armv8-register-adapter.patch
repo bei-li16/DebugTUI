@@ -17,7 +17,7 @@ index 3d855ab..b830cb1 100644
  	%D%/armv8_cache.h \
  	%D%/avrt.h \
 diff --git a/src/target/aarch64.c b/src/target/aarch64.c
-index 19ab923..64f772a 100644
+index 19ab923..419b38d 100644
 --- a/src/target/aarch64.c
 +++ b/src/target/aarch64.c
 @@ -15,6 +15,12 @@
@@ -73,7 +73,7 @@ index 19ab923..64f772a 100644
  
  		command_print(CMD, "0x%" PRIx32, value);
  	}
-@@ -3229,7 +3247,440 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3229,7 +3247,447 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  	return ERROR_OK;
  }
  
@@ -146,13 +146,17 @@ index 19ab923..64f772a 100644
 +		return ERROR_TARGET_INVALID;
 +	if (target->state != TARGET_HALTED)
 +		return ERROR_TARGET_NOT_HALTED;
-+	uint32_t value = 0;
++	struct armv8_debugtui_banked_result result = {0};
 +	bool uncertain = false;
-+	int retval = armv8_dpm_debugtui_banked(arm->dpm, bank, &value, &uncertain);
++	int retval = armv8_dpm_debugtui_banked(arm->dpm, bank, &result, &uncertain);
 +	if (uncertain) {
 +		target->state = TARGET_UNKNOWN;
 +		command_print(CMD, "Core state restoration failed: banked read outcome unknown; reconnect required");
 +		return retval;
++	}
++	if (retval == DEBUGTUI_BANKED_ACCESS_UNKNOWN) {
++		command_print(CMD, "debugtui-banked:access-unknown: current EL1 mode cannot be proven without changing state");
++		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
 +	}
 +	if (retval == DEBUGTUI_BANKED_UNSUPPORTED)
 +		return ERROR_TARGET_INVALID;
@@ -160,7 +164,10 @@ index 19ab923..64f772a 100644
 +		return ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
 +	if (retval != ERROR_OK)
 +		return retval;
-+	command_print(CMD, "0x%08" PRIx32, value);
++	command_print(CMD, "midr 0x%08" PRIx32 " dscr 0x%08" PRIx32
++		" dspsr 0x%08" PRIx32 " dlr 0x%08" PRIx32
++		" value 0x%08" PRIx32 " method %s", result.midr, result.dscr,
++		result.dspsr, result.dlr, result.value, result.method);
 +	return ERROR_OK;
 +}
 +
@@ -618,10 +625,10 @@ index 0000000..9e0dde2
 +#endif
 diff --git a/src/target/armv8_debugtui_banked.h b/src/target/armv8_debugtui_banked.h
 new file mode 100644
-index 0000000..f293869
+index 0000000..26e328f
 --- /dev/null
 +++ b/src/target/armv8_debugtui_banked.h
-@@ -0,0 +1,112 @@
+@@ -0,0 +1,180 @@
 +/* SPDX-License-Identifier: GPL-2.0-or-later */
 +#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_BANKED_H
 +#define OPENOCD_TARGET_ARMV8_DEBUGTUI_BANKED_H
@@ -629,10 +636,16 @@ index 0000000..f293869
 +#include <string.h>
 +#include "armv8_debugtui.h"
 +
-+#define DEBUGTUI_BANKED_PROTOCOL "debugtui-armv8-banked-1 mrs physical-readback no-mode-change stop-on-fault"
++#define DEBUGTUI_BANKED_PROTOCOL "debugtui-armv8-banked-2 external-identity current-el dspsr dlr mrs physical-readback no-mode-change stop-on-fault"
 +#define DEBUGTUI_BANKED_UNSUPPORTED 1
 +#define DEBUGTUI_BANKED_UNAVAILABLE 2
++#define DEBUGTUI_BANKED_ACCESS_UNKNOWN 3
 +#define DEBUGTUI_READ_DSPSR ARMV4_5_MRC(15, 3, 0, 4, 5, 0)
++#define DEBUGTUI_BANKED_DSCR UINT32_C(0x088)
++#define DEBUGTUI_BANKED_MIDR UINT32_C(0xd00)
++#define DEBUGTUI_BANKED_STATE_MASK UINT32_C(0x00053f00)
++#define DEBUGTUI_BANKED_FAULT_MASK UINT32_C(0x1c0000c0)
++#define DEBUGTUI_BANKED_READ_DLR ARMV4_5_MRC(15, 3, 0, 4, 5, 1)
 +#define DEBUGTUI_MRS_SPSR UINT32_C(0xf3ff8000)
 +
 +struct armv8_debugtui_bank {
@@ -693,40 +706,102 @@ index 0000000..f293869
 +	return 0;
 +}
 +
-+static inline int armv8_debugtui_bank_transfer(const struct armv8_debugtui_io *io,
-+	const struct armv8_debugtui_bank *bank, uint32_t *value, bool *uncertain)
++struct armv8_debugtui_banked_io {
++	struct armv8_debugtui_io core;
++	/* Each transport call also checks physical EDPRSR.HALT. */
++	int (*read_debug)(void *context, uint32_t offset, uint32_t *value);
++};
++struct armv8_debugtui_banked_result {
++	uint32_t midr, dscr, dspsr, dlr, value;
++	const char *method;
++};
++
++static inline bool armv8_debugtui_banked_state_valid(uint32_t dscr)
 +{
-+	uint32_t before = 0, after = 0, midr = 0, opcode = 0, result = 0;
++	unsigned int el = (dscr >> 8) & 3;
++	return el <= 2 && !(dscr & DEBUGTUI_BANKED_FAULT_MASK) && (dscr & (1u << 24)) &&
++		!(dscr & (1u << (10 + el))) && !(el == 2 && (dscr & (1u << 16)));
++}
++
++static inline int armv8_debugtui_bank_transfer(const struct armv8_debugtui_banked_io *io,
++	const struct armv8_debugtui_bank *bank, struct armv8_debugtui_banked_result *result,
++	bool *uncertain)
++{
++	struct armv8_debugtui_banked_result sample = {0};
++	uint32_t after = 0, opcode = 0;
 +	*uncertain = false;
-+	/* DSPSR is accessible at every EL in Debug state and contains the entire
-+	 * stopped CPSR. Ordinary MRS CPSR masks execution bits and cannot safely
-+	 * determine User mode. R52 TRM c4, op1=3,c5,op2=0. */
-+	int retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_DSPSR, false, &before);
++	int retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_DSCR, &sample.dscr);
 +	if (retval != 0)
 +		goto fault;
-+	/* No privileged MIDR or banked MRS is attempted from User mode. Its
-+	 * current registers remain available through the ordinary Core view. */
-+	if ((before & 31) == 0x10)
-+		return DEBUGTUI_BANKED_UNAVAILABLE;
-+	retval = armv8_debugtui_bank_opcode(bank, before & 31, &opcode);
++	if (!armv8_debugtui_banked_state_valid(sample.dscr)) {
++		if (sample.dscr & DEBUGTUI_BANKED_FAULT_MASK) {
++			retval = -1;
++			goto fault;
++		}
++		return DEBUGTUI_BANKED_UNSUPPORTED;
++	}
++	retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_MIDR, &sample.midr);
++	if (retval != 0)
++		goto fault;
++	if ((sample.midr & UINT32_C(0xff0ffff0)) != UINT32_C(0x410fd130))
++		return DEBUGTUI_BANKED_UNSUPPORTED;
++	/* DDI0487 M.b H2.4.8.2: direct current PSTATE reads are CONSTRAINED
++	 * UNPREDICTABLE in Debug state. EDSCR alone proves EL0/User and
++	 * EL2/Hyp. At EL1 the specific mode is unknown; DSPSR cannot prove it
++	 * after external debug instructions/exceptions. Do not guess or MRS CPSR. */
++	unsigned int el = (sample.dscr >> 8) & 3;
++	if (el == 1)
++		return bank->mode == 0x1a ? DEBUGTUI_BANKED_UNAVAILABLE : DEBUGTUI_BANKED_ACCESS_UNKNOWN;
++	unsigned int mode = el == 0 ? 0x10 : 0x1a;
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_READ_DSPSR, false, &sample.dspsr);
++	if (retval != 0)
++		goto fault;
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_BANKED_READ_DLR, false, &sample.dlr);
++	if (retval != 0)
++		goto fault;
++	retval = armv8_debugtui_bank_opcode(bank, mode, &opcode);
 +	if (retval != 0)
 +		return retval;
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, ARMV4_5_MRC(15, 0, 0, 0, 0, 0), false, &midr);
++	sample.method = (opcode & UINT32_C(0xfffffff0)) == UINT32_C(0xea4f0000) ?
++		"mov32" : opcode == DEBUGTUI_MRS_SPSR ? "mrs32" : "banked_mrs32";
++	retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_DSCR, &after);
 +	if (retval != 0)
 +		goto fault;
-+	if ((midr >> 24) != 0x41 || ((midr >> 4) & 0xfff) != 0xd13)
-+		return DEBUGTUI_BANKED_UNSUPPORTED;
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, opcode, false, &result);
-+	if (retval != 0)
-+		goto fault;
-+	retval = armv8_debugtui_mrc_mcr_transfer(io, DEBUGTUI_READ_DSPSR, false, &after);
-+	if (retval != 0)
-+		goto fault;
-+	if (before != after) {
++	if (!armv8_debugtui_banked_state_valid(after) ||
++		((sample.dscr ^ after) & DEBUGTUI_BANKED_STATE_MASK)) {
 +		retval = -1;
 +		goto fault;
 +	}
-+	*value = result;
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, opcode, false, &sample.value);
++	if (retval != 0)
++		goto fault;
++	const uint32_t opcodes[] = {DEBUGTUI_READ_DSPSR, DEBUGTUI_BANKED_READ_DLR};
++	const uint32_t expected[] = {sample.dspsr, sample.dlr};
++	for (unsigned int i = 0; i < 2; i++) {
++		retval = armv8_debugtui_mrc_mcr_transfer(&io->core, opcodes[i], false, &after);
++		if (retval != 0)
++			goto fault;
++		if (expected[i] != after) {
++			retval = -1;
++			goto fault;
++		}
++	}
++	retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_MIDR, &after);
++	if (retval != 0)
++		goto fault;
++	if (after != sample.midr) {
++		retval = -1;
++		goto fault;
++	}
++	retval = io->read_debug(io->core.context, DEBUGTUI_BANKED_DSCR, &after);
++	if (retval != 0)
++		goto fault;
++	if (!armv8_debugtui_banked_state_valid(after) ||
++		((sample.dscr ^ after) & DEBUGTUI_BANKED_STATE_MASK)) {
++		retval = -1;
++		goto fault;
++	}
++	*result = sample;
 +	return 0;
 +fault:
 +	*uncertain = true;
@@ -1607,7 +1682,7 @@ index 0000000..636b2c7
 +
 +#endif
 diff --git a/src/target/armv8_dpm.c b/src/target/armv8_dpm.c
-index 508ec97..ada41ff 100644
+index 508ec97..22e2350 100644
 --- a/src/target/armv8_dpm.c
 +++ b/src/target/armv8_dpm.c
 @@ -16,6 +16,13 @@
@@ -1658,7 +1733,7 @@ index 508ec97..ada41ff 100644
  
  	if (p_dscr)
  		*p_dscr = dscr;
-@@ -259,6 +271,318 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -259,6 +271,323 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  	return retval;
  }
  
@@ -1765,8 +1840,10 @@ index 508ec97..ada41ff 100644
 +	return dpm->finish(dpm);
 +}
 +
++static int dpmv8_debugtui_read_timer_debug(void *opaque, uint32_t offset, uint32_t *value);
++
 +int armv8_dpm_debugtui_banked(struct arm_dpm *dpm,
-+	const struct armv8_debugtui_bank *bank, uint32_t *value, bool *uncertain)
++	const struct armv8_debugtui_bank *bank, struct armv8_debugtui_banked_result *result, bool *uncertain)
 +{
 +	*uncertain = false;
 +	int retval = dpmv8_debugtui_prepare(dpm);
@@ -1780,13 +1857,16 @@ index 508ec97..ada41ff 100644
 +		.dpm = dpm,
 +		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
 +	};
-+	struct armv8_debugtui_io io = {
++	struct armv8_debugtui_banked_io io = {
++		.core = {
 +		.context = &context,
 +		.read_gpr = dpmv8_debugtui_read_gpr,
 +		.write_gpr = dpmv8_debugtui_write_gpr,
 +		.execute = dpmv8_debugtui_execute,
++		},
++		.read_debug = dpmv8_debugtui_read_timer_debug,
 +	};
-+	retval = armv8_debugtui_bank_transfer(&io, bank, value, uncertain);
++	retval = armv8_debugtui_bank_transfer(&io, bank, result, uncertain);
 +	if (retval != ERROR_OK)
 +		return retval;
 +	retval = dpm->finish(dpm);
@@ -1978,10 +2058,10 @@ index 508ec97..ada41ff 100644
  {
  	return dpmv8_exec_opcode(dpm, opcode, NULL);
 diff --git a/src/target/armv8_dpm.h b/src/target/armv8_dpm.h
-index 19b33da..299a8ea 100644
+index 19b33da..58ad10a 100644
 --- a/src/target/armv8_dpm.h
 +++ b/src/target/armv8_dpm.h
-@@ -23,6 +23,42 @@ struct armv8_common;
+@@ -23,6 +23,43 @@ struct armv8_common;
   */
  int armv8_dpm_setup(struct arm_dpm *dpm);
  int armv8_dpm_initialize(struct arm_dpm *dpm);
@@ -1991,8 +2071,9 @@ index 19b33da..299a8ea 100644
 +int armv8_dpm_debugtui_mrc_mcr(struct arm_dpm *dpm, uint32_t opcode,
 +	bool write, uint32_t *value);
 +struct armv8_debugtui_bank;
++struct armv8_debugtui_banked_result;
 +int armv8_dpm_debugtui_banked(struct arm_dpm *dpm,
-+	const struct armv8_debugtui_bank *bank, uint32_t *value, bool *uncertain);
++	const struct armv8_debugtui_bank *bank, struct armv8_debugtui_banked_result *result, bool *uncertain);
 +struct armv8_debugtui_vfp_request;
 +struct armv8_debugtui_vfp_result;
 +int armv8_dpm_debugtui_vfp(struct arm_dpm *dpm,

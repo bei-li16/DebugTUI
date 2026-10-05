@@ -149,7 +149,7 @@ def evaluate(data):
             return (0, f'midr 0x411fd134 dscr {dscr} dspsr {dspsr} dlr 0x81234568 value {raw}')
         if op == 'debugtui_banked_protocol':
             return (0, 'old-banked-adapter' if fault == 'bank_protocol' else
-                    'debugtui-armv8-banked-1 mrs physical-readback no-mode-change stop-on-fault')
+                    'debugtui-armv8-banked-2 external-identity current-el dspsr dlr mrs physical-readback no-mode-change stop-on-fault')
         if op == 'debugtui_vfp_protocol':
             return (0, 'old-vfp-adapter' if fault == 'vfp_protocol' else
                     'debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault')
@@ -244,13 +244,34 @@ def evaluate(data):
             names = ['sp_irq', 'lr_irq', 'spsr_irq', 'r8_fiq', 'r9_fiq', 'r10_fiq',
                      'r11_fiq', 'r12_fiq', 'sp_fiq', 'lr_fiq', 'spsr_fiq', 'sp_und',
                      'lr_und', 'spsr_und', 'sp_abt', 'lr_abt', 'spsr_abt', 'sp_svc',
-                     'lr_svc', 'spsr_svc', 'sp_hyp', 'elr_hyp', 'spsr_hyp']
+                     'lr_svc', 'spsr_svc', 'sp_hyp', 'elr_hyp', 'spsr_hyp',
+                     'r8_usr', 'r9_usr', 'r10_usr', 'r11_usr', 'r12_usr', 'sp_usr', 'lr_usr']
             if len(args) != 1 or args[0] not in names:
                 return (1, 'unadapted banked fixture name', -603)
             if fault == 'bank_context_change':
                 Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
-            return (0, '0x1' if fault == 'bank_short' else
-                    f'0x{0x51000000 + names.index(args[0]) + (0x10000000 if name == "cpu1" else 0):08x}')
+            reg = args[0]
+            mode = int(cpu.get('bank_mode', 0x1a))
+            bank_mode = {'usr':0x10,'fiq':0x11,'irq':0x12,'svc':0x13,
+                         'abt':0x17,'und':0x1b,'hyp':0x1a}[reg.split('_')[1]]
+            current = (mode == bank_mode and reg != 'elr_hyp') or (bank_mode == 0x10 and
+                      ((reg.startswith('r') and mode != 0x11) or mode == 0x1f or (reg == 'lr_usr' and mode == 0x1a)))
+            if mode not in (0x10,0x1a):
+                return (1, 'current Debug mode cannot access Hyp bank' if bank_mode == 0x1a else
+                        'debugtui-banked:access-unknown: current EL1 mode cannot be proven', -308)
+            if not current and (mode == 0x10 or (bank_mode == 0x1a and mode != 0x1a)):
+                return (1, 'current Debug mode cannot access this bank', -308)
+            method = ('mrs32' if reg.startswith('spsr') else 'mov32') if current else 'banked_mrs32'
+            el = 0 if mode == 0x10 else 2 if mode == 0x1a else 1
+            dscr = cpu.get('bank_dscr', f'0x{0x01000000 | (el << 8):08x}')
+            midr = '0x511fd134' if fault == 'bank_forged_identity' else '0x411fd134'
+            if fault == 'bank_forged_mode': dscr = '0x01000100'
+            if fault == 'bank_forged_method': method = 'mov32'
+            value = f'0x{0x51000000 + names.index(reg) + (0x10000000 if name == "cpu1" else 0):08x}'
+            if fault == 'bank_short': value = '0x1'
+            if fault == 'bank_legacy_value': return (0, value)
+            dspsr = cpu.get('bank_dspsr', '0xa2000410')
+            return (0, f'midr {midr} dscr {dscr} dspsr {dspsr} dlr 0x81234568 value {value} method {method}')
         if op == 'isb':
             if args:
                 return (1, 'genuine ISB takes no operands')

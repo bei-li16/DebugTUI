@@ -794,6 +794,7 @@ impl Engine {
             timer: None,
             pmu: None,
             gic: None,
+            banked: None,
             completed_ms: None,
             route,
             command,

@@ -2011,6 +2011,7 @@ mod tests {
                     timer: None,
                     pmu: None,
                     gic: None,
+                    banked: None,
                     route: crate::registers::provenance::Route::TclRegister {
                         endpoint: "127.0.0.1:6666".into(),
                         target: "cpu0".into(),
@@ -2152,6 +2153,7 @@ mod tests {
                 .reader,
         );
         provenance.access = Some(crate::registers::provenance::Access {
+            banked: None,
             gic: Some(
                 crate::registers::gic::Response::parse(wire, "icc_ctlr", 32)
                     .unwrap()

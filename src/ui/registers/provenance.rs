@@ -123,6 +123,29 @@ pub(super) fn details(label: &str, provenance: &Provenance) -> Vec<String> {
             ));
         }
     }
+    if let Some(banked) = &access.banked {
+        text.push(format!(
+            "Banked transfer: {:?}; current Debug mode: {:?}",
+            banked.read_method,
+            banked
+                .current_mode()
+                .ok()
+                .flatten()
+                .map(|mode| format!("0x{mode:02x}"))
+        ));
+        text.push(format!(
+            "Banked physical MIDR: {} / current Debug EDSCR: {}",
+            banked.midr.hex, banked.dscr.hex
+        ));
+        text.push(format!(
+            "Stopped DSPSR: {} / DLR: {}",
+            banked.dspsr.hex, banked.dlr.hex
+        ));
+        text.push(
+            "Current mode is derived only for EL0/User or EL2/Hyp. Banks are separate samples."
+                .into(),
+        );
+    }
     if let Some(timer) = &access.timer {
         text.push(format!(
             "Timer transfer: {}",
@@ -247,6 +270,7 @@ mod tests {
                     .reader,
             );
             provenance.access = Some(Access {
+                banked: None,
                 gic: Some(Response::parse(&wire, id, 32).unwrap().evidence),
                 timer: None,
                 pmu: None,
@@ -335,6 +359,7 @@ mod tests {
                 timer: None,
                 pmu: None,
                 gic: None,
+                banked: None,
                 route: Route::TclMemory {
                     endpoint: "127.0.0.1:6666".into(),
                     target: "ap.actual".into(),

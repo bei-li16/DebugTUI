@@ -5,15 +5,23 @@
 .global banked_encodings
 banked_encodings:
     mrc p15, 3, r0, c4, c5, 0
+    mrc p15, 3, r0, c4, c5, 1
     mrs r0, cpsr
     mrs r0, spsr
     mov.w r0, r8
     mov.w r0, sp
     mov.w r0, lr
     mrs r0, r8_usr
+    mrs r0, r9_usr
+    mrs r0, r10_usr
+    mrs r0, r11_usr
+    mrs r0, r12_usr
     mrs r0, sp_usr
     mrs r0, lr_usr
     mrs r0, r8_fiq
+    mrs r0, r9_fiq
+    mrs r0, r10_fiq
+    mrs r0, r11_fiq
     mrs r0, r12_fiq
     mrs r0, sp_fiq
     mrs r0, lr_fiq

@@ -331,6 +331,9 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 - [ ] REG-301：建立经实际 CPU 手册核对的 THA6 目录，首先接入 ID、SCTLR、异常与故障信息、线程相关寄存器，逐项记录访问编码。
 - [ ] REG-302：实现 32 位 CP15 reader 和目标状态校验；调试指令读取若使用临时通用寄存器，由后端完整保存和恢复其状态。
 - [ ] REG-303：接入 IRQ、FIQ、UND、ABT、SVC、HYP 等实际实现的银行寄存器；优先使用 GDB 或后端专用访问，不通过改变 CPSR 模式读取。
+
+2026-10-06 银行状态自检：外部MIDR/EDSCR的独立协议v2纠正停止前DSPSR当前银行推断；EL2三十项和EL0七项当前User银行有软件证据，EL1具体模式未知，不注入不可预测的当前CPSR读取。前后DSPSR/DLR、物理R0恢复、逐核来源/上下文/实际传输方法和失败旧值证据已补齐；完整EL1访问仍待完成，因此REG-303不勾选。Windows/Linux重建及本机离线包验证、独立三十项编码/八模式固件已准备，[八项环境case](../tests/cases/register-banked-proof.md)保持SKIPPED。总进度仍为24完成／47待完成，详见[银行自检](register-banked-proof.md)。
+
 - [ ] REG-304：接入 VFP 数据与 FPSCR 等控制寄存器，支持原始十六进制和浮点格式；覆盖未使能时的失败处理，不自动修改 CPACR、FPEXC。
 - [ ] REG-305：实现 S、D 和可支持的 Q 视图；仅按目标能力建立对应关系，覆盖 NaN、无穷、负零及向量分量显示。
 - [ ] REG-306：接入 EL1、EL2 MPU，依据实际区域数量构造目录，解析基址、限址、使能及权限；优先使用直接区域访问。

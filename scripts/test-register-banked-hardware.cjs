@@ -20,14 +20,19 @@ assert(!spec.software_example || options['software-fixture'], 'Replace software 
 assert(spec.frame_function && spec.evidence_source && spec.expected_midr, 'Declare dedicated stop hook and independent evidence');
 const mode = Number(spec.expected_mode);
 assert([0x10,0x11,0x12,0x13,0x17,0x1a,0x1b,0x1f].includes(mode), 'Declare an actual R52 mode');
+assert(Number.isInteger(spec.expected_debug_el) && [0,1,2].includes(spec.expected_debug_el), 'Declare current Debug EL independently of stopped CPSR');
+const el = spec.expected_debug_el;
 assert(Array.isArray(spec.stable_registers) && ['r0','pc','cpsr'].every(id => spec.stable_registers.includes(id)), 'Guard scratch, PC and CPSR');
 const names = ['sp_irq','lr_irq','spsr_irq','r8_fiq','r9_fiq','r10_fiq','r11_fiq','r12_fiq','sp_fiq','lr_fiq','spsr_fiq','sp_und','lr_und','spsr_und','sp_abt','lr_abt','spsr_abt','sp_svc','lr_svc','spsr_svc','sp_hyp','elr_hyp','spsr_hyp'];
+if (spec.banks?.some(entry=>entry.id.endsWith('_usr'))) names.push('r8_usr','r9_usr','r10_usr','r11_usr','r12_usr','sp_usr','lr_usr');
 assert(Array.isArray(spec.banks) && spec.banks.length === names.length && new Set(spec.banks.map(e=>e.id)).size === names.length);
 for (const entry of spec.banks) {
   assert(names.includes(entry.id));
-  const unavailable = mode === 0x10 || (mode !== 0x1a && entry.id.endsWith('_hyp'));
+  const unavailable = (el === 0 && !entry.id.endsWith('_usr')) || (el === 1 && entry.id.endsWith('_hyp'));
+  const unknown = el === 1 && !entry.id.endsWith('_hyp');
   assert.equal(!!entry.unavailable, unavailable, `Architecture legality for ${entry.id}`);
-  if (!unavailable) assert(/^[a-zA-Z_]\w*(\[\d+\])?$/.test(entry.reference), 'Reference must be a firmware variable/array element');
+  assert.equal(!!entry.unknown, unknown, `Current Debug mode proof for ${entry.id}`);
+  if (!unavailable && !unknown) assert(/^[a-zA-Z_]\w*(\[\d+\])?$/.test(entry.reference), 'Reference must be a firmware variable/array element');
 }
 const raw = text => { assert(/^0x[0-9a-f]{8}$/i.test(text), `Exact 32-bit raw required: ${text}`); return BigInt(text); };
 const referenceExpression = reference => {
@@ -68,7 +73,7 @@ const select = async core => {
       return {context,before,peerBefore};
     })) return;
     if (!await suite.test(phases[1],'Validate current-core identity, without privileged probe in User mode',async()=>{
-      if(mode === 0x10) return {user_mode:true,identity_probe_omitted:true,expected_access:'unavailable'};
+      if(el !== 2) return {current_debug_el:el,legacy_identity_probe_omitted:true,identity_proof:'external MIDR in each successful bank sample'};
       const response = await session.command('registers_probe',{context});
       assert.equal(response.probe.identity.model,'Cortex-R52');
       assert.equal(response.probe.samples.find(s=>s.id==='midr').value.hex,spec.expected_midr);
@@ -76,7 +81,7 @@ const select = async core => {
     })) return;
     if (!await suite.test(phases[2],'Compare all banks with independent firmware samples and legal refusals',async()=>{
       const references = {};
-      for(const entry of spec.banks.filter(e=>!e.unavailable)){
+      for(const entry of spec.banks.filter(e=>!e.unavailable && !e.unknown)){
         const result=await session.command('evaluate',{expression:referenceExpression(entry.reference)});
         assert(/^(0x[0-9a-f]+|\d+)$/i.test(result.value));
         references[entry.id]=BigInt(result.value); assert(references[entry.id]<(1n<<32n));
@@ -86,7 +91,20 @@ const select = async core => {
         const sample=result.samples.find(s=>s.id===entry.id);
         assert.equal(sample.owner,`core:${context.core}`);
         if(entry.unavailable){assert.equal(sample.reason,'access_restricted');assert.equal(sample.value,null);}
-        else {assert.equal(sample.state,'valid',`${entry.id}: ${sample.detail}`);assert.equal(raw(sample.value.hex),references[entry.id]);assert.equal(sample.source,`openocd:aarch64 banked:${entry.id}`);}
+        else if(entry.unknown){assert.equal(sample.reason,'unknown');assert.equal(sample.value,null);}
+        else {
+          assert.equal(sample.state,'valid',`${entry.id}: ${sample.detail}`);assert.equal(raw(sample.value.hex),references[entry.id]);assert.equal(sample.source,`openocd:aarch64 banked:${entry.id}`);
+          const access=sample.provenance?.access, proof=access?.banked;
+          assert.equal(access?.phase,'responded');assert.equal(access?.route?.kind,'tcl_register');assert.deepEqual(access?.context,context);
+          assert(Number.isInteger(access.timestamp_ms) && Number.isInteger(access.completed_ms) && access.completed_ms >= access.timestamp_ms);
+          for(const field of ['midr','dscr','dspsr','dlr']) { assert.equal(proof?.[field]?.bits,32);raw(proof[field].hex); }
+          assert.equal(proof.midr.hex,spec.expected_midr); const dscr=raw(proof.dscr.hex);
+          assert.equal(Number((dscr>>8n)&3n),el);assert.equal(dscr&0x1c0000c0n,0n);assert(dscr&(1n<<24n));
+          assert.equal(dscr&(1n<<BigInt(10+el)),0n);if(el===2)assert.equal(dscr&(1n<<16n),0n);
+          assert.equal(Number(raw(proof.dspsr.hex)&31n),mode,'Saved DSPSR must match independently stopped mode');
+          const expectedMethod = el===0 || entry.id==='sp_hyp' || (entry.id.endsWith('_usr') && entry.id!=='sp_usr') ? 'mov32' : entry.id==='spsr_hyp' ? 'mrs32' : 'banked_mrs32';
+          assert.equal(proof.read_method,expectedMethod);
+        }
       }
       return result;
     })) return;

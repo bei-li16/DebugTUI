@@ -76,6 +76,43 @@ debugtui_banked_board_fixture:
     str r0,[r1,#84]
     str r0,[r1,#88]
 #endif
+    /* Explicit User-bank reference slots for the optional thirty-name catalogue.
+     * This hook runs in normal firmware, where direct CPSR is defined. */
+#if DEBUGTUI_BANKED_MODE == 0x11
+    mrs r0,r8_usr
+    str r0,[r1,#92]
+    mrs r0,r9_usr
+    str r0,[r1,#96]
+    mrs r0,r10_usr
+    str r0,[r1,#100]
+    mrs r0,r11_usr
+    str r0,[r1,#104]
+    mrs r0,r12_usr
+    str r0,[r1,#108]
+#else
+    mov r0,r8
+    str r0,[r1,#92]
+    mov r0,r9
+    str r0,[r1,#96]
+    mov r0,r10
+    str r0,[r1,#100]
+    mov r0,r11
+    str r0,[r1,#104]
+    mov r0,r12
+    str r0,[r1,#108]
+#endif
+#if DEBUGTUI_BANKED_MODE == 0x10 || DEBUGTUI_BANKED_MODE == 0x1f
+    mov r0,sp
+#else
+    mrs r0,sp_usr
+#endif
+    str r0,[r1,#112]
+#if DEBUGTUI_BANKED_MODE == 0x10 || DEBUGTUI_BANKED_MODE == 0x1f || DEBUGTUI_BANKED_MODE == 0x1a
+    mov r0,lr
+#else
+    mrs r0,lr_usr
+#endif
+    str r0,[r1,#116]
     ldr r1,=DEBUGTUI_BANKED_READY
     mov r0,#1
     str r0,[r1]
@@ -84,6 +121,6 @@ debugtui_banked_board_fixture:
 .Lwrong_mode:
     b .Lwrong_mode
 .size debugtui_banked_board_fixture,.-debugtui_banked_board_fixture
-.comm DEBUGTUI_BANKED_REFERENCE,92,4
+.comm DEBUGTUI_BANKED_REFERENCE,120,4
 .comm DEBUGTUI_BANKED_READY,4,4
 .section .note.GNU-stack,"",%progbits

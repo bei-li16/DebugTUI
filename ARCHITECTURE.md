@@ -10,7 +10,7 @@
 
 `ui/memory.rs` 保存每芯片／核心的范围和通道，使用 `memory_dump` 请求。新接口限制 1–4096 字节；GDB 响应必须连续、完整并包含合法字节，总线响应按地址序解释为字节，不进行字节序重排。结果包含路由和上下文，由发起请求的视图验证后缓存；不通过无上下文的 `Snapshot.memory` 发布。切核、重连、切帧、范围或通道改变后丢弃迟到结果。暂停时可见面板每个停止点只读取一次，运行时仅手动读取配置声明允许的通道。旧 `memory` JSON 接口保持兼容。
 
-`debug_access.rs` 在同一 OpenOCD 服务的 GDB 请求和 TCL 请求间串行化访问，按解析后的 endpoint 共用锁。该调度不约束外部调试客户端。`session/banked.rs` 的独立 banked reader 在同一租约内检查当前线程／物理帧，并在单次 TCL target 事务中验证专用协议。固定后端读取完整 DSPSR 停止状态和 MIDR，按当前模式使用普通 MOV／MRS 或合法 banked MRS；保存／恢复／物理回读 R0，复核 DSPSR，不通过旧 DPM 切换模式。普通 MRS CPSR 屏蔽执行状态且 User 模式字段不能用于可靠模式判断，因此不承担该状态检查。状态不确定时隔离共享通道，迟到上下文变化丢弃结果；Scope All 不广播。MRRC／ISB／银行候选后端已经过源码构建和离线验证，实际探针及未完成的读取／写入接口详见 [开发进度](docs/registers-development-status.md)。
+`debug_access.rs` 在同一OpenOCD服务的GDB/Tcl请求间按endpoint串行化；不约束外部客户端。`session/banked.rs` 在同一租约内检查物理线程/frame0，并在单次target事务内检查独立v2协议。外部MIDR/EDSCR提供当前身份/EL，EL0/User与EL2/Hyp分别确定当前银行规则；EL1具体模式未知，不根据停止前DSPSR猜测，也不执行受约束不可预测的MRS CPSR。读取前后身份/执行状态和完整DSPSR/DLR一致，R0保存/恢复/物理回读；不使用旧mode-switch DPM。严格typed证明绑定owner/context/实际route/请求时间和传输方法，失败原值保留旧证明。Scope All只访问选中核，迟到上下文变化丢弃结果，不确定状态隔离通道。当前后端经Windows/Linux构建及本机离线验证，未连接板卡；完整EL1银行仍待完成，见[银行自检](docs/register-banked-proof.md)。
 
 `session/register_adapter.rs` 为银行／VFP 共用物理线程、frame 0、服务租约和迟到上下文检查。`session/vfp.rs` 验证独立 VFP 协议及严格元数据／位宽，单个请求内按物理 pair 缓存 D/S/Q，并保留 pair 的 MVFR 证据防止 D16 缓存授权 Q。`registers/vfp.rs` 只识别手册规定的 R52 两种配置；控制原始值可保留未知字段，数据不依据未知字段授权。十五项 Probe 增加真实 MVFR/FPEXC 事实，未使能与未实现、工具不支持、访问受限分别保留原因。C 事务用 VMRS／两个 GP 与 D 的 VMOV，R0/R1 保存恢复后物理回读，前后完整 DSPSR、HCPTR、FPEXC 一致才发布结果；无模式或 FPU 写入。当前 Hyp 路径有软件证据，EL1/Guest 合法读取仍待适配。
 

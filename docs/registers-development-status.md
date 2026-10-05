@@ -1,5 +1,15 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：银行读取当前 Debug EL 与原始证明
+
+自检纠正原银行后端以停止前 DSPSR.M 选择当前银行、在低 EL注入MIDR的缺口。新独立协议v2从外部AP取得当前MIDR/EDSCR，每次检查HALT；EL2/Hyp支持三十项，EL0/User支持七项当前User银行。架构将调试态直接CPSR读取定义为受约束不可预测，因此不以MRS CPSR证明模式。EL1中Hyp项受限、其余Unknown，在CPU指令前拒绝，完整EL1银行支持仍未完成。内置目录仍为二十三项，User扩展用自定义目录；旧协议/裸值不回退。
+
+前后身份/执行状态、全位DSPSR/DLR、R0物理保存/恢复/回读均校验。四项原始证明与实际MOV32/MRS32/banked MRS32方法绑定当前owner/context/route/请求区间，在headless和详情可查；失败保留原值和原证明，旧JSON缺字段不制造证据。生产C模型37成功、41受限、162未知、1110故障点；全部三十条GNU编码和八模式只读固件三十参考槽已离线验证。Windows/Linux新目录重建，七协议/事务和Windows本机DLL/离线配置、源码包验证通过。
+
+[八项环境case](../tests/cases/register-banked-proof.md)均SKIPPED；未执行上板、未替换全局安装、未发布Release。**REG-303仍未勾选，24完成／47待完成**。详细范围与反例见[银行当前Debug状态自检](register-banked-proof.md)。
+
+完整 Cargo **385 单元＋160 集成通过，2 ignored，共545通过**；**F24 138/138** 为证据匹配模式数，非用例数。完整运行489102 ms，无超时；其余**22外层功能套件未选择**。报告 `artifacts/functional-1791232474564-90d658f4/report.json`，完整Cargo为同目录 `unit.log`；严格Clippy通过，日志 `artifacts/banked-proof-clippy-final.log`。
+
 ## 2026-10-06：R52 新鲜 MMIO 身份/容量与共享证据失效
 
 显式 registers.mmio_probe=true 在现有 Probe 中增加42个有界只读请求，逐步核对外部 MIDR、不同 class 的 Debug/GIC CIDR、GIC IIDR variant/revision、EDDFR 容量、GICD_TYPER 和实际 Debug/GICR affinity。前后 raw/route/aperture/owner/context/请求区间一致才提供物理事实；board base/逻辑 owner 关联仍属配置，64位两字非原子。独立 Probe 样本不会被普通 TYPER 读取覆盖。启用后缺少新鲜证明的数据读取零 I/O拒绝，配置仍单独保留，失败不推断硬件 No。

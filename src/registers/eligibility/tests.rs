@@ -48,6 +48,7 @@ fn probe() -> capabilities::Probe {
             .reader,
     );
     provenance.access = Some(super::super::provenance::Access {
+        banked: None,
         gic: Some(
             super::super::gic::Response::parse(wire, "icc_ctlr", 32)
                 .unwrap()
