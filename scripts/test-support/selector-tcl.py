@@ -52,6 +52,29 @@ def evaluate(data):
         if op == 'debugtui_adapter':
             return (0, 'old-adapter' if fault == 'adapter_mismatch' else
                     'debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault')
+        if op == 'debugtui_timer_protocol':
+            return (0, 'old-timer-adapter' if fault == 'timer_protocol' else
+                    'debugtui-armv8-timer-1 external-identity current-el dspsr dlr scratch-readback no-mode-change stop-on-fault')
+        if op == 'timer':
+            assert len(args) == 1
+            reg = args[0]
+            if fault == 'timer_fault':
+                cpu['status'] = 'unknown'
+                return (1, 'Core state restoration failed: Timer fixture outcome unknown', -1)
+            reason = cpu.get('timer_errors', {}).get(reg)
+            if fault == 'timer_unknown': reason = 'access-unknown'
+            if fault == 'timer_restricted': reason = 'access-restricted'
+            if fault == 'timer_identity': reason = 'reader-unsupported'
+            if reason:
+                return (1, 'debugtui-timer:' + reason, -300 if reason == 'reader-unsupported' else -308)
+            raw = cpu.get('timer_values', {}).get(reg, '0xfedcba9876543210')
+            if fault == 'timer_short': raw = '0x76543210'
+            dscr = cpu.get('timer_dscr', '0x01000200')
+            if fault == 'timer_forged_el': dscr = '0x01000100'
+            if fault == 'timer_context_change':
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+            dspsr = cpu.get('timer_dspsr', '0xa2000410')
+            return (0, f'midr 0x411fd134 dscr {dscr} dspsr {dspsr} dlr 0x81234568 value {raw}')
         if op == 'debugtui_banked_protocol':
             return (0, 'old-banked-adapter' if fault == 'bank_protocol' else
                     'debugtui-armv8-banked-1 mrs physical-readback no-mode-change stop-on-fault')

@@ -27,6 +27,8 @@ mod cancel_cases;
 mod mpu_cases;
 #[path = "selector_access/mrrc_cases.rs"]
 mod mrrc_cases;
+#[path = "selector_access/timer_adapter_cases.rs"]
+mod timer_adapter_cases;
 #[path = "selector_access/timer_cases.rs"]
 mod timer_cases;
 #[path = "selector_access/vfp_cases.rs"]
@@ -148,7 +150,9 @@ fn fixture(fault: &'static str) -> Fixture {
                         "registers_select" => script.contains("arm mcr"),
                         "registers_mpu" => script.contains("arm mrc"),
                         "registers_read" => {
-                            script.contains("aarch64 vfp") || script.contains("aarch64 banked")
+                            script.contains("aarch64 vfp")
+                                || script.contains("aarch64 banked")
+                                || script.contains("aarch64 timer")
                         }
                         _ => false,
                     })

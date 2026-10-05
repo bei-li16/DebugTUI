@@ -102,6 +102,16 @@ impl Engine {
             root = parent;
         }
         let (view, route, gdb_name) = match &root.reader {
+            reader
+                if !self.project.registers.timer_command.is_empty()
+                    && crate::registers::timer::route(reader).is_some() =>
+            {
+                (
+                    SampleView::PhysicalCore,
+                    format!("openocd:{}", self.project.registers.timer_command),
+                    None,
+                )
+            }
             Reader::Gdb { name } => (
                 SampleView::SelectedFrame,
                 format!("gdb:{name}"),
@@ -413,6 +423,17 @@ impl Engine {
         }
         self.register_value_access = None;
         let result = (|| {
+            if !self.project.registers.timer_command.is_empty()
+                && let Some((name, bits)) = crate::registers::timer::route(&register.reader)
+            {
+                if register.bits != bits {
+                    return Err((
+                        Reason::ReaderUnsupported,
+                        "Timer route requires its native register width".into(),
+                    ));
+                }
+                return self.read_timer_register(name, bits);
+            }
             Ok(match &register.reader {
                 Reader::Gdb { name } => self.gdb_register_value(name, register.bits)?,
                 Reader::Banked { name } => self.read_banked_register(name)?,
@@ -713,6 +734,7 @@ impl Engine {
     }
     pub(super) fn plan_register_value_access(&mut self, route: Route, command: String) {
         self.register_value_access = Some(Access {
+            timer: None,
             route,
             command,
             phase: Phase::Planned,

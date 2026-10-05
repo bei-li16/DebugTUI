@@ -13,6 +13,7 @@
 cpu = "cortex-r52"
 cp15_command = "aarch64 mrc"
 cp15_64_command = "aarch64 mrrc"
+timer_command = "aarch64 timer"
 selector_command = "aarch64 mcr"
 isb_command = "aarch64 isb"
 banked_command = "aarch64 banked"
@@ -30,6 +31,18 @@ core1 = "board.cpu1"
 
 状态检查读取调试态可在各 EL 访问的 DSPSR（CP15 op1=3,c4,c5,op2=0），它保存完整停止 CPSR。普通 MRS CPSR 会屏蔽执行位，且 User 模式的模式／中断字段不能可靠使用，因此不用它来判断模式或核对完整状态。当前银行使用 MOV／普通 MRS，其他允许的银行使用 banked MRS。R52 没有 Monitor 模式，SP_hyp／SPSR_hyp 仅在当前 Hyp 通过普通访问读取；ELR_hyp 在 Hyp 可直接 banked MRS。非 Hyp 拒绝三项 Hyp 银行，User 模式读 DSPSR 后不注入 MIDR 或银行指令。只接受 Arm implementer 0x41／part D13，R52+ 未知身份返回 unsupported。每次保存／恢复／物理回读 R0，并核对前后全部 DSPSR 位，包括 T／IT；故障停止、不推测 rollback 或改写模式／FPU 控制。内置目录不再回退旧 get_reg／mode-switch DPM。自定义旧 backend reader 不具有该保证。
 
+## Timer 当前 Debug state 读取
+
+`aarch64 debugtui_timer_protocol` 返回 `debugtui-armv8-timer-1 external-identity current-el dspsr dlr scratch-readback no-mode-change stop-on-fault`，`aarch64 timer NAME` 接受 R52 Table 11-1 的十五个小写名称。DebugTUI 显式配置 `registers.timer_command="aarch64 timer"` 后按 CP15 编码选择专用路径；错误协议、拒绝或截断响应均不回退旧 MRC/MRRC 或 GDB。空配置保留原通道。
+
+当前 EDSCR.EL/RW/HDD 和 debug AP 的 MIDR（偏移 0xD00）提供新鲜状态与身份，避免在低 EL 注入可能被 HSTR 捕获的身份指令。仅接受实际 Arm D13/AArch32，R52+ 未知身份保持 unsupported。依据为 R52 TRM Table 12-5、DDI0568A.c F1.3.4/H1-255、工作区完整 DDI0487 M.b H2.4.5/H2.4.8。Armv8 系统寄存器保持当前 EL 的权限与 trap；旧 Armv7 的 CP15 调试权限描述不能覆盖此规则，HDD=0 不等于绕过 trap。
+
+EL2 允许全部十五项。EL1 在 HDD=0/1 时允许 CNTFRQ、CNTKCTL、CNTV_TVAL、CNTV_CTL、CNTVCT、CNTV_CVAL；Timer CRn/CRm=14 不受 HSTR coarse trap。EL1 的四项物理 Timer 依赖不可从 EL1 读出的 CNTHCTL，返回 `access-unknown`，不注入 Timer 指令；五项 Hyp-only 返回 `access-restricted`。EL0 的 CNTKCTL/Hyp-only 明确受限，其余项目依赖不可在 EL0 读出的上层使能，保留权限未知。不用配置、缓存 CPSR、旧 Probe 或 HDD=0 猜测允许，不改变 EL/模式取得控制位；完整低 EL 受控访问仍待适配。
+
+成功路径核对前后外部身份和 EDSCR、全部 DSPSR 与 DLR，保存/恢复/物理回读 R0/R1；每次外部 AP 读取还检查 EDPRSR.HALT。六项 64 位各执行一次 MRRC；不同条目分别采样。响应为 `midr RAW32 dscr RAW32 dspsr RAW32 dlr RAW32 value RAW32|RAW64`。原始证据绑定读取来源，在 headless JSON 和详情窗口中可查，并随旧值保存。故障或状态变化不发布部分结果，立即标记 target unknown；不执行模式切换、异常恢复、重试、Timer 控制写入或推测回滚。
+
+`tests/timer-transfer.c` 编译同一生产头文件，独立手写十五项指令字，验证 474 个失败点、12 个合法 EL1/HDD 组合、48 个权限拒绝及身份/完整状态/PC/暂存值变化。最新 Windows/Linux 候选哈希以 `source.lock.json` 为准，此前 VFP writer 候选记录在 previous_candidates。软件模型与离线命令检查没有执行目标指令，新候选未安装或发布。
+
 ## VFP 原始值与别名
 
 `aarch64 debugtui_vfp_protocol` 返回 `debugtui-armv8-vfp-1 vmrs pair-readback dspsr no-enable stop-on-fault`。`aarch64 vfp NAME` 接受 FPSID、FPSCR、MVFR0/1/2、FPEXC（小写名称）以及 D0–31、Q0–15。控制值为 32 位，数据始终返回两个 D 寄存器组成的 128 位物理采样，并附 MVFR0、MVFR1 和 FPEXC 原始证据。DebugTUI 按请求缓存物理 pair，D 的两个 lane、S 的低／高 32 位和 Q 共用同一值；不会把截断的 GDB 输出补成宽值，也不回退旧 get_reg。
@@ -42,13 +55,13 @@ R52 TRM §§16.5–16.6 的两种配置为 SP-only D16（MVFR0=`0x10110021`、MV
 
 ## 构建和软件验证
 
-### VFP 原始位写入后端（DebugTUI 编辑接入待完成）
+### VFP 原始位写入后端
 
 `aarch64 debugtui_vfp_write_protocol` 返回独立协议 `debugtui-armv8-vfp-write-1 vmov raw-pair fresh-merge scratch-readback no-enable stop-on-fault`。`aarch64 vfp_write NAME RAW` 只接受 S0–31、D0–31、Q0–15 的小写名称和精确 32/64/128 位十六进制原始值，不执行表达式或浮点数值转换。FPSCR、FPEXC 和标识控制不在 writer 允许名单中。当前只支持实际 R52 D13 的 Hyp／TCP10=0／EN=1；其他模式的合法路径仍待适配，不自动改变 CPU 模式或使能 FPU。
 
 事务复用已校验的物理 pair 读取，在发送前重新确认实际权限／能力。S 从新鲜 D 保留另一半 32 位，D 保留 pair 的另一 D；Q 用两次 VMOV 写入，明确非原子。每次都保存／恢复／物理回读 R0/R1，写后再读取完整 pair，比较前后 DSPSR、HCPTR、FPEXC 和 MVFR；NaN payload、符号和高字直接按位搬运。结果为 `outcome verified|mismatch before RAW128 expected RAW128 value RAW128 mvfr0 RAW32 mvfr1 RAW32 fpexc RAW32`。前置条件安全拒绝为 `outcome not_sent reason REASON`。任何传输、恢复或状态结果未知都立即停止并把 target 标为 unknown，不重试、补写或猜测回滚。
 
-同一 pair 或 PC/CPSR/FP 状态的 OpenOCD GDB cache 有待写值时，注入前拒绝为 pending-register-write；不删除用户的待写值。实际发送后使该 pair 及两个 ARM32 D alias 的有效标记失效，避免显示旧样本。只访问当前明确 target，无跨核广播。DebugTUI 尚未声明该 writer 或接入 preview/apply、编辑 UI、服务锁与全部跨面板缓存，这个后端不能代替 WRITE-005/008–012 完整验收。
+同一 pair 或 PC/CPSR/FP 状态的 OpenOCD GDB cache 有待写值时，注入前拒绝为 pending-register-write；不删除用户的待写值。实际发送后使该 pair 及两个 ARM32 D alias 的有效标记失效。只访问当前明确 target，无跨核广播。DebugTUI 已以独立 `vfp_write_command` 接入 Hyp raw preview/apply、编辑 UI、服务锁和别名失效；EL1/Guest/User、FP 状态及其他 writer 类别仍待适配，这个后端不能代替 WRITE-005/008–012 完整验收。
 
 `tests/vfp-write-transfer.c` 编译生产头文件，验证 80 个视图、144 个故障点、两次 Q 写入的部分完成、临时寄存器恢复、完整 pair 及控制一致性、D16/未知身份/未使能/陷阱拒绝；GNU Arm 独立核对 VMOV 写入编码。`tests/vfp-write-driver.py` 用真实 TCP 的严格双核模型验证三种位宽、明确恢复和失败后不读／重试／回滚，5 项通过。硬件驱动 `tests/vfp-write-hardware.py` 默认 4 skipped；模板和八类延后用例见 [VFP 写入 case](../../tests/cases/register-vfp-writes.md)。上板执行未做，外部物理 PC/GPR、待写 cache 及独立固件写后样本仍需额外记录。
 

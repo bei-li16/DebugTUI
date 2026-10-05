@@ -28,6 +28,7 @@ mod register_adapter;
 mod registers;
 mod selectors;
 mod symbols;
+mod timer;
 mod variable_writes;
 mod vfp;
 mod vfp_writes;

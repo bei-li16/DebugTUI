@@ -2007,6 +2007,7 @@ mod tests {
                     },
                 );
                 provenance.access = Some(crate::registers::provenance::Access {
+                    timer: None,
                     route: crate::registers::provenance::Route::TclRegister {
                         endpoint: "127.0.0.1:6666".into(),
                         target: "cpu0".into(),

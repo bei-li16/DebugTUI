@@ -1,8 +1,8 @@
 diff --git a/src/target/Makefile.am b/src/target/Makefile.am
-index 3d855ab..b8d1c24 100644
+index 3d855ab..08beb38 100644
 --- a/src/target/Makefile.am
 +++ b/src/target/Makefile.am
-@@ -187,6 +187,10 @@ ARC_SRC = \
+@@ -187,6 +187,11 @@ ARC_SRC = \
  	%D%/armv7m_trace.h \
  	%D%/armv8.h \
  	%D%/armv8_dpm.h \
@@ -10,24 +10,26 @@ index 3d855ab..b8d1c24 100644
 +	%D%/armv8_debugtui_banked.h \
 +	%D%/armv8_debugtui_vfp.h \
 +	%D%/armv8_debugtui_vfp_write.h \
++	%D%/armv8_debugtui_timer.h \
  	%D%/armv8_opcodes.h \
  	%D%/armv8_cache.h \
  	%D%/avrt.h \
 diff --git a/src/target/aarch64.c b/src/target/aarch64.c
-index 19ab923..4cb6e65 100644
+index 19ab923..0830429 100644
 --- a/src/target/aarch64.c
 +++ b/src/target/aarch64.c
-@@ -15,6 +15,9 @@
+@@ -15,6 +15,10 @@
  #include "target_request.h"
  #include "target_type.h"
  #include "armv8_opcodes.h"
 +#include "armv8_debugtui_banked.h"
 +#include "armv8_debugtui_vfp.h"
 +#include "armv8_debugtui_vfp_write.h"
++#include "armv8_debugtui_timer.h"
  #include "armv8_cache.h"
  #include "arm_coresight.h"
  #include "arm_semihosting.h"
-@@ -3154,6 +3157,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3154,6 +3158,10 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  		command_print(CMD, "%s: not an ARM", target_name(target));
  		return ERROR_FAIL;
  	}
@@ -38,7 +40,7 @@ index 19ab923..4cb6e65 100644
  
  	if (target->state != TARGET_HALTED) {
  		command_print(CMD, "Error: [%s] not halted", target_name(target));
-@@ -3212,16 +3219,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3212,16 +3220,24 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  
  		/* NOTE: parameters reordered! */
  		/* ARMV4_5_MCR(cpnum, op1, 0, crn, crm, op2) */
@@ -67,7 +69,7 @@ index 19ab923..4cb6e65 100644
  
  		command_print(CMD, "0x%" PRIx32, value);
  	}
-@@ -3229,7 +3244,272 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
+@@ -3229,7 +3245,327 @@ COMMAND_HANDLER(aarch64_mcrmrc_command)
  	return ERROR_OK;
  }
  
@@ -281,7 +283,62 @@ index 19ab923..4cb6e65 100644
 +	return ERROR_OK;
 +}
 +
++COMMAND_HANDLER(aarch64_debugtui_timer_protocol_command)
++{
++	if (CMD_ARGC)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	command_print(CMD, "%s", DEBUGTUI_TIMER_PROTOCOL);
++	return ERROR_OK;
++}
++
++COMMAND_HANDLER(aarch64_debugtui_timer_command)
++{
++	if (CMD_ARGC != 1)
++		return ERROR_COMMAND_SYNTAX_ERROR;
++	const struct armv8_debugtui_timer_register *reg = armv8_debugtui_timer_find(CMD_ARGV[0]);
++	if (!reg)
++		return ERROR_COMMAND_ARGUMENT_INVALID;
++	struct target *target = get_current_target(CMD_CTX);
++	if (!target || !target_was_examined(target))
++		return ERROR_TARGET_NOT_EXAMINED;
++	struct arm *arm = target_to_arm(target);
++	if (!is_arm(arm) || !arm->arch_info || !is_armv8(arm->arch_info) || !arm->dpm)
++		return ERROR_TARGET_INVALID;
++	if (target->state != TARGET_HALTED)
++		return ERROR_TARGET_NOT_HALTED;
++	struct armv8_debugtui_timer_result result;
++	bool uncertain = false;
++	int retval = armv8_dpm_debugtui_timer(arm->dpm, reg, &result, &uncertain);
++	if (uncertain) {
++		target->state = TARGET_UNKNOWN;
++		command_print(CMD, "Core state restoration failed: Timer outcome unknown; reconnect required");
++		return retval == ERROR_OK ? ERROR_FAIL : retval;
++	}
++	if (retval > 0) {
++		const char *reason = retval == DEBUGTUI_TIMER_RESTRICTED ? "access-restricted" :
++			retval == DEBUGTUI_TIMER_ACCESS_UNKNOWN ? "access-unknown" : "reader-unsupported";
++		command_print(CMD, "debugtui-timer:%s", reason);
++		return retval == DEBUGTUI_TIMER_UNSUPPORTED ? ERROR_TARGET_INVALID : ERROR_TARGET_RESOURCE_NOT_AVAILABLE;
++	}
++	if (retval != ERROR_OK)
++		return retval;
++	command_print(CMD, "midr 0x%08" PRIx32 " dscr 0x%08" PRIx32 " dspsr 0x%08" PRIx32
++		" dlr 0x%08" PRIx32 " value 0x%0*" PRIx64,
++		result.midr, result.dscr, result.dspsr, result.dlr, (int)(reg->bits / 4), result.value);
++	return ERROR_OK;
++}
++
  static const struct command_registration aarch64_exec_command_handlers[] = {
++	{
++		.name = "debugtui_timer_protocol", .mode = COMMAND_ANY,
++		.handler = aarch64_debugtui_timer_protocol_command,
++		.help = "report checked Timer protocol without target access", .usage = "",
++	},
++	{
++		.name = "timer", .mode = COMMAND_EXEC, .handler = aarch64_debugtui_timer_command,
++		.help = "read R52 Timer with external identity and current EL permissions; preserve PC/status/scratch",
++		.usage = "cntfrq|cntkctl|cntp_tval|cntp_ctl|cntv_tval|cntv_ctl|cnthctl|cnthp_tval|cnthp_ctl|cntpct|cntvct|cntp_cval|cntv_cval|cntvoff|cnthp_cval",
++	},
 +	{
 +		.name = "debugtui_vfp_write_protocol", .mode = COMMAND_ANY,
 +		.handler = aarch64_debugtui_vfp_write_protocol_command,
@@ -553,6 +610,182 @@ index 0000000..f293869
 +		goto fault;
 +	}
 +	*value = result;
++	return 0;
++fault:
++	*uncertain = true;
++	return retval;
++}
++
++#endif
+diff --git a/src/target/armv8_debugtui_timer.h b/src/target/armv8_debugtui_timer.h
+new file mode 100644
+index 0000000..b9587b4
+--- /dev/null
++++ b/src/target/armv8_debugtui_timer.h
+@@ -0,0 +1,170 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#ifndef OPENOCD_TARGET_ARMV8_DEBUGTUI_TIMER_H
++#define OPENOCD_TARGET_ARMV8_DEBUGTUI_TIMER_H
++
++#include "armv8_debugtui_banked.h"
++
++#define DEBUGTUI_TIMER_PROTOCOL "debugtui-armv8-timer-1 external-identity current-el dspsr dlr scratch-readback no-mode-change stop-on-fault"
++#define DEBUGTUI_TIMER_UNSUPPORTED 1
++#define DEBUGTUI_TIMER_RESTRICTED 2
++#define DEBUGTUI_TIMER_ACCESS_UNKNOWN 3
++#define DEBUGTUI_TIMER_DSCR UINT32_C(0x088)
++#define DEBUGTUI_TIMER_MIDR UINT32_C(0xd00)
++#define DEBUGTUI_TIMER_STATE_MASK UINT32_C(0x00053f00)
++#define DEBUGTUI_TIMER_FAULT_MASK UINT32_C(0x1c0000c0)
++#define DEBUGTUI_READ_DLR ARMV4_5_MRC(15, 3, 0, 4, 5, 1)
++
++struct armv8_debugtui_timer_register {
++	const char *name;
++	unsigned int bits, op1, crm, op2, min_el;
++	bool physical;
++};
++
++/* R52 TRM 100026_0104_01, Table 11-1; DDI 0568A.c Table E1-1.
++ * "physical" requires CNTHCTL permission below EL2. CRn/CRm=14 is
++ * excluded from HSTR coarse traps (DDI 0568A.c H1-255). */
++static const struct armv8_debugtui_timer_register armv8_debugtui_timers[] = {
++	{"cntfrq", 32, 0, 0, 0, 0, false},
++	{"cntkctl", 32, 0, 1, 0, 1, false},
++	{"cntp_tval", 32, 0, 2, 0, 0, true},
++	{"cntp_ctl", 32, 0, 2, 1, 0, true},
++	{"cntv_tval", 32, 0, 3, 0, 0, false},
++	{"cntv_ctl", 32, 0, 3, 1, 0, false},
++	{"cnthctl", 32, 4, 1, 0, 2, false},
++	{"cnthp_tval", 32, 4, 2, 0, 2, false},
++	{"cnthp_ctl", 32, 4, 2, 1, 2, false},
++	{"cntpct", 64, 0, 14, 0, 0, true},
++	{"cntvct", 64, 1, 14, 0, 0, false},
++	{"cntp_cval", 64, 2, 14, 0, 0, true},
++	{"cntv_cval", 64, 3, 14, 0, 0, false},
++	{"cntvoff", 64, 4, 14, 0, 2, false},
++	{"cnthp_cval", 64, 6, 14, 0, 2, false},
++};
++
++struct armv8_debugtui_timer_io {
++	struct armv8_debugtui_io core;
++	/* External debug AP reads, never an injected CP15 identity/control read.
++ * The transport also verifies physical EDPRSR.HALT on every call. */
++	int (*read_debug)(void *context, uint32_t offset, uint32_t *value);
++};
++struct armv8_debugtui_timer_result {
++	uint32_t midr, dscr, dspsr, dlr;
++	uint64_t value;
++};
++
++static inline const struct armv8_debugtui_timer_register *armv8_debugtui_timer_find(const char *name)
++{
++	for (unsigned int i = 0; i < sizeof(armv8_debugtui_timers) / sizeof(armv8_debugtui_timers[0]); i++)
++		if (strcmp(name, armv8_debugtui_timers[i].name) == 0)
++			return &armv8_debugtui_timers[i];
++	return NULL;
++}
++
++static inline bool armv8_debugtui_timer_state_valid(uint32_t dscr)
++{
++	unsigned int el = (dscr >> 8) & 3;
++	return el <= 2 && !(dscr & DEBUGTUI_TIMER_FAULT_MASK) && (dscr & (1u << 24)) &&
++		!(dscr & (1u << (10 + el))) && !(el == 2 && (dscr & (1u << 16)));
++}
++
++static inline int armv8_debugtui_timer_permission(const struct armv8_debugtui_timer_register *reg,
++	uint32_t dscr)
++{
++	unsigned int el = (dscr >> 8) & 3;
++	if (el < reg->min_el)
++		return DEBUGTUI_TIMER_RESTRICTED;
++	/* DDI 0487 M.b H2.4.5/8: system registers keep current EL permissions,
++ * including traps. HDD=0 does NOT bypass CNTHCTL or CNTKCTL. EL0's
++ * CNTKCTL and EL1's CNTHCTL cannot be read here without changing EL.
++ * Keep these enables unknown; never infer them from a cached CPSR/fact. */
++	if (el == 0 || (el == 1 && reg->physical))
++		return DEBUGTUI_TIMER_ACCESS_UNKNOWN;
++	return 0;
++}
++
++static inline int armv8_debugtui_timer_transfer(const struct armv8_debugtui_timer_io *io,
++	const struct armv8_debugtui_timer_register *reg,
++	struct armv8_debugtui_timer_result *result, bool *uncertain)
++{
++	struct armv8_debugtui_timer_result sample = {0};
++	uint32_t after, scalar = 0;
++	*uncertain = false;
++	int retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_DSCR, &sample.dscr);
++	if (retval != 0)
++		goto fault;
++	if (!armv8_debugtui_timer_state_valid(sample.dscr)) {
++		if (sample.dscr & DEBUGTUI_TIMER_FAULT_MASK) {
++			retval = -1;
++			goto fault;
++		}
++		return DEBUGTUI_TIMER_UNSUPPORTED;
++	}
++	retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_MIDR, &sample.midr);
++	if (retval != 0)
++		goto fault;
++	if ((sample.midr >> 24) != 0x41 || ((sample.midr >> 16) & 15) != 15 ||
++		((sample.midr >> 4) & 0xfff) != 0xd13)
++		return DEBUGTUI_TIMER_UNSUPPORTED;
++	retval = armv8_debugtui_timer_permission(reg, sample.dscr);
++	if (retval != 0)
++		return retval;
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_READ_DSPSR, false, &sample.dspsr);
++	if (retval != 0)
++		goto fault;
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_READ_DLR, false, &sample.dlr);
++	if (retval != 0)
++		goto fault;
++	retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_DSCR, &after);
++	if (retval != 0)
++		goto fault;
++	if (!armv8_debugtui_timer_state_valid(after) ||
++		((sample.dscr ^ after) & DEBUGTUI_TIMER_STATE_MASK)) {
++		retval = -1;
++		goto fault;
++	}
++	if (reg->bits == 64)
++		retval = armv8_debugtui_mrrc_transfer(&io->core, 15, reg->op1, reg->crm, &sample.value);
++	else {
++		retval = armv8_debugtui_mrc_mcr_transfer(&io->core,
++			ARMV4_5_MRC(15, reg->op1, 0, 14, reg->crm, reg->op2), false, &scalar);
++		sample.value = scalar;
++	}
++	if (retval != 0)
++		goto fault;
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_READ_DSPSR, false, &after);
++	if (retval != 0)
++		goto fault;
++	if (sample.dspsr != after) {
++		retval = -1;
++		goto fault;
++	}
++	retval = armv8_debugtui_mrc_mcr_transfer(&io->core, DEBUGTUI_READ_DLR, false, &after);
++	if (retval != 0)
++		goto fault;
++	if (sample.dlr != after) {
++		retval = -1;
++		goto fault;
++	}
++	retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_MIDR, &after);
++	if (retval != 0)
++		goto fault;
++	if (sample.midr != after) {
++		retval = -1;
++		goto fault;
++	}
++	retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_DSCR, &after);
++	if (retval != 0)
++		goto fault;
++	if (!armv8_debugtui_timer_state_valid(after) ||
++		((sample.dscr ^ after) & DEBUGTUI_TIMER_STATE_MASK)) {
++		retval = -1;
++		goto fault;
++	}
++	*result = sample;
 +	return 0;
 +fault:
 +	*uncertain = true;
@@ -905,10 +1138,10 @@ index 0000000..636b2c7
 +
 +#endif
 diff --git a/src/target/armv8_dpm.c b/src/target/armv8_dpm.c
-index 508ec97..04b5ef0 100644
+index 508ec97..c20de77 100644
 --- a/src/target/armv8_dpm.c
 +++ b/src/target/armv8_dpm.c
-@@ -16,6 +16,10 @@
+@@ -16,6 +16,11 @@
  #include "breakpoints.h"
  #include "target_type.h"
  #include "armv8_opcodes.h"
@@ -916,10 +1149,11 @@ index 508ec97..04b5ef0 100644
 +#include "armv8_debugtui_banked.h"
 +#include "armv8_debugtui_vfp.h"
 +#include "armv8_debugtui_vfp_write.h"
++#include "armv8_debugtui_timer.h"
  
  #include "helper/time_support.h"
  
-@@ -194,8 +198,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
+@@ -194,8 +199,8 @@ static int dpmv8_dpm_finish(struct arm_dpm *dpm)
  	return ERROR_OK;
  }
  
@@ -930,7 +1164,7 @@ index 508ec97..04b5ef0 100644
  {
  	struct armv8_common *armv8 = dpm->arm->arch_info;
  	uint32_t dscr = dpm->dscr;
-@@ -203,6 +207,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -203,6 +208,8 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  
  	if (p_dscr)
  		dscr = *p_dscr;
@@ -939,7 +1173,7 @@ index 508ec97..04b5ef0 100644
  
  	/* Wait for InstrCompl bit to be set */
  	long long then = timeval_ms();
-@@ -249,9 +255,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -249,9 +256,12 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  
  	if (dscr & DSCR_ERR) {
  		LOG_ERROR("Opcode 0x%08" PRIx32 ", DSCR.ERR=1, DSCR.EL=%i", opcode, dpm->last_el);
@@ -953,7 +1187,7 @@ index 508ec97..04b5ef0 100644
  
  	if (p_dscr)
  		*p_dscr = dscr;
-@@ -259,6 +268,217 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
+@@ -259,6 +269,262 @@ static int dpmv8_exec_opcode(struct arm_dpm *dpm,
  	return retval;
  }
  
@@ -974,7 +1208,7 @@ index 508ec97..04b5ef0 100644
 +	/* Do not run the legacy exception recovery/mode switch for this access. */
 +	int retval = dpmv8_exec_opcode_checked(io->dpm, opcode, NULL, false);
 +	if (retval == ERROR_OK &&
-+		(io->dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE)) != io->execution_state)
++		(io->dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD)) != io->execution_state)
 +		return ERROR_FAIL;
 +	return retval;
 +}
@@ -1022,7 +1256,7 @@ index 508ec97..04b5ef0 100644
 +		return ERROR_FAIL;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
 +	};
 +	struct armv8_debugtui_io io = {
 +		.context = &context,
@@ -1046,7 +1280,7 @@ index 508ec97..04b5ef0 100644
 +		return ERROR_FAIL;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
 +	};
 +	struct armv8_debugtui_io io = {
 +		.context = &context,
@@ -1073,7 +1307,7 @@ index 508ec97..04b5ef0 100644
 +		return DEBUGTUI_BANKED_UNSUPPORTED;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
 +	};
 +	struct armv8_debugtui_io io = {
 +		.context = &context,
@@ -1104,7 +1338,7 @@ index 508ec97..04b5ef0 100644
 +		return DEBUGTUI_VFP_UNSUPPORTED;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
 +	};
 +	struct armv8_debugtui_io io = {
 +		.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
@@ -1134,7 +1368,7 @@ index 508ec97..04b5ef0 100644
 +		return DEBUGTUI_VFP_UNSUPPORTED;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
 +	};
 +	struct armv8_debugtui_io io = {
 +		.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
@@ -1151,6 +1385,51 @@ index 508ec97..04b5ef0 100644
 +	return retval;
 +}
 +
++static int dpmv8_debugtui_read_timer_debug(void *context, uint32_t offset, uint32_t *value)
++{
++	struct dpmv8_debugtui_context *io = context;
++	struct armv8_common *armv8 = io->dpm->arm->arch_info;
++	uint32_t prsr;
++	int retval = mem_ap_read_atomic_u32(armv8->debug_ap,
++		armv8->debug_base + CPUV8_DBG_PRSR, &prsr);
++	if (retval != ERROR_OK)
++		return retval;
++	if (!(prsr & PRSR_HALT))
++		return ERROR_TARGET_NOT_HALTED;
++	retval = mem_ap_read_atomic_u32(armv8->debug_ap, armv8->debug_base + offset, value);
++	if (retval == ERROR_OK && offset == DEBUGTUI_TIMER_DSCR)
++		io->dpm->dscr = *value;
++	return retval;
++}
++
++int armv8_dpm_debugtui_timer(struct arm_dpm *dpm,
++	const struct armv8_debugtui_timer_register *reg,
++	struct armv8_debugtui_timer_result *result, bool *uncertain)
++{
++	*uncertain = false;
++	int retval = dpmv8_debugtui_prepare(dpm);
++	if (retval != ERROR_OK) {
++		*uncertain = retval != ERROR_TARGET_NOT_HALTED;
++		return retval;
++	}
++	struct dpmv8_debugtui_context context = {
++		.dpm = dpm,
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++	};
++	struct armv8_debugtui_timer_io io = {
++		.core = {.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
++			.write_gpr = dpmv8_debugtui_write_gpr, .execute = dpmv8_debugtui_execute},
++		.read_debug = dpmv8_debugtui_read_timer_debug,
++	};
++	retval = armv8_debugtui_timer_transfer(&io, reg, result, uncertain);
++	if (retval != ERROR_OK)
++		return retval;
++	retval = dpm->finish(dpm);
++	if (retval != ERROR_OK)
++		*uncertain = true;
++	return retval;
++}
++
 +int armv8_dpm_debugtui_isb(struct arm_dpm *dpm)
 +{
 +	int retval = dpmv8_debugtui_prepare(dpm);
@@ -1158,7 +1437,7 @@ index 508ec97..04b5ef0 100644
 +		return retval;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
 +	};
 +	uint32_t opcode = armv8_dpm_get_core_state(dpm) == ARM_STATE_AARCH64 ?
 +		ARMV8_ISB : ARMV8_ISB_SY_T1;
@@ -1172,10 +1451,10 @@ index 508ec97..04b5ef0 100644
  {
  	return dpmv8_exec_opcode(dpm, opcode, NULL);
 diff --git a/src/target/armv8_dpm.h b/src/target/armv8_dpm.h
-index 19b33da..69f4a7f 100644
+index 19b33da..21ab717 100644
 --- a/src/target/armv8_dpm.h
 +++ b/src/target/armv8_dpm.h
-@@ -23,6 +23,24 @@ struct armv8_common;
+@@ -23,6 +23,30 @@ struct armv8_common;
   */
  int armv8_dpm_setup(struct arm_dpm *dpm);
  int armv8_dpm_initialize(struct arm_dpm *dpm);
@@ -1197,6 +1476,12 @@ index 19b33da..69f4a7f 100644
 +int armv8_dpm_debugtui_vfp_write(struct arm_dpm *dpm,
 +	const struct armv8_debugtui_vfp_write_request *request,
 +	struct armv8_debugtui_vfp_write_result *result, bool *sent, bool *uncertain);
++
++struct armv8_debugtui_timer_register;
++struct armv8_debugtui_timer_result;
++int armv8_dpm_debugtui_timer(struct arm_dpm *dpm,
++	const struct armv8_debugtui_timer_register *reg,
++	struct armv8_debugtui_timer_result *result, bool *uncertain);
  
  int armv8_dpm_read_current_registers(struct arm_dpm *dpm);
  int armv8_dpm_modeswitch(struct arm_dpm *dpm, enum arm_mode mode);

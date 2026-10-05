@@ -4,6 +4,8 @@
 
 ## 统一运行
 
+专用 Timer 后端的软件验证见 [Timer 自检](../docs/register-timer.md)。`cargo test --locked timer_` 覆盖独立协议、编码/位宽、完整物理证据、权限未知与拒绝、选定核、旧值来源、恢复未知、取消和读取期间实际线程/帧变化。REG-H05 驱动以实际 EXE 分别执行旧 MRRC 和新 Timer 双核软件流程；case 的 `require_timer_adapter=true` 要求并记录各次 Timer 的 MIDR/EDSCR/DSPSR/DLR，同时保留独立固件基线比较。`node scripts/test-register-timer-hardware.cjs` 默认五项 SKIPPED，无目标访问；[十三项环境 case](cases/register-timer.md) 均未执行。生产 C 事务及 Windows/Linux 候选构建另见 [后端说明](../tools/openocd-adapter/README.md)，软件模型不代表芯片验证。
+
 共享寄存器归属验证见 [REG-109 自检](../docs/register-shared-owners.md)。`cargo test --locked --test register_shared` 的五项四核 MI 管道集成覆盖三种 scope、两个 cluster、未知归属、alias 单次读取、peer 生命周期、迟到值、失败及重连、首个通知中的兼容投影；两项模型、一项故障边界和一项 UI 测试另核对身份边界、旧 JSON、逐路由缓存、失败退避及宽窄键盘帮助。F24 本批增加九个证据模式，当前累计 69 个。[八项人工 case](cases/register-shared-owners.md) 全部 SKIPPED。
 
 缓存生命周期验证见 [REG-106 自检](../docs/register-cache-lifecycle.md)。`cargo test --locked --test register_lifecycle` 覆盖真实 worker／MI 的换帧、别名、复位成功及部分失败、Console 名称索引变化、更换 ELF、双核缓存及重连；App 测试另外验证返回原帧和迟到回复。F24 在该历史批次加入七个证据模式，当时累计 60 个。[十项人工 case](cases/register-cache-lifecycle.md) 均为 SKIPPED，未执行上板测试。

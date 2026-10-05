@@ -1,5 +1,6 @@
 {
   "software_example": true,
+  "require_timer_adapter": true,
   "frame_function": "debugtui_timer_board_fixture",
   "expected_midr": "0x411fd134",
   "evidence_source": "Replace with separately built firmware samples and startup CVAL evidence; software values are not board evidence",

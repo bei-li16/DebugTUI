@@ -117,6 +117,17 @@ pub(super) fn details(label: &str, provenance: &Provenance) -> Vec<String> {
             ));
         }
     }
+    if let Some(timer) = &access.timer {
+        text.push(format!(
+            "Timer physical MIDR: {} / current Debug EDSCR: {}",
+            timer.midr.hex, timer.dscr.hex
+        ));
+        text.push(format!(
+            "Stopped DSPSR: {} / DLR: {}",
+            timer.dspsr.hex, timer.dlr.hex
+        ));
+        text.push("Timer items are separate samples; no cross-register atomic snapshot.".into());
+    }
     for alias in &provenance.aliases {
         text.push(format!(
             "Alias source: {} / offset {} / {} bits",
@@ -194,6 +205,7 @@ mod tests {
                 .copied();
             let mut provenance = Provenance::declared(&reader);
             provenance.access = Some(crate::registers::provenance::Access {
+                timer: None,
                 route: Route::TclMemory {
                     endpoint: "127.0.0.1:6666".into(),
                     target: "ap.actual".into(),

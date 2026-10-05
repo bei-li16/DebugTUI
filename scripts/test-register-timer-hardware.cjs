@@ -38,6 +38,10 @@ const projectHash = hash(project);
 Object.assign(suite.metadata, {binary, binary_sha256:hash(binary), project, project_sha256:projectHash,
   case_file:caseFile, case_sha256:hash(caseFile), evidence_source:spec.evidence_source,
   physical_scratch_check:'Pinned adapter reads back R0/R1 internally; GDB guard samples are logical register views'});
+const timerIds = new Set(['cntfrq','cntkctl','cntp_tval','cntp_ctl','cntv_tval','cntv_ctl',
+  'cnthctl','cnthp_tval','cnthp_ctl','cntpct','cntvct','cntp_cval','cntv_cval','cntvoff','cnthp_cval']);
+const timerEvidence = [];
+Object.assign(suite.metadata, {requires_timer_adapter:!!spec.require_timer_adapter, timer_evidence:timerEvidence});
 let session, context, before, peerBefore;
 const read = async (ids, bits) => {
   const current = (await session.command('registers_list')).context;
@@ -46,7 +50,20 @@ const read = async (ids, bits) => {
     const sample = response.samples.find(s=>s.id===id);
     assert.equal(sample?.state, 'valid', `Fresh ${id}: ${sample?.detail}`);
     assert.equal(sample.owner, `core:${current.core}`); raw(sample.value.hex, bits);
-    if (bits === 64) assert.equal(sample.source, 'openocd:aarch64 mrrc', 'Use the pinned genuine MRRC adapter');
+    assert.equal(sample.value.bits, bits);
+    if (spec.require_timer_adapter && timerIds.has(id)) {
+      assert.equal(sample.source, 'openocd:aarch64 timer', 'Use the independent checked Timer adapter');
+      assert.equal(sample.view, 'physical_core');
+      const evidence = sample.provenance?.access?.timer;
+      for (const field of ['midr','dscr','dspsr','dlr']) {
+        assert.equal(evidence?.[field]?.bits,32,`Missing physical Timer ${field}`);
+        raw(evidence[field].hex,32);
+      }
+      assert.equal(evidence.midr.hex,spec.expected_midr);
+      assert.equal((raw(evidence.dscr.hex,32)>>8n)&3n,2n,'Dedicated baseline requires current Debug EL2 evidence');
+      assert.equal(raw(evidence.dspsr.hex,32)&31n,26n,'Dedicated firmware baseline stopped in Hyp');
+      timerEvidence.push({id,core:current.core,value:sample.value,evidence});
+    } else if (bits === 64) assert.equal(sample.source, 'openocd:aarch64 mrrc', 'Use the pinned genuine MRRC adapter');
     return [id,sample.value.hex];
   }));
 };

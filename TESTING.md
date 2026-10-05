@@ -2,6 +2,9 @@
 
 ## 寄存器与显式内存通道开发分支（2026-10-04–05，尚未发布）
 
+2026-10-05 专用 Timer 后端批次：完整 Cargo **367 单元＋136 集成通过，2 ignored**，F24 **114/114**；严格 Clippy、格式及差异检查通过。生产 C 覆盖十五项独立编码/474 故障点，Windows/Linux 新目录候选构建及原生 Windows 验证通过；双核实际 EXE/MI/Tcl 覆盖完整原始值/当前 Debug 证据、权限原因、旧值来源、取消/上下文变化及恢复未知 FAULT。旧 MRRC 与新 Timer 独立固件基线驱动各六软件阶段通过，未执行目标代码。完整报告和限制见 [开发进度](docs/registers-development-status.md) 与 [Timer 自检](docs/register-timer.md)。仅完成 REG-402，已完成／未完成 **21/50**；完整低 EL 权限与采样一致性仍待完成，其余22套件未选择，[十三项环境 case](tests/cases/register-timer.md) 均 SKIPPED，未上板、安装或发布。
+
+
 2026-10-05 Timer 独立基线批次：完整 Cargo **365 单元＋131 集成通过，2 ignored**，F24 **107/107**；严格 Clippy、目录比对、格式及差异检查通过。专用 Hyp/ready 门禁、四个稳定六十四位独立符号、两个计数器和 peer 保持的软件驱动通过；错误模式/未就绪/基线不同在正确阶段停止并清理。GNU Arm 11.4 离线编译全部九项 MRC/六项 MRRC 编码通过，没有 Timer/模式写指令或目标执行。正常 EL 与 Debug state 权限区别已核对，完整应用权限适配仍未完成。其余22套件未选择；[Timer 自检](docs/register-timer.md)、[开发进度](docs/registers-development-status.md) 记录证据，[十二项环境 case](tests/cases/register-timer.md) 均 SKIPPED。总计已完成／未完成 **20/51**，未上板、安装或发布。
 
 

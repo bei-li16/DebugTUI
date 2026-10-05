@@ -4,7 +4,7 @@
 
 本计划将现有通用寄存器列表扩展为具有 Arm Development Studio 分组、位域和状态展示能力的寄存器窗口，并纳入 GitHub 开放 Issues 中的总线访问 target 配置、展示以及变量/内存/寄存器写入需求。优先服务 THA6206 的 MCAL 与 Bao 调试，同时保持单核、多核以及 STM32 等既有目标的兼容性。寄存器读取按“确认读取能力 → 建立数据模型 → 改造界面 → 扩展读取 → 实板验收”推进；总线入口与写入能力分别跟踪，写入不作为前期只读版本的发布条件。
 
-状态：开发中。2026-10-05 按逐项软件证据核对，71 项中已完成 20 项、未完成 51 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
+状态：开发中。2026-10-05 按逐项软件证据核对，71 项中已完成 21 项、未完成 50 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
 
 ## 当前版本与新功能版本计划
 
@@ -344,12 +344,15 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 优先级 P1 为 Generic Timer，P2 为 PMU、GIC、Debug 和 STM。目标：v0.11.0 交付 REG-401 至 REG-403 和 REG-407；v0.11.1 交付 REG-404 至 REG-406 和 REG-408。Bao 的 Timer 需求优先于扩展目录数量。
 
 - [ ] REG-401：核对 CNTP、CNTV、CNTHP 等实际 Timer 寄存器及权限，接入已支持的 32 位项目。
-- [ ] REG-402：为 CNTPCT、CNTVCT、CNTVOFF 和相关 CVAL 等 64 位项目实现正确读取；现有后端缺少通道时，补充 OpenOCD 并维护最低版本约束。
+- [x] REG-402：为 CNTPCT、CNTVCT、CNTVOFF 和相关 CVAL 等 64 位项目实现正确读取；现有后端缺少通道时，补充 OpenOCD 并维护最低版本约束。
 - [ ] REG-403：验证 64 位结果的高位、低位和采样一致性；仅在架构明确提供分段读取协议时使用该协议，并注明一致性边界。
 
-2026-10-05 Timer 阶段进度见 [目录与读取路径自检](register-timer.md)：补齐十五项字段/访问说明及 timer.present=1 条件，独立软件夹具验证全部精确 MRC/MRRC 编码、不对称高低位、Scope All 选定核心、Unknown/No 零请求与错误隔离。新增 [十二项环境 case](../tests/cases/register-timer.md) 均 SKIPPED；完整 EL1/Guest/User 权限适配、全部固件基线、实际后端与采样一致性尚未完成，REG-401/402/403 继续未勾选，计数仍为已完成／未完成 **20/51**。
+2026-10-05 前序目录批次的 Timer 阶段进度见 [目录与读取路径自检](register-timer.md)：补齐十五项字段/访问说明及 timer.present=1 条件，独立软件夹具验证全部精确 MRC/MRRC 编码、不对称高低位、Scope All 选定核心、Unknown/No 零请求与错误隔离。新增 [十二项环境 case](../tests/cases/register-timer.md) 均 SKIPPED；完整 EL1/Guest/User 权限适配、全部固件基线、实际后端与采样一致性尚未完成，REG-401/402/403 继续未勾选，当批计数为已完成／未完成 **20/51**。
 
 同日后续批次补齐十五项只读固件采样及四个稳定 CVAL/offset 独立符号，专用 Hyp/ready 门禁、正常双核基线和三类失败流程已有软件证据；GNU Arm 11.4 离线编译及全部十五项指令编码通过。正常 EL 权限与 Debug state 的 EDSCR.HDD/Hyp debug 授权分开，完整运行时权限适配与真实 RAM/cache 可见性仍待验收，不改变上述勾选和计数。
+
+2026-10-05 专用 Timer 后端批次完成 REG-402 的软件要求：六项六十四位分别执行一次真正 MRRC、完整高低位、独立 opt-in 及最低独立协议约束；新鲜 debug AP 身份/当前 EDSCR、前后 DSPSR/DLR 与暂存恢复回读，未知/受限/恢复故障不回退。实际 EL2 支持全部十五项，EL1 支持 CNTVCT/CNTV_CVAL 等六个已明确权限项；EL1 物理 Timer 与 EL0 上层使能保持 Unknown，不冒充完整权限适配。生产 C 的 474 个故障点、Windows/Linux 新目录构建及双核实际 EXE/MI/Tcl 回归已验证，完整 Cargo 503 项通过、2 ignored，F24 114/114，严格 Clippy 通过。依据本任务不执行上板的要求，[十三项环境 case](../tests/cases/register-timer.md) 已准备且均 SKIPPED。REG-401/403 仍未勾选，完整 GDB 目标描述及最终工具整合另在 REG-002/008 跟踪；当前已完成／未完成 **21/50**。详细证据见 [Timer 自检](register-timer.md) 与 [开发进度](registers-development-status.md)。
+
 - [ ] REG-404：接入 PMU，确认实际计数器数量、位宽和选址方式；查看不自动开始或清空计数。
 - [ ] REG-405：接入 GIC、Debug 等适用寄存器，明确 MMIO、CP15 与每核或共享归属；有读副作用的项目仅手工读取并标明。
 - [ ] REG-406：芯片确有 STM 时接入其适合只读的配置和状态寄存器，区分配置空间与 stimulus 空间；本阶段不实现 Trace 数据流采集与解码。[Arm STM 编程说明](https://developer.arm.com/community/arm-community-blogs/b/tools-software-ides-blog/posts/programming-arm-s-system-trace-macrocell)

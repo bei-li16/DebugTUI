@@ -18,6 +18,7 @@ pub mod eligibility;
 pub mod mpu;
 pub mod provenance;
 pub mod selector;
+pub mod timer;
 pub mod vfp;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -35,6 +36,8 @@ pub struct Config {
     pub cp15_command: String,
     /// Genuine MRRC from the pinned, explicitly selected ARMv8 adapter.
     pub cp15_64_command: String,
+    /// Checked Timer adapter with fresh external identity/current Debug EL evidence.
+    pub timer_command: String,
     /// State-preserving R52 banked MRS adapter; no legacy get_reg fallback.
     pub banked_command: String,
     /// Explicit adapter with physical VFP enable, capacity and scratch checks.
@@ -106,6 +109,9 @@ impl Config {
         }
         if !matches!(self.cp15_64_command.as_str(), "" | "aarch64 mrrc") {
             return Err("registers.cp15_64_command must be aarch64 mrrc".into());
+        }
+        if !matches!(self.timer_command.as_str(), "" | "aarch64 timer") {
+            return Err("registers.timer_command must be aarch64 timer".into());
         }
         if !matches!(self.banked_command.as_str(), "" | "aarch64 banked") {
             return Err("registers.banked_command must be aarch64 banked".into());

@@ -2,90 +2,165 @@ use super::*;
 
 #[test]
 fn deferred_timer_driver_runs_actual_binary_with_independent_fixture_baseline_and_peer() {
-    let mut fixture = fixture("");
-    adapter(&mut fixture);
-    fixture.project.cores = (0..2)
-        .map(|i| Core {
-            name: format!("core{i}"),
-            endpoint: format!("localhost:{}", 26900 + i),
-            ..Default::default()
-        })
-        .collect();
-    fixture.project.registers.targets = [
-        ("core0".into(), "cpu0".into()),
-        ("core1".into(), "cpu1".into()),
-    ]
-    .into();
-    fixture.project.gdb.env.insert(
-        "DEBUGTUI_TEST_EXPRESSION_VALUES".into(),
-        json!({
-            "(unsigned long long)debugtui_timer_reference_cntpct":"0xfedcba9876543210",
-            "(unsigned long long)debugtui_timer_reference_cntvct":"0xfedcba9876543210",
-            "(unsigned long long)debugtui_timer_ready":"1",
-            "(unsigned long long)debugtui_timer_reference_cntp_cval":"0xfedcba9876543210",
-            "(unsigned long long)debugtui_timer_reference_cntv_cval":"0x0123456789abcdef",
-            "(unsigned long long)debugtui_timer_reference_cntvoff":"0x0000000100000000",
-            "(unsigned long long)debugtui_timer_reference_cnthp_cval":"0x8000000000000001"
-        })
-        .to_string(),
-    );
-    fixture.state.lock().unwrap()["targets"] = json!({"cpu0":{"timer64":{
-        "15 2 14":"0xfedcba9876543210", "15 3 14":"0x0123456789abcdef",
-        "15 4 14":"0x0000000100000000", "15 6 14":"0x8000000000000001"
-    }}});
-    let directory = fixture.transcript.parent().unwrap();
-    let project = directory.join("timer-driver.toml");
-    fs::write(&project, toml::to_string(&fixture.project).unwrap()).unwrap();
-    let original = fs::read(&project).unwrap();
-    let case = directory.join("timer-driver.json");
-    let mut spec: Value = serde_json::from_str(include_str!(
-        "../fixtures/register-timer-board.example.json"
-    ))
-    .unwrap();
-    spec["frame_function"] = json!("main");
-    for counter in spec["counters"].as_array_mut().unwrap() {
-        counter["require_progress"] = json!(false);
-    }
-    fs::write(&case, serde_json::to_vec_pretty(&spec).unwrap()).unwrap();
-    let output = Command::new("node")
-        .arg(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("scripts/test-register-timer-hardware.cjs"),
-        )
-        .args(["--run", "--software-fixture", "--core", "core0", "--binary"])
-        .arg(env!("CARGO_BIN_EXE_debugtui"))
-        .arg("--project")
-        .arg(&project)
-        .arg("--case")
-        .arg(&case)
-        .output()
+    for checked_timer in [false, true] {
+        let mut fixture = fixture("");
+        adapter(&mut fixture);
+        if checked_timer {
+            fixture.project.registers.timer_command = "aarch64 timer".into();
+        }
+        fixture.project.cores = (0..2)
+            .map(|i| Core {
+                name: format!("core{i}"),
+                endpoint: format!("localhost:{}", 26900 + i),
+                ..Default::default()
+            })
+            .collect();
+        fixture.project.registers.targets = [
+            ("core0".into(), "cpu0".into()),
+            ("core1".into(), "cpu1".into()),
+        ]
+        .into();
+        fixture.project.gdb.env.insert(
+            "DEBUGTUI_TEST_EXPRESSION_VALUES".into(),
+            json!({
+                "(unsigned long long)debugtui_timer_reference_cntpct":"0xfedcba9876543210",
+                "(unsigned long long)debugtui_timer_reference_cntvct":"0xfedcba9876543210",
+                "(unsigned long long)debugtui_timer_ready":"1",
+                "(unsigned long long)debugtui_timer_reference_cntp_cval":"0xfedcba9876543210",
+                "(unsigned long long)debugtui_timer_reference_cntv_cval":"0x0123456789abcdef",
+                "(unsigned long long)debugtui_timer_reference_cntvoff":"0x0000000100000000",
+                "(unsigned long long)debugtui_timer_reference_cnthp_cval":"0x8000000000000001"
+            })
+            .to_string(),
+        );
+        fixture.state.lock().unwrap()["targets"] = json!({"cpu0":{"timer64":{
+            "15 2 14":"0xfedcba9876543210", "15 3 14":"0x0123456789abcdef",
+            "15 4 14":"0x0000000100000000", "15 6 14":"0x8000000000000001"
+        }}});
+        if checked_timer {
+            let values = json!({
+                "cntp_ctl":"0x00000000", "cntv_ctl":"0x00000000", "cnthp_ctl":"0x00000000",
+                "cntpct":"0xfedcba9876543210", "cntvct":"0xfedcba9876543210",
+                "cntp_cval":"0xfedcba9876543210", "cntv_cval":"0x0123456789abcdef",
+                "cntvoff":"0x0000000100000000", "cnthp_cval":"0x8000000000000001"
+            });
+            for cpu in ["cpu0", "cpu1"] {
+                fixture.state.lock().unwrap()["targets"][cpu]["timer_values"] = values.clone();
+                fixture.state.lock().unwrap()["targets"][cpu]["timer_dspsr"] = json!("0xa200041a");
+            }
+        }
+        let directory = fixture.transcript.parent().unwrap();
+        let project = directory.join("timer-driver.toml");
+        fs::write(&project, toml::to_string(&fixture.project).unwrap()).unwrap();
+        let original = fs::read(&project).unwrap();
+        let case = directory.join("timer-driver.json");
+        let mut spec: Value = serde_json::from_str(include_str!(
+            "../fixtures/register-timer-board.example.json"
+        ))
         .unwrap();
-    assert!(
-        output.status.success(),
-        "{}\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(
-        stdout.contains("\"passed\":6,\"failed\":0,\"skipped\":0"),
-        "{stdout}"
-    );
-    assert_eq!(fs::read(&project).unwrap(), original);
-    let state = fixture.state.lock().unwrap();
-    assert_eq!(state["current"], "outside");
-    assert!(selector_writes(&state).is_empty());
-    assert!(
-        state["trace"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|s| s[1] == "mrrc")
-            .all(|s| s[0] == "cpu0")
-    );
-    for cpu in ["cpu0", "cpu1"] {
-        for (id, value) in [("prselr", 1), ("hprselr", 2), ("pmselr", 31)] {
-            assert_eq!(state["targets"][cpu][id], value);
+        spec["frame_function"] = json!("main");
+        spec["require_timer_adapter"] = json!(checked_timer);
+        for counter in spec["counters"].as_array_mut().unwrap() {
+            counter["require_progress"] = json!(false);
+        }
+        fs::write(&case, serde_json::to_vec_pretty(&spec).unwrap()).unwrap();
+        let output = Command::new("node")
+            .arg(
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("scripts/test-register-timer-hardware.cjs"),
+            )
+            .args(["--run", "--software-fixture", "--core", "core0", "--binary"])
+            .arg(env!("CARGO_BIN_EXE_debugtui"))
+            .arg("--project")
+            .arg(&project)
+            .arg("--case")
+            .arg(&case)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            stdout.contains("\"passed\":6,\"failed\":0,\"skipped\":0"),
+            "{stdout}"
+        );
+        assert_eq!(fs::read(&project).unwrap(), original);
+        if checked_timer {
+            let report_directory = stdout
+                .lines()
+                .find(|s| s.starts_with("RESULT "))
+                .unwrap()
+                .rsplit_once("} ")
+                .unwrap()
+                .1;
+            let report: Value = serde_json::from_slice(
+                &fs::read(PathBuf::from(report_directory).join("report.json")).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(report["requires_timer_adapter"], true);
+            assert_eq!(report["board_tests_executed"], false);
+            let evidence = report["timer_evidence"].as_array().unwrap();
+            assert!(evidence.iter().any(|s| s["core"] == "core1"));
+            assert!(
+                evidence
+                    .iter()
+                    .any(|s| s["id"] == "cntp_cval" && s["value"]["hex"] == "0xfedcba9876543210")
+            );
+            assert!(
+                evidence
+                    .iter()
+                    .all(|s| s["evidence"]["dscr"]["hex"] == "0x01000200")
+            );
+        }
+        let state = fixture.state.lock().unwrap();
+        assert_eq!(state["current"], "outside");
+        assert!(selector_writes(&state).is_empty());
+        assert!(
+            state["trace"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|s| s[1] == "mrrc")
+                .all(|s| s[0] == "cpu0")
+        );
+        for cpu in ["cpu0", "cpu1"] {
+            for (id, value) in [("prselr", 1), ("hprselr", 2), ("pmselr", 31)] {
+                assert_eq!(state["targets"][cpu][id], value);
+            }
+        }
+        if checked_timer {
+            let reads: Vec<_> = state["trace"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|s| s[1] == "timer")
+                .collect();
+            assert!(!reads.is_empty());
+            assert!(
+                reads
+                    .iter()
+                    .filter(|s| [
+                        "cntpct",
+                        "cntvct",
+                        "cntp_cval",
+                        "cntv_cval",
+                        "cntvoff",
+                        "cnthp_cval"
+                    ]
+                    .contains(&s[2].as_str().unwrap()))
+                    .all(|s| s[0] == "cpu0")
+            );
+            assert!(
+                !state["trace"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|s| s[1] == "mrrc")
+            );
         }
     }
 }
@@ -130,6 +205,7 @@ fn timer_baseline_driver_rejects_wrong_mode_unready_and_independent_reference_mi
         spec["frame_function"] = json!("main");
         spec.as_object_mut().unwrap().remove("control_scope");
         spec.as_object_mut().unwrap().remove("peer_core");
+        spec["require_timer_adapter"] = json!(false);
         fs::write(&case, serde_json::to_vec_pretty(&spec).unwrap()).unwrap();
         let output = Command::new("node")
             .arg(
