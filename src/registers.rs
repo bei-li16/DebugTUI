@@ -6,9 +6,13 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
+    sync::OnceLock,
 };
 
 pub const MAX_CATALOGUE_BYTES: u64 = 4 * 1024 * 1024;
+fn false_flag(flag: &bool) -> bool {
+    !flag
+}
 pub const OPENOCD_ADAPTER_PROTOCOL: &str =
     "debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault";
 pub mod banked;
@@ -16,6 +20,8 @@ pub mod capabilities;
 pub mod display;
 pub mod eligibility;
 pub mod gic;
+#[cfg(test)]
+mod mmio_tests;
 pub mod mpu;
 pub mod pmu;
 pub mod provenance;
@@ -32,6 +38,9 @@ pub struct Config {
     /// Explicitly supplied capability facts; their source is shown as configuration.
     pub facts: BTreeMap<String, u64>,
     pub components: BTreeMap<String, Component>,
+    /// Explicit component routes keyed by core:/cluster:/chip: owner identity.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub component_owners: BTreeMap<String, BTreeMap<String, Component>>,
     pub tcl_endpoint: String,
     pub targets: BTreeMap<String, String>,
     /// Explicit backend command, verified for the configured OpenOCD build.
@@ -65,6 +74,27 @@ pub struct Component {
 }
 
 impl Config {
+    pub fn component(
+        &self,
+        name: &str,
+        owner: Option<&str>,
+        require_owner_mapping: bool,
+    ) -> Result<&Component, String> {
+        if let Some(bindings) = self.component_owners.get(name) {
+            let owner = owner.ok_or_else(|| format!("Component {name} has no known owner"))?;
+            return bindings
+                .get(owner)
+                .ok_or_else(|| format!("Component {name} has no board mapping for owner {owner}"));
+        }
+        if require_owner_mapping {
+            return Err(format!(
+                "Component {name} requires an explicit owner board mapping"
+            ));
+        }
+        self.components
+            .get(name)
+            .ok_or_else(|| format!("Component {name} has no board mapping"))
+    }
     pub fn load(&self) -> Result<Option<(Catalogue, String)>, String> {
         if !self.catalogue.as_os_str().is_empty() {
             return Ok(Some((
@@ -110,6 +140,26 @@ impl Config {
     }
     pub fn validate(&self) -> Result<(), String> {
         self.topology.validate()?;
+        if self.component_owners.len() > 1024
+            || self.component_owners.iter().any(|(name, bindings)| {
+                !identifier(name)
+                    || bindings.is_empty()
+                    || bindings.len() > 1024
+                    || bindings.iter().any(|(owner, binding)| {
+                        let valid_owner = owner.split_once(':').is_some_and(|(scope, id)| {
+                            matches!(scope, "core" | "cluster" | "chip")
+                                && !id.is_empty()
+                                && id.len() <= 256
+                                && id.trim() == id
+                                && !id.chars().any(char::is_control)
+                        });
+                        !valid_owner
+                            || (!binding.channel.is_empty() && !identifier(&binding.channel))
+                    })
+            })
+        {
+            return Err("Invalid component owner mapping: use explicit core:/cluster:/chip: identities and complete routes".into());
+        }
         if !matches!(self.cp15_command.as_str(), "" | "arm mrc" | "aarch64 mrc") {
             return Err("registers.cp15_command must be arm mrc or aarch64 mrc".into());
         }
@@ -268,6 +318,9 @@ pub enum Reader {
     Mmio {
         component: String,
         offset: u64,
+        /// Architecture templates must never reuse a different owner's default base.
+        #[serde(default, skip_serializing_if = "false_flag")]
+        require_owner_mapping: bool,
     },
     Alias {
         source: String,
@@ -591,17 +644,24 @@ fn identifier(text: &str) -> bool {
 
 impl Catalogue {
     pub fn builtin(cpu: &str) -> Result<Self, String> {
-        let text = match cpu {
-            "cortex-r52" => include_str!("../profiles/registers/cortex-r52.toml"),
-            "cortex-r52+" => include_str!("../profiles/registers/cortex-r52+.toml"),
-            "cortex-m4" => include_str!("../profiles/registers/cortex-m4.toml"),
+        // Embedded definitions are immutable; each caller receives its own mutable copy.
+        static R52: OnceLock<Result<Catalogue, String>> = OnceLock::new();
+        static R52_PLUS: OnceLock<Result<Catalogue, String>> = OnceLock::new();
+        static M4: OnceLock<Result<Catalogue, String>> = OnceLock::new();
+        let (cache, text) = match cpu {
+            "cortex-r52" => (&R52, include_str!("../profiles/registers/cortex-r52.toml")),
+            "cortex-r52+" => (
+                &R52_PLUS,
+                include_str!("../profiles/registers/cortex-r52+.toml"),
+            ),
+            "cortex-m4" => (&M4, include_str!("../profiles/registers/cortex-m4.toml")),
             _ => {
                 return Err(format!(
                     "Unknown CPU catalogue '{cpu}'; select an explicit register catalogue file"
                 ));
             }
         };
-        Self::parse(text)
+        cache.get_or_init(|| Self::parse(text)).clone()
     }
     pub fn load(path: &Path) -> Result<Self, String> {
         let metadata = fs::metadata(path)
@@ -797,10 +857,11 @@ impl Catalogue {
                 {
                     return Err(format!("Invalid 64-bit CP encoding for {}", register.id));
                 }
-                Reader::Mmio { component, offset }
-                    if !identifier(component)
-                        || register.bits > 64
-                        || offset % u64::from(register.bits / 8) != 0 =>
+                Reader::Mmio {
+                    component, offset, ..
+                } if !identifier(component)
+                    || register.bits > 64
+                    || offset % u64::from(register.bits / 8) != 0 =>
                 {
                     return Err(format!("Invalid MMIO route for {}", register.id));
                 }

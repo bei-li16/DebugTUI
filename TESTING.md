@@ -1,5 +1,13 @@
 # DebugTUI 验证记录
 
+## R52 MMIO owner 路线（2026-10-06，开发分支）
+
+三个专项单元、三个真实 worker/EXE/MI/TCP 集成通过。独立 TRM 地址、四个非连续 core/两 cluster、缺失 owner 零访问、Scope All 选中核、实际 AP target/endpoint、64 位字序、手工副作用/WO、失败旧值来源与驱动拒绝流程有证据。完整 Cargo **379 单元＋153 集成通过，2 ignored，共 532 通过**；**F24 132/132** 是证据匹配模式数，不能当作用例数。整套 497753 ms，无超时；其余 **22 功能套件未选择**。报告 artifacts/functional-1791225291601-66910f0b/report.json，完整 Cargo 为同目录 unit.log；严格 Clippy 通过，日志 artifacts/register-mmio-clippy-final.log。
+
+独立只读固件以 GNU Arm 11.4.0 严格警告离线编译，二十四项地址/二十六个外部字和 MIDR MRC/CPSR guard 已核对，对象未执行；报告 artifacts/register-mmio-firmware-report.json。十二项环境 case 均 SKIPPED，默认五阶段驱动报告 artifacts/register-mmio-hardware-1791224011438-fe09a965/report.json。前序原生候选、十一项源锁/对应源码/补丁仍一致，见 artifacts/register-mmio-inherited-package-audit.log。
+
+[MMIO 自检](docs/register-mmio.md) 记录边界、失败和独立证据；[用例](tests/cases/register-mmio.md) 与 [模板](profiles/tha6-mmio.toml.example) 已准备。新鲜 MMIO 能力 Probe、完整 Debug/低 EL ICV、其余 TODO 和最终发布仍待完成，计数保持 24/47。
+
 ## GIC 当前原生容量与 AP 条件（2026-10-06，开发分支）
 
 完整 Cargo 375 单元＋150 集成通过，2 ignored，合计 525 通过；F24 129/129 个证据模式匹配，严格 Clippy 通过。完整报告 `artifacts/functional-1791220138851-f975cb60/report.json`，日志同目录 unit.log；其余 22 功能套件本批未选择，最终完整验收仍待做。四项 GIC 单元、七项实际 EXE/worker/MI/Tcl 集成与十三项能力回归覆盖独立物理/虚拟容量、双核 Scope All、No 无数据读且完整依据保留、IAR/WO、别名/原生 32 位、权限/错误/取消/上下文变化。旧 GDB/Hyp 容量假设及 CTLR 合法低位夹具断言已经纠正，原失败报告保留。

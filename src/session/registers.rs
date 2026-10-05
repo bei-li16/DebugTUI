@@ -579,19 +579,22 @@ impl Engine {
                     RawValue::parse(&text, register.bits)
                         .map_err(|error| (Reason::TransportError, error))?
                 }
-                Reader::Mmio { component, offset } => {
+                Reader::Mmio {
+                    component,
+                    offset,
+                    require_owner_mapping,
+                } => {
+                    let mut topology = self.project.registers.topology.clone();
+                    if topology.chip.is_empty() {
+                        topology.chip = self.project.debug.chip.clone();
+                    }
+                    let owner = topology.owner(register.scope, &self.register_context().core);
                     let binding = self
                         .project
                         .registers
-                        .components
-                        .get(component)
-                        .cloned()
-                        .ok_or_else(|| {
-                            (
-                                Reason::ReaderUnsupported,
-                                format!("Component {component} has no board mapping"),
-                            )
-                        })?;
+                        .component(component, owner.as_deref(), *require_owner_mapping)
+                        .map_err(|error| (Reason::ReaderUnsupported, error))?
+                        .clone();
                     let address = binding.base.checked_add(*offset).ok_or_else(|| {
                         (Reason::TransportError, "Component address overflows".into())
                     })?;

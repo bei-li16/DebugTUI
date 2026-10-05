@@ -529,3 +529,5 @@ Issue #2 的 percluster 场景需有明确拓扑的目标或模拟后端。THA62
 Issue #1 以 BUS 任务及其跨面板验收为交付依据；Issue #2 按上方七项需求逐项核对，分批发布时明确尚未支持的类别，不因只有树形界面而标记全部完成；Issue #3 按对象类型、字段权限和 WRITE 验收逐项记录，不因某个变量或通用寄存器可修改就标记全部完成。报告记录 Issue 号、对应任务、被测版本和证据路径，后续同步状态时以 GitHub 最新详情为准。
 
 完整 Trace 采集/解码、运行时写入以及未验证的专用写序列仍需单独评估。上述版本均为建议计划，不承诺交付时间，也不修改当前 v0.9.3 的已发布能力说明。
+
+2026-10-06 MMIO 子批次：R52/R52+ 新增 GICD/GICR/外部 Debug 1,598 项元数据与严格逐 owner base/channel/endian，四 worker 跨 cluster 和实际 AP/EXE 软件流程验证私有/共享地址与来源。三项专项单元、三项集成通过；独立二十四项 C 固件/JSON、默认无 I/O 驱动与十二项延后环境 case 已准备。详见 [MMIO 自检](register-mmio.md)。新鲜 MMIO 容量 Probe、完整 Debug system/低 EL ICV 与 BUS 全范围仍待验收，REG-405/BUS-006 不勾选，计数保持 24/47；最终升版、安装和 Release 尚未执行。

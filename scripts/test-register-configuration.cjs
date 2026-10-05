@@ -30,12 +30,15 @@ function run(project, profile='', userPreset) {
     ['select_core',{index:0}],['registers_list',{}],['select_core',{index:1}],['registers_list',{}],['status',{}],['quit',{}]
   ] : [['registers_list',{}],['status',{}],['quit',{}]];
   const input=requests.map(([method,params],i)=>JSON.stringify({id:i+1,method,params})).join('\n')+'\n';
+  // Two validated catalogues (up to 4 MiB each) include JSON schema/default
+  // fields in the response. Keep this finite bound aligned with distribution
+  // tests; Node's 1 MiB default truncates otherwise valid register listings.
   const result=spawnSync(binary,['--project',path.join(dir,'debug.toml'),'--headless','--stdio'],{
-    input,encoding:'utf8',windowsHide:true,timeout:15000,env:{...process.env,DEBUGTUI_CONFIG_DIR:config}
+    input,encoding:'utf8',windowsHide:true,timeout:15000,maxBuffer:32*1024*1024,env:{...process.env,DEBUGTUI_CONFIG_DIR:config}
   });
-  assert.ifError(result.error);
   fs.writeFileSync(path.join(dir,'stdout.jsonl'),result.stdout);
   fs.writeFileSync(path.join(dir,'stderr.txt'),result.stderr);
+  assert.ifError(result.error);
   assert.deepEqual(files.map(hash),before,'reading configuration must not rewrite customer files');
   const events=result.stdout.trim().split(/\r?\n/).filter(Boolean).map(line=>JSON.parse(line));
   assert(!events.some(e=>e.event==='log' && e.channel==='mi>'),'configuration listing must not start debugger IO');

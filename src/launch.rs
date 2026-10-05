@@ -851,7 +851,10 @@ impl Setup {
             && self.devices.is_none()
             && self.mapping.is_none()
         {
-            self.register_details = Some(registers::Details::default());
+            self.register_details = Some(registers::Details::new(
+                self.catalogue_preview(),
+                self.catalogue_preview_key(),
+            ));
             return Ok(None);
         }
         if let Some(channels) = &mut self.channels {
@@ -1362,13 +1365,13 @@ impl Setup {
         self.action_hits.clear();
         self.row_hits.clear();
         if let Some(mut details) = self.register_details.take() {
-            let lines = self.catalogue_preview().unwrap_or_else(|error| {
-                vec![
-                    format!("Catalogue error: {error}"),
-                    "Esc / Close returns to the draft. No file was changed.".into(),
-                ]
-            });
-            details.draw(f, lines);
+            let key = self.catalogue_preview_key();
+            if !details.matches(&key) {
+                let scroll = details.scroll;
+                details = registers::Details::new(self.catalogue_preview(), key);
+                details.scroll = scroll;
+            }
+            details.draw(f);
             self.register_details = Some(details);
             return;
         }

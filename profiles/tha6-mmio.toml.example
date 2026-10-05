@@ -1,0 +1,62 @@
+# Merge these sections into debug-chip.toml or debug-env-chip.toml.
+# Fictitious addresses: replace every base/core/cluster/channel using board
+# documentation and the actual debugger configuration. This is NOT a confirmed
+# THA6206 map. Present=0 keeps all new MMIO entries disabled until verified.
+[registers]
+cpu = "cortex-r52"
+
+[registers.facts]
+"gicd.present" = 0
+"gicr.present" = 0
+"debug_external.present" = 0
+# Add gicd.interrupts only after independently checking actual GICD_TYPER.
+# It is total INTIDs, including 32 SGI/PPI IDs: 32*(ITLinesNumber+1).
+# Add debug_external.breakpoints/watchpoints only after verifying Debug ID.
+# These remain configuration declarations, not fresh physical Probe evidence.
+
+[registers.topology.clusters]
+"core.0" = "A"
+"core.2" = "A"
+"core.5" = "B"
+
+# GICD is shared by a processor cluster. Channel="" uses selected GDB memory.
+[registers.component_owners.gicd."cluster:A"]
+base = 0x30000000
+channel = ""
+little_endian = true
+[registers.component_owners.gicd."cluster:B"]
+base = 0x31000000
+channel = ""
+little_endian = true
+
+# GICR base is the CONTROL page, not its SGI/PPI page at base+0x10000.
+[registers.component_owners.gicr."core:core.0"]
+base = 0x70000000
+channel = ""
+little_endian = true
+[registers.component_owners.gicr."core:core.2"]
+base = 0x80000000
+channel = ""
+little_endian = true
+[registers.component_owners.gicr."core:core.5"]
+base = 0x90000000
+channel = ""
+little_endian = true
+
+[registers.component_owners.debug_external."core:core.0"]
+base = 0x40000000
+channel = ""
+little_endian = true
+[registers.component_owners.debug_external."core:core.2"]
+base = 0x50000000
+channel = ""
+little_endian = true
+[registers.component_owners.debug_external."core:core.5"]
+base = 0x60000000
+channel = ""
+little_endian = true
+
+# For an AP route, replace channel="" with the ID of an existing memory_access
+# channel. Its target, endpoint, core filter and configuration source are shown
+# in each actual read. Do not derive target IDs or addresses from core labels.
+# Missing core.9 mappings intentionally have no fallback to another core.

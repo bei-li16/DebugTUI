@@ -1,5 +1,15 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：R52 GIC/外部 Debug MMIO 与显式 owner 配置
+
+新增 1,598 项 R52/R52+ MMIO 元数据（GICD 1,485、GICR 33、外部 Debug 80），按 TRM 明确地址、位宽、字段、RO/RW/WO、副作用与实现条件。GICD 属于显式 cluster；GICR/Debug 属于显式 core；GICR SGI/PPI 页为 control base+0x10000。新 component_owners 逐 owner 指定 base/channel/endian，未知/缺失不回退静态默认/别核；读取继续复用现有内存通道与完整 provenance，失败原值保留原来源。新目录要求 owner map，旧目录静态 reader/JSON 仍兼容。
+
+三项单元与三项实际 worker/EXE/MI/TCP 集成通过；四核非连续标签、跨 cluster、64 位不对称字序与实际 target、Unknown/No/WO/手工副作用/错误旧值，以及二十四项独立 RAM 驱动有证据。驱动五阶段正常、四类拒绝和清理已验证；未就绪/错误 owner 零 MMIO，错误身份只读 MIDR。完整 Cargo **379 单元＋153 集成通过，2 ignored，共 532 通过**；**F24 132/132** 是证据匹配模式数，不能当作用例数。整套 497753 ms，无超时；其余 **22 功能套件未选择**。报告 artifacts/functional-1791225291601-66910f0b/report.json，完整 Cargo 为同目录 unit.log；严格 Clippy 通过，日志 artifacts/register-mmio-clippy-final.log。
+
+独立 normal-Hyp 固件离线编译及手册地址/反汇编检查通过，对象未执行；报告 artifacts/register-mmio-firmware-report.json。十二项延后环境 case 和默认五阶段 SKIPPED 驱动已准备，报告 artifacts/register-mmio-hardware-1791224011438-fe09a965/report.json。本批仅核对既有原生候选/十一项源锁/对应源码包一致，不改变后端或安装。
+
+详情见 [MMIO 自检](register-mmio.md)。配置容量仍是配置证据，未冒充新鲜物理 Probe；完整 Debug system route、低 EL ICV/Timer/VFP、STM/Bao、BUS 全项/其他 writer、真实终端视觉、工具整合、最终全套验收、升版安装和 Release 继续待开发。REG-405/BUS-006 未勾选，完整 TODO 仍 24 完成／47 未完成；本轮在非主开发分支提交推送，源码/既有安装基线 0.9.3，目标保持 active。
+
 ## 2026-10-06：GIC AP 条件、原生物理/虚拟容量与只读后端
 
 新增独立 `registers.gic_command="aarch64 gic"` 与 `debugtui-armv8-gic-1` 协议。按 R52 TRM/GIC 架构区分物理 ICC、Hyp ICH 及 ICV AP backing：四十三条原生 MRC32 路由中二十九条可观测、十二条额外 AP 在 R52 未实现、两条 IAR 有 acknowledge 副作用而拒绝。目录补齐八项 ICV AP alias 与六项 WO 元数据；LR0–3/LRC0–3 各为独立 32 位，不用 MRRC 或拼装原子视图。未创建 GIC writer，不改变模式/使能/中断状态。

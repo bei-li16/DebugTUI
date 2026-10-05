@@ -65,6 +65,7 @@ fn shared_ui_keeps_each_route_ages_only_changed_owners_and_rejects_late_owner_va
     for (index, scope) in [(0, Scope::Cluster), (1, Scope::Chip), (2, Scope::Core)] {
         catalogue.registers[index].scope = scope;
         catalogue.registers[index].reader = Reader::Mmio {
+            require_owner_mapping: false,
             component: "board".into(),
             offset: index as u64 * 4,
         };

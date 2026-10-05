@@ -10,6 +10,7 @@ from tempfile import TemporaryDirectory
 from register_timer_metadata import TIMER_METADATA
 from register_pmu_metadata import PMU_METADATA
 from register_gic_metadata import GIC_METADATA, GIC_ENCODINGS
+from register_mmio_metadata import MMIO_METADATA
 
 ROOT = Path(__file__).resolve().parents[1] / "profiles" / "registers"
 q = json.dumps
@@ -24,11 +25,17 @@ def generate(cpu, m_profile=False, root=ROOT):
         if parent: lines.append(f"parent = {q(parent)}")
     def reg(id, group, bits=32, access="rw", kind="gdb", params=None, conditions=None, fields=None, effect=False):
         gic = GIC_METADATA.get(id)
+        external = MMIO_METADATA.get(id) if kind == 'mmio' else None
         if gic:
             group = gic["group"]
         lines.extend(["", "[[registers]]", f"id = {q(id)}", f"name = {q(id.upper())}", f"group = {q(group)}", f"bits = {bits}", f"access = {q(access)}"])
         descriptions = {"cpsr":"Current status and processor mode of the selected core context.","xpsr":"Combined exception, instruction-set and application status.","sctlr":"EL1 system control, including MPU enable and execution controls.","hsctlr":"EL2 system control.","midr":"Processor implementer, part number, variant and revision.","mpuir":"Implemented EL1 MPU region capacity.","hmpuir":"Implemented EL2 MPU region capacity.","pmcr":"Performance monitor configuration and implemented event-counter count.","fpscr":"Floating-point status, exceptions and control.","prselr":"Current EL1 MPU region selector; direct region reads preserve this value.","hprselr":"Current EL2 MPU region selector; direct region reads preserve this value."}
         description = descriptions.get(id, f"{id.upper()} in the {group} register group.")
+        if external:
+            description = external['description']
+            fields = external['fields']
+            conditions = external['conditions']
+            lines.append(f'scope = {q(external["scope"])}')
         if gic:
             description = gic["description"]
             fields = gic["fields"]
@@ -49,7 +56,7 @@ def generate(cpu, m_profile=False, root=ROOT):
         if group == 'vfp' and id != 'fpscr': description = ("Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension." if m_profile else "Raw floating-point identification or enable-control register; observation never enables the FPU.")
         lines.append(f"description = {q(description)}")
         params = params or {"name":id}
-        route = [f"kind = {q(kind)}"] + [f"{key} = {q(value) if isinstance(value,str) else value}" for key,value in params.items()]
+        route = [f"kind = {q(kind)}"] + [f"{key} = {q(value)}" for key,value in params.items()]
         lines.append("reader = { " + ", ".join(route) + " }")
         if group == "core" and kind == "gdb" and not fields and (id in ("sp", "lr", "pc") or id.startswith("r") and id[1:].isdigit()):
             lines.append(f'writer = {{ kind = "gdb_integer", name = {q(id)} }}')
@@ -58,6 +65,8 @@ def generate(cpu, m_profile=False, root=ROOT):
             lines.append(f'writer = {{ kind = "vfp", name = {q(id)} }}')
             lines.append(f'write = {{ bits = {bits}, access = "read_write", effect = "modify", constraint = {{ kind = "none" }}, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = {{ kind = "modified" }} }}')
         if effect: lines.append("read_side_effect = true")
+        if external:
+            lines.append(f'access_condition = {q(external["access_condition"])}')
         if kind in ("cp15", "cp15_64"):
             condition = (timer or pmu or gic)["access_condition"] if (timer or pmu or gic) else "Halted physical core; access depends on current EL, traps and debug authorization."
             lines.append(f'access_condition = {q(condition)}')
@@ -99,6 +108,13 @@ def generate(cpu, m_profile=False, root=ROOT):
         for id in ["id","control","exceptions","mpu_el1","mpu_el2","pmu","gic","timer","virt","debug"]: group(id,id.upper(),"system")
         for id, name in [("gic_icc","Physical ICC"),("gic_ich","Hyp ICH"),("gic_icv","Virtual ICV backing aliases")]:
             group(id,name,"gic")
+        group('gicd', 'Cluster Distributor MMIO', 'gic')
+        group('gicr', 'Core Redistributor MMIO', 'gic')
+        group('debug_external', 'Core External Debug MMIO', 'debug')
+        for name, metadata in MMIO_METADATA.items():
+            reg(name, metadata['group'], bits=metadata['bits'], access=metadata['access'], kind='mmio',
+                params=dict(component=metadata['component'],offset=metadata['offset'],require_owner_mapping=True),
+                effect=metadata['effect'])
         # Tuples are (Op1, CRn, CRm, Op2), independently checked against TRM read encodings.
         encodings = {
             "midr":(0,0,0,0),"ctr":(0,0,0,1),"mpidr":(0,0,0,5),"id_pfr0":(0,0,1,0),"id_pfr1":(0,0,1,1),"id_dfr0":(0,0,1,2),

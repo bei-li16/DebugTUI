@@ -891,3 +891,11 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --gdb C:
 PMU 查看：配置 registers.pmu_command="aarch64 pmu" 可显式选择当前开发后端的独立只读协议。该适配覆盖 R52 四项 32 位事件与完整 64 位周期及相关状态/控制视图；观察不会启动或清空计数。当前 Debug EL2 与停止前 CPSR 分开证明，低 EL 无法证明 Hyp 陷阱时显示 Unknown。计数数量 Probe 需要新鲜原生证据；同名 GDB PMCR 不替代该证明。直接 PMEVCNTRn/PMEVTYPERn 保持 PMSELR，SEL=31 的 PMXEVCNTR 不可用。后端、配置、字段、未上板限制见 [PMU 说明](docs/register-pmu.md)。
 
 GIC 查看：开发版本显式配置 `registers.gic_command="aarch64 gic"` 后使用独立观测协议。物理 ICC、Hyp ICH 与虚拟 ICV AP backing 别名分别展示；R52 只实现每组 AP0R0/AP1R0，Probe 以当前 Debug EL2 证据分别确认物理/虚拟五位容量并过滤其他 AP 定义。停止前 Hyp 或同名 GDB CTLR/VTR 只提供原始字段，不能授权物理容量。IAR 有 acknowledge 副作用，观测后端即使手工也拒绝；EOIR/DIR/SGI 为 Write only，不安排读取。低 EL 保持 Unknown，不关闭陷阱或使能接口。LR/LRC 各为 32 位独立样本，详情保留接口、target、owner 与时间区间。配置和边界见 [GIC 说明](docs/register-gic.md)；当前发行 0.9.3 尚未包含新字段。
+
+### R52 MMIO 的逐 owner 路线（开发分支，尚未发布）
+
+GICD 按 processor cluster 共享，GICR 与外部 Debug 按物理 core 私有。使用 [配置片段](profiles/tha6-mmio.toml.example) 的 registers.component_owners，层次为组件名 → 完整 owner → base/channel/little_endian；例如 gicr/core:core.2 与 gicd/cluster:A。示例地址均为虚构，present=0 默认禁用，必须先按板级资料核对再使用。GICR base 指控制页，SGI/PPI 页在其后 0x10000；不从 core 编号或 Aff0 推导地址。
+
+channel 为空使用当前 GDB 内存连接，非空引用既有 memory_access ID；继续检查实际 endpoint、target、core filter 和状态。组件声明 owner map 后，缺失 owner 或 cluster 不回退静态 components 或其他核心。新内置 MMIO reader 要求 owner map；旧用户静态 MMIO 定义兼容。Scope All 仍只读选中 owner，64 位 AP 读取是两个 32 位字，不保证原子快照。
+
+present、gicd.interrupts、Debug comparator 数量当前来自配置，来源会显示为 configuration；读到 TYPER/Debug ID 不会自动授予新鲜硬件能力。Unknown 不自动读取，No/WO 不读取。EDPRSR、PC sample 与 TX 使用手工策略；外部 RX read 不清 RXfull，不等同于 CPU 接收操作。RW 标签不开放 MMIO 编辑。精确地址、副作用和未完成范围见 [MMIO 说明](docs/register-mmio.md)，[延后环境用例](tests/cases/register-mmio.md) 默认不访问目标。

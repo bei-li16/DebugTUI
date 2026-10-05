@@ -181,3 +181,5 @@ DebugTUI writer 软件验证见 `registers::vfp::writes`、目录和配置校验
 PMU 验证使用实际生产 C 事务和 worker/TCP/MI/Tcl 软件模型，区分当前 Debug EL2 与停止前 CPSR，验证直接索引保持选择器及完整周期位宽。`scripts/test-register-pmu-hardware.cjs` 默认不连接目标，显式运行要求独立固件基线、已暂停且计数已关闭的专用夹具；不就绪/已启用/参考矛盾均拒绝。十项延后环境 case 见 [PMU](cases/register-pmu.md)，实际证据及限制见 [说明](../docs/register-pmu.md)。
 
 GIC：`selector_access/gic_cases.rs` 通过实际 worker/TCP/MI/Tcl 检查 29 个读入口、ICC/ICH/ICV AP 过滤、双核 owner、旧值证明、取消/上下文变化、协议/权限/伪造与不确定故障；生产 C 固定编码模型与真实 OpenOCD dummy 命令单独验证。`node scripts/test-register-gic-hardware.cjs` 默认五项 SKIPPED；[十项环境 case](cases/register-gic.md)、每核只读 GNU Arm 固件 hook 和 JSON 示例已准备，不把软件夹具当上板。物理 MMIO、低 EL ICV 及完整 Debug 模块仍待完成。
+
+R52 MMIO：register_mmio.rs 验证四个非连续 worker/两 cluster、显式 owner/base、缺失映射无回退，以及真实 TCP AP 的字序/地址/target/来源和错误旧值。另通过实际 DebugTUI EXE 执行二十四项独立 RAM 驱动，正常流程及未就绪/错误 owner/身份/参考高字拒绝均正常清理。node scripts/test-register-mmio-hardware.cjs 默认五阶段 SKIPPED；[十二项环境 case](cases/register-mmio.md)、只读 GNU Arm 固件和 JSON 模板已准备。[自检](../docs/register-mmio.md) 明确配置容量、新鲜物理 Probe 缺口与非原子总线对；不把软件夹具或离线对象当作上板通过。

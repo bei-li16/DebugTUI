@@ -1,0 +1,39 @@
+{
+  "software_example": true,
+  "mapping_verified": true,
+  "frame_function": "debugtui_mmio_fixture_stop",
+  "expected_midr": "0x411fd134",
+  "evidence_source": "Replace with independently captured per-core firmware MMIO snapshot; this file contains software values and fictitious addresses",
+  "ready": "debugtui_mmio_reference[0].ready",
+  "components": {
+    "gicd": {"owner":"cluster:A","base":"0x30000000","little_endian":true,"route":{"kind":"gdb_memory","endpoint":"localhost:3330"}},
+    "gicr": {"owner":"core:default","base":"0x80000000","little_endian":true,"route":{"kind":"gdb_memory","endpoint":"localhost:3330"}},
+    "debug_external": {"owner":"core:default","base":"0x50000000","little_endian":true,"route":{"kind":"gdb_memory","endpoint":"localhost:3330"}}
+  },
+  "registers": [
+    {"id":"gicd_ctlr","bits":32,"reference":"debugtui_mmio_reference[0].raw[0]","expected":"0x00000053"},
+    {"id":"gicd_typer","bits":32,"reference":"debugtui_mmio_reference[0].raw[1]","expected":"0x02480001"},
+    {"id":"gicd_iidr","bits":32,"reference":"debugtui_mmio_reference[0].raw[2]","expected":"0x0100043b"},
+    {"id":"gicr_ctlr","bits":32,"reference":"debugtui_mmio_reference[0].raw[3]","expected":"0x00000000"},
+    {"id":"gicr_iidr","bits":32,"reference":"debugtui_mmio_reference[0].raw[4]","expected":"0x0100043b"},
+    {"id":"gicr_typer","bits":64,"reference":"debugtui_mmio_reference[0].raw[5]","expected":"0x0000000200000210"},
+    {"id":"gicr_waker","bits":32,"reference":"debugtui_mmio_reference[0].raw[6]","expected":"0x00000000"},
+    {"id":"gicr_igroupr0","bits":32,"reference":"debugtui_mmio_reference[0].raw[7]","expected":"0x00000000"},
+    {"id":"gicr_isenabler0","bits":32,"reference":"debugtui_mmio_reference[0].raw[8]","expected":"0x00000001"},
+    {"id":"gicr_icenabler0","bits":32,"reference":"debugtui_mmio_reference[0].raw[9]","expected":"0x00000001"},
+    {"id":"gicr_icfgr0","bits":32,"reference":"debugtui_mmio_reference[0].raw[10]","expected":"0xaaaaaaaa"},
+    {"id":"gicr_icfgr1","bits":32,"reference":"debugtui_mmio_reference[0].raw[11]","expected":"0x00000000"},
+    {"id":"gicr_ipriorityr0","bits":32,"reference":"debugtui_mmio_reference[0].raw[12]","expected":"0xf8f8f8f8"},
+    {"id":"gicd_irouter32","bits":64,"reference":"debugtui_mmio_reference[0].raw[13]","expected":"0x0000000000000002"},
+    {"id":"ed_midr","bits":32,"reference":"debugtui_mmio_reference[0].raw[14]","expected":"0x411fd134"},
+    {"id":"edpidr0","bits":32,"reference":"debugtui_mmio_reference[0].raw[15]","expected":"0x00000034"},
+    {"id":"edpidr1","bits":32,"reference":"debugtui_mmio_reference[0].raw[16]","expected":"0x000000b4"},
+    {"id":"edpidr2","bits":32,"reference":"debugtui_mmio_reference[0].raw[17]","expected":"0x0000000b"},
+    {"id":"edpidr3","bits":32,"reference":"debugtui_mmio_reference[0].raw[18]","expected":"0x00000000"},
+    {"id":"edpidr4","bits":32,"reference":"debugtui_mmio_reference[0].raw[19]","expected":"0x00000004"},
+    {"id":"edcidr0","bits":32,"reference":"debugtui_mmio_reference[0].raw[20]","expected":"0x0000000d"},
+    {"id":"edcidr1","bits":32,"reference":"debugtui_mmio_reference[0].raw[21]","expected":"0x00000090"},
+    {"id":"edcidr2","bits":32,"reference":"debugtui_mmio_reference[0].raw[22]","expected":"0x00000005"},
+    {"id":"edcidr3","bits":32,"reference":"debugtui_mmio_reference[0].raw[23]","expected":"0x000000b1"}
+  ]
+}

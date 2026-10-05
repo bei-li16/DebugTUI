@@ -534,3 +534,30 @@ fn setup_catalogue_details_scroll_all_conditions_and_unicode_at_supported_sizes_
         assert!(!setup.document.path.exists());
     }
 }
+
+#[test]
+fn setup_catalogue_modal_keeps_its_opening_snapshot_and_reopening_reloads_parse_errors() {
+    let fixture = Fixture::new();
+    let mut catalogue = Catalogue::builtin("cortex-m4").unwrap();
+    catalogue.description = "FIRST_CATALOGUE_SNAPSHOT".into();
+    let file = fixture.0.join("customer.toml");
+    fs::write(&file, toml::to_string(&catalogue).unwrap()).unwrap();
+    let mut document = Document::empty(fixture.0.join("debug.toml"));
+    document.set_path("registers", "catalogue", &file);
+    let before = document.raw.clone();
+    let mut setup = Setup::new(document);
+    setup.selected = CATALOGUE;
+    setup.key(key(KeyCode::F(1)));
+    fs::write(&file, "invalid catalogue = [").unwrap();
+    let mut terminal = Terminal::new(TestBackend::new(120, 36)).unwrap();
+    terminal.draw(|f| setup.draw(f)).unwrap();
+    assert!(text(&terminal).contains("FIRST_CATALOGUE_SNAPSHOT"));
+    // Only the visible modal is a snapshot. Explicit loading still sees errors.
+    assert!(setup.catalogue_preview().is_err());
+    setup.key(key(KeyCode::Esc));
+    setup.key(key(KeyCode::F(1)));
+    terminal.draw(|f| setup.draw(f)).unwrap();
+    assert!(text(&terminal).contains("Catalogue error:"));
+    assert!(!text(&terminal).contains("FIRST_CATALOGUE_SNAPSHOT"));
+    assert_eq!(setup.document.raw, before);
+}

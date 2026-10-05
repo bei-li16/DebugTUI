@@ -27,6 +27,7 @@ fn target_key(project: &Project) -> serde_json::Value {
     })
 }
 
+#[derive(Clone, PartialEq)]
 pub(super) struct Observation {
     target: serde_json::Value,
     context: Context,
@@ -53,6 +54,12 @@ impl Observation {
 }
 
 impl Setup {
+    pub(super) fn catalogue_preview_key(&self) -> PreviewKey {
+        PreviewKey {
+            document: self.document.raw.clone(),
+            observation: self.register_observation.clone(),
+        }
+    }
     pub(crate) fn observe_register_target(
         &mut self,
         project: &Project,
@@ -227,14 +234,41 @@ pub(super) fn preview(
     lines
 }
 
+#[derive(PartialEq)]
+pub(super) struct PreviewKey {
+    document: toml::Value,
+    observation: Option<Observation>,
+}
+
 #[derive(Default)]
 pub(super) struct Details {
     pub scroll: usize,
     pub max_scroll: usize,
     close: Rect,
+    lines: Vec<String>,
+    wrapped: Vec<String>,
+    wrap_width: u16,
+    key: Option<PreviewKey>,
 }
 
 impl Details {
+    pub(super) fn new(preview: Result<Vec<String>, String>, key: PreviewKey) -> Self {
+        let mut lines = preview.unwrap_or_else(|error| {
+            vec![
+                format!("Catalogue error: {error}"),
+                "Esc / Close returns to the draft. No file was changed.".into(),
+            ]
+        });
+        lines.push("Preview loaded when opened. Close and reopen to reload the file.".into());
+        Self {
+            lines,
+            key: Some(key),
+            ..Default::default()
+        }
+    }
+    pub(super) fn matches(&self, key: &PreviewKey) -> bool {
+        self.key.as_ref() == Some(key)
+    }
     pub(super) fn key(&mut self, code: KeyCode) -> bool {
         match code {
             KeyCode::Esc | KeyCode::Enter | KeyCode::F(1) => return true,
@@ -259,7 +293,7 @@ impl Details {
         }
         false
     }
-    pub(super) fn draw(&mut self, f: &mut Frame, lines: Vec<String>) {
+    pub(super) fn draw(&mut self, f: &mut Frame) {
         let screen = f.area();
         let width = screen.width.min(100);
         let height = screen.height.min(30);
@@ -276,32 +310,37 @@ impl Details {
         if inner.height < 2 || inner.width == 0 {
             return;
         }
-        let mut wrapped = vec![];
-        for line in lines {
-            let mut row = String::new();
-            let mut used = 0;
-            for ch in line.chars() {
-                let cells = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
-                if ch == '\n' || used + cells > usize::from(inner.width) {
-                    wrapped.push(Line::raw(std::mem::take(&mut row)));
-                    used = 0;
+        if self.wrap_width != inner.width {
+            self.wrapped.clear();
+            self.wrap_width = inner.width;
+            for line in &self.lines {
+                let mut row = String::new();
+                let mut used = 0;
+                for ch in line.chars() {
+                    let cells = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+                    if ch == '\n' || used + cells > usize::from(inner.width) {
+                        self.wrapped.push(std::mem::take(&mut row));
+                        used = 0;
+                    }
+                    if ch != '\n' {
+                        row.push(ch);
+                        used += cells;
+                    }
                 }
-                if ch != '\n' {
-                    row.push(ch);
-                    used += cells;
-                }
+                self.wrapped.push(row);
             }
-            wrapped.push(Line::raw(row));
         }
         let body = Rect::new(inner.x, inner.y, inner.width, inner.height - 1);
-        self.max_scroll = wrapped.len().saturating_sub(usize::from(body.height));
+        self.max_scroll = self.wrapped.len().saturating_sub(usize::from(body.height));
         self.scroll = self.scroll.min(self.max_scroll);
         f.render_widget(
             Paragraph::new(
-                wrapped
-                    .into_iter()
+                self.wrapped
+                    .iter()
                     .skip(self.scroll)
                     .take(usize::from(body.height))
+                    .cloned()
+                    .map(Line::raw)
                     .collect::<Vec<_>>(),
             )
             .style(Style::default().fg(theme::TEXT)),

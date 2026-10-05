@@ -314,6 +314,7 @@ mod tests {
             let catalogue = app.register_view.catalogue.as_mut().unwrap();
             catalogue.registers[0].scope = scope;
             catalogue.registers[0].reader = Reader::Mmio {
+                require_owner_mapping: false,
                 component: "bus".into(),
                 offset: 8,
             };
