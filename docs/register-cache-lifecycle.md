@@ -11,7 +11,7 @@
 - 多层 alias 继承根 reader 的语义，来源记录完整派生链，例如 `alias:d1@32 <- alias:q0@64 <- gdb:q0`。一个批次内仍复用父原始值，字段不另行读取。
 - 所有值仍绑定 session、worker generation、实际 owner 和核心；选中栈帧值另外要求核心及 frame 一致。切帧只使选中栈帧值过期，同一物理停止代次的直接后端值可保留。
 
-这不完成 REG-109 的完整跨 cluster／共享 owner 复用，也不完成 REG-210 的 endpoint、target、通道及类型化 provenance 矩阵。
+本批仅验收 REG-106 的 worker 上下文；跨 cluster／共享 owner 的独立代次和逐采样路由隔离在后续 [REG-109 自检](register-shared-owners.md) 单独验收。REG-210 的 endpoint、target、通道及类型化 provenance 矩阵仍未完成。
 
 ## 生命周期边界
 

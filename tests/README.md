@@ -4,9 +4,11 @@
 
 ## 统一运行
 
-缓存生命周期验证见 [REG-106 自检](../docs/register-cache-lifecycle.md)。`cargo test --locked --test register_lifecycle` 覆盖真实 worker／MI 的换帧、别名、复位成功及部分失败、Console 名称索引变化、更换 ELF、双核缓存及重连；App 测试另外验证返回原帧和迟到回复。F24 本批加入七个证据模式，累计 60 个。[十项人工 case](cases/register-cache-lifecycle.md) 均为 SKIPPED，未执行上板测试。
+共享寄存器归属验证见 [REG-109 自检](../docs/register-shared-owners.md)。`cargo test --locked --test register_shared` 的五项四核 MI 管道集成覆盖三种 scope、两个 cluster、未知归属、alias 单次读取、peer 生命周期、迟到值、失败及重连、首个通知中的兼容投影；两项模型、一项故障边界和一项 UI 测试另核对身份边界、旧 JSON、逐路由缓存、失败退避及宽窄键盘帮助。F24 本批增加九个证据模式，当前累计 69 个。[八项人工 case](cases/register-shared-owners.md) 全部 SKIPPED。
 
-寄存器基础框架自检见 [逐项审计](../docs/register-framework-audit.md)。新补强的目录读取边界、大小端与 128 位别名、固定列／字段访问覆盖、逐核字段变化高亮及全枚举帮助由 `src/registers/tests.rs`、`tests/register_access.rs`、`src/ui/registers/framework_tests.rs` 和 status tests 验证。F24 已映射 53 个证据模式；[延后环境 case](cases/register-framework.md) 均未执行，实际终端视觉仍单独计 REG-208。
+缓存生命周期验证见 [REG-106 自检](../docs/register-cache-lifecycle.md)。`cargo test --locked --test register_lifecycle` 覆盖真实 worker／MI 的换帧、别名、复位成功及部分失败、Console 名称索引变化、更换 ELF、双核缓存及重连；App 测试另外验证返回原帧和迟到回复。F24 在该历史批次加入七个证据模式，当时累计 60 个。[十项人工 case](cases/register-cache-lifecycle.md) 均为 SKIPPED，未执行上板测试。
+
+寄存器基础框架自检见 [逐项审计](../docs/register-framework-audit.md)。新补强的目录读取边界、大小端与 128 位别名、固定列／字段访问覆盖、逐核字段变化高亮及全枚举帮助由 `src/registers/tests.rs`、`tests/register_access.rs`、`src/ui/registers/framework_tests.rs` 和 status tests 验证。F24 在该历史批次映射 53 个证据模式；[延后环境 case](cases/register-framework.md) 均未执行，实际终端视觉仍单独计 REG-208。
 
 寄存器状态分类与取消的软件证据包含 `src/ui/registers/status/tests.rs`、`tests/register_cancel.rs`、`tests/selector_access/cancel_cases.rs`。后两者使用实际 worker／MI 管道及真实 Tcl 控制流，覆盖最后一项丢弃、已知恢复／未知结果、MPU／VFP 和 Scope All；不连接板卡。人工环境 case 见 [状态与取消](cases/register-status-cancel.md)，全部未执行。
 

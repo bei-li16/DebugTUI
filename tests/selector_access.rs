@@ -53,10 +53,17 @@ impl Drop for Fixture {
 fn fixture(fault: &'static str) -> Fixture {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
-    let directory = root
-        .join("artifacts")
-        .join(format!("selector-{}-{sequence}", std::process::id()));
-    fs::create_dir_all(&directory).unwrap();
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = root.join("artifacts").join(format!(
+        "selector-{}-{sequence}-{nonce:x}",
+        std::process::id()
+    ));
+    fs::create_dir_all(directory.parent().unwrap()).unwrap();
+    // Windows reuses process IDs; an old fixture must never supply this run's raw inputs.
+    fs::create_dir(&directory).unwrap();
     let transcript = directory.join("commands.txt");
     fs::write(&transcript, "").unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();

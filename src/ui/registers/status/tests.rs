@@ -26,7 +26,7 @@ fn put(app: &mut App, id: &str, state: State, reason: Reason) {
     value.reason = reason;
     app.register_view
         .values
-        .insert(("core:default".into(), id.into()), value);
+        .insert(("core:default".into(), id.into(), "default".into()), value);
 }
 fn text(terminal: &Terminal<TestBackend>) -> String {
     let buffer = terminal.backend().buffer();
@@ -109,7 +109,7 @@ fn register_status_counts_apply_owner_stop_session_and_gdb_frame_rules() {
     let value = app
         .register_view
         .values
-        .get_mut(&("core:default".into(), "r0".into()))
+        .get_mut(&("core:default".into(), "r0".into(), "default".into()))
         .unwrap();
     value.owner = Some("core:other".into());
     assert_eq!(counts(&app).get(Category::Stale), 1);
@@ -117,7 +117,7 @@ fn register_status_counts_apply_owner_stop_session_and_gdb_frame_rules() {
     // A matching owner does not turn a missing raw value into success.
     app.register_view
         .values
-        .get_mut(&("core:default".into(), "r0".into()))
+        .get_mut(&("core:default".into(), "r0".into(), "default".into()))
         .unwrap()
         .value = None;
     assert_eq!(counts(&app).get(Category::Valid), 0);
@@ -315,7 +315,7 @@ fn register_status_details_keep_long_reader_reason_source_and_sample_time_access
     put(&mut app, "r0", State::Unavailable, Reason::AccessRestricted);
     app.register_view
         .values
-        .get_mut(&("core:default".into(), "r0".into()))
+        .get_mut(&("core:default".into(), "r0".into(), "default".into()))
         .unwrap()
         .detail = format!(
         "{}physical permission denied at the selected core",
@@ -350,9 +350,10 @@ fn register_help_preserves_the_full_128_bit_raw_value_when_the_main_row_is_clipp
     let raw = "0xfedcba98765432100123456789abcdef";
     let mut value = sample(&app, "q15", "0x0");
     value.value = Some(crate::registers::RawValue::parse(raw, 128).unwrap());
-    app.register_view
-        .values
-        .insert(("core:default".into(), "q15".into()), value);
+    app.register_view.values.insert(
+        ("core:default".into(), "q15".into(), "default".into()),
+        value,
+    );
     let mut terminal = Terminal::new(TestBackend::new(35, 12)).unwrap();
     terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
     assert!(!text(&terminal).contains(raw));
@@ -403,9 +404,10 @@ fn register_field_help_keeps_all_enums_conditions_bits_and_chinese_description_s
             value.reason = Reason::AccessRestricted;
             value.detail = "physical access denied for this stopped core".into();
             let before = serde_json::to_value(&value).unwrap();
-            app.register_view
-                .values
-                .insert(("core:default".into(), "cpsr".into()), value);
+            app.register_view.values.insert(
+                ("core:default".into(), "cpsr".into(), "default".into()),
+                value,
+            );
             key(&mut app, KeyCode::Char('t'), &engine);
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
             terminal.draw(|f| draw(f, &mut app)).unwrap();
@@ -446,7 +448,8 @@ fn register_field_help_keeps_all_enums_conditions_bits_and_chinese_description_s
             assert!(app.register_view.status_popup.is_none());
             assert_eq!(
                 serde_json::to_value(
-                    &app.register_view.values[&("core:default".into(), "cpsr".into())]
+                    &app.register_view.values
+                        [&("core:default".into(), "cpsr".into(), "default".into())]
                 )
                 .unwrap(),
                 before

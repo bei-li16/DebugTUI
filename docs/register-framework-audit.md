@@ -34,6 +34,6 @@
 
 ## 仍未完成的验收
 
-上述基础框架批次之后，REG-106 由 [缓存生命周期自检](register-cache-lifecycle.md) 单独验收，当前总计 **14/57**。本次基础审计没有把 REG-102、REG-107～110、REG-208、REG-210 或后续阶段整体验收算作完成。它们仍需配置／路径完整矩阵、npm／EXE／ZIP 升级交付、CPU 目标不匹配、完整共享 owner、实际读取来源和 PowerShell／VS Code 视觉结果等相应证据。
+上述基础框架批次之后，REG-106 由 [缓存生命周期自检](register-cache-lifecycle.md)、REG-109 由 [共享归属自检](register-shared-owners.md) 单独验收，当前总计 **15/56**。REG-102、REG-107/108/110、REG-208、REG-210 和后续阶段仍未完整验收。它们仍需配置／路径完整矩阵、npm／EXE／ZIP 升级交付、CPU 目标不匹配、可选类别的判定、实际读取来源和 PowerShell／VS Code 视觉结果等相应证据。
 
 R52+ 专有身份／差异、合法 EL1／Guest／User VFP、FP 状态控制 writer、系统／银行 writer、64 位 MMIO、GIC／Debug／STM 完整适配和最终安装／Release 仍待完成。当前 EL1 VFP 限制及架构依据继续见 [状态与取消](register-read-status-and-cancel.md)。本轮没有改动后端指令实现，没有使用 Hyp 软件测试代替其他模式支持。

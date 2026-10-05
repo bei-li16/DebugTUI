@@ -27,12 +27,33 @@ for (let i = 0; i < 4098; i++) memory.set(memoryBase + BigInt(i), 0xaa);
 variables?.initialize(memory);
 const frame = () => `frame={level="${frameLevel}",addr="0x100000008",func="main",file="sample.c",line="${line}"}`;
 const send = value => process.stdout.write(value + '\n');
+let lastNotice;
+if (process.env.DEBUGTUI_TEST_NOTIFY_FILE) setInterval(() => {
+  if (!activeEndpoint) return;
+  let desired;
+  try { desired = JSON.parse(fs.readFileSync(process.env.DEBUGTUI_TEST_NOTIFY_FILE, 'utf8'))[activeEndpoint]; }
+  catch { return; }
+  if (desired === 'stop-again' && lastNotice !== desired) { state = 'stopped'; send(`*stopped,reason="signal-received",${frame()}`); }
+  lastNotice = desired;
+  if (desired === 'running' && state !== 'running') { state = 'running'; send('*running,thread-id="all"'); }
+  if (desired === 'stopped' && state !== 'stopped') { state = 'stopped'; send(`*stopped,reason="signal-received",${frame()}`); }
+}, 15);
 readline.createInterface({ input: process.stdin }).on('line', input => {
   const match = /^(\d+)(.*)$/.exec(input);
   if (!match) return;
   const [, token, cmd] = match;
   fs.appendFileSync(transcript, cmd + '\n');
   const done = data => send(`${token}^done${data ? ',' + data : ''}`);
+  if (cmd.startsWith('-data-read-memory-bytes ') && process.env.DEBUGTUI_TEST_OWNER_MEMORY_FILE) {
+    const read = /^-data-read-memory-bytes ("?)(0x[0-9a-f]+)\1 (\d+)$/.exec(cmd);
+    if (!read) return send(`${token}^error,msg="Invalid owner fixture read"`);
+    const contents = JSON.parse(fs.readFileSync(process.env.DEBUGTUI_TEST_OWNER_MEMORY_FILE, 'utf8'))[activeEndpoint]?.[read[2]];
+    if (!contents || contents.length !== Number(read[3]) * 2) return send(`${token}^error,msg="Missing owner fixture bytes"`);
+    const response = `memory=[{begin="${read[2]}",contents="${contents}"}]`;
+    const delay = Number(process.env.DEBUGTUI_TEST_OWNER_MEMORY_DELAY_MS || 0);
+    if (delay) return setTimeout(() => done(response), delay);
+    return done(response);
+  }
   if (variables?.handle(cmd, {done, memory, error: message => send(`${token}^error,msg=${JSON.stringify(message)}`), running: () => {state='running';send('*running,thread-id="all"');}, stopped: () => {state='stopped';send(`*stopped,reason="signal-received",${frame()}`);}})) return;
   if (cmd.startsWith('-gdb-set ') || cmd.startsWith('-file-exec-and-symbols ')) return done();
   if (cmd === '-gdb-show may-write-registers') {

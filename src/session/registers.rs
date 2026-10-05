@@ -135,9 +135,13 @@ impl Engine {
     }
     pub(super) fn registers_list(&self) -> Result<Json, String> {
         let configured = self.register_catalogue.as_ref().map_err(Clone::clone)?;
+        let mut topology = self.project.registers.topology.clone();
+        if topology.chip.is_empty() {
+            topology.chip = self.project.debug.chip.clone();
+        }
         Ok(match configured {
             Some((catalogue, source)) => {
-                json!({"catalogue":catalogue,"source":source,"context":self.register_context(),"facts":self.effective_register_facts(),"probe":self.snapshot.register_probe,"fact_source":if self.snapshot.register_probe.is_some(){"configuration_and_current_target_observation"}else{"configuration"}})
+                json!({"catalogue":catalogue,"source":source,"context":self.register_context(),"topology":topology,"topology_source":"configuration","facts":self.effective_register_facts(),"probe":self.snapshot.register_probe,"fact_source":if self.snapshot.register_probe.is_some(){"configuration_and_current_target_observation"}else{"configuration"}})
             }
             None => json!({"catalogue":null,"source":"gdb","context":self.register_context()}),
         })
@@ -208,6 +212,7 @@ impl Engine {
                 timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                 source,
                 view,
+                owner_generation: None,
             };
             if implementation == Implementation::No {
                 sample.state = State::Unsupported;

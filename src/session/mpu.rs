@@ -147,6 +147,7 @@ impl Engine {
                     owner: Some(format!("core:{}", request.context.core)),
                     context: request.context.clone(),
                     view: crate::registers::SampleView::PhysicalCore,
+                    owner_generation: None,
                     timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                     source: super::registers::route_name(register),
                 };

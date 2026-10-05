@@ -12,6 +12,7 @@ fn sample(app: &App, id: &str, value: &str) -> Sample {
         owner: Some(format!("core:{}", app.register_context().core)),
         context: app.register_context(),
         view: crate::registers::SampleView::PhysicalCore,
+        owner_generation: None,
         timestamp_ms: 10,
         source: "openocd:cp15".into(),
     }
@@ -45,9 +46,10 @@ fn app() -> App {
         ("mair1", "0xff440400"),
     ] {
         let s = sample(&app, id, value);
-        app.register_view
-            .values
-            .insert((s.owner.clone().unwrap(), id.into()), s);
+        app.register_view.values.insert(
+            (s.owner.clone().unwrap(), id.into(), s.context.core.clone()),
+            s,
+        );
     }
     for index in 0..24 {
         for (id, value) in [
@@ -63,7 +65,7 @@ fn app() -> App {
             let s = sample(&app, &id, &value);
             app.register_view
                 .values
-                .insert((s.owner.clone().unwrap(), id), s);
+                .insert((s.owner.clone().unwrap(), id, s.context.core.clone()), s);
         }
     }
     app

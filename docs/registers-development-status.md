@@ -2,9 +2,13 @@
 
 本文件记录开发分支上的实际实现，配合 [开发 TODO](registers-development-todo.md) 使用。当前仍是未发布的开发版本；下述软件验证不能作为芯片或 OpenOCD 实板能力证明。
 
+2026-10-05 共享归属批次：核对 percore／percluster／perchip 元数据及显式拓扑，`registers_list` 返回实际配置拓扑及来源。未知 cluster／chip 不猜测、不读取；身份、映射数量和 alias scope 严格校验。UI 缓存加入采样核心，保留各 worker 路由；协调器按每个共享 owner 维护独立代次，相关成员生命周期变化使其 cluster／chip 失效，其他 cluster 和私有样本保留。未映射 producer 保守使所有声明共享域失效。读取期间 peer 活动使对应共享新值丢弃，保留此前原值及时间；新 session 首次失败不恢复旧会话原值。worker 无响应时立即发布相关 owner 失效；状态仍为 STOPPED 的新停止通知立即发布失效，兼容 GDB 投影也在首个通知中同步过期，不追加读取。界面校验 owner 代次、选择性清除失败退避；100×24／35×12 键盘帮助核对 owner、采样核心、代次、来源及未知归属。
+
+完整 `node scripts/test-functional.cjs --only unit` 为 **335 单元＋122 集成通过，2 ignored**；严格 Clippy、格式及差异检查通过。F24 的 **69 个模式全部有通过证据**，其余 **22 个功能套件未选择**。报告为 [`artifacts/functional-1791176224477-eaabe71a/report.json`](../artifacts/functional-1791176224477-eaabe71a/report.json)，完整 Cargo 日志为同目录 `unit.log`，Clippy 日志为 `artifacts/register-shared-clippy.log`。本批两项模型、一项故障边界、一项 UI 和五项四核实际管道集成的逐条自检见 [REG-109 共享归属](register-shared-owners.md)；[八项人工 case](../tests/cases/register-shared-owners.md) 均为 SKIPPED。仅新增勾选 REG-109，总计 **已完成／未完成 15/56**；REG-210 的完整实际路由、配置／升级交付矩阵、终端视觉、其他系统及 writer 类别和最终 Release 仍未完成。安装版本仍为 0.9.3，本轮未安装、发布或上板。
+
 2026-10-05 缓存生命周期批次：新增显式 selected_frame／physical_core 采样语义，多层 alias 继承根 reader；无 MRRC 配置时来源记录实际 GDB fallback。实际 GDB 线程／帧变化使整批结果丢弃，不覆盖最近有效原值和时间。切帧及返回原帧不会复活旧值；Reset 和任意 Console 命令发送前清除相关名称缓存、Probe、草稿并使样本失效，共享复位及多核 Console 先使全部受影响 worker 失效，命令仍仅发送一次。复位部分失败、符号索引替换、断开后更换 ELF、双核切换及重连、Scope All 不广播与 UI 迟到回复已有实际管道验证。
 
-完整功能入口 unit suite 通过：**331 单元＋117 集成通过，2 ignored**；严格 Clippy、格式及差异检查通过。F24 的 **60 个模式全部有通过证据**，其余 **22 个功能套件未选择**。报告为 [`artifacts/functional-1791171328667-720b123c/report.json`](../artifacts/functional-1791171328667-720b123c/report.json)，完整 Cargo 日志为同目录 `unit.log`；Clippy 日志为 `artifacts/register-lifecycle-clippy.log`。详见 [REG-106 自检](register-cache-lifecycle.md) 及 [十项人工 case](../tests/cases/register-cache-lifecycle.md)，人工 case 均为 SKIPPED。本批仅新增勾选 REG-106，当前 **已完成／未完成 14/57**；REG-109 的完整共享 owner、REG-210 的完整实际路由、终端视觉、其他系统及 writer 类别、工具交付和最终 Release 仍未完成。安装版本仍为 0.9.3，本轮没有安装、发布或上板。
+完整功能入口 unit suite 通过：**331 单元＋117 集成通过，2 ignored**；严格 Clippy、格式及差异检查通过。F24 的 **60 个模式全部有通过证据**，其余 **22 个功能套件未选择**。报告为 [`artifacts/functional-1791171328667-720b123c/report.json`](../artifacts/functional-1791171328667-720b123c/report.json)，完整 Cargo 日志为同目录 `unit.log`；Clippy 日志为 `artifacts/register-lifecycle-clippy.log`。详见 [REG-106 自检](register-cache-lifecycle.md) 及 [十项人工 case](../tests/cases/register-cache-lifecycle.md)，人工 case 均为 SKIPPED。该历史批次仅新增勾选 REG-106，批次结束时 **已完成／未完成 14/57**；当时 REG-109 的完整共享 owner、REG-210 的完整实际路由、终端视觉、其他系统及 writer 类别、工具交付和最终 Release 仍未完成。安装版本仍为 0.9.3，本轮没有安装、发布或上板。
 
 2026-10-05 基础框架自检批次：补齐目录实际读取的 4 MiB 边界，含增长输入、UTF-8、组／寄存器数量、间接循环和全部 reader 缺参的验证。宽窗口固定四列，长客户名称和 128 位值不挤掉 Size／Access；窄窗口及字段说明使用自身位宽／访问覆盖。增加同 owner／会话／核／帧的前次有效值比较，字段独立高亮；帮助补齐全部枚举、bit segments、父／字段说明及完整原始值。实际 worker／MI 新增 128 位父值和多层别名的一次读取证明，并核对逐项错误、时间及兼容 Snapshot 输出。
 
@@ -87,13 +91,13 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 
 ## 完整任务仍需完成的部分
 
-2026-10-05 按用户新要求自检：TODO 中有 71 项开发条目，REG-205/206/211 三项已核对，其余条目仍需完整验收，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新完整 Cargo 和实际 GDB 回归见上方批次记录。其他功能 suite 仍需在完整任务验收时统一运行。F24／F26 的银行、MRRC、VFP 和变量写入测试映射不能替代整份 TODO 验收。
+2026-10-05 按逐项软件证据自检：TODO 有 71 项开发条目，当前已完成／未完成为 15/56；逐项范围见框架、生命周期、共享归属及状态与取消自检，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新完整 Cargo 和实际 GDB 回归见上方批次记录。其他功能 suite 仍需在完整任务验收时统一运行。F24／F26 的银行、MRRC、VFP 和变量写入测试映射不能替代整份 TODO 验收。
 
 | 条目范围 | 已有实现与证据 | 尚未完成／需补验收 |
 |---|---|---|
 | REG-001–008 | 显式当前核 Probe、原始 MIDR/数量/GIC 事实、已配置 MRC/银行路径、隔离的软件多核响应；固定 Windows MRRC/ISB 后端与依赖、候选源码/运行包；`capabilities.rs`、`tests/capability_access.rs` | 完整运行工具身份与实际安装对应、GDB 目标描述及各类位宽、FPU/Timer 和 R52+ 差异、完整能力矩阵、最终 tools/profile 整合及安装升级 |
-| REG-101–110 | 严格目录、精确原始值/字段/别名、逐项 reader、上下文/owner、CPU/目录 Setup、内置与用户目录、三态条件；`registers.rs`、`tests/register_access.rs`、覆盖矩阵 F24 | 对最新完整交付范围重新验证 EXE/ZIP/npm 安装升级与客户目录保留；各新增类别的身份/条件/别名适配仍需完成 |
-| REG-201–211 | 树、字段、列、说明、搜索、逐核偏好、MPU 总览；新增总数/显示/当前有效/分类计数、完整原因弹窗、实际缺失筛选、请求取消及恢复／Scope All 软件证据；REG-205/206/211 已核对 | REG-208 的实际 PowerShell/VS Code 宽窄中文/对比度视觉验收未执行；阶段内其余条目及全部目标类别仍需完整验收，不以软件缓冲截图代替终端验收 |
+| REG-101–110 | 严格目录、精确原始值/字段/别名、逐项 reader、上下文/owner、四核显式拓扑与独立共享代次／路由缓存、CPU/目录 Setup、内置与用户目录、三态条件；`registers.rs`、`tests/register_access.rs`、覆盖矩阵 F24 | 对最新完整交付范围重新验证 EXE/ZIP/npm 安装升级与客户目录保留；各新增类别的身份/条件/别名适配仍需完成 |
+| REG-201–211 | 树、字段、列、说明、搜索、逐核偏好、MPU 总览；新增总数/显示/当前有效/分类计数、完整原因弹窗、实际缺失筛选、请求取消及恢复／Scope All 软件证据；REG-201/202/203/204/205/206/207/209/211 已核对 | REG-208 的实际 PowerShell/VS Code 宽窄中文/对比度视觉验收及 REG-210 的完整实际读取来源仍需补足；全部目标类别仍需完整验收，不以软件缓冲截图代替终端验收 |
 | REG-301–308 | R52 目录、32 位 MRC、直接 EL1/EL2 MPU 与 MAIR、保存/恢复选择器、故障隔离与完整服务锁；真实 ISB／MRRC 和专用银行后端的新目录构建与离线验证；REG-H02 驱动与 8 模式钩子；`session/banked.rs` 及银行事务测试；Hyp VFP/FPSCR 与 MVFR/FPEXC、D16/D32 别名、REG-H03 四类软件用例 | 合法 EL1/Guest/User 读取、更多模式延后用例及未知 R52+ 身份仍未完成 |
 | REG-401–408 | Timer/PMU/GIC 部分目录、PMU 数量与直接/选择器读取、物理/虚拟 GIC 能力分离和 AP 条件软件夹具；Windows MRRC 候选构建/命令检查 | 完整 Timer 权限/一致性适配，完整 GIC/Debug/STM 类别及显式板级映射，Bao EL2/Guest 场景及全部延后驱动 |
 | REG-501–506 | 软件回归、严格 Clippy、F24–F26 覆盖来源和限制、增量用户手册/开发记录/示例 | 全部延后案例与原功能回归，完整架构/环境/mcal-vsconfig 配套文档，最终升版、产物/profile 一致性、安装升级、非主分支推送与 Release |

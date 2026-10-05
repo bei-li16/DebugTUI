@@ -5,6 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 #[cfg(test)]
 mod framework_tests;
 mod mpu;
+#[cfg(test)]
+mod shared_tests;
 mod status;
 pub(super) use mpu::draw as draw_mpu;
 pub(super) use status::draw as draw_status;
@@ -59,8 +61,10 @@ pub(super) struct RegisterView {
     pub(super) rows: Vec<Row>,
     open: BTreeSet<String>,
     fields: BTreeSet<String>,
-    values: BTreeMap<(String, String), Sample>,
-    previous: BTreeMap<(String, String), Sample>,
+    // A shared owner does not make distinct worker sessions/routes interchangeable.
+    values: BTreeMap<(String, String, String), Sample>,
+    previous: BTreeMap<(String, String, String), Sample>,
+    owner_generations: BTreeMap<String, u64>,
     attempts: BTreeSet<(u64, u64, String, u32, String)>,
     pending: Option<(u64, Context)>,
     bank_pending: Option<[String; 2]>,
@@ -103,7 +107,7 @@ impl RegisterView {
             sample.id == register.id
                 && sample.context.core == context.core
                 && sample.state == State::Valid
-                && sample.applies(context, sample.owner.as_deref())
+                && sample.applies_at(context, sample.owner.as_deref(), &self.owner_generations)
         });
         let selection = if let Some(field) = field {
             let field = &register.fields[field];
@@ -158,6 +162,7 @@ impl RegisterView {
             open: BTreeSet::from(["core".into()]),
             fields: BTreeSet::new(),
             values: BTreeMap::new(),
+            owner_generations: BTreeMap::new(),
             previous: BTreeMap::new(),
             attempts: BTreeSet::new(),
             pending: None,
@@ -314,6 +319,7 @@ impl RegisterView {
             self.owner(project, context, index)
                 .unwrap_or_else(|| format!("unknown:{}", context.core)),
             id.clone(),
+            context.core.clone(),
         ))
     }
 }
@@ -321,6 +327,29 @@ impl RegisterView {
 impl App {
     pub(super) fn sync_register_sample_validity(&mut self) {
         let context = self.register_context();
+        let generations = &self.snapshot.register_owner_generations;
+        let changed: BTreeSet<_> = generations
+            .keys()
+            .chain(self.register_view.owner_generations.keys())
+            .filter(|owner| {
+                generations.get(*owner) != self.register_view.owner_generations.get(*owner)
+            })
+            .cloned()
+            .collect();
+        if !changed.is_empty() {
+            let mut topology = self.project.registers.topology.clone();
+            if topology.chip.is_empty() {
+                topology.chip = self.project.debug.chip.clone();
+            }
+            let catalogue = self.register_view.catalogue.as_ref();
+            self.register_view.attempts.retain(|(_, _, core, _, id)| {
+                !catalogue
+                    .and_then(|catalogue| catalogue.register(id))
+                    .and_then(|register| topology.owner(register.scope, core))
+                    .is_some_and(|owner| changed.contains(&owner))
+            });
+        }
+        self.register_view.owner_generations = generations.clone();
         self.register_view
             .attempts
             .retain(|(session, generation, core, frame, _)| {
@@ -340,12 +369,11 @@ impl App {
                 item.id == sample.id
                     && item.owner == sample.owner
                     && item.context == sample.context
-                    && item.timestamp_ms == sample.timestamp_ms
                     && item.state == State::Stale
             });
             if self.snapshot.state != "STOPPED"
                 || engine_invalidated
-                || !sample.applies(&context, sample.owner.as_deref())
+                || !sample.applies_at(&context, sample.owner.as_deref(), generations)
             {
                 self.register_view
                     .previous
@@ -369,11 +397,12 @@ impl App {
                             .sample(&self.project, &context, *index)
                             .is_some_and(|s| {
                                 self.snapshot.state == "STOPPED"
-                                    && s.applies(
+                                    && s.applies_at(
                                         &context,
                                         self.register_view
                                             .owner(&self.project, &context, *index)
                                             .as_deref(),
+                                        &self.register_view.owner_generations,
                                     )
                                     && (s.implementation == Implementation::No
                                         || s.reason
@@ -739,7 +768,7 @@ impl App {
                 let Some(owner) = owner else {
                     continue;
                 };
-                let key = (owner, sample.id.clone());
+                let key = (owner, sample.id.clone(), context.core.clone());
                 if self
                     .register_view
                     .values
@@ -1098,7 +1127,11 @@ impl App {
         if let Some(error) = error {
             if let Some(ids) = bank {
                 for id in ids {
-                    let key = (format!("core:{}", context.core), id.clone());
+                    let key = (
+                        format!("core:{}", context.core),
+                        id.clone(),
+                        context.core.clone(),
+                    );
                     let previous = self.register_view.values.get(&key).cloned();
                     let mut sample = previous.clone().unwrap_or_else(|| Sample {
                         id: id.clone(),
@@ -1110,6 +1143,7 @@ impl App {
                         owner: Some(key.0.clone()),
                         context: context.clone(),
                         view: crate::registers::SampleView::PhysicalCore,
+                        owner_generation: None,
                         timestamp_ms: 0,
                         source: "selector".into(),
                     });
@@ -1158,11 +1192,20 @@ impl App {
                 if sample.owner != expected_owner {
                     continue;
                 }
+                if sample.state == State::Valid
+                    && !sample.applies_at(
+                        &context,
+                        expected_owner.as_deref(),
+                        &self.register_view.owner_generations,
+                    )
+                {
+                    continue;
+                }
                 let owner = sample
                     .owner
                     .clone()
                     .unwrap_or_else(|| format!("unknown:{}", context.core));
-                let key = (owner, sample.id.clone());
+                let key = (owner, sample.id.clone(), context.core.clone());
                 if let Some(old) = self.register_view.values.get(&key)
                     && old.state == State::Valid
                 {
@@ -1423,9 +1466,11 @@ impl App {
                         .register_view
                         .owner(&self.project, &context, *index)
                         .and_then(|owner| {
-                            self.register_view
-                                .previous
-                                .get(&(owner, register.id.clone()))
+                            self.register_view.previous.get(&(
+                                owner,
+                                register.id.clone(),
+                                context.core.clone(),
+                            ))
                         })
                         .filter(|old| {
                             old.state == State::Valid
@@ -1574,6 +1619,7 @@ mod tests {
             owner: Some("core:default".into()),
             context: app.register_context(),
             view: crate::registers::SampleView::SelectedFrame,
+            owner_generation: None,
             timestamp_ms: 23,
             source: format!("gdb:{id}"),
         }
@@ -1760,9 +1806,10 @@ mod tests {
         let mut value = sample(&app, "d0", "0x0");
         value.value = Some(RawValue::parse("0x800000003f800000", 64).unwrap());
         let before = value.value.clone();
-        app.register_view
-            .values
-            .insert(("core:default".into(), "d0".into()), value);
+        app.register_view.values.insert(
+            ("core:default".into(), "d0".into(), "default".into()),
+            value,
+        );
         app.selection = app.register_view.rows.iter().position(|row|matches!(row, Row::Register(i,_) if app.register_view.catalogue.as_ref().unwrap().registers[*i].id=="d0")).unwrap();
         app.open_format(None);
         let format = crate::registers::display::Format::Vector {
@@ -1815,7 +1862,7 @@ mod tests {
         let object = serde_json::to_string(&("d0", Option::<String>::None)).unwrap();
         assert_eq!(app.register_display_format(&object), format);
         assert_eq!(
-            app.register_view.values[&("core:default".into(), "d0".into())].value,
+            app.register_view.values[&("core:default".into(), "d0".into(), "default".into())].value,
             before
         );
         assert!(requests.try_recv().is_err());
@@ -1921,7 +1968,7 @@ mod tests {
         app.project.registers.selector_command = "arm mcr".into();
         for id in ["r0", "prbar23", "prlar23"] {
             app.register_view.values.insert(
-                ("core:default".into(), id.into()),
+                ("core:default".into(), id.into(), "default".into()),
                 sample(&app, id, "0x1234"),
             );
         }
@@ -1938,13 +1985,14 @@ mod tests {
             Some("data failed; selector restored"),
         );
         for id in ["prbar23", "prlar23"] {
-            let value = &app.register_view.values[&("core:default".into(), id.into())];
+            let value =
+                &app.register_view.values[&("core:default".into(), id.into(), "default".into())];
             assert_eq!(value.state, State::Unavailable);
             assert_eq!(value.value.as_ref().unwrap().hex, "0x00001234");
             assert!(value.detail.contains("last sample at 23 ms"));
         }
         assert_eq!(
-            app.register_view.values[&("core:default".into(), "r0".into())].state,
+            app.register_view.values[&("core:default".into(), "r0".into(), "default".into())].state,
             State::Valid
         );
         assert!(app.register_view.bank_pending.is_none());
@@ -1955,7 +2003,7 @@ mod tests {
     fn a_late_selector_failure_cannot_damage_another_physical_stop() {
         let mut app = app();
         let original = sample(&app, "prbar1", "0x42");
-        let key = ("core:default".into(), "prbar1".into());
+        let key = ("core:default".into(), "prbar1".into(), "default".into());
         app.register_view
             .values
             .insert(key.clone(), original.clone());
@@ -2000,7 +2048,7 @@ mod tests {
         let old = sample(&app, "r0", "0x42");
         app.register_view
             .values
-            .insert(("core:default".into(), "r0".into()), old);
+            .insert(("core:default".into(), "r0".into(), "default".into()), old);
         let mut probe = crate::registers::capabilities::Probe {
             context: app.register_context(),
             thread: "1".into(),
@@ -2022,15 +2070,16 @@ mod tests {
         assert_eq!(app.register_view.facts["icc.physical.prebits"], 5);
         assert_eq!(app.project.registers.facts["icc.physical.prebits"], 7);
         assert_eq!(
-            app.register_view.values[&("core:default".into(), "r0".into())].state,
+            app.register_view.values[&("core:default".into(), "r0".into(), "default".into())].state,
             State::Stale
         );
         assert_eq!(
-            app.register_view.values[&("core:default".into(), "cpsr".into())].state,
+            app.register_view.values[&("core:default".into(), "cpsr".into(), "default".into())]
+                .state,
             State::Valid
         );
         assert_eq!(
-            app.register_view.values[&("core:default".into(), "icc_ctlr".into())]
+            app.register_view.values[&("core:default".into(), "icc_ctlr".into(), "default".into())]
                 .value
                 .as_ref()
                 .unwrap()
@@ -2159,9 +2208,10 @@ mod tests {
         app.register_view.toggle(cpsr, Some(true));
         app.view_tops[3] = cpsr;
         let value = sample(&app, "cpsr", "0x20000013");
-        app.register_view
-            .values
-            .insert(("core:default".into(), "cpsr".into()), value);
+        app.register_view.values.insert(
+            ("core:default".into(), "cpsr".into(), "default".into()),
+            value,
+        );
         for (width, height) in [(100, 24), (35, 12)] {
             let mut terminal =
                 ratatui::Terminal::new(ratatui::backend::TestBackend::new(width, height)).unwrap();

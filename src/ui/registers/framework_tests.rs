@@ -60,7 +60,7 @@ fn register_columns_keep_size_access_and_value_hits_visible_for_long_names_and_1
             value.value = Some(crate::registers::RawValue::parse(raw, bits).unwrap());
             app.register_view
                 .values
-                .insert(("core:default".into(), id.into()), value);
+                .insert(("core:default".into(), id.into(), "default".into()), value);
             let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
             terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
             let y = app.view_rects[3].y;
@@ -103,9 +103,10 @@ fn register_field_columns_and_details_use_the_field_width_and_access_override() 
         register.fields[field].access = Some(crate::registers::Access::Ro);
         app.register_view.rows = vec![Row::Field(cpsr, field, 2)];
         let value = sample(&app, "cpsr", "0x00000013");
-        app.register_view
-            .values
-            .insert(("core:default".into(), "cpsr".into()), value);
+        app.register_view.values.insert(
+            ("core:default".into(), "cpsr".into(), "default".into()),
+            value,
+        );
         let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
         terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
         let y = app.view_rects[3].y;
@@ -128,12 +129,14 @@ fn register_frame_cache_never_resurrects_on_return_or_accepts_late_frame_respons
     let frame_value = sample(&app, "r0", "0x11111111");
     let mut physical = sample(&app, "r1", "0x22222222");
     physical.view = crate::registers::SampleView::PhysicalCore;
-    app.register_view
-        .values
-        .insert(("core:default".into(), "r0".into()), frame_value);
-    app.register_view
-        .values
-        .insert(("core:default".into(), "r1".into()), physical);
+    app.register_view.values.insert(
+        ("core:default".into(), "r0".into(), "default".into()),
+        frame_value,
+    );
+    app.register_view.values.insert(
+        ("core:default".into(), "r1".into(), "default".into()),
+        physical,
+    );
     assert!(!app.ensure_registers(Some(&engine)));
     let mut snapshot = app.snapshot.clone();
     snapshot.frame.level = 1;
@@ -141,11 +144,11 @@ fn register_frame_cache_never_resurrects_on_return_or_accepts_late_frame_respons
         snapshot: Box::new(snapshot),
     });
     assert_eq!(
-        app.register_view.values[&("core:default".into(), "r0".into())].state,
+        app.register_view.values[&("core:default".into(), "r0".into(), "default".into())].state,
         State::Stale
     );
     assert_eq!(
-        app.register_view.values[&("core:default".into(), "r1".into())].state,
+        app.register_view.values[&("core:default".into(), "r1".into(), "default".into())].state,
         State::Valid
     );
     assert!(app.ensure_registers(Some(&engine)));
@@ -159,7 +162,7 @@ fn register_frame_cache_never_resurrects_on_return_or_accepts_late_frame_respons
     });
     assert!(app.register_response(request.id, &json!({"samples":[late]}), None));
     assert_eq!(
-        app.register_view.values[&("core:default".into(), "r0".into())]
+        app.register_view.values[&("core:default".into(), "r0".into(), "default".into())]
             .value
             .as_ref()
             .unwrap()
@@ -167,7 +170,7 @@ fn register_frame_cache_never_resurrects_on_return_or_accepts_late_frame_respons
         "0x11111111"
     );
     assert_eq!(
-        app.register_view.values[&("core:default".into(), "r0".into())].state,
+        app.register_view.values[&("core:default".into(), "r0".into(), "default".into())].state,
         State::Stale
     );
     assert!(app.ensure_registers(Some(&engine)));
@@ -244,7 +247,7 @@ fn register_change_highlight_compares_same_owner_and_field_bits_only_after_valid
         theme::MUTED
     );
     assert_eq!(
-        app.register_view.values[&("core:default".into(), "cpsr".into())]
+        app.register_view.values[&("core:default".into(), "cpsr".into(), "default".into())]
             .value
             .as_ref()
             .unwrap()

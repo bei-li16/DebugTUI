@@ -706,6 +706,12 @@ System Regs 的 Total／Shown／Valid 分别计目录定义、展开筛选后的
 
 Status 的 Sampling view 区分选中栈帧与物理核心状态。GDB 值及其别名随栈帧失效；返回原帧后也需要重新读取，同一停止代次的直接后端值可保留。Reset、Reconnect、更换 ELF 和 Console 会使相关旧值失效；共享 Reset 与原始 Console 在命令发送前使全部核心缓存失效，命令报错也不会恢复旧值为有效。详细规则与验证见 [缓存生命周期](docs/register-cache-lifecycle.md)。
 
+多核项目可用 `[registers.topology]` 的 `chip` 及 `[registers.topology.clusters]` 的核心名称到 cluster 名称映射声明共享归属。目录的 `scope` 使用 `core`、`cluster` 或 `chip`；缺少 cluster 映射时不会按核心编号猜测，条目显示未知归属且不发送读取。chip 优先使用 topology.chip，否则沿用 debug.chip；两者都未声明时保留未知。
+
+Status 显示 Scope／Owner、实际 **Sample core**，共享条目还显示 **Owner lifetime** 的采样及当前代次。各采样核心的缓存独立保留；同 cluster 成员的运行、新停止点、会话变化或退出会使该 cluster 与 chip 的共享值过期，其他 cluster 及其他核私有值保留。未知 cluster 核心活动时，全部已声明共享域保守过期。读取期间归属代次改变会丢弃对应共享新值，保留此前原值及时间；详细规则见 [多核归属自检](docs/register-shared-owners.md)。
+
+Headless 的 `registers_list` 返回配置 `topology` 及 `topology_source = "configuration"`；多核 `registers_list`／`registers_read` 还返回 `owner_generations`，Snapshot 返回 `register_owner_generations`。缓存共享值时须同时核对样本的 worker context、owner 和 `owner_generation`；配置拓扑不证明实际硬件身份。
+
 宽窗口固定显示 Name、Value、Size、Access 四列；长名称或过长值以省略号提示。窄窗口保留名称和值，选中说明显示位宽及访问属性。选中字段时使用字段自身的位宽与访问覆盖；按 `t` 可滚动查看父描述、字段说明、全部枚举、bit segments、访问条件、读取原因和完整原始值，包括被主行省略的 128 位高低位。
 
 Cancel read、`:register-cancel` 或非搜索模式的 Esc 取消当前寄存器读取／Probe。MPU 总览关闭或切 bank 也取消未完成读取。当前事务完整恢复后停止后续项、丢弃新结果；会话和其他核心继续可用，需手工重读。恢复结果未知仍进入 FAULT。详见 [计数、取消及限制](docs/register-read-status-and-cancel.md)。尚未进入 v0.9.3 release。

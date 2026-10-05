@@ -766,6 +766,7 @@ fn stale_sessions_generations_cores_frames_and_owner_are_rejected() {
         owner: Some("core:core0".into()),
         context: context.clone(),
         view: crate::registers::SampleView::SelectedFrame,
+        owner_generation: None,
         timestamp_ms: 0,
         source: "gdb:r0".into(),
     };
@@ -804,6 +805,98 @@ fn stale_sessions_generations_cores_frames_and_owner_are_rejected() {
     sample.stale();
     assert_eq!(sample.state, State::Stale);
     assert!(sample.value.is_some());
+}
+
+#[test]
+fn shared_owner_topology_validates_explicit_identities_and_never_guesses_cluster_membership() {
+    let topology = Topology {
+        chip: "board".into(),
+        clusters: [
+            ("core0".into(), "A".into()),
+            ("core1".into(), "A".into()),
+            ("core2".into(), "B".into()),
+        ]
+        .into(),
+    };
+    topology.validate().unwrap();
+    assert_eq!(
+        topology.affected_shared_owners("core1"),
+        ["cluster:A".into(), "chip:board".into()].into()
+    );
+    assert_eq!(
+        topology.affected_shared_owners("core2"),
+        ["cluster:B".into(), "chip:board".into()].into()
+    );
+    assert_eq!(topology.owner(Scope::Cluster, "core3"), None);
+    assert_eq!(
+        topology.affected_shared_owners("core3"),
+        ["cluster:A".into(), "cluster:B".into(), "chip:board".into()].into()
+    );
+    for bad in ["", " ", "A ", "A\nB", "\u{001b}A"] {
+        let mut invalid = topology.clone();
+        invalid.clusters.insert("core0".into(), bad.into());
+        assert!(invalid.validate().is_err(), "{bad:?}");
+        let config = Config {
+            topology: invalid,
+            ..Config::default()
+        };
+        assert!(config.validate().is_err());
+    }
+    let mut missing = Topology::default();
+    assert_eq!(missing.owner(Scope::Chip, "core0"), None);
+    assert_eq!(missing.owner(Scope::Core, " "), None);
+    missing.chip = " board ".into();
+    assert!(missing.validate().is_err());
+    missing.chip = "b".repeat(257);
+    assert!(missing.validate().is_err());
+    let bounded = Topology {
+        chip: String::new(),
+        clusters: (0..1024)
+            .map(|i| (format!("core{i}"), "A".into()))
+            .collect(),
+    };
+    bounded.validate().unwrap();
+    let mut excessive = bounded;
+    excessive.clusters.insert("extra".into(), "A".into());
+    assert!(excessive.validate().is_err());
+    assert!(
+        serde_json::from_value::<Topology>(serde_json::json!({"clusters":{"core0":0}})).is_err()
+    );
+    for (scope, name) in [
+        (Scope::Core, "core"),
+        (Scope::Cluster, "cluster"),
+        (Scope::Chip, "chip"),
+    ] {
+        assert_eq!(serde_json::to_value(scope).unwrap(), name);
+        assert_eq!(
+            serde_json::from_value::<Scope>(serde_json::json!(name)).unwrap(),
+            scope
+        );
+    }
+}
+
+#[test]
+fn shared_owner_generations_are_required_in_group_caches_and_do_not_age_private_samples() {
+    let mut sample:Sample=serde_json::from_value(serde_json::json!({
+        "id":"shared","state":"valid","implementation":"unknown","reason":"unknown","detail":"",
+        "value":{"bits":32,"hex":"0x12345678"},"owner":"cluster:A",
+        "context":{"session":1,"generation":2,"core":"core0","frame":0},"timestamp_ms":23,"source":"mmio:board","view":"physical_core"
+    })).unwrap();
+    let context = sample.context.clone();
+    let mut generations = BTreeMap::from([("cluster:A".into(), 8), ("cluster:B".into(), 8)]);
+    assert!(sample.owner_generation.is_none());
+    assert!(!sample.applies_at(&context, Some("cluster:A"), &generations));
+    sample.owner_generation = Some(8);
+    assert!(sample.applies_at(&context, Some("cluster:A"), &generations));
+    assert!(!sample.applies_at(&context, Some("cluster:B"), &generations));
+    assert!(!sample.applies_at(&context, Some("cluster:A"), &BTreeMap::new()));
+    let roundtrip: Sample = serde_json::from_value(serde_json::to_value(&sample).unwrap()).unwrap();
+    assert_eq!(roundtrip.owner_generation, Some(8));
+    generations.insert("cluster:A".into(), 9);
+    assert!(!sample.applies_at(&context, Some("cluster:A"), &generations));
+    sample.owner = Some("core:core0".into());
+    sample.owner_generation = None;
+    assert!(sample.applies_at(&context, Some("core:core0"), &generations));
 }
 
 #[test]

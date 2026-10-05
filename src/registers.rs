@@ -87,6 +87,7 @@ impl Config {
         )))
     }
     pub fn validate(&self) -> Result<(), String> {
+        self.topology.validate()?;
         if !matches!(self.cp15_command.as_str(), "" | "arm mrc" | "aarch64 mrc") {
             return Err("registers.cp15_command must be arm mrc or aarch64 mrc".into());
         }
@@ -823,15 +824,45 @@ pub struct Topology {
     pub clusters: BTreeMap<String, String>,
 }
 impl Topology {
+    pub fn validate(&self) -> Result<(), String> {
+        let valid = |s: &str| s.len() <= 256 && s.trim() == s && !s.chars().any(char::is_control);
+        if !valid(&self.chip)
+            || self.clusters.len() > 1024
+            || self.clusters.iter().any(|(core, cluster)| {
+                core.is_empty() || cluster.is_empty() || !valid(core) || !valid(cluster)
+            })
+        {
+            return Err("Invalid register topology: use explicit nonempty core/cluster identities without outer whitespace or control characters".into());
+        }
+        Ok(())
+    }
+    /// An unmapped producer may belong to any declared cluster; do not guess an exclusion.
+    pub fn affected_shared_owners(&self, core: &str) -> BTreeSet<String> {
+        let mut owners = BTreeSet::new();
+        if let Some(owner) = self.owner(Scope::Chip, core) {
+            owners.insert(owner);
+        }
+        if let Some(owner) = self.owner(Scope::Cluster, core) {
+            owners.insert(owner);
+        } else {
+            owners.extend(
+                self.clusters
+                    .values()
+                    .filter(|s| !s.trim().is_empty())
+                    .map(|s| format!("cluster:{s}")),
+            );
+        }
+        owners
+    }
     pub fn owner(&self, scope: Scope, core: &str) -> Option<String> {
         match scope {
-            Scope::Core => (!core.is_empty()).then(|| format!("core:{core}")),
+            Scope::Core => (!core.trim().is_empty()).then(|| format!("core:{core}")),
             Scope::Cluster => self
                 .clusters
                 .get(core)
-                .filter(|s| !s.is_empty())
+                .filter(|s| !s.trim().is_empty())
                 .map(|cluster| format!("cluster:{cluster}")),
-            Scope::Chip => (!self.chip.is_empty()).then(|| format!("chip:{}", self.chip)),
+            Scope::Chip => (!self.chip.trim().is_empty()).then(|| format!("chip:{}", self.chip)),
         }
     }
 }
@@ -869,8 +900,31 @@ pub struct Sample {
     /// Older/unknown producers default to the conservative selected-frame view.
     #[serde(default)]
     pub view: SampleView,
+    /// Shared coordinator lifetime; None for standalone/local worker samples.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_generation: Option<u64>,
 }
 impl Sample {
+    /// UI/API caches must additionally check the shared owner's published lifetime.
+    pub fn applies_at(
+        &self,
+        context: &Context,
+        owner: Option<&str>,
+        generations: &BTreeMap<String, u64>,
+    ) -> bool {
+        self.applies(context, owner)
+            && match self.owner_generation {
+                Some(generation) => {
+                    self.owner.as_ref().and_then(|owner| generations.get(owner))
+                        == Some(&generation)
+                }
+                None => {
+                    !self.owner.as_deref().is_some_and(|owner| {
+                        owner.starts_with("cluster:") || owner.starts_with("chip:")
+                    }) || generations.is_empty()
+                }
+            }
+    }
     pub fn stale(&mut self) {
         if self.state == State::Valid {
             self.state = State::Stale;

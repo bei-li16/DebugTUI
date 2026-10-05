@@ -154,6 +154,8 @@ pub struct Snapshot {
     pub registers: Vec<Variable>,
     #[serde(default)]
     pub register_samples: Vec<crate::registers::Sample>,
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub register_owner_generations: std::collections::BTreeMap<String, u64>,
     pub breakpoints: Vec<Breakpoint>,
     pub files: Vec<String>,
     pub assembly: Vec<String>,
@@ -191,6 +193,7 @@ impl Default for Snapshot {
             watches: vec![],
             registers: vec![],
             register_samples: vec![],
+            register_owner_generations: std::collections::BTreeMap::new(),
             breakpoints: vec![],
             files: vec![],
             assembly: vec![],
@@ -1643,6 +1646,20 @@ impl Engine {
             "register_boundary" => {
                 self.invalidate_register_boundary();
                 Ok(json!({"context":self.register_context()}))
+            }
+            "register_shared_invalidate" => {
+                let owners = p["owners"].as_array().ok_or("Shared owners are required")?;
+                for sample in &mut self.snapshot.register_samples {
+                    if sample
+                        .owner
+                        .as_ref()
+                        .is_some_and(|owner| owners.iter().any(|item| item.as_str() == Some(owner)))
+                    {
+                        sample.stale();
+                    }
+                }
+                self.publish();
+                Ok(json!({"invalidated":true}))
             }
             "memory_channels" => self.memory_channels(),
             "complete" => {

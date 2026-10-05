@@ -19,6 +19,7 @@ impl Coordinator {
             internal,
             current_method: String::new(),
             break_undo: None,
+            shared_epochs: BTreeMap::new(),
         });
     }
 

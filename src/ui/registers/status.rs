@@ -74,7 +74,13 @@ impl RegisterView {
         let Some(sample) = self.sample(project, context, index) else {
             return Category::NotRead;
         };
-        if !stopped || !sample.applies(context, self.owner(project, context, index).as_deref()) {
+        if !stopped
+            || !sample.applies_at(
+                context,
+                self.owner(project, context, index).as_deref(),
+                &self.owner_generations,
+            )
+        {
             return Category::Stale;
         }
         if sample.implementation == Implementation::No
@@ -214,6 +220,22 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             register.scope
         ));
         if let Some(sample) = app.register_view.sample(&app.project, &context, index) {
+            text.push(format!("Sample core: {}", sample.context.core));
+            if register.scope != crate::registers::Scope::Core {
+                text.push(format!(
+                    "Owner lifetime: {} · current {}",
+                    sample
+                        .owner_generation
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "unverified".into()),
+                    sample
+                        .owner
+                        .as_ref()
+                        .and_then(|owner| app.snapshot.register_owner_generations.get(owner))
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "unverified".into())
+                ));
+            }
             text.push(match sample.view {
                 crate::registers::SampleView::SelectedFrame => format!(
                     "Sampling view: selected stack frame {}",
@@ -235,11 +257,11 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
                 "sample at {} ms · {:?}",
                 sample.timestamp_ms, sample.state
             ));
-            if let Some(previous) = app
-                .register_view
-                .previous
-                .get(&(sample.owner.clone().unwrap_or_default(), sample.id.clone()))
-            {
+            if let Some(previous) = app.register_view.previous.get(&(
+                sample.owner.clone().unwrap_or_default(),
+                sample.id.clone(),
+                sample.context.core.clone(),
+            )) {
                 text.push(format!("Last valid sample at {} ms", previous.timestamp_ms));
             }
             text.push(format!("Reader source: {}", sample.source));

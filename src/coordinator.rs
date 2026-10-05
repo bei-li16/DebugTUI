@@ -7,10 +7,11 @@ use crate::{
 
 mod breakpoints;
 mod control;
+mod registers;
 mod server_log;
 use serde_json::{Value as Json, json};
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     io::Read,
     process::{Child, Command, Stdio},
     sync::{
@@ -68,6 +69,7 @@ struct Batch {
     internal: bool,
     current_method: String,
     break_undo: Option<VecDeque<Step>>,
+    shared_epochs: BTreeMap<String, u64>,
 }
 struct Coordinator {
     project: Project,
@@ -90,6 +92,8 @@ struct Coordinator {
     live_watch: Option<crate::live_watch::LiveWatchHandle>,
     live_key: Option<(usize, u64, Vec<String>)>,
     group_stop: Option<usize>,
+    shared_epochs: BTreeMap<String, u64>,
+    shared_samples: BTreeMap<(usize, String, String), registers::SharedSample>,
 }
 impl Coordinator {
     fn new(project: Project, events: SyncSender<Event>, cancellation: Arc<AtomicBool>) -> Self {
@@ -147,6 +151,8 @@ impl Coordinator {
             live_watch: None,
             live_key: None,
             group_stop: None,
+            shared_epochs: BTreeMap::new(),
+            shared_samples: BTreeMap::new(),
         }
     }
     fn multi(&self) -> bool {
@@ -191,6 +197,7 @@ impl Coordinator {
     fn snapshot(&self) -> Snapshot {
         let mut s = self.engines[self.active].snapshot.clone();
         if self.multi() {
+            s.register_owner_generations = self.shared_epochs.clone();
             s.register_generation = Some(s.generation);
             s.generation = self.engines[self.active].revision;
             s.cores = self.statuses();
@@ -428,20 +435,7 @@ impl Coordinator {
             if let Some((i, token, deadline)) = self.batch.as_ref().and_then(|b| b.waiting)
                 && Instant::now() >= deadline
             {
-                self.engines[i].unresponsive = true;
-                self.engines[i]
-                    .handle
-                    .cancellation
-                    .store(true, Ordering::Relaxed);
-                self.event(
-                    i,
-                    Event::Response {
-                        id: token,
-                        ok: false,
-                        result: Json::Null,
-                        error: Some("Worker response timed out; reopen this session".into()),
-                    },
-                );
+                self.worker_timeout(i, token);
             }
             self.advance();
             if self
@@ -495,6 +489,7 @@ impl Coordinator {
             return;
         }
         self.engines[i].exited = true;
+        self.invalidate_shared_owners(i);
         if !self.exiting {
             self.engines[i].snapshot = Snapshot {
                 state: "FAULT".into(),
@@ -520,15 +515,40 @@ impl Coordinator {
             );
         }
     }
+    fn worker_timeout(&mut self, i: usize, token: u64) {
+        self.engines[i].unresponsive = true;
+        self.invalidate_shared_owners(i);
+        self.engines[i]
+            .handle
+            .cancellation
+            .store(true, Ordering::Relaxed);
+        self.event(
+            i,
+            Event::Response {
+                id: token,
+                ok: false,
+                result: Json::Null,
+                error: Some("Worker response timed out; reopen this session".into()),
+            },
+        );
+        self.publish();
+    }
     fn event(&mut self, i: usize, event: Event) {
         match event {
             // Live samples belong to the coordinator's separately scoped poller.
             Event::LiveWatch { .. } => {}
             Event::Exit => self.worker_exit(i),
-            Event::Snapshot { snapshot } => {
+            Event::Snapshot { mut snapshot } => {
                 self.observe_group_stop(i, &snapshot);
                 let changed_state = snapshot.state != self.engines[i].snapshot.state;
                 let changed_breaks = snapshot.breakpoints != self.engines[i].snapshot.breakpoints;
+                let changed_context = changed_state
+                    || snapshot.generation != self.engines[i].snapshot.generation
+                    || snapshot.register_session != self.engines[i].snapshot.register_session;
+                if changed_context {
+                    self.invalidate_shared_owners(i);
+                }
+                self.filter_shared_snapshot(i, &mut snapshot);
                 if snapshot.generation != self.engines[i].snapshot.generation {
                     self.revision += 1;
                     self.engines[i].revision = self.revision;
@@ -543,7 +563,7 @@ impl Coordinator {
                     );
                 }
                 self.engines[i].snapshot = *snapshot;
-                if i == self.active || changed_state || changed_breaks {
+                if i == self.active || changed_context || changed_breaks {
                     self.publish();
                 }
             }
@@ -573,7 +593,7 @@ impl Coordinator {
             Event::Response {
                 id,
                 ok,
-                result,
+                mut result,
                 error,
             } => {
                 if !self.batch.as_ref().is_some_and(|b| {
@@ -584,6 +604,18 @@ impl Coordinator {
                 }
                 let mut b = self.batch.take().unwrap();
                 b.waiting = None;
+                if b.current_method == "registers_read" {
+                    self.accept_shared_response(i, &b.shared_epochs, &mut result);
+                    self.publish();
+                }
+                if matches!(
+                    b.current_method.as_str(),
+                    "registers_read" | "registers_list"
+                ) && self.multi()
+                    && result.is_object()
+                {
+                    result["owner_generations"] = json!(self.shared_epochs);
+                }
                 if ok
                     && b.current_method == "write_apply"
                     && matches!(result["scope"].as_str(), Some("chip" | "cluster"))
@@ -799,6 +831,7 @@ impl Coordinator {
                     }
                     match self.engines[i].handle.send(worker_request) {
                         Ok(()) => {
+                            b.shared_epochs = self.shared_epochs.clone();
                             b.current_method = method;
                             b.waiting =
                                 Some((i, id, Instant::now() + Duration::from_millis(timeout)));
@@ -976,6 +1009,7 @@ impl Coordinator {
                 internal: false,
                 current_method: String::new(),
                 break_undo: None,
+                shared_epochs: BTreeMap::new(),
             });
             return;
         }
@@ -1039,6 +1073,7 @@ impl Coordinator {
             internal: false,
             current_method: String::new(),
             break_undo: None,
+            shared_epochs: BTreeMap::new(),
         });
     }
 }

@@ -74,6 +74,7 @@ fn clear_trace(fixture: &Fixture) {
 fn direct_mpu_discards_a_complete_batch_when_actual_mode_changes_at_final_validation() {
     let mut fixture = fixture("");
     let values = fixture.transcript.with_extension("register-values.json");
+    fs::write(&values, "{}").unwrap();
     fixture.project.gdb.env.insert(
         "DEBUGTUI_TEST_REGISTER_VALUES_FILE".into(),
         values.to_string_lossy().into_owned(),
@@ -82,6 +83,16 @@ fn direct_mpu_discards_a_complete_batch_when_actual_mode_changes_at_final_valida
     ok(&engine, 1, "connect", json!({}));
     let context = probe(&engine, 2);
     let first = read(&engine, 4, &context, "el1");
+    assert_eq!(
+        first["samples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["id"] == "cpsr")
+            .unwrap()["value"]["hex"],
+        "0x0000001a",
+        "the fault must begin in Hyp and then change to SVC"
+    );
     {
         let mut state = fixture.state.lock().unwrap();
         state["fault"] = json!("final_mode_change");
@@ -271,6 +282,7 @@ fn direct_mpu_identity_count_mode_and_request_guards_stop_before_unsafe_indices(
     for fault in ["identity_changed", "count_changed", "non_hyp"] {
         let mut fixture = fixture("");
         let values = fixture.transcript.with_extension("register-values.json");
+        fs::write(&values, "{}").unwrap();
         fixture.project.gdb.env.insert(
             "DEBUGTUI_TEST_REGISTER_VALUES_FILE".into(),
             values.to_string_lossy().into_owned(),
