@@ -898,4 +898,4 @@ GICD 按 processor cluster 共享，GICR 与外部 Debug 按物理 core 私有�
 
 channel 为空使用当前 GDB 内存连接，非空引用既有 memory_access ID；继续检查实际 endpoint、target、core filter 和状态。组件声明 owner map 后，缺失 owner 或 cluster 不回退静态 components 或其他核心。新内置 MMIO reader 要求 owner map；旧用户静态 MMIO 定义兼容。Scope All 仍只读选中 owner，64 位 AP 读取是两个 32 位字，不保证原子快照。
 
-present、gicd.interrupts、Debug comparator 数量当前来自配置，来源会显示为 configuration；读到 TYPER/Debug ID 不会自动授予新鲜硬件能力。Unknown 不自动读取，No/WO 不读取。EDPRSR、PC sample 与 TX 使用手工策略；外部 RX read 不清 RXfull，不等同于 CPU 接收操作。RW 标签不开放 MMIO 编辑。精确地址、副作用和未完成范围见 [MMIO 说明](docs/register-mmio.md)，[延后环境用例](tests/cases/register-mmio.md) 默认不访问目标。
+默认兼容模式的 present、gicd.interrupts、Debug comparator 数量来自配置，来源显示 configuration；普通 TYPER/Debug ID 数据读取不会自动授予能力。确认板级映射后，可设置 registers.mmio_probe=true，再显式执行 Probe，以42个只读身份/容量请求形成当前 owner/context 的物理证明；启用后无有效证明的数据读取拒绝，配置与观察仍分别显示。步骤及界限见 [新鲜 MMIO Probe](docs/register-mmio-probe.md)。Unknown 不自动读取，No/WO 不读取。EDPRSR、PC sample 与 TX 使用手工策略；外部 RX read 不清 RXfull，不等同于 CPU 接收操作。RW 标签不开放 MMIO 编辑。精确地址、副作用和未完成范围见 [MMIO 说明](docs/register-mmio.md)，[延后环境用例](tests/cases/register-mmio.md) 默认不访问目标。

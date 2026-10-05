@@ -28,7 +28,7 @@ component_owners 的层次为组件名 → 完整 owner → base/channel/little_
 
 ## 能力与副作用边界
 
-三组件各有 present=1 条件。SPI 银行、priority、config 和每个 IROUTER 还要求 gicd.interrupts 足够；比较器要求 breakpoint/watchpoint 数量。Unknown 不自动请求，明确 No 手工也不请求。**这些新事实当前来自配置，普通读取 TYPER/Debug ID 不会自动转成新鲜的物理 capability Probe**。配置不证明地址上的真实组件、供电/认证/总线权限；本批驱动另外核对 fresh 外部 MIDR，但不能据此授予全部 MMIO 容量。
+三组件各有 present=1 条件。SPI 银行、priority、config 和每个 IROUTER 还要求 gicd.interrupts 足够；比较器要求 breakpoint/watchpoint 数量。Unknown 不自动请求，明确 No 手工也不请求。默认兼容模式的事实来自配置，普通读取 TYPER/Debug ID 不会自动授予能力。新增可选 registers.mmio_probe=true 与显式 registers_probe 提供当前 owner/context 的物理组件/容量证明，并要求数据读取先有有效证明，见 [新鲜 MMIO Probe](register-mmio-probe.md)。配置本身不证明地址上的真实组件、供电/认证/总线权限；原二十四项 raw 驱动另核对 fresh MIDR，不代替新能力驱动。
 
 EDPRSR 的 sticky clear、EDPCSRlo 更新 EDCIDSR/EDVIDSR，以及 DBGDTRTX 清 TXfull/可能触发 MA 后续传输均只允许手工。EDPCSRhi 保守使用手工策略，明确尚未确认该上字 aperture 的精确采样语义，不声称与低字为同一快照。外部 DBGDTRRX read 只返回 DTRRX，不清 RXfull；不能与 CPU 内部接收操作混为一谈。EDITR、EDRCR、DBGOSLAR、EDLAR 四项 WO 均不读。本批不解锁、不注入指令、不清错误、不 acknowledge、enable/deactivate IRQ 或改配置。
 
@@ -49,7 +49,7 @@ EDPFR 摘要表 12-5 的 D20/D24 high/low 与详细表 12-38/39 次序矛盾，�
 
 [十二项环境 case](../tests/cases/register-mmio.md)、独立 C/JSON 和默认五阶段 SKIPPED 驱动已准备；默认报告 artifacts/register-mmio-hardware-1791224011438-fe09a965/report.json。现有原生适配器的十一项源锁、补丁、Windows/Linux 候选与对应源码 ZIP 再核对一致，见 artifacts/register-mmio-inherited-package-audit.log；本批不修改该后端。
 
-剩余：新鲜 MMIO 容量/组件身份 Probe、完整 Debug system route、低 EL ICV/Timer/VFP 权限、STM/Bao 与其他类别、BUS 完整逐项验收、writer、真实终端视觉检查、工具整合、全套最终验收和升版/安装/Release。REG-405/BUS-006 未勾选；完整 TODO 保持 **24 完成／47 未完成**，不将本批的一个子集改写为完整目标。
+这一历史批次之后，新鲜 MMIO 容量/组件身份 Probe 的进展见 [独立自检](register-mmio-probe.md)。完整 Debug system route、低 EL ICV/Timer/VFP 权限、STM/Bao 与其他类别、BUS 完整逐项验收、writer、真实终端视觉检查、工具整合、全套最终验收和升版/安装/Release 继续待完成。REG-405/BUS-006 未勾选；完整 TODO 保持 **24 完成／47 未完成**，不将一个子集改写为完整目标。
 
 ## 最终本轮回归
 

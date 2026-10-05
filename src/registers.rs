@@ -20,6 +20,7 @@ pub mod capabilities;
 pub mod display;
 pub mod eligibility;
 pub mod gic;
+pub mod mmio_probe;
 #[cfg(test)]
 mod mmio_tests;
 pub mod mpu;
@@ -41,6 +42,9 @@ pub struct Config {
     /// Explicit component routes keyed by core:/cluster:/chip: owner identity.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub component_owners: BTreeMap<String, BTreeMap<String, Component>>,
+    /// Require fresh owner-scoped MMIO proof before reading component data.
+    #[serde(skip_serializing_if = "false_flag")]
+    pub mmio_probe: bool,
     pub tcl_endpoint: String,
     pub targets: BTreeMap<String, String>,
     /// Explicit backend command, verified for the configured OpenOCD build.

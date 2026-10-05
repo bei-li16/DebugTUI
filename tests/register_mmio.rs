@@ -596,4 +596,8 @@ mod mmio_owners {
         assert_eq!(packets.lock().unwrap().len(), 5);
         call(&e, 7, "quit", json!({}));
     }
+    mod fresh_probe {
+        use super::*;
+        include!("register_mmio/fresh_probe.rs");
+    }
 }

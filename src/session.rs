@@ -24,6 +24,7 @@ mod capabilities;
 mod gic;
 mod memory;
 mod memory_writes;
+mod mmio_probe;
 mod mpu;
 mod pmu;
 mod register_adapter;
@@ -1690,6 +1691,16 @@ impl Engine {
                     {
                         sample.stale();
                     }
+                }
+                if let Some(probe) = &mut self.snapshot.register_probe {
+                    for sample in &mut probe.samples {
+                        if sample.owner.as_ref().is_some_and(|owner| {
+                            owners.iter().any(|item| item.as_str() == Some(owner))
+                        }) {
+                            sample.stale();
+                        }
+                    }
+                    probe.decode();
                 }
                 self.publish();
                 Ok(json!({"invalidated":true}))

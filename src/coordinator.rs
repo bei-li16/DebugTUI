@@ -608,9 +608,13 @@ impl Coordinator {
                     self.accept_shared_response(i, &b.shared_epochs, &mut result);
                     self.publish();
                 }
+                if b.current_method == "registers_probe" && ok {
+                    self.accept_probe_response(i, &b.shared_epochs, &mut result);
+                    self.publish();
+                }
                 if matches!(
                     b.current_method.as_str(),
-                    "registers_read" | "registers_list"
+                    "registers_read" | "registers_list" | "registers_probe"
                 ) && self.multi()
                     && result.is_object()
                 {

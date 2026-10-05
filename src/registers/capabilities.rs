@@ -91,6 +91,9 @@ impl Probe {
                 "Current physical frame 0 CPSR.M; Hyp is 0x1a",
             );
         }
+        let (mmio, notes) = super::mmio_probe::decode(self);
+        self.facts.extend(mmio);
+        self.notes.extend(notes);
         if !self
             .identity
             .as_ref()

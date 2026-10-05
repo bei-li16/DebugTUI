@@ -189,6 +189,9 @@ impl Engine {
                 break;
             }
         }
+        if self.project.registers.mmio_probe && self.register_access_fault.is_none() {
+            self.probe_mmio_capabilities(&mut probe)?;
+        }
         probe.gdb_names = self.reg_names.clone();
         probe.notes.sort();
         probe.notes.dedup();
@@ -231,7 +234,7 @@ impl Engine {
         }
         self.publish();
         Ok(
-            json!({"context":context,"probe":probe,"facts":self.effective_register_facts(),"fact_source":"configuration_and_current_target_observation",
+            json!({"context":context,"probe":probe,"facts":self.effective_register_facts(),"configured_facts":self.project.registers.facts,"fact_source":"configuration_and_current_target_observation",
                 "configured_tools":{"gdb":self.project.gdb.executable,"service":self.project.service.as_ref().map(|s| &s.command),"source":"effective worker configuration; executable versions and hashes require host verification"}}),
         )
     }

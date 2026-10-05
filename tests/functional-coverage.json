@@ -163,7 +163,9 @@
         "gic_cases::",
         "registers::mmio_tests::",
         "mmio_owners::",
-        "setup_catalogue_modal_keeps_its_opening_snapshot_and_reopening_reloads_parse_errors"
+        "setup_catalogue_modal_keeps_its_opening_snapshot_and_reopening_reloads_parse_errors",
+        "registers::mmio_probe::tests::",
+        "mmio_owners::fresh_probe::"
       ],
       "sources": [
         "src/registers.rs",
@@ -305,7 +307,16 @@
         "tests/fixtures/register-mmio-board.example.json",
         "tests/cases/register-mmio.md",
         "profiles/tha6-mmio.toml.example",
-        "docs/register-mmio.md"
+        "docs/register-mmio.md",
+        "src/registers/mmio_probe.rs",
+        "src/registers/mmio_probe/tests.rs",
+        "src/session/mmio_probe.rs",
+        "tests/register_mmio/fresh_probe.rs",
+        "scripts/test-register-mmio-probe-hardware.cjs",
+        "tests/fixtures/register-mmio-probe-board.c",
+        "tests/fixtures/register-mmio-probe-board.example.json",
+        "tests/cases/register-mmio-probe.md",
+        "docs/register-mmio-probe.md"
       ],
       "limits": [
         "目录及 MI/TCL 软件夹具不证明目标实现或实际后端能力",
@@ -319,7 +330,8 @@
         "浮点／向量格式与 Hyp VFP 读取已软件验证，不证明物理执行或合法 EL1/Guest 读取；跨进程偏好保存仅在 Windows 软件用例验证",
         "Timer 专用协议、当前 Debug 证据和一次 MRRC 全值读取有生产 C/双核主机证据；48 个动态回读模型及主机窗口/进位/回绕/冻结/异常样本验证完成，不能推导跨寄存器或跨核同时性。EL0/EL1 物理使能仍未完成；环境 case 均 SKIPPED，未上板。",
         "PMU 专用原生协议验证当前 Debug EL2/物理数量、23 项直接只读视图，低 EL 的 Hyp 陷阱仍 Unknown；十项环境用例 SKIPPED。独立固件仅离线编译，未上板、未全局安装。",
-        "新增 MMIO 目录和 owner 路线的软件证据不代表实板权限、完整 Debug/GIC/STM 支持或新鲜 MMIO 容量 Probe；十二项环境 case 均延后，64 位总线对非原子。"
+        "新增 MMIO 目录和 owner 路线的软件证据不代表实板权限、完整 Debug/GIC/STM 支持；十二项环境 case 均延后，64 位总线对非原子。",
+        "新 MMIO Probe 只覆盖 Arm/D13 R52 三组件显式 aperture，42 个只读请求与停止/owner 代次；地址和板级 owner 关联仍为配置，两个 32 位字非原子，六项新环境 case 均延后。"
       ]
     },
     {"id":"F25","name":"跨面板显式内存通道（开发分支）","required_suites":["unit"],"unit_pattern":"ui::memory::tests::","unit_patterns":["memory_channel_edit_cancel_and_save_preserve_the_inherited_tools_file","bus_dump_preserves_address_order_and_reports_non_atomic_explicit_core_route","memory_dumps_use_complete_scoped_mi_responses_and_reject_running_results","all_core_control_scope_keeps_memory_reads_on_the_selected_core_and_rejects_old_contexts"],"sources":["src/launch/channels.rs","src/ui/monitor.rs","src/ui/memory.rs","src/session/memory.rs","src/debug_access.rs"],"limits":["运行能力来自配置声明，实际 AP 映射和缓存一致性待上板验证","任意 Memory 范围运行时仅手工读取，不保证原子性","新增系统寄存器 MMIO 的完整模块联调尚未完成"]},

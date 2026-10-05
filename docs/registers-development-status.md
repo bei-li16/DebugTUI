@@ -1,5 +1,15 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：R52 新鲜 MMIO 身份/容量与共享证据失效
+
+显式 registers.mmio_probe=true 在现有 Probe 中增加42个有界只读请求，逐步核对外部 MIDR、不同 class 的 Debug/GIC CIDR、GIC IIDR variant/revision、EDDFR 容量、GICD_TYPER 和实际 Debug/GICR affinity。前后 raw/route/aperture/owner/context/请求区间一致才提供物理事实；board base/逻辑 owner 关联仍属配置，64位两字非原子。独立 Probe 样本不会被普通 TYPER 读取覆盖。启用后缺少新鲜证明的数据读取零 I/O拒绝，配置仍单独保留，失败不推断硬件 No。
+
+共享 cluster Proof 在 coordinator 响应绑定请求起始 owner epoch；peer 在探测中或发布后发生生命周期变化时，使共享样本及事实失效，并 FIFO 通知 worker，使后续数据读取拒绝。core私有证明保持本核 context；条件详情新增共享 owner/epoch 和原始完整证明。旧配置默认关闭、旧 JSON兼容。[六项新环境 case](../tests/cases/register-mmio-probe.md)、独立21项只读 C/JSON 和默认五阶段 SKIPPED可执行驱动已准备；未上板，对象仅离线编译。
+
+完整 Cargo **383 单元＋158 集成通过，2 ignored，共541通过**；**F24 134/134**为证据模式数，非用例数。550889 ms，无超时；其余**22外层功能套件未选择**。报告 artifacts/functional-1791228389704-41ff400d/report.json，Cargo为同目录 unit.log；严格 Clippy通过，日志 artifacts/register-mmio-probe-clippy.log。最终驱动新增输入完整性校验后，缺失容量期望在目标I/O前拒绝，实际EXE正向五阶段再次通过，见 artifacts/register-mmio-probe-driver-guards.json。
+
+失败的首次集成编译、未选择核心/夹具错误检查日志均保留于 artifacts/register-mmio-probe-worker-first.log、worker-retry.log、worker-selected.log；修正遵循既有核心选择、目录地址与 Snapshot 旧值来源语义，四项 worker 与一项真实 EXE 延后驱动专项通过，未缩减断言。既有后端十一项源锁、补丁、Windows/Linux候选及对应源码包一致；不修改后端或安装。完成/未完成仍 **24/47**，REG-405/BUS-006 不勾选；完整 Debug/低 EL/STM/Bao、BUS/writer/工具、终端视觉及最终全套验收/升版安装/Release仍待完成，目标 active。
+
 ## 2026-10-06：R52 GIC/外部 Debug MMIO 与显式 owner 配置
 
 新增 1,598 项 R52/R52+ MMIO 元数据（GICD 1,485、GICR 33、外部 Debug 80），按 TRM 明确地址、位宽、字段、RO/RW/WO、副作用与实现条件。GICD 属于显式 cluster；GICR/Debug 属于显式 core；GICR SGI/PPI 页为 control base+0x10000。新 component_owners 逐 owner 指定 base/channel/endian，未知/缺失不回退静态默认/别核；读取继续复用现有内存通道与完整 provenance，失败原值保留原来源。新目录要求 owner map，旧目录静态 reader/JSON 仍兼容。

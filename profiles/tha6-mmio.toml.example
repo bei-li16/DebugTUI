@@ -4,6 +4,10 @@
 # THA6206 map. Present=0 keeps all new MMIO entries disabled until verified.
 [registers]
 cpu = "cortex-r52"
+# After verifying every owner/aperture, optionally require fresh MMIO proof:
+# mmio_probe = true
+# Explicit registers_probe then reads 42 identity/capacity requests. It is not
+# started by loading this template; the addresses below remain fictitious.
 
 [registers.facts]
 "gicd.present" = 0

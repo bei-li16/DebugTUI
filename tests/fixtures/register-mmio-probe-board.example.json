@@ -1,0 +1,175 @@
+{
+  "software_example": true,
+  "mapping_verified": true,
+  "frame_function": "debugtui_mmio_probe_fixture_stop",
+  "evidence_source": "Replace this fictional example with independently verified per-core static firmware MMIO capture",
+  "ready": "debugtui_mmio_probe_reference[0].ready",
+  "components": {
+    "gicd": {
+      "owner": "cluster:A",
+      "base": "0x30000000",
+      "little_endian": true,
+      "route": {
+        "kind": "gdb_memory",
+        "endpoint": "localhost:3330"
+      }
+    },
+    "gicr": {
+      "owner": "core:default",
+      "base": "0x80000000",
+      "little_endian": true,
+      "route": {
+        "kind": "gdb_memory",
+        "endpoint": "localhost:3330"
+      }
+    },
+    "debug_external": {
+      "owner": "core:default",
+      "base": "0x50000000",
+      "little_endian": true,
+      "route": {
+        "kind": "gdb_memory",
+        "endpoint": "localhost:3330"
+      }
+    }
+  },
+  "expected_facts": {
+    "debug_external.present": 1,
+    "debug_external.breakpoints": 8,
+    "debug_external.watchpoints": 8,
+    "debug_external.context_breakpoints": 2,
+    "debug_external.aff0": 2,
+    "gicd.present": 1,
+    "gicd.interrupts": 64,
+    "gicr.present": 1,
+    "gicr.target_id": 2
+  },
+  "words": [
+    {
+      "id": "ed_midr",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[0]",
+      "expected": "0x411fd134"
+    },
+    {
+      "id": "edcidr0",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[1]",
+      "expected": "0x0000000d"
+    },
+    {
+      "id": "edcidr1",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[2]",
+      "expected": "0x00000090"
+    },
+    {
+      "id": "edcidr2",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[3]",
+      "expected": "0x00000005"
+    },
+    {
+      "id": "edcidr3",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[4]",
+      "expected": "0x000000b1"
+    },
+    {
+      "id": "eddevaff0",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[5]",
+      "expected": "0x80000102"
+    },
+    {
+      "id": "eddevaff1",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[6]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "eddfr_word0",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[7]",
+      "expected": "0x00000000"
+    },
+    {
+      "id": "eddfr_word1",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[8]",
+      "expected": "0x10707100"
+    },
+    {
+      "id": "gicd_iidr",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[9]",
+      "expected": "0x0101443b"
+    },
+    {
+      "id": "gicd_cidr0",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[10]",
+      "expected": "0x0000000d"
+    },
+    {
+      "id": "gicd_cidr1",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[11]",
+      "expected": "0x000000f0"
+    },
+    {
+      "id": "gicd_cidr2",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[12]",
+      "expected": "0x00000005"
+    },
+    {
+      "id": "gicd_cidr3",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[13]",
+      "expected": "0x000000b1"
+    },
+    {
+      "id": "gicd_typer",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[14]",
+      "expected": "0x02480001"
+    },
+    {
+      "id": "gicr_iidr",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[15]",
+      "expected": "0x0101443b"
+    },
+    {
+      "id": "gicr_cidr0",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[16]",
+      "expected": "0x0000000d"
+    },
+    {
+      "id": "gicr_cidr1",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[17]",
+      "expected": "0x000000f0"
+    },
+    {
+      "id": "gicr_cidr2",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[18]",
+      "expected": "0x00000005"
+    },
+    {
+      "id": "gicr_cidr3",
+      "bits": 32,
+      "reference": "debugtui_mmio_probe_reference[0].raw[19]",
+      "expected": "0x000000b1"
+    },
+    {
+      "id": "gicr_typer",
+      "bits": 64,
+      "reference": "debugtui_mmio_probe_reference[0].raw[20]",
+      "expected": "0x0000000200000210"
+    }
+  ]
+}

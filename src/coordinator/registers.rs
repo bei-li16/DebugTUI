@@ -45,6 +45,18 @@ impl Coordinator {
                     sample.stale();
                 }
             }
+            if let Some(probe) = &mut engine.snapshot.register_probe {
+                for sample in &mut probe.samples {
+                    if sample
+                        .owner
+                        .as_ref()
+                        .is_some_and(|owner| owners.contains(owner))
+                    {
+                        sample.stale();
+                    }
+                }
+                probe.decode();
+            }
             Self::shared_legacy_projection(&mut engine.snapshot);
             if !engine.exited && !engine.unresponsive {
                 let id = self.next_id;
@@ -80,7 +92,15 @@ impl Coordinator {
         if !self.multi() {
             return;
         }
-        for sample in &mut snapshot.register_samples {
+        self.filter_shared_samples(core, &mut snapshot.register_samples);
+        if let Some(probe) = &mut snapshot.register_probe {
+            self.filter_shared_samples(core, &mut probe.samples);
+            probe.decode();
+        }
+        Self::shared_legacy_projection(snapshot);
+    }
+    fn filter_shared_samples(&self, core: usize, samples: &mut [Sample]) {
+        for sample in samples {
             if !shared(sample) {
                 continue;
             }
@@ -106,7 +126,31 @@ impl Coordinator {
                 self.retain_last_shared(core, sample);
             }
         }
-        Self::shared_legacy_projection(snapshot);
+    }
+    pub(super) fn accept_probe_response(
+        &mut self,
+        core: usize,
+        started: &BTreeMap<String, u64>,
+        result: &mut Json,
+    ) {
+        if !self.multi() {
+            return;
+        }
+        let Ok(mut probe) = serde_json::from_value::<crate::registers::capabilities::Probe>(
+            result["probe"].clone(),
+        ) else {
+            return;
+        };
+        let mut wrapper = json!({"samples":probe.samples});
+        self.accept_shared_response(core, started, &mut wrapper);
+        probe.samples = serde_json::from_value(wrapper["samples"].clone())
+            .expect("Validated probe sample response");
+        probe.decode();
+        let configured = serde_json::from_value(result["configured_facts"].clone())
+            .unwrap_or_else(|_| self.project.registers.facts.clone());
+        result["facts"] = json!(probe.effective(&configured));
+        result["probe"] = json!(probe);
+        self.engines[core].snapshot.register_probe = Some(probe);
     }
     pub(super) fn accept_shared_response(
         &mut self,

@@ -4,7 +4,7 @@
 
 本计划将现有通用寄存器列表扩展为具有 Arm Development Studio 分组、位域和状态展示能力的寄存器窗口，并纳入 GitHub 开放 Issues 中的总线访问 target 配置、展示以及变量/内存/寄存器写入需求。优先服务 THA6206 的 MCAL 与 Bao 调试，同时保持单核、多核以及 STM32 等既有目标的兼容性。寄存器读取按“确认读取能力 → 建立数据模型 → 改造界面 → 扩展读取 → 实板验收”推进；总线入口与写入能力分别跟踪，写入不作为前期只读版本的发布条件。
 
-状态：开发中。2026-10-06 按逐项软件证据核对，71 项中已完成 24 项、未完成 47 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md)、[GIC 自检](register-gic.md) 和开发进度。本计划不代表扩展寄存器已经在实板上读取成功。
+状态：开发中。2026-10-06 按逐项软件证据核对，71 项中已完成 24 项、未完成 47 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md)、[GIC 自检](register-gic.md)、[新鲜 MMIO Probe](register-mmio-probe.md) 和开发进度。MMIO Probe是 REG-405/BUS-006 的子集，不单独增加完成项。本计划不代表扩展寄存器已经在实板上读取成功。
 
 ## 当前版本与新功能版本计划
 

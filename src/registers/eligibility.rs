@@ -28,6 +28,10 @@ pub struct Observation {
     pub raw: Option<RawValue>,
     pub source: String,
     pub timestamp_ms: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_generation: Option<u64>,
     /// Successful request proof is retained with the decision, even without a data read.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provenance: Option<provenance::Provenance>,
@@ -208,7 +212,12 @@ impl Catalogue {
                     .iter()
                     .filter(|sample| {
                         sample.context == *context
-                            && sample.owner.as_deref() == Some(&format!("core:{}", context.core))
+                            && (sample.owner.as_deref() == Some(&format!("core:{}", context.core))
+                                || conditions.iter().any(|c| {
+                                    c.observation.as_ref().is_some_and(|f| {
+                                        f.source == sample.source && f.source.starts_with("mmio:")
+                                    })
+                                }))
                     })
                     .map(|sample| Observation {
                         id: sample.id.clone(),
@@ -222,6 +231,8 @@ impl Catalogue {
                         },
                         source: sample.source.clone(),
                         timestamp_ms: sample.timestamp_ms,
+                        owner: sample.owner.clone(),
+                        owner_generation: sample.owner_generation,
                         provenance: (sample.state == State::Valid)
                             .then(|| sample.provenance.clone())
                             .flatten(),
@@ -321,6 +332,15 @@ impl Evidence {
                     observation.reason,
                     observation.detail
                 ));
+                if let Some(owner) = &observation.owner {
+                    lines.push(format!(
+                        "Probe owner: {owner} · generation={}",
+                        observation
+                            .owner_generation
+                            .map(|n| n.to_string())
+                            .unwrap_or_else(|| "worker-local".into())
+                    ));
+                }
                 if let Some(access) = observation
                     .provenance
                     .as_ref()

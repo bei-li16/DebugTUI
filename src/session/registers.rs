@@ -584,6 +584,18 @@ impl Engine {
                     offset,
                     require_owner_mapping,
                 } => {
+                    if self.project.registers.mmio_probe
+                        && !self.snapshot.register_probe.as_ref().is_some_and(|probe| {
+                            self.snapshot.state == "STOPPED"
+                                && crate::registers::mmio_probe::applicable(
+                                    probe,
+                                    &self.register_context(),
+                                    component,
+                                )
+                        })
+                    {
+                        return Err((Reason::ReaderUnsupported, "Current owner-scoped MMIO identity/capacity proof required; run registers_probe in this stopped physical context".into()));
+                    }
                     let mut topology = self.project.registers.topology.clone();
                     if topology.chip.is_empty() {
                         topology.chip = self.project.debug.chip.clone();
