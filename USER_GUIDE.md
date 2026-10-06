@@ -508,13 +508,13 @@ Memory 可选择地址范围、字节数及实际通道；运行中默认保留�
 以下说明适用于 `codex/register-debugging` 开发分支，已安装的 v0.9.3 仍遵循上面的操作说明。
 
 - Setup 的 **Memory channels** 可以编辑通道 ID、名称、TCL endpoint、target、运行时访问声明和核心限制。保存写入当前项目覆盖，取消丢弃草稿；继承的工具 profile 不被改写。
-- Watch、Peripherals 的 **Memory access** 按钮打开逐项通道与刷新设置，展示实际 target、endpoint 和配置来源。Watch 在暂停时解析可取地址成员；重连、换停止点或栈帧后重新解析。
+- Watch、Peripherals 的 **Memory access** 按钮打开逐项通道与刷新设置，展示所选通道的 target、endpoint 配置及来源。Watch 在暂停时解析可取地址成员；重连、换停止点或栈帧后重新解析。
 - Memory 的 **Memory access** 设置地址、字节数及通道，**Apply and read** 保存并读取，**Cancel** 放弃草稿。键盘用 Tab／上下键选字段，左右键切换通道，Ctrl+U 清空输入；鼠标可选字段和按钮。
 - Memory 每次读取 1–4096 字节。GDB 通道在暂停时接受 `$sp` 等地址表达式；总线通道只接受十六进制或十进制数值地址。`:memory ADDRESS [COUNT]` 使用该面板已经选择的通道。
 - 暂停后，打开 Memory 面板会按当前停止点读取一次；**Read** 可以再次采样。运行时仅允许手动使用明确声明 `while_running = true` 的通道，不对任意地址范围自动轮询。范围读取不保证原子性。
 - 地址范围和通道按芯片与核心保存。读取途中换核、重连、切栈帧或修改范围，迟到响应被丢弃。失败显示原因，保留旧样本时标为 stale；失败不会隐式暂停或切换通道。
 
-Headless 的 `memory_channels` 返回通道、核心适用性与配置来源；`memory_dump` 接受 `address`（字符串）、`count`、`channel` 和可选 `context`。context 与 `registers_list` 返回的当前上下文一致。结果返回地址字符串、按地址排列的字节数组、实际 target／endpoint／source、上下文和 `atomic = false`。未知通道、超出范围、地址溢出和不完整响应均报错。旧 `memory` 接口继续保留。
+Headless 的 `memory_channels` 返回通道、核心适用性与配置来源；`memory_dump` 接受 `address`（字符串）、`count`、`channel` 和可选 `context`。context 与 `registers_list` 返回的当前上下文一致。结果返回地址字符串、按地址排列的字节数组、target／endpoint／source、上下文和 `atomic = false`。`memory_read` 接受同样的可选 context。两者成功响应的 `access` 记录实际发送的命令、路线与请求时间；GDB 的 `access.route.endpoint` 若未知则为 null，顶层 endpoint 和 configured_endpoint 仍只是配置提示。读取途中已接收的状态、线程或停止代次变化会使响应被拒绝。未知通道、超出范围、地址溢出、不完整或错误地址响应均报错；不隐式暂停、重试或回退。旧 `memory` 接口继续保留。详见 [读取边界与证据限制](docs/bus-read-boundary.md)。
 
 当前分支的能力与未完成项见 [开发进度](docs/registers-development-status.md)。这些说明及软件夹具验证不代表新接口已通过上板验收。
 

@@ -95,7 +95,15 @@ pub(crate) fn read_only_transaction(
     stream: &mut TcpStream,
     command: &str,
 ) -> Result<String, String> {
-    transact_with_policy(stream, command, false, &mut TransactionProgress::default())
+    read_only_transaction_tracked(stream, command, &mut TransactionProgress::default())
+}
+
+pub(crate) fn read_only_transaction_tracked(
+    stream: &mut TcpStream,
+    command: &str,
+    progress: &mut TransactionProgress,
+) -> Result<String, String> {
+    transact_with_policy(stream, command, false, progress)
 }
 
 fn transact_with_policy(
@@ -673,6 +681,56 @@ mod tests {
         server.join().unwrap();
         fs::remove_file(file).unwrap();
     }
+    #[test]
+    fn tracked_generated_reads_keep_transport_failures_recoverable_but_preserve_restoration_quarantine()
+     {
+        for (reply, responded, quarantined) in [
+            (None, false, false),
+            (Some("malformed"), true, false),
+            (Some("1:access denied"), true, false),
+            (
+                Some("1:Target restoration failed: selector unknown"),
+                true,
+                true,
+            ),
+            (
+                Some("1:Core state restoration failed: mode unknown"),
+                true,
+                true,
+            ),
+        ] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                let mut byte = [0];
+                while stream.read_exact(&mut byte).is_ok() && byte[0] != 0x1a {}
+                if let Some(reply) = reply {
+                    stream.write_all(format!("{reply}\x1a").as_bytes()).unwrap();
+                }
+            });
+            let mut stream = connect(&addr.to_string()).unwrap();
+            let mut progress = TransactionProgress::default();
+            assert!(
+                read_only_transaction_tracked(
+                    &mut stream,
+                    "\"ap\" read_memory 0x1000 32 1",
+                    &mut progress
+                )
+                .is_err()
+            );
+            assert!(progress.started.is_some());
+            assert_eq!(progress.responded, responded);
+            assert_eq!(progress.completed.is_some(), responded);
+            server.join().unwrap();
+            let service = crate::debug_access::service(addr).unwrap();
+            assert_eq!(service.acquire(false).is_err(), quarantined);
+        }
+    }
+
     #[test]
     fn rpc_progress_records_dispatch_and_complete_frames_even_when_value_parsing_fails() {
         for (reply, responded) in [

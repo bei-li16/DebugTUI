@@ -1,5 +1,15 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：BUS 读取响应边界与显式恢复
+
+GDB/AP 标量、范围与旧 GDB 外设路径共用 Context/状态/通知代次/取消边界，处理 Tcl 阻塞期间积压的 MI 通知；同帧线程切换也拒绝迟到结果。GDB 核对完整连续响应及精确地址，AP 坏响应丢弃连接。成功结果记录实际命令/路线/时间 Access，Watch/Peripherals 请求携带 Context；GDB 已确认 endpoint 与配置提示分开。只读请求断线后仅下一次显式读取重连，选择器/写入恢复失败与既有服务故障继续隔离。见 [BUS 读取边界](bus-read-boundary.md)。
+
+新增六项单元、一项真实 MI 管道集成；最终树分套件验证 **412 单元＋176 集成＝588 通过，2 ignored**。第一次整套 Cargo 586 通过，原生 Memory 暴露只读请求误隔离的问题，修复后独立 Memory 通过。第二次全量 runner 在 600 秒整体预算处终止：其前 15 个测试组有完整摘要，546 通过/2 ignored，最后 write_access 被截断。未把该 runner 标为通过；单独补跑最后 42 项全部通过（62.31 秒），Doc-tests 0 项通过，补齐最终树全部 Cargo 套件。原生 Memory/SVD 均通过；其他 **20 外层套件未选择**。F24 **156/156**、F25 **12/12** 是证据匹配模式数，不是测试数或完整 feature 验收。
+
+Clippy 首次只发现循环形式 lint，按建议改为等价 while-let，随后补测该路径 10 项通过；严格 `cargo clippy --locked --all-targets -- -D warnings` 通过。原始首次 Memory 失败、整套超时、补测和 Clippy 日志均保留。总报告及日志逐字节镜像 [第一次报告](../artifacts/functional-1791246505709-187f9eb2/report.json)、[超时报告](../artifacts/functional-1791247273804-ca49f536/report.json)，[独立写入补测](../artifacts/bus-read-boundary-write-access-final.log)；原始子报告保留在 JSON 引用的 C 盘绝对位置，镜像 Markdown 的相对链接不自动重写。核对 `artifacts/bus-read-boundary-report-mirror.json`，最终分批证据与源码哈希见 `artifacts/bus-read-boundary-final-evidence.json`。
+
+不增加整项勾选，**28 完成／43 未完成**。Watch 地址解析的函数调用限制/线程证明/清理、各面板实际 receipt 展示、全部通道覆盖及完整 BUS 环境驱动仍待完成；其余低 EL、writer、终端视觉、整套验收和 Release 继续推进。目标 active；根据用户最新目标，最终 Release 也基于非主分支。三项补充 [环境 case](../tests/cases/bus-read-boundary.md) 均 SKIPPED，未上板；版本仍为 0.9.3，本轮在 `codex/register-debugging` 提交推送。
+
 ## 2026-10-06：REG-406 STM只读配置与独立组件证明
 
 Arm STM v1.1共同身份/功能与STM-500配置区共46项目录，显式chip映射触发有界Probe；可选HWE/DMA需独立同aperture/路线映射和控制类证明。身份、物理路线、owner/代次、上下文及请求次序不依赖CPU MIDR。数据路径始终要求当前Proof/定义地址/实际功能，不写控制、选择器、unlock或stimulus；Trace数据采集解码未接入。详见[STM自检](register-stm.md)。

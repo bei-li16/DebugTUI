@@ -1,5 +1,7 @@
 # DebugTUI 功能测试
 
+总线读取边界：`session::memory::tests::`、`live_watch::tests::` 与 `tests/register_access.rs` 新增六项单元、一项 MI 管道集成，验证读取中的异步状态/同帧线程变化、前后取消、旧 Context、精确响应地址、大小端、坏响应连接失效和下一次显式请求重连；restoration failure 继续隔离。Memory/SVD 原生 GDB 外层套件补充兼容验证。[三项延后环境 case](cases/bus-read-boundary.md) 均 SKIPPED；[软件范围](../docs/bus-read-boundary.md) 不代表 BUS 整项或实板完成。
+
 用例保存在 DebugTUI 仓库中：`src/**/tests*.rs` 和模块内 Rust 测试、`tests/` 中的夹具/集成测试，以及 `scripts/test-*.cjs` / `scripts/test-*.ps1` 中的功能验收驱动。生成的配置、测试程序、屏幕文本、MI 日志和结果放在被 Git 忽略的 `artifacts/`，不进入安装包。
 
 ## 统一运行

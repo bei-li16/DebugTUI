@@ -554,7 +554,9 @@ impl App {
             self.notice = "Cannot read: write-only, unsupported width/alignment, or unspecified SVD byte order.".into();
             return false;
         }
-        let params = json!({"address":register.address,"bits":register.bits,"little_endian":device.little_endian});
+        let params = json!({"address":register.address,"bits":register.bits,"little_endian":device.little_endian,"context":{
+            "session":self.snapshot.register_session,"generation":self.snapshot.generation,"frame":self.snapshot.frame.level,
+            "core":self.snapshot.core.as_ref().map(|core|core.name.as_str()).unwrap_or("default")}});
         self.peripherals.pending = Some((self.next_id, key, self.view_stamp()));
         self.pending_view = Some((self.next_id, PANE));
         self.submit(engine, "peripheral_read", params);

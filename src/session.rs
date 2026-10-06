@@ -451,6 +451,7 @@ struct Engine {
     watch_names: Vec<String>,
     watch_expansions: watch::Expansions,
     memory_connections: std::collections::HashMap<String, std::net::TcpStream>,
+    memory_context_epoch: u64,
     rpc_echo: crate::live_watch::RpcEcho,
     saved_breakpoints: Vec<crate::config::BreakpointSpec>,
     unresolved_breakpoints: Vec<Breakpoint>,
@@ -610,6 +611,7 @@ impl Engine {
             watch_names,
             watch_expansions: Default::default(),
             memory_connections: Default::default(),
+            memory_context_epoch: 0,
             rpc_echo: Default::default(),
             saved_breakpoints,
             unresolved_breakpoints: vec![],
@@ -732,6 +734,15 @@ impl Engine {
         self.emit(Event::Exit);
     }
     fn record(&mut self, incoming: Incoming) {
+        if matches!(&incoming, Incoming::Closed)
+            || matches!(&incoming, Incoming::Record(r) if
+                (r.kind == '*' && matches!(r.class.as_str(), "running" | "stopped"))
+                || (r.kind == '=' && matches!(r.class.as_str(), "thread-selected" | "thread-exited" | "thread-group-exited")))
+        {
+            // A thread selection can change without changing the frame level or
+            // stop generation. Fence reads that were already in flight.
+            self.memory_context_epoch = self.memory_context_epoch.wrapping_add(1);
+        }
         if matches!(&incoming, Incoming::Record(r) if r.class == "thread-selected") {
             self.write_drafts.clear();
         }
@@ -1932,45 +1943,13 @@ impl Engine {
                 Ok(json!({"refreshed":true}))
             }
             "peripheral_read" => {
-                self.stopped()?;
-                let address = p
-                    .get("address")
-                    .and_then(Json::as_u64)
-                    .ok_or("Register address required")?;
-                let bits = p
-                    .get("bits")
-                    .and_then(Json::as_u64)
-                    .ok_or("Register width required")?;
-                let little = p
-                    .get("little_endian")
-                    .and_then(Json::as_bool)
-                    .ok_or("SVD byte order is not specified")?;
-                if !matches!(bits, 8 | 16 | 32 | 64) || !address.is_multiple_of(bits / 8) {
-                    return Err("Unsupported or unaligned register width".into());
+                if p["channel"]
+                    .as_str()
+                    .is_some_and(|channel| !channel.is_empty())
+                {
+                    return Err("Use memory_read to select an explicit bus channel".into());
                 }
-                let command = format!("-data-read-memory-bytes 0x{address:x} {}", bits / 8);
-                self.plan_register_value_access(
-                    crate::registers::provenance::Route::GdbMemory {
-                        endpoint: self.connected_gdb_endpoint.clone(),
-                        configured_endpoint: self.project.target.endpoint.clone(),
-                        address: format!("0x{address:x}"),
-                        bits: bits as u16,
-                        byte_order: if little {
-                            crate::registers::provenance::ByteOrder::Little
-                        } else {
-                            crate::registers::provenance::ByteOrder::Big
-                        },
-                    },
-                    command.clone(),
-                );
-                let r = self.mi(&command)?;
-                let blocks = r.data.field("memory").map(Value::items).unwrap_or_default();
-                if blocks.len() != 1 {
-                    return Err("Incomplete register memory response".into());
-                }
-                let bytes = blocks[0].string("contents");
-                let value = crate::svd::decode_register(&bytes, bits as u32, little)?;
-                Ok(json!({"value": value, "address":address, "bits":bits}))
+                self.read_memory_channel(p)
             }
             "memory" => {
                 self.stopped()?;

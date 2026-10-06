@@ -12,6 +12,146 @@ use std::{
 };
 
 #[test]
+fn scalar_memory_and_peripheral_reads_validate_context_address_and_record_the_actual_mi_route() {
+    for (scenario, blocks, running, expected_error) in [
+        (
+            "valid",
+            r#"[{begin="0x100000008",contents="007f"},{begin="0x10000000a",contents="80ff"}]"#,
+            false,
+            None,
+        ),
+        (
+            "wrong-address",
+            r#"[{begin="0x10000000c",contents="007f80ff"}]"#,
+            false,
+            Some("different address"),
+        ),
+        (
+            "short",
+            r#"[{begin="0x100000008",contents="007f"}]"#,
+            false,
+            Some("Incomplete memory"),
+        ),
+        (
+            "running",
+            r#"[{begin="0x100000008",contents="007f80ff"}]"#,
+            true,
+            Some("running state changed"),
+        ),
+    ] {
+        for method in ["memory_read", "peripheral_read"] {
+            let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let output = root.join("artifacts").join(format!(
+                "scalar memory {} {method} {scenario}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&output).unwrap();
+            let transcript = output.join("commands.txt");
+            fs::write(&transcript, "").unwrap();
+            let mut project = Project::default();
+            project.gdb.executable = "node".into();
+            project.gdb.args = vec![
+                root.join("tests/mock-gdb.cjs")
+                    .to_string_lossy()
+                    .into_owned(),
+            ];
+            project
+                .gdb
+                .env
+                .insert("DEBUGTUI_TEST_REGISTERS".into(), "[]".into());
+            project.gdb.env.insert(
+                "DEBUGTUI_TEST_TRANSCRIPT".into(),
+                transcript.to_string_lossy().into_owned(),
+            );
+            project
+                .gdb
+                .env
+                .insert("DEBUGTUI_TEST_MEMORY_BLOCKS".into(), blocks.into());
+            if running {
+                project
+                    .gdb
+                    .env
+                    .insert("DEBUGTUI_TEST_MEMORY_RUN_ON_READ".into(), "1".into());
+            }
+            project.target.endpoint = "localhost:3333".into();
+            project.session.on_exit = "disconnect".into();
+            let engine = session::spawn(project);
+            response(&engine, 1, "connect", json!({}));
+            let listed = response(&engine, 2, "registers_list", json!({}));
+            let mut expired = listed["context"].clone();
+            expired["core"] = json!("different-core");
+            engine.send(Request::new(3, method, json!({"address":0x100000008u64,"bits":32,"little_endian":true,"context":expired}))).unwrap();
+            loop {
+                if let Event::Response {
+                    id: 3, ok, error, ..
+                } = engine.events.recv_timeout(Duration::from_secs(10)).unwrap()
+                {
+                    assert!(!ok && error.unwrap().contains("expired core"));
+                    break;
+                }
+            }
+            assert!(
+                !fs::read_to_string(&transcript)
+                    .unwrap()
+                    .contains("-data-read-memory-bytes")
+            );
+            for (id, little, value) in [(4, true, 0xff807f00u64), (5, false, 0x007f80ffu64)] {
+                engine.send(Request::new(id, method, json!({"address":0x100000008u64,"bits":32,"little_endian":little,"context":listed["context"]}))).unwrap();
+                loop {
+                    if let Event::Response {
+                        id: found,
+                        ok,
+                        result,
+                        error,
+                    } = engine.events.recv_timeout(Duration::from_secs(10)).unwrap()
+                        && found == id
+                    {
+                        if let Some(message) = expected_error {
+                            assert!(
+                                !ok && error.unwrap().contains(message),
+                                "{scenario}/{method}"
+                            );
+                        } else {
+                            assert!(ok, "{error:?}");
+                            assert_eq!(result["value"], value);
+                            assert_eq!(result["context"], listed["context"]);
+                            assert_eq!(result["access"]["context"], listed["context"]);
+                            assert_eq!(result["access"]["route"]["kind"], "gdb_memory");
+                            assert_eq!(result["access"]["route"]["endpoint"], "localhost:3333");
+                            assert_eq!(result["access"]["route"]["address"], "0x100000008");
+                            assert_eq!(
+                                result["access"]["route"]["byte_order"],
+                                if little { "little" } else { "big" }
+                            );
+                            assert_eq!(
+                                result["access"]["command"],
+                                "-data-read-memory-bytes 0x100000008 4"
+                            );
+                            assert_eq!(result["access"]["phase"], "responded");
+                            assert_eq!(result["channel"], "");
+                        }
+                        break;
+                    }
+                }
+                if running {
+                    break;
+                }
+            }
+            let commands = fs::read_to_string(&transcript).unwrap();
+            assert_eq!(
+                commands
+                    .lines()
+                    .filter(|line| line.starts_with("-data-read-memory-bytes"))
+                    .count(),
+                if running { 1 } else { 2 }
+            );
+            assert!(!commands.contains("-exec-interrupt") && !commands.contains("-exec-continue"));
+            response(&engine, 9, "quit", json!({}));
+        }
+    }
+}
+
+#[test]
 fn memory_dumps_use_complete_scoped_mi_responses_and_reject_running_results() {
     for running in [false, true] {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -77,6 +217,10 @@ fn memory_dumps_use_complete_scoped_mi_responses_and_reject_running_results() {
                     assert_eq!(result["bytes"], json!([0, 127, 128, 255]));
                     assert_eq!(result["context"], listed["context"]);
                     assert_eq!(result["endpoint"], "localhost:3333");
+                    assert_eq!(result["access"]["phase"], "responded");
+                    assert_eq!(result["access"]["route"]["kind"], "gdb_memory");
+                    assert_eq!(result["access"]["route"]["endpoint"], "localhost:3333");
+                    assert_eq!(result["access"]["context"], listed["context"]);
                 }
                 break;
             }

@@ -10,7 +10,7 @@
 
 `launch/channels.rs` 编辑项目的 `memory_access` 草稿，不改写继承的工具 profile。配置加载记录实际来源。`ui/monitor.rs` 的 Watch／外设策略按芯片、核心和条目保存，绑定及迟到响应检查会话、停止代次和栈帧；Watch 地址仍由 GDB 在暂停时解析。
 
-`ui/memory.rs` 保存每芯片／核心的范围和通道，使用 `memory_dump` 请求。新接口限制 1–4096 字节；GDB 响应必须连续、完整并包含合法字节，总线响应按地址序解释为字节，不进行字节序重排。结果包含路由和上下文，由发起请求的视图验证后缓存；不通过无上下文的 `Snapshot.memory` 发布。切核、重连、切帧、范围或通道改变后丢弃迟到结果。暂停时可见面板每个停止点只读取一次，运行时仅手动读取配置声明允许的通道。旧 `memory` JSON 接口保持兼容。
+`ui/memory.rs` 保存每芯片／核心的范围和通道，使用 `memory_dump` 请求。新接口限制 1–4096 字节；GDB 响应必须连续、完整并包含合法字节，总线响应按地址序解释为字节，不进行字节序重排。结果包含路由和上下文，由发起请求的视图验证后缓存；不通过无上下文的 `Snapshot.memory` 发布。切核、重连、切帧、范围或通道改变后丢弃迟到结果。暂停时可见面板每个停止点只读取一次，运行时仅手动读取配置声明允许的通道。旧 `memory` JSON 接口保持兼容。标量/范围及 GDB 外设读取共用 [响应边界](docs/bus-read-boundary.md)，消费已到达的 MI 通知并核对上下文、状态、通知代次和取消；成功结果提供实际命令 Access，GDB 配置 endpoint 与已确认连接分开。
 
 `debug_access.rs` 在同一OpenOCD服务的GDB/Tcl请求间按endpoint串行化；不约束外部客户端。`session/banked.rs` 在同一租约内检查物理线程/frame0，并在单次target事务内检查独立v2协议。外部MIDR/EDSCR提供当前身份/EL，EL0/User与EL2/Hyp分别确定当前银行规则；EL1具体模式未知，不根据停止前DSPSR猜测，也不执行受约束不可预测的MRS CPSR。读取前后身份/执行状态和完整DSPSR/DLR一致，R0保存/恢复/物理回读；不使用旧mode-switch DPM。严格typed证明绑定owner/context/实际route/请求时间和传输方法，失败原值保留旧证明。Scope All只访问选中核，迟到上下文变化丢弃结果，不确定状态隔离通道。当前后端经Windows/Linux构建及本机离线验证，未连接板卡；完整EL1银行仍待完成，见[银行自检](docs/register-banked-proof.md)。
 

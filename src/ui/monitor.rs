@@ -422,7 +422,9 @@ impl App {
         let (method, params, resolve) = if let Some(binding) = &sample.binding {
             (
                 "memory_read",
-                json!({"address":binding.address,"bits":binding.bits,"little_endian":binding.little_endian,"channel":policy.channel}),
+                json!({"address":binding.address,"bits":binding.bits,"little_endian":binding.little_endian,"channel":policy.channel,"context":{
+                    "session":session,"generation":generation,"frame":frame,
+                    "core":self.snapshot.core.as_ref().map(|core|core.name.as_str()).unwrap_or("default")}}),
                 false,
             )
         } else if self.snapshot.state == "STOPPED"
