@@ -1729,6 +1729,22 @@ impl Setup {
             let inner = block.inner(rows[2]);
             f.render_widget(block, rows[2]);
             theme::lines(f, lines, inner);
+            // Short terminals scroll the field list; say how many fields are
+            // out of view on the card's own border instead of hiding them.
+            let shown = (inner.height as usize).min(START - start);
+            for (count, y, arrow) in [
+                (start, rows[2].y, "▲"),
+                (START - start - shown, rows[2].bottom().saturating_sub(1), "▼"),
+            ] {
+                let label = format!(" {arrow} {count} more ");
+                let width = unicode_width::UnicodeWidthStr::width(label.as_str()) as u16;
+                if count > 0 && rows[2].width > width + 4 {
+                    f.render_widget(
+                        Paragraph::new(label).style(Style::default().fg(theme::ACCENT)),
+                        Rect::new(rows[2].right() - width - 2, y, width, 1),
+                    );
+                }
+            }
             self.row_hits.extend(
                 (start..START)
                     .take(inner.height as usize)
@@ -2300,6 +2316,29 @@ mod tests {
             setup.key(key(KeyCode::F(2)));
             terminal.draw(|f| setup.draw(f)).unwrap();
         }
+    }
+
+    #[test]
+    fn small_setup_says_how_many_fields_are_above_and_below_the_card() {
+        let fixture = Fixture::new();
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+        let mut text = |setup: &mut Setup| {
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            terminal
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|c| c.symbol())
+                .collect::<String>()
+        };
+        setup.selected = 0;
+        let top = text(&mut setup);
+        assert!(top.contains("more") && top.contains('▼') && !top.contains('▲'), "{top}");
+        setup.selected = START - 1;
+        let bottom = text(&mut setup);
+        assert!(bottom.contains('▲') && !bottom.contains('▼'), "{bottom}");
     }
 
     #[test]
