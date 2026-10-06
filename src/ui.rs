@@ -76,7 +76,24 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 53] = [
+/// Tab order; Alt+1..9, Alt+0 and Alt+- jump to these views directly.
+const PANE_ORDER: [usize; 11] = [0, 5, 7, 8, 3, 10, 2, 4, 6, 1, 9];
+fn pane_shortcut(key: &KeyEvent) -> Option<usize> {
+    if key.modifiers != KeyModifiers::ALT {
+        return None;
+    }
+    let KeyCode::Char(ch) = key.code else {
+        return None;
+    };
+    let index = match ch {
+        '1'..='9' => ch as usize - '1' as usize,
+        '0' => 9,
+        '-' => 10,
+        _ => return None,
+    };
+    Some(PANE_ORDER[index])
+}
+const COMMANDS: [&str; 54] = [
     "edit-value",
     "cores",
     "core NAME_OR_INDEX",
@@ -85,6 +102,7 @@ const COMMANDS: [&str; 53] = [
     "appearance",
     "animations MODE",
     "format",
+    "zoom",
     "setup",
     "connect",
     "reconnect",
@@ -144,7 +162,9 @@ Software group commands are ordered; they are not hardware lockstep/CTI synchron
 Left: Source / Asm / Files / Log
 Right top: System Regs / Peripherals / Stack / Memory / Breaks
 Right bottom: Watch / Locals
-Tab / Shift+Tab switches view and keyboard focus.
+Tab / Shift+Tab switches view and keyboard focus; Alt+1..9, Alt+0 and Alt+- jump
+straight to Source, Asm, Files, Log, Regs, Peripherals, Stack, Memory, Breaks, Watch, Locals.
+z (or :zoom) lets the focused panel group fill the workspace; z again restores it.
 Click tabs to change only that group; source stays visible.
 Wheel over a view or drag its scrollbar to browse content.
 Click Stack rows to select a frame; Delete removes a breakpoint or watch.
@@ -293,6 +313,8 @@ pub struct App {
     pending_elf: Option<u64>,
     pending_task: Option<u64>,
     help_scroll: u16,
+    /// The focused panel group fills the workspace body (`z`, `:zoom`).
+    zoom: bool,
     pointer: Option<ratatui::layout::Position>,
     /// Areas whose drawing depended on the pointer in the last frame. A mouse
     /// move that changes none of them cannot change what is on screen.
@@ -377,6 +399,7 @@ impl App {
             pending_elf: None,
             pending_task: None,
             help_scroll: 0,
+            zoom: false,
             pointer: None,
             hover_probes: RefCell::default(),
             source_keys: RefCell::default(),
@@ -798,6 +821,7 @@ impl App {
             "scope" => self.submit(engine, "control_scope", json!({"scope":arg})),
             "scope-toggle" => self.submit(engine, "control_scope", json!({"scope":if self.group_control() { "core" } else { "all" }})),
             "appearance" => self.open_appearance(),
+            "zoom" => self.zoom = !self.zoom,
             "format" => self.open_format(None),
             "animations" => {
                 self.project.ui.animations = match arg {
@@ -1091,7 +1115,8 @@ impl App {
             }
         }
         let workspace_shortcut = matches!(key.code, KeyCode::F(_))
-            || (key.code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL));
+            || (key.code == KeyCode::Char('p') && key.modifiers.contains(KeyModifiers::CONTROL))
+            || pane_shortcut(&key).is_some();
         if self.register_view.searching && !workspace_shortcut && self.register_key(key, engine) {
             return false;
         }
@@ -1105,7 +1130,15 @@ impl App {
         if self.pane == 3 && !self.console_view.focused && self.register_key(key, engine) {
             return false;
         }
+        if let Some(pane) = pane_shortcut(&key) {
+            self.editing = false;
+            self.watch_editing = false;
+            self.completion.invalidate();
+            self.select_pane(pane);
+            return false;
+        }
         match key.code {
+            KeyCode::Char('z') if key.modifiers.is_empty() => self.zoom = !self.zoom,
             KeyCode::Char('f') if key.modifiers.is_empty() => self.open_format(None),
             KeyCode::Char('e')
                 if key.modifiers.is_empty() && matches!(self.pane, 1 | 3 | 4 | 9 | 10) =>
@@ -1292,7 +1325,7 @@ impl App {
             .all(|r| inside(before, r) == inside(self.pointer, r))
     }
     fn cycle_pane(&mut self, delta: isize) {
-        let panes = [0, 5, 7, 8, 3, 10, 2, 4, 6, 1, 9];
+        let panes = PANE_ORDER;
         let index = panes.iter().position(|&p| p == self.pane).unwrap_or(0);
         self.select_pane(panes[(index as isize + delta).rem_euclid(panes.len() as isize) as usize]);
     }
@@ -2409,6 +2442,32 @@ mod tests {
             },
             engine,
         );
+    }
+    #[test]
+    fn zoom_fills_the_body_with_the_focused_group_and_alt_keys_jump_to_views() {
+        let mut a = App::new(Project::default(), true);
+        let key = |a: &mut App, code, modifiers| a.key(KeyEvent::new(code, modifiers), None);
+        render(&mut a, 120, 36);
+        let normal = a.source_rect;
+        assert!(a.side_rect.width > 0);
+        key(&mut a, KeyCode::Char('z'), KeyModifiers::NONE);
+        render(&mut a, 120, 36);
+        assert!(a.source_rect.width > normal.width, "Source fills the body");
+        assert_eq!(a.side_rect.width, 0, "the inspector is hidden while zoomed");
+        key(&mut a, KeyCode::Char('0'), KeyModifiers::ALT);
+        assert_eq!(a.pane, 1, "Alt+0 focuses Watch");
+        render(&mut a, 120, 36);
+        assert_eq!(a.source_rect.width, 0, "the zoomed body follows focus");
+        assert!(a.view_rects[1].width > normal.width);
+        key(&mut a, KeyCode::Char('z'), KeyModifiers::NONE);
+        render(&mut a, 120, 36);
+        assert!(a.side_rect.width > 0 && a.source_rect.width > 0);
+        for (ch, pane) in [('1', 0), ('2', 5), ('4', 8), ('5', 3), ('9', 6), ('-', 9)] {
+            key(&mut a, KeyCode::Char(ch), KeyModifiers::ALT);
+            assert_eq!(a.pane, pane, "Alt+{ch}");
+        }
+        a.command(None, ":zoom");
+        assert!(a.zoom);
     }
     #[test]
     fn pointer_moves_redraw_only_when_a_drawn_hover_state_changes() {

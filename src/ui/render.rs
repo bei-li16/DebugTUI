@@ -1288,6 +1288,22 @@ fn hint(command: &str) -> &str {
         "animations" => "Choose off, subtle or full animation",
         "format" => "Format selected value: binary / octal / decimal / hex",
         "help" => "Keyboard and command help",
+        "zoom" => "Let the focused panel group fill the workspace (z)",
+        "cores" => "List debug cores and their states",
+        "core" => "Select a core by name or index (Ctrl+T: next core)",
+        "break-new" => "Open the code breakpoint editor",
+        "break-data" => "Open the data watchpoint editor",
+        "break-edit" => "Edit the selected breakpoint: enabled, condition, ignore count",
+        "break-toggle" => "Enable or disable the selected breakpoint",
+        "enable" => "Enable a breakpoint by number, or all",
+        "disable" => "Disable a breakpoint by number, or all",
+        "register-probe" => "Probe which catalogue registers this core implements",
+        "register-cancel" => "Cancel the pending register read",
+        "register-status" => "Register read status and reasons",
+        "register-bank-read" => "Read the selected banked register group",
+        "mpu" => "MPU region overview",
+        "cache" => "Cache and TCM overview",
+        "peripheral-refresh" => "Read the selected peripheral register once",
         "commandlist" => "Help: commands and keyboard shortcuts (Ctrl+P)",
         "quit" => "End session and close TUI (Ctrl+Q)",
         _ => "",
@@ -1589,7 +1605,14 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         (((rows[1].height + search_height) / 4 + 1).clamp(3, 10) - search_height).max(2);
     let body =
         Layout::vertical([Constraint::Min(3), Constraint::Length(console_height)]).split_cached(rows[1]);
-    if area.width >= 100 {
+    if a.zoom {
+        // The focused group alone: Source group, or Inspector / Variables.
+        if MAIN_PANES.contains(&a.pane) {
+            main_panel(f, a, body[0], shared_actions);
+        } else {
+            side_panel(f, a, body[0], true);
+        }
+    } else if area.width >= 100 {
         let columns = Layout::horizontal([
             Constraint::Percentage(68),
             Constraint::Length(1),
@@ -1623,10 +1646,12 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
                     }
                 }),
         )
+        // Notices carry real status ("ELF not built…"); DIM measured 3.8:1
+        // against the canvas, below the 4.5:1 body-text contrast minimum.
         .style(Style::default().fg(if a.notice.starts_with("Error") {
             theme::RED
         } else {
-            theme::DIM
+            theme::MUTED
         })),
         rows[2],
     );
@@ -1647,7 +1672,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     };
     let keys = if area.width >= 110 {
         format!(
-            " F2 Setup  / Console  Ctrl+P Help  Tab Views{core_hint}  F5 Continue  F6 Pause  F10 Step Over  F11 Step In  Ctrl+Q Exit  f Format"
+            " F2 Setup  / Console  Ctrl+P Help  Tab Views{core_hint}  F5 Continue  F6 Pause  F10 Step Over  F11 Step In  Ctrl+Q Exit  f Format  z Zoom"
         )
     } else if area.width >= 70 {
         format!(" F2 Setup  / Console  Ctrl+P Help  Tab Views{core_hint}  Ctrl+Q Exit")
@@ -1659,7 +1684,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         rows[3],
     );
     if area.width >= 140 {
-        let label = format!(" ◇ {focus}  ");
+        let label = format!(" ◇ {focus}{}  ", if a.zoom { " · zoom" } else { "" });
         f.render_widget(
             Paragraph::new(label.clone()).style(Style::default().fg(theme::ACCENT)),
             Rect::new(
