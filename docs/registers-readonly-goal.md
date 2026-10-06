@@ -43,7 +43,7 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | B07 | M4 FPU 配置与身份 | CPACR/FPCCR/FPCAR/FPDSCR/MVFR、GDB regfile 复用 |
 | [x] | B08 | M7 cache/TCM 配置 | TRM/CMSIS 有据定义、维护命令不执行 |
 | [x] | B09 | M ID 探测与动态实例 | CPUID/ICTR/MPU_TYPE 等成功/缺失/非法结果 |
-| [ ] | B10 | CorePrivate 和异构双核隔离 | 同 PPB 地址经不同核路由、缓存与失败隔离 |
+| [x] | B10 | CorePrivate 和异构双核隔离 | 同 PPB 地址经不同核路由、缓存与失败隔离 |
 | [x] | B11 | 按 reader 运行态读取 | 安全 MMIO 正向、sysreg/GDB NeedHalt 拒绝 |
 | [ ] | C01 | R52 常用身份/控制完整描述 | 规定寄存器编码、位宽、主要字段及页码 |
 | [ ] | C02 | R52 MPU 完整描述/容量 | EL1/EL2、MAIR 与有效 region 范围 |
@@ -190,3 +190,15 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 严格 `cargo clippy --locked --all-targets -- -D warnings` 通过，18.10 秒；`cargo fmt --all --check`、Node 语法和 `git diff --check` 通过。日志、最终源文件 SHA256、实际 EXE report/产物 SHA256及提交核验存于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\readonly-config-sources-evidence-20261006.json`。主要日志同目录：`readonly-config-sources-cargo-complete-20261006.log`、`readonly-config-sources-unit-complete-20261006.log`、`readonly-config-sources-configuration-complete-20261006.log`、`readonly-config-sources-clippy-20261006.log`。
 - 自检修正来源详情挤走原说明/诊断和旧固定 128 行扫描的断言；改为完整滚动核对，未移除原断言。G 盘空间不足使旧夹具写入失败，测试统一支持 `DEBUGTUI_TEST_ARTIFACT_ROOT` 后在 C 盘回归，不删除用户文件或旧缓存。并发 capability 套件一次超时，增加请求名诊断后独立及 4 并发完整回归通过，未放宽 10 秒约束。后续来源审计曾误认为环境允许 cores；实际加载器明确拒绝 root/backend cores，撤回无用来源扩展，新增严格拒绝用例，保持原配置约束。原始 StorageFull、UI 失败、超时及错误假设测试日志全部保留。
 - 剩余 **B10、C01～C06、D01～D04、E01～E05**，共 16 项。下一轮复用 M MPU/cache fixture，补齐真正 M7＋M4 同 PPB 地址的身份、目录、数值、错误和生命周期隔离。R52 当前 Debug 权限统一、最终回归、打包/升级及非主分支 Release 尚未完成；Goal 继续 active。本轮提交与远端 SHA 在最终输出及证据 manifest 记录。
+
+## 迭代 11：内置 M7/M4 的完整 CorePrivate 隔离
+
+2026-10-06，完成 B10，累计 **21 完成 / 15 未完成**。本轮起点本地/远端为 `998a4ca67bba0525c232911583334dcd889453ab`；上一轮已推送执行目标的恢复状态与发布顺序。本轮审查并完成现有 B10 草稿，生产访问代码未改写。
+
+- 五项新集成直接使用内置 M7/M4 目录、实际 Coordinator、独立 MI worker、TCP 与生产 Tcl 控制流程。core0/core2 的共同 PPB 地址 `0xe000ed00` 各有独立 CPUID、16/8 个 MPU region、3/5 的初始 RNR 和不同 region 字节；共享 OpenOCD 服务的不同 target、独立服务两种路由均通过。Scope All 的数据请求只属选中核，返回缓存零 I/O，M4 不能借用 M7 cache 或另一核 context。
+- 覆盖本核已知读取失败后撤销 Probe、旧值保留原 owner/context/时间/来源、重新证明后再读 indexed 项、受保护事务恢复后取消、新身份撤销旧容量、帧/运行/证明边界以及重连。独立服务的 peer 缓存和 trace 不变；共享服务恢复不确定的隔离沿用既有规则。新增 UI 测试验证切到 M4 后拒绝 M7 同地址的迟到值，目录与当前值不串核。
+- 完整 `cargo test --locked` **485 单元＋239 集成＝724 通过、0 失败、2 既有 ignored**，退出码 0，`RUST_TEST_THREADS=4`。包含整个 selector **117/117**、M capability **12/12**、writer **42/42** 和生产分发套件；内层 EXE/驱动 case 不重复加到 Cargo 测试数。完整日志为 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\readonly-m-multicore-complete-20261006.log`。前序新五项和 UI 专项分别在 `readonly-m-multicore-driver-first-20261006.log`、`readonly-m-multicore-ui-final-20261006.log`，均已包含于完整回归。
+- 严格 `cargo clippy --locked --all-targets -- -D warnings` 通过，16.76 秒，日志 `readonly-m-multicore-clippy-first-20261006.log`；fmt、Node 语法和 diff 检查通过。原失败日志保留：新取消测试最初漏掉失败后必须重新 Probe 的前置条件，运行测试沿用了立即停止的 mock 行为，UI snapshot 漏置全局 STOPPED；最终修正夹具前置状态，保留撤销证明、零 I/O、peer 隔离及迟到响应断言，没有放宽期限或改生产策略。
+- [多核说明](register-cortex-m-multicore.md)、用户指南、[八项环境 case](../tests/cases/register-cortex-m-multicore.md)、独立基线模板和显式运行驱动完成。默认报告 `evidence/m-profile-multicore-hardware-1791280095686-6bb38e6f/report.json` 为 **0 passed/0 failed/4 skipped**；实际 EXE 软件报告 `evidence/m-profile-multicore-hardware-1791280095777-b195e51e/report.json` 为 **5 passed**；故意错误的首核 CPUID 基线报告 `evidence/m-profile-multicore-hardware-1791280099347-e0d65717/report.json` 为 **1 passed/1 expected failure/3 skipped**，在 region 写入及 peer 数据请求前正确停止。三个报告都在上述 C 盘构建目录，`board_tests_executed=false`。八项真实环境 case 均 SKIPPED，不升级 hardware verified；AP 声明不冒充实际物理映射。
+- 证据 manifest `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\readonly-m-multicore-evidence-20261006.json` 保存最终源文件、日志、报告 SHA256 和提交/远端核验。未执行上板、未修改或重建 OpenOCD；三个核心文档的绝对引用保留。
+- 剩余 **C01～C06、D01～D04、E01～E05**，共 15 项。下一批先核对 R52 身份/控制及 MPU 定义，再统一当前 Debug 证据：普通 reader 仍给权限判断传 None，MPU 与 selector 仍借用保存的 CPSR，不能作为本版完成状态。已核对指定 TRM 的实际 PDF 为 718 页/`100026_0104_01_en`，架构介绍为 26 页/`DEN0130_0100_en`；沿用已匹配 SHA256 的参考材料，不重读整本。最终回归、升版打包及非主分支 Release 仍待完成，Goal 保持 active。

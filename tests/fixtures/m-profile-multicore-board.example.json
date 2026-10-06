@@ -1,0 +1,132 @@
+{
+  "software_example": true,
+  "revision": "software-model; replace for board",
+  "probe": "software-model",
+  "openocd_version": "Tcl 8.6 software model",
+  "gdb_version": "MI software model",
+  "evidence_source": "Independent known fixture constants. Replace with dedicated firmware or an independent Arm debugger baseline and actual AP/target mapping before board execution.",
+  "cores": [
+    {
+      "name": "core0",
+      "cpu": "cortex-m7",
+      "ap": 0,
+      "target": "cpu0",
+      "endpoint": "REPLACE_WITH_THIS_CORES_TCL_ENDPOINT",
+      "cpuid": "0x410fc271",
+      "count": 16,
+      "control": "0x00000005",
+      "rnr": "0x00000003",
+      "regions": [
+        [
+          "0x20000000",
+          "0x0307001f"
+        ],
+        [
+          "0x20010001",
+          "0x0307011f"
+        ],
+        [
+          "0x20020002",
+          "0x0307021f"
+        ],
+        [
+          "0x20030003",
+          "0x0307031f"
+        ],
+        [
+          "0x20040004",
+          "0x0307041f"
+        ],
+        [
+          "0x20050005",
+          "0x0307051f"
+        ],
+        [
+          "0x20060006",
+          "0x0307061f"
+        ],
+        [
+          "0x20070007",
+          "0x0307071f"
+        ],
+        [
+          "0x20080008",
+          "0x0307081f"
+        ],
+        [
+          "0x20090009",
+          "0x0307091f"
+        ],
+        [
+          "0x200a000a",
+          "0x03070a1f"
+        ],
+        [
+          "0x200b000b",
+          "0x03070b1f"
+        ],
+        [
+          "0x200c000c",
+          "0x03070c1f"
+        ],
+        [
+          "0x200d000d",
+          "0x03070d1f"
+        ],
+        [
+          "0x200e000e",
+          "0x03070e1f"
+        ],
+        [
+          "0x200f000f",
+          "0x03070f1f"
+        ]
+      ]
+    },
+    {
+      "name": "core2",
+      "cpu": "cortex-m4",
+      "ap": 1,
+      "target": "cpu1",
+      "endpoint": "REPLACE_WITH_THIS_CORES_TCL_ENDPOINT",
+      "cpuid": "0x411fc241",
+      "count": 8,
+      "control": "0x00000005",
+      "rnr": "0x00000005",
+      "regions": [
+        [
+          "0x30000000",
+          "0x0307001f"
+        ],
+        [
+          "0x30010001",
+          "0x0307011f"
+        ],
+        [
+          "0x30020002",
+          "0x0307021f"
+        ],
+        [
+          "0x30030003",
+          "0x0307031f"
+        ],
+        [
+          "0x30040004",
+          "0x0307041f"
+        ],
+        [
+          "0x30050005",
+          "0x0307051f"
+        ],
+        [
+          "0x30060006",
+          "0x0307061f"
+        ],
+        [
+          "0x30070007",
+          "0x0307071f"
+        ]
+      ]
+    }
+  ]
+}

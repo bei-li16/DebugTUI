@@ -864,6 +864,8 @@ M 核 Debug/DWT/FPB 目录区分实现、容量和使能状态：DHCSR 仅手动
 
 M7 使用 `:cache` 或 **M7 cache** 查看 I/D cache ID。先暂停在 physical frame 0 并 Probe，再显式 Read；单个受保护事务只选择已实现的 cache，并恢复/回读 CSSELR。普通 CCSIDR 同样复用此事务，返回原 selector 对应的值。CLIDR 表示实现，容量不代表使能；未知编码保留原值，过期值不继续派生容量。TCM/CACR 等配置仍在字段树读取；WO 维护命令不能读取或执行。没有独立 Tcl/AP 通道时此 bank 读取不支持。打开/滚动零 I/O，硬件驱动默认 SKIPPED；见 [M7 cache/TCM 说明](docs/register-cortex-m7-cache.md)。
 
+M7＋M4 的相同 PPB 地址分别通过每核自己的 channel/target 访问。切核使用各自的目录、身份、MPU 容量和原缓存；Scope All 不会广播系统寄存器读，也不会使 M4 获得 M7 cache 能力。帧、运行和身份变化撤销本核旧证明；旧值保留原来源并标 stale，重连更换各核会话。单核已知读取失败后，重新 Probe 才能再读 indexed 值；恢复不确定时遵循共享服务隔离。配置与延后 case 见 [M7/M4 多核隔离](docs/register-cortex-m-multicore.md)。
+
 运行态 Registers 可读取目录允许、且实际显式 AP/MMIO 通道声明 `while_running=true` 的安全项。CorePrivate 必须经本核独占的 AP/target；GDB 寄存器堆、借核指令、MPU/cache selector 与 Probe 仍需暂停。可见安全项按上下文取样一次，手动 Read 可刷新；DHCSR/SysTick CTRL 只手动读一次，WO 维护命令不执行。运行值带实际请求区间和来源，暂停后标 stale；多项或 64 位 MMIO 不保证同步快照。见 [运行态读取与配置](docs/register-running.md)，硬件 case 已准备，尚未上板验证。
 
 ### 编辑 Core 寄存器（开发分支）

@@ -152,6 +152,80 @@ fn index(app: &App, id: &str) -> usize {
         .position(|r| r.id == id)
         .unwrap()
 }
+
+#[test]
+fn m_multicore_ui_switch_rejects_late_same_ppb_value_from_the_other_builtin_model() {
+    let mut project = Project::default();
+    project.registers.cpu = "cortex-m7".into();
+    project.cores = [("m7", "cortex-m7"), ("m4", "cortex-m4")]
+        .into_iter()
+        .enumerate()
+        .map(|(i, (name, cpu))| crate::config::Core {
+            name: name.into(),
+            endpoint: format!("localhost:{}", 3333 + i),
+            registers: Some(crate::registers::CoreConfig {
+                cpu: Some(cpu.into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .collect();
+    let mut app = App::new(project, false);
+    let (engine, requests) = engine();
+    let mut snapshot = app.snapshot.clone();
+    snapshot.core = Some(crate::session::CoreStatus {
+        index: 0,
+        name: "m7".into(),
+        endpoint: "localhost:3333".into(),
+        state: "STOPPED".into(),
+    });
+    snapshot.state = "STOPPED".into();
+    snapshot.register_session = 17;
+    app.update(Event::Snapshot {
+        snapshot: Box::new(snapshot),
+    });
+    let mut late = sample(&app, "scb.cpuid", "0x410fc271");
+    late.view = crate::registers::SampleView::PhysicalCore;
+    assert!(app.request_registers(Some(&engine), vec!["scb.cpuid".into()], true));
+    let request = requests.try_recv().unwrap();
+    let mut snapshot = app.snapshot.clone();
+    snapshot.core = Some(crate::session::CoreStatus {
+        index: 1,
+        name: "m4".into(),
+        endpoint: "localhost:3334".into(),
+        state: "STOPPED".into(),
+    });
+    snapshot.register_session = 18;
+    app.update(Event::Snapshot {
+        snapshot: Box::new(snapshot),
+    });
+    assert_eq!(
+        app.register_view.catalogue.as_ref().unwrap().cpu,
+        "cortex-m4"
+    );
+    assert!(
+        app.register_view
+            .catalogue
+            .as_ref()
+            .unwrap()
+            .register("scb.ccsidr")
+            .is_none()
+    );
+    let mut current = sample(&app, "scb.cpuid", "0x411fc241");
+    current.view = crate::registers::SampleView::PhysicalCore;
+    let key = ("core:m4".into(), "scb.cpuid".into(), "m4".into());
+    app.register_view
+        .values
+        .insert(key.clone(), current.clone());
+    app.register_response(request.id, &json!({"samples":[late]}), None);
+    assert_eq!(app.register_view.values[&key].value, current.value);
+    assert_eq!(app.register_view.values[&key].context, current.context);
+    assert_eq!(app.register_view.values.len(), 1);
+    assert!(
+        requests.try_recv().is_err(),
+        "Switching models must not poll PPB"
+    );
+}
 fn group_row(app: &App, id: &str) -> usize {
     app.register_view
         .rows

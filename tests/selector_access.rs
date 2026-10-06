@@ -27,6 +27,8 @@ mod cancel_cases;
 mod gic_cases;
 #[path = "selector_access/m_cache_cases.rs"]
 mod m_cache_cases;
+#[path = "selector_access/m_multicore_cases.rs"]
+mod m_multicore_cases;
 #[path = "selector_access/m_profile_mpu_cases.rs"]
 mod m_profile_mpu_cases;
 #[path = "selector_access/matrix_cases.rs"]

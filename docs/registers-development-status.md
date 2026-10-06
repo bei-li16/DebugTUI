@@ -1,5 +1,11 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：M7/M4 的 CorePrivate 与完整异构隔离
+
+B10 已完成：内置 M7/M4 目录经实际 Coordinator/MI/TCP/Tcl 验证同地址独立身份、容量、路由与缓存，覆盖共享/独立服务、单核错误/取消、帧/运行/身份与重连边界；UI 拒绝另一核的迟到值。生产访问代码复用既有实现。详见 [多核说明](register-cortex-m-multicore.md)，实时 feature 数和完整证据仅维护于 [36 项账本](registers-readonly-goal.md) 的迭代 11。
+
+完整 Cargo 回归 485 单元＋239 集成＝724 通过，2 项既有 ignored；严格 Clippy、fmt、Node 语法及 diff 检查通过。实际 EXE 软件驱动的正向及错误独立基线拒绝均通过；八项真实环境 case 准备完成、SKIPPED，未上板或升级 verified。R52 当前 Debug 权限及生产正向路径、最终界面复验和非主分支 Release 仍未完成。
+
 ## 2026-10-06：只读 Goal 的配置层与有效来源
 
 A04 已完成：Setup/Status 和 `registers_list.configuration` 展示每核有效配置、实际文件/section、逐层覆盖和每核整表替换；CPU/目录冲突、草稿和运行时未知来源分别解释，配置不冒充硬件或访问能力。详见 [配置来源](register-config-sources.md)。实时 feature 数和完整证据仅维护于 [36 项账本](registers-readonly-goal.md) 的迭代 10。
