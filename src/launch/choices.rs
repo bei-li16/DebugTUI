@@ -64,7 +64,13 @@ impl Picker {
             Choice::Cpu { id: None, label: "Automatic / inherit profile and chip association".into(), description: "Remove project CPU and catalogue overrides. A user chip association takes precedence over the built-in association.".into() },
             Choice::Cpu { id: Some(String::new()), label: "GDB target description only".into(), description: "Use the original dynamic GDB register list without an architecture catalogue.".into() },
         ];
-        for cpu in ["cortex-m4", "cortex-r52", "cortex-r52+"] {
+        for cpu in [
+            "cortex-m3",
+            "cortex-m4",
+            "cortex-m7",
+            "cortex-r52",
+            "cortex-r52+",
+        ] {
             choices.push(Choice::Cpu { id: Some(cpu.into()), label: cpu.into(), description: format!("Use the {cpu} register catalogue. User presets with this name override the embedded default; the catalogue does not prove hardware or reader support.") });
         }
         if directory.is_dir() {
@@ -89,7 +95,14 @@ impl Picker {
                 })
                 .filter(|cpu| {
                     crate::devices::valid_id(&cpu.replace('+', "plus"))
-                        && !["cortex-m4", "cortex-r52", "cortex-r52+"].contains(&cpu.as_str())
+                        && ![
+                            "cortex-m3",
+                            "cortex-m4",
+                            "cortex-m7",
+                            "cortex-r52",
+                            "cortex-r52+",
+                        ]
+                        .contains(&cpu.as_str())
                 })
                 .collect();
             presets.sort();
@@ -271,11 +284,13 @@ mod tests {
         let picker = Picker::cpus_in(&fixture.0).unwrap();
         let labels: Vec<_> = picker.choices.iter().map(Choice::label).collect();
         assert_eq!(
-            &labels[..5],
+            &labels[..7],
             [
                 "Automatic / inherit profile and chip association",
                 "GDB target description only",
+                "cortex-m3",
                 "cortex-m4",
+                "cortex-m7",
                 "cortex-r52",
                 "cortex-r52+"
             ]
@@ -316,7 +331,7 @@ mod tests {
                 .unwrap()
                 .choices
                 .len(),
-            5
+            7
         );
         let projects = Fixture::new();
         fs::write(projects.0.join("debug-upper.TOML"), "version=2").unwrap();

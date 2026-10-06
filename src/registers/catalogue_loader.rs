@@ -28,6 +28,9 @@ fn embedded(name: &str) -> Option<&'static str> {
         "cortex-r52" => Some(include_str!("../../profiles/registers/cortex-r52.toml")),
         "cortex-r52+" => Some(include_str!("../../profiles/registers/cortex-r52+.toml")),
         "cortex-m4" => Some(include_str!("../../profiles/registers/cortex-m4.toml")),
+        "cortex-m3" => Some(include_str!("../../profiles/registers/cortex-m3.toml")),
+        "cortex-m7" => Some(include_str!("../../profiles/registers/cortex-m7.toml")),
+        "armv7m-common" => Some(include_str!("../../profiles/registers/armv7m-common.toml")),
         _ => None,
     }
 }

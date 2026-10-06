@@ -77,7 +77,13 @@ fn probe() -> capabilities::Probe {
 
 #[test]
 fn all_builtin_optional_conditions_preserve_unknown_and_exact_count_boundaries() {
-    for cpu in ["cortex-m4", "cortex-r52", "cortex-r52+"] {
+    for cpu in [
+        "cortex-m3",
+        "cortex-m4",
+        "cortex-m7",
+        "cortex-r52",
+        "cortex-r52+",
+    ] {
         let catalogue = Catalogue::builtin(cpu).unwrap();
         for register in &catalogue.registers {
             let dependencies = catalogue.read_dependencies(register).unwrap();
@@ -85,8 +91,21 @@ fn all_builtin_optional_conditions_preserve_unknown_and_exact_count_boundaries()
             if conditions.is_empty() {
                 continue;
             }
-            let facts: BTreeMap<_, _> =
+            let mut facts: BTreeMap<_, _> =
                 conditions.iter().map(|c| (c.fact.clone(), c.min)).collect();
+            if cpu == "cortex-m4" || cpu == "cortex-m7" {
+                // Effective observation domain, not Config::facts: declared capacities
+                // alone must no longer prove the presence of the M floating-point bank.
+                assert_eq!(
+                    catalogue.implementation(register, &facts).0,
+                    Implementation::Unknown
+                );
+                assert!(!catalogue.automatic_read(register, &facts));
+                facts.insert(
+                    crate::registers::policy::field_key("fpu.mvfr0", "SIMDReg"),
+                    1,
+                );
+            }
             assert_eq!(
                 catalogue.implementation(register, &facts).0,
                 Implementation::Yes,

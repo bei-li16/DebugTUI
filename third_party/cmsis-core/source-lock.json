@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/ARM-software/CMSIS_6",
+  "commit": "b0bbb0423b278ca632cfe1474eb227961d835fd2",
+  "version": "6.1.0",
+  "license": "Apache-2.0",
+  "files": {
+    "core_cm3.h": "733aae8bf7237b176f8f76378653c3dc805167728cf3d72d7cda3e7d81262e07",
+    "core_cm4.h": "4dc3fd737b06d5cd228260815756c3236d49ad68a2efd57c939c41ffb252b263",
+    "core_cm7.h": "16fd61c1ba6873d8826f146a3ecdcb8de96d0c9a28a21ca12547d29fe5d24e29",
+    "LICENSE": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+  }
+}

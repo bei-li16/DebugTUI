@@ -2,7 +2,7 @@
 # CMSIS-derived facts retain upstream Apache-2.0 copyright notices in third_party/cmsis-core.
 # Version 1 preserves legacy GDB metadata whose manual source remains Unknown.
 version = 1
-cpu = "cortex-m4"
+cpu = "cortex-m7"
 architecture = "armv7e-m"
 description = "Read-only system catalogue; definitions do not prove target identity or transport support."
 extends = ["armv7m-common"]
@@ -17,6 +17,11 @@ id = "m_fpu"
 name = "FPU configuration / identity"
 parent = "system"
 
+[[groups]]
+id = "m_cache"
+name = "Cache / TCM configuration"
+parent = "system"
+
 [[registers]]
 id = "scb.vtor"
 name = "SCB.VTOR"
@@ -27,9 +32,24 @@ scope = "core"
 description = "SCB VTOR; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157064 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.VTOR and field masks", line = 457, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L457" }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.VTOR and field masks", line = 472, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L472" }
 confidence = "high"
 fields = [{ name = "TBLOFF", segments = [{ offset = 7, width = 25 }] }]
+override = true
+
+[[registers]]
+id = "scb.ccr"
+name = "SCB.CCR"
+group = "scb"
+bits = 32
+access = "rw"
+scope = "core"
+description = "SCB CCR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758157076 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CCR and field masks", line = 475, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L475" }
+confidence = "high"
+fields = [{ name = "NONBASETHRDENA", segments = [{ offset = 0, width = 1 }] }, { name = "USERSETMPEND", segments = [{ offset = 1, width = 1 }] }, { name = "UNALIGN_TRP", segments = [{ offset = 3, width = 1 }] }, { name = "DIV_0_TRP", segments = [{ offset = 4, width = 1 }] }, { name = "BFHFNMIGN", segments = [{ offset = 8, width = 1 }] }, { name = "STKALIGN", segments = [{ offset = 9, width = 1 }] }, { name = "DC", segments = [{ offset = 16, width = 1 }] }, { name = "IC", segments = [{ offset = 17, width = 1 }] }, { name = "BP", segments = [{ offset = 18, width = 1 }] }]
 override = true
 
 [[registers]]
@@ -42,7 +62,7 @@ scope = "core"
 description = "SCB CFSR; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157096 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CFSR and field masks", line = 463, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L463" }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CFSR and field masks", line = 478, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L478" }
 confidence = "high"
 fields = [{ name = "IACCVIOL", segments = [{ offset = 0, width = 1 }] }, { name = "DACCVIOL", segments = [{ offset = 1, width = 1 }] }, { name = "MUNSTKERR", segments = [{ offset = 3, width = 1 }] }, { name = "MSTKERR", segments = [{ offset = 4, width = 1 }] }, { name = "MLSPERR", segments = [{ offset = 5, width = 1 }] }, { name = "MMARVALID", segments = [{ offset = 7, width = 1 }] }, { name = "IBUSERR", segments = [{ offset = 8, width = 1 }] }, { name = "PRECISERR", segments = [{ offset = 9, width = 1 }] }, { name = "IMPRECISERR", segments = [{ offset = 10, width = 1 }] }, { name = "UNSTKERR", segments = [{ offset = 11, width = 1 }] }, { name = "STKERR", segments = [{ offset = 12, width = 1 }] }, { name = "LSPERR", segments = [{ offset = 13, width = 1 }] }, { name = "BFARVALID", segments = [{ offset = 15, width = 1 }] }, { name = "UNDEFINSTR", segments = [{ offset = 16, width = 1 }] }, { name = "INVSTATE", segments = [{ offset = 17, width = 1 }] }, { name = "INVPC", segments = [{ offset = 18, width = 1 }] }, { name = "NOCP", segments = [{ offset = 19, width = 1 }] }, { name = "UNALIGNED", segments = [{ offset = 24, width = 1 }] }, { name = "DIVBYZERO", segments = [{ offset = 25, width = 1 }] }]
 override = true
@@ -57,7 +77,7 @@ scope = "core"
 description = "SCB CPACR; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157192 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CPACR and field masks", line = 475, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L475" }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CPACR and field masks", line = 494, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L494" }
 confidence = "high"
 fields = []
 
@@ -71,7 +91,7 @@ scope = "core"
 description = "FPU MVFR0; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157632 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.MVFR0 and field masks", line = 1312, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L1312" }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.MVFR0 and field masks", line = 1531, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L1531" }
 confidence = "high"
 fields = [{ name = "SIMDReg", segments = [{ offset = 0, width = 4 }] }, { name = "FPSP", segments = [{ offset = 4, width = 4 }] }, { name = "FPDP", segments = [{ offset = 8, width = 4 }] }, { name = "FPExceptrap", segments = [{ offset = 12, width = 4 }] }, { name = "FPDivide", segments = [{ offset = 16, width = 4 }] }, { name = "FPSqrt", segments = [{ offset = 20, width = 4 }] }, { name = "FPShortvec", segments = [{ offset = 24, width = 4 }] }, { name = "FPRound", segments = [{ offset = 28, width = 4 }] }]
 
@@ -85,7 +105,7 @@ scope = "core"
 description = "FPU MVFR1; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157636 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.MVFR1 and field masks", line = 1313, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L1313" }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.MVFR1 and field masks", line = 1532, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L1532" }
 confidence = "high"
 fields = [{ name = "FPFtZ", segments = [{ offset = 0, width = 4 }] }, { name = "FPDNaN", segments = [{ offset = 4, width = 4 }] }, { name = "FPHP", segments = [{ offset = 24, width = 4 }] }, { name = "FMAC", segments = [{ offset = 28, width = 4 }] }]
 
@@ -99,7 +119,7 @@ scope = "core"
 description = "FPU MVFR2; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157640 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.MVFR2 and field masks", line = 1314, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L1314" }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.MVFR2 and field masks", line = 1533, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L1533" }
 confidence = "high"
 fields = [{ name = "FPMisc", segments = [{ offset = 4, width = 4 }] }]
 
@@ -113,7 +133,7 @@ scope = "core"
 description = "FPU FPCCR; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157620 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.FPCCR and field masks", line = 1309, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L1309" }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.FPCCR and field masks", line = 1528, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L1528" }
 confidence = "high"
 fields = [{ name = "LSPACT", segments = [{ offset = 0, width = 1 }] }, { name = "USER", segments = [{ offset = 1, width = 1 }] }, { name = "THREAD", segments = [{ offset = 3, width = 1 }] }, { name = "HFRDY", segments = [{ offset = 4, width = 1 }] }, { name = "MMRDY", segments = [{ offset = 5, width = 1 }] }, { name = "BFRDY", segments = [{ offset = 6, width = 1 }] }, { name = "MONRDY", segments = [{ offset = 8, width = 1 }] }, { name = "LSPEN", segments = [{ offset = 30, width = 1 }] }, { name = "ASPEN", segments = [{ offset = 31, width = 1 }] }]
 present_if = { reg = "fpu.mvfr0", field = "SIMDReg", op = "eq", value = 1 }
@@ -128,7 +148,7 @@ scope = "core"
 description = "FPU FPCAR; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157624 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.FPCAR and field masks", line = 1310, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L1310" }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.FPCAR and field masks", line = 1529, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L1529" }
 confidence = "high"
 fields = [{ name = "ADDRESS", segments = [{ offset = 3, width = 29 }] }]
 present_if = { reg = "fpu.mvfr0", field = "SIMDReg", op = "eq", value = 1 }
@@ -143,10 +163,262 @@ scope = "core"
 description = "FPU FPDSCR; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157628 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.FPDSCR and field masks", line = 1311, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L1311" }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "FPU_Type.FPDSCR and field masks", line = 1530, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L1530" }
 confidence = "high"
 fields = [{ name = "RMode", segments = [{ offset = 22, width = 2 }] }, { name = "FZ", segments = [{ offset = 24, width = 1 }] }, { name = "DN", segments = [{ offset = 25, width = 1 }] }, { name = "AHP", segments = [{ offset = 26, width = 1 }] }]
 present_if = { reg = "fpu.mvfr0", field = "SIMDReg", op = "eq", value = 1 }
+
+[[registers]]
+id = "scb.clidr"
+name = "SCB.CLIDR"
+group = "m_cache"
+bits = 32
+access = "ro"
+scope = "core"
+description = "SCB CLIDR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758157176 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CLIDR and field masks", line = 490, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L490" }
+confidence = "high"
+fields = [{ name = "LOC", segments = [{ offset = 24, width = 3 }] }, { name = "LOUU", segments = [{ offset = 27, width = 3 }] }]
+
+[[registers]]
+id = "scb.ctr"
+name = "SCB.CTR"
+group = "m_cache"
+bits = 32
+access = "ro"
+scope = "core"
+description = "SCB CTR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758157180 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CTR and field masks", line = 491, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L491" }
+confidence = "high"
+fields = [{ name = "IMINLINE", segments = [{ offset = 0, width = 4 }] }, { name = "DMINLINE", segments = [{ offset = 16, width = 4 }] }, { name = "ERG", segments = [{ offset = 20, width = 4 }] }, { name = "CWG", segments = [{ offset = 24, width = 4 }] }, { name = "FORMAT", segments = [{ offset = 29, width = 3 }] }]
+
+[[registers]]
+id = "scb.ccsidr"
+name = "SCB.CCSIDR"
+group = "m_cache"
+bits = 32
+access = "ro"
+scope = "core"
+description = "SCB CCSIDR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758157184 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CCSIDR and field masks", line = 492, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L492" }
+confidence = "high"
+fields = [{ name = "LINESIZE", segments = [{ offset = 0, width = 3 }] }, { name = "ASSOCIATIVITY", segments = [{ offset = 3, width = 10 }] }, { name = "NUMSETS", segments = [{ offset = 13, width = 15 }] }, { name = "WA", segments = [{ offset = 28, width = 1 }] }, { name = "RA", segments = [{ offset = 29, width = 1 }] }, { name = "WB", segments = [{ offset = 30, width = 1 }] }, { name = "WT", segments = [{ offset = 31, width = 1 }] }]
+
+[[registers]]
+id = "scb.csselr"
+name = "SCB.CSSELR"
+group = "m_cache"
+bits = 32
+access = "rw"
+scope = "core"
+description = "SCB CSSELR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758157188 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CSSELR and field masks", line = 493, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L493" }
+confidence = "high"
+fields = [{ name = "IND", segments = [{ offset = 0, width = 1 }] }, { name = "LEVEL", segments = [{ offset = 1, width = 3 }] }]
+
+[[registers]]
+id = "scb.cacr"
+name = "SCB.CACR"
+group = "m_cache"
+bits = 32
+access = "rw"
+scope = "core"
+description = "SCB CACR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758157724 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CACR and field masks", line = 517, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L517" }
+confidence = "high"
+fields = [{ name = "SIWT", segments = [{ offset = 0, width = 1 }] }, { name = "ECCDIS", segments = [{ offset = 1, width = 1 }] }, { name = "FORCEWT", segments = [{ offset = 2, width = 1 }] }]
+
+[[registers]]
+id = "scb.itcmcr"
+name = "SCB.ITCMCR"
+group = "m_cache"
+bits = 32
+access = "rw"
+scope = "core"
+description = "SCB ITCMCR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758157712 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.ITCMCR and field masks", line = 514, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L514" }
+confidence = "high"
+fields = [{ name = "EN", segments = [{ offset = 0, width = 1 }] }, { name = "RMW", segments = [{ offset = 1, width = 1 }] }, { name = "RETEN", segments = [{ offset = 2, width = 1 }] }, { name = "SZ", segments = [{ offset = 3, width = 4 }] }]
+
+[[registers]]
+id = "scb.dtcmcr"
+name = "SCB.DTCMCR"
+group = "m_cache"
+bits = 32
+access = "rw"
+scope = "core"
+description = "SCB DTCMCR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758157716 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.DTCMCR and field masks", line = 515, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L515" }
+confidence = "high"
+fields = [{ name = "EN", segments = [{ offset = 0, width = 1 }] }, { name = "RMW", segments = [{ offset = 1, width = 1 }] }, { name = "RETEN", segments = [{ offset = 2, width = 1 }] }, { name = "SZ", segments = [{ offset = 3, width = 4 }] }]
+
+[[registers]]
+id = "scb.ahbpcr"
+name = "SCB.AHBPCR"
+group = "m_cache"
+bits = 32
+access = "rw"
+scope = "core"
+description = "SCB AHBPCR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758157720 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.AHBPCR and field masks", line = 516, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L516" }
+confidence = "high"
+fields = [{ name = "EN", segments = [{ offset = 0, width = 1 }] }, { name = "SZ", segments = [{ offset = 1, width = 3 }] }]
+
+[[registers]]
+id = "scb.ahbscr"
+name = "SCB.AHBSCR"
+group = "m_cache"
+bits = 32
+access = "rw"
+scope = "core"
+description = "SCB AHBSCR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758157728 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.AHBSCR and field masks", line = 518, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L518" }
+confidence = "high"
+fields = [{ name = "CTL", segments = [{ offset = 0, width = 2 }] }, { name = "TPRI", segments = [{ offset = 2, width = 9 }] }, { name = "INITCOUNT", segments = [{ offset = 11, width = 5 }] }]
+
+[[registers]]
+id = "scb.iciallu"
+name = "SCB.ICIALLU"
+group = "m_cache"
+bits = 32
+access = "wo"
+scope = "core"
+description = "Cache maintenance command definition only. This read-only feature never issues it."
+reader = { kind = "core_private", address = 3758157648 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.ICIALLU and field masks", line = 502, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L502" }
+confidence = "high"
+fields = []
+
+[[registers]]
+id = "scb.icimvau"
+name = "SCB.ICIMVAU"
+group = "m_cache"
+bits = 32
+access = "wo"
+scope = "core"
+description = "Cache maintenance command definition only. This read-only feature never issues it."
+reader = { kind = "core_private", address = 3758157656 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.ICIMVAU and field masks", line = 504, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L504" }
+confidence = "high"
+fields = []
+
+[[registers]]
+id = "scb.dcimvac"
+name = "SCB.DCIMVAC"
+group = "m_cache"
+bits = 32
+access = "wo"
+scope = "core"
+description = "Cache maintenance command definition only. This read-only feature never issues it."
+reader = { kind = "core_private", address = 3758157660 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.DCIMVAC and field masks", line = 505, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L505" }
+confidence = "high"
+fields = []
+
+[[registers]]
+id = "scb.dcisw"
+name = "SCB.DCISW"
+group = "m_cache"
+bits = 32
+access = "wo"
+scope = "core"
+description = "Cache maintenance command definition only. This read-only feature never issues it."
+reader = { kind = "core_private", address = 3758157664 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.DCISW and field masks", line = 506, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L506" }
+confidence = "high"
+fields = [{ name = "SET", segments = [{ offset = 5, width = 9 }] }, { name = "WAY", segments = [{ offset = 30, width = 2 }] }]
+
+[[registers]]
+id = "scb.dccmvau"
+name = "SCB.DCCMVAU"
+group = "m_cache"
+bits = 32
+access = "wo"
+scope = "core"
+description = "Cache maintenance command definition only. This read-only feature never issues it."
+reader = { kind = "core_private", address = 3758157668 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.DCCMVAU and field masks", line = 507, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L507" }
+confidence = "high"
+fields = []
+
+[[registers]]
+id = "scb.dccmvac"
+name = "SCB.DCCMVAC"
+group = "m_cache"
+bits = 32
+access = "wo"
+scope = "core"
+description = "Cache maintenance command definition only. This read-only feature never issues it."
+reader = { kind = "core_private", address = 3758157672 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.DCCMVAC and field masks", line = 508, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L508" }
+confidence = "high"
+fields = []
+
+[[registers]]
+id = "scb.dccsw"
+name = "SCB.DCCSW"
+group = "m_cache"
+bits = 32
+access = "wo"
+scope = "core"
+description = "Cache maintenance command definition only. This read-only feature never issues it."
+reader = { kind = "core_private", address = 3758157676 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.DCCSW and field masks", line = 509, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L509" }
+confidence = "high"
+fields = [{ name = "SET", segments = [{ offset = 5, width = 9 }] }, { name = "WAY", segments = [{ offset = 30, width = 2 }] }]
+
+[[registers]]
+id = "scb.dccimvac"
+name = "SCB.DCCIMVAC"
+group = "m_cache"
+bits = 32
+access = "wo"
+scope = "core"
+description = "Cache maintenance command definition only. This read-only feature never issues it."
+reader = { kind = "core_private", address = 3758157680 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.DCCIMVAC and field masks", line = 510, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L510" }
+confidence = "high"
+fields = []
+
+[[registers]]
+id = "scb.dccisw"
+name = "SCB.DCCISW"
+group = "m_cache"
+bits = 32
+access = "wo"
+scope = "core"
+description = "Cache maintenance command definition only. This read-only feature never issues it."
+reader = { kind = "core_private", address = 3758157684 }
+access_rule = { need_halt = false }
+source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.DCCISW and field masks", line = 511, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L511" }
+confidence = "high"
+fields = [{ name = "SET", segments = [{ offset = 5, width = 9 }] }, { name = "WAY", segments = [{ offset = 30, width = 2 }] }]
 
 [[registers]]
 id = "d0"

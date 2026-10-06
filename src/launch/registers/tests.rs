@@ -115,7 +115,13 @@ fn setup_cpu_catalogue_choices_preview_save_cancel_and_multicore_are_isolated() 
     fs::write(&path, project_text).unwrap();
     let mut setup = Setup::new(Document::open(&path).unwrap());
     let unrelated = setup.document.raw.clone();
-    for (index, cpu) in [(2, "cortex-m4"), (3, "cortex-r52"), (4, "cortex-r52+")] {
+    for (index, cpu) in [
+        (2, "cortex-m3"),
+        (3, "cortex-m4"),
+        (4, "cortex-m7"),
+        (5, "cortex-r52"),
+        (6, "cortex-r52+"),
+    ] {
         setup.selected = CPU;
         let before = setup.document.raw.clone();
         setup.key(key(KeyCode::Enter));
@@ -224,7 +230,7 @@ fn setup_cpu_catalogue_choices_preview_save_cancel_and_multicore_are_isolated() 
     fs::write(&override_path, "broken=[").unwrap();
     let before = setup.document.raw.clone();
     setup.key(key(KeyCode::Enter));
-    setup.picker.as_mut().unwrap().selected = 4;
+    setup.picker.as_mut().unwrap().selected = 6;
     assert!(setup.catalogue_preview().is_err());
     setup.key(key(KeyCode::Enter));
     assert!(setup.message.starts_with("Error:"));

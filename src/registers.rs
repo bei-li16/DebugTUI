@@ -712,6 +712,8 @@ impl Catalogue {
         static R52: OnceLock<Result<Catalogue, String>> = OnceLock::new();
         static R52_PLUS: OnceLock<Result<Catalogue, String>> = OnceLock::new();
         static M4: OnceLock<Result<Catalogue, String>> = OnceLock::new();
+        static M3: OnceLock<Result<Catalogue, String>> = OnceLock::new();
+        static M7: OnceLock<Result<Catalogue, String>> = OnceLock::new();
         let (cache, text) = match cpu {
             "cortex-r52" => (&R52, include_str!("../profiles/registers/cortex-r52.toml")),
             "cortex-r52+" => (
@@ -719,6 +721,8 @@ impl Catalogue {
                 include_str!("../profiles/registers/cortex-r52+.toml"),
             ),
             "cortex-m4" => (&M4, include_str!("../profiles/registers/cortex-m4.toml")),
+            "cortex-m3" => (&M3, include_str!("../profiles/registers/cortex-m3.toml")),
+            "cortex-m7" => (&M7, include_str!("../profiles/registers/cortex-m7.toml")),
             _ => {
                 return Err(format!(
                     "Unknown CPU catalogue '{cpu}'; select an explicit register catalogue file"
@@ -1148,5 +1152,7 @@ impl Sample {
     }
 }
 
+#[cfg(test)]
+mod m_catalogue_tests;
 #[cfg(test)]
 mod tests;

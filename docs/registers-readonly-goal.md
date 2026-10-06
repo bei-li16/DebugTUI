@@ -34,10 +34,10 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | A08 | 结构化实现/访问条件 | 存在性、NeedHalt/Enable/权限与副作用检查 |
 | [x] | A09 | 归属未知及既有 reader/alias 复用 | core/cluster/chip/unknown 与别名隔离 |
 | [x] | A10 | 3～5 个代表性定义样例 | schema/字段/来源/条件/副作用专项 |
-| [ ] | B01 | M3/M4/M7 公共加增量目录 | 内置加载、继承与型号差异 |
-| [ ] | B02 | SCB 与故障字段 | 常用状态/控制及 CFSR/HFSR/MMFAR/BFAR 定义 |
+| [x] | B01 | M3/M4/M7 公共加增量目录 | 内置加载、继承、型号差异及离线生成一致性 |
+| [x] | B02 | SCB 与故障字段 | 常用状态/控制及 CFSR/HFSR/MMFAR/BFAR 定义 |
 | [ ] | B03 | NVIC 与优先级来源 | 动态 bank/优先级位、无依据 Unknown、不写探测 |
-| [ ] | B04 | SysTick 与读副作用 | CTRL/LOAD/VAL/CALIB、手动读与自动零 I/O |
+| [x] | B04 | SysTick 与读副作用 | CTRL/LOAD/VAL/CALIB、手动读与自动零 I/O |
 | [ ] | B05 | M MPU 与 region 读取 | TYPE/CTRL/RNR/RBAR/RASR、容量及保存恢复 |
 | [ ] | B06 | Debug、DWT/FPB 身份容量 | 不轮询 DHCSR、不自动使能、门控原因 |
 | [ ] | B07 | M4 FPU 配置与身份 | CPACR/FPCCR/FPCAR/FPDSCR/MVFR、GDB regfile 复用 |
@@ -96,6 +96,17 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 自检修正缓存父节点绕过图深度限制，增加 64/66 层边界，并在门禁前清空上一次实际 access，避免拒绝后沿用别项请求。`cargo fmt --all --check` 与严格 Clippy 全 target 检查通过，Clippy 记录在 `readonly-policy-clippy-20261006.log`；首次仅遇到测试引用切片的 Clippy 提示，等价改为 from_ref 后复验通过。
 - 新增 [策略与来源说明](register-structured-policy.md) 及七项 [环境用例](../tests/cases/register-structured-policy.md)，全部 SKIPPED。用户请求的新 [Goal 文本](registers-goal-objective.md) 一并保存，三个核心绝对引用保持。
 - 这里完成公共策略模型，不等于 B11 运行态入口或 C03 R52 生产证明已完成。当前通用 min_el 因缺后端证明仍为 Unknown；NeedHalt=false 不降低现有请求/通道限制。B10 虽有实际双 TCP/GDB 路线证据，正式 M 目录、ID 驱动及完整异构缓存验收尚未完成，继续不勾选。下一轮完成 M 公共/增量目录与 ID 接入，再验证 B10/B11。提交 SHA 与推送结果在本轮最终输出报告。
+
+## 迭代 4：Cortex-M 公共目录与增量
+
+2026-10-06，完成 B01/B02/B04，累计 **12 完成 / 24 未完成**。前一批迭代 3 已提交并推送为 `aa0d503b0748075c93c49ddba9b2a9209510278b`，远端 SHA 一致。
+
+- 新增 `armv7m-common` 与 M3/M4/M7 内置继承入口，Setup 支持三个型号。保留 23 项 GDB 通用定义及其独立 writer；M4/M7 浮点继续复用 GDB/Alias，并增加真实 MVFR0 字段的存在性条件。新 PPB 项使用 CorePrivate，没有新增 writer。公共文件变化可传播到三个型号，型号差异保留明确 override 来源。
+- 固定 CMSIS-Core 6.1.0 的实际提交 `b0bbb0423b278ca632cfe1474eb227961d835fd2`，原始三份头文件与 LICENSE 保留。逐文件与不可变 upstream URL 的 SHA256 核对一致，证据 `readonly-m-cmsis-source-20261006.log`。离线转换校验源摘要、有限数字表达式、结构偏移与字段重叠；生成检查覆盖六个目录，R52/R52+ 产物未改变。
+- SCB 覆盖常用状态及故障位。生成中发现 CMSIS 的 M3 VTOR revision 分支、AIRCR 读写键与拼写别名、CFSR/MPU 聚合 mask；明确排除重叠，未知 M3 VTOR 布局保留原始值并标 `fields_missing`，不按最后一个宏猜测。FP_CTRL 的非连续容量字段来自 DDI 0403E.e §C1.11.3。
+- SysTick CTRL 和 DHCSR 手动单次读，自动请求零内存 I/O；SysTick 架构明确区分软件读清与 debugger read 保留 COUNTFLAG，当前策略因访问属性未验证而保守，不宣称所有调试器读取都会读清。三个型号的实际 Coordinator/MI 流程核对故障值、两个手动状态值和精确三次读取，无写入或运行控制。
+- 三项新模型专项及三项 Python 转换测试通过。完整单元 **451 通过、0 失败、2 ignored**，本批四个相关集成套件共 **8 项最终通过**（配置 2、继承 1、显示 1、policy 4）；严格 Clippy 全 target 与格式检查通过。日志均在 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-m-catalogues-final-20261006.log`、`readonly-m-catalogues-policy-final-20261006.log`、`readonly-m-catalogues-clippy-20261006.log`。完整回归首次四个失败来自旧测试的 CPU 索引、声明来源及浮点存在性预期，更新后单元通过；新传输测试只因要求带引号的日志断言失败，改为严格核对实际参数/地址/次数后 4/4 通过。生产门禁没有降低，最终修正仅涉及测试断言。
+- [目录与生成说明](register-cortex-m-catalogues.md) 及四项 [环境用例](../tests/cases/register-cortex-m-catalogues.md) 已准备，全部 SKIPPED，没有上板或重建 OpenOCD。NVIC 优先级来源、M MPU region 事务、完整 ID Probe、FPU/cache 能力验收、异构缓存和运行态入口仍未完整，B03/B05～B11 不勾选。下一轮接入 M ID/容量观测与优先级来源，再完成相应动态功能。提交 SHA 与推送结果由本轮最终输出报告。
 
 ## 迭代和发布约束
 

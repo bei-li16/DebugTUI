@@ -12,6 +12,7 @@ from register_pmu_metadata import PMU_METADATA
 from register_gic_metadata import GIC_METADATA, GIC_ENCODINGS
 from register_mmio_metadata import MMIO_METADATA
 from register_stm_metadata import STM_METADATA
+from cmsis_registers import generate_m_catalogues
 
 MMIO_METADATA = {**MMIO_METADATA, **STM_METADATA}
 
@@ -183,7 +184,9 @@ if __name__ == "__main__":
     def generate_all(root):
         generate("cortex-r52", root=root)
         generate("cortex-r52+", root=root)
-        generate("cortex-m4", True, root=root)
+        with TemporaryDirectory(prefix='debugtui-legacy-m-regfile-') as legacy:
+            generate("cortex-m4", True, root=Path(legacy))
+            generate_m_catalogues(root, (Path(legacy) / 'cortex-m4.toml').read_text(encoding='utf-8'))
     if args.check:
         with TemporaryDirectory(prefix='debugtui-register-catalogues-') as temporary:
             candidate = Path(temporary)
@@ -191,6 +194,6 @@ if __name__ == "__main__":
             for file in candidate.iterdir():
                 if file.read_bytes() != (ROOT / file.name).read_bytes():
                     raise SystemExit(f"Regeneration mismatch: {file.name}")
-        print('3 catalogues match regeneration; tracked files unchanged')
+        print('6 catalogues match offline regeneration; pinned CMSIS inputs verified; tracked files unchanged')
     else:
         generate_all(ROOT)

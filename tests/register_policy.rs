@@ -456,6 +456,158 @@ fn actual_core_private_gdb_memory_reuses_the_known_worker_connection() {
 }
 
 #[test]
+fn shipped_m_catalogues_read_faults_and_require_manual_single_side_effect_reads() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let artifacts = std::env::var_os("DEBUGTUI_TEST_ARTIFACT_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.join("artifacts"));
+    let out = artifacts.join(format!(
+        "register-m-catalogues-{}-{:x}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&out).unwrap();
+    let memory = out.join("memory.json");
+    fs::write(
+        &memory,
+        r#"{"localhost:4888":{"0xe000ed28":"82820003","0xe000e010":"05000100","0xe000edf0":"03000303"}}"#,
+    )
+    .unwrap();
+    let mut reports = Vec::new();
+    for cpu in ["cortex-m3", "cortex-m4", "cortex-m7"] {
+        let transcript = out.join(format!("{cpu}.mi.txt"));
+        fs::write(&transcript, "").unwrap();
+        let mut project = Project::default();
+        project.target.endpoint = "localhost:4888".into();
+        project.registers.cpu = cpu.into();
+        project.registers.component_owners.insert(
+            "ppb".into(),
+            BTreeMap::from([(
+                "core:default".into(),
+                Component {
+                    base: 0,
+                    channel: String::new(),
+                    little_endian: true,
+                },
+            )]),
+        );
+        project.gdb.executable = "node".into();
+        project.gdb.args = vec![
+            root.join("tests/mock-gdb.cjs")
+                .to_string_lossy()
+                .into_owned(),
+        ];
+        project
+            .gdb
+            .env
+            .insert("DEBUGTUI_TEST_REGISTERS".into(), "[]".into());
+        project.gdb.env.insert(
+            "DEBUGTUI_TEST_OWNER_MEMORY_FILE".into(),
+            memory.to_string_lossy().into_owned(),
+        );
+        project.gdb.env.insert(
+            "DEBUGTUI_TEST_TRANSCRIPT".into(),
+            transcript.to_string_lossy().into_owned(),
+        );
+        project.session.on_exit = "disconnect".into();
+        project.validate().unwrap();
+        let engine = coordinator::spawn(project);
+        let list = call(&engine, 1, "registers_list", json!({}));
+        assert_eq!(list["catalogue"]["cpu"], cpu);
+        assert_eq!(list["source"], format!("builtin:{cpu}"));
+        call(&engine, 2, "connect", json!({}));
+        let automatic = call(
+            &engine,
+            3,
+            "registers_read",
+            json!({"ids":["systick.ctrl","dcb.dhcsr"],"manual":false}),
+        );
+        assert!(
+            automatic["samples"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|s| s["state"] != "valid")
+        );
+        assert!(
+            !fs::read_to_string(&transcript)
+                .unwrap()
+                .contains("-data-read-memory-bytes")
+        );
+        let faults = call(
+            &engine,
+            4,
+            "registers_read",
+            json!({"ids":["scb.cfsr"],"manual":true}),
+        );
+        assert_eq!(faults["samples"][0]["state"], "valid", "{faults}");
+        assert_eq!(faults["samples"][0]["value"]["hex"], "0x03008282");
+        let manual = call(
+            &engine,
+            5,
+            "registers_read",
+            json!({"ids":["systick.ctrl","dcb.dhcsr"],"manual":true}),
+        );
+        assert!(
+            manual["samples"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|s| s["state"] == "valid"),
+            "{manual}"
+        );
+        assert_eq!(manual["samples"][0]["value"]["hex"], "0x00010005");
+        assert_eq!(manual["samples"][1]["value"]["hex"], "0x03030003");
+        call(
+            &engine,
+            6,
+            "registers_read",
+            json!({"ids":["systick.ctrl","dcb.dhcsr"],"manual":false}),
+        );
+        call(&engine, 7, "quit", json!({}));
+        let mi = fs::read_to_string(&transcript).unwrap();
+        assert_eq!(
+            mi.matches("-data-read-memory-bytes").count(),
+            3,
+            "{cpu} {mi}"
+        );
+        let reads: Vec<Vec<&str>> = mi
+            .lines()
+            .filter(|line| line.starts_with("-data-read-memory-bytes "))
+            .map(|line| {
+                line.split_whitespace()
+                    .skip(1)
+                    .map(|arg| arg.trim_matches('"'))
+                    .collect()
+            })
+            .collect();
+        assert_eq!(
+            reads,
+            vec![
+                vec!["0xe000ed28", "4"],
+                vec!["0xe000e010", "4"],
+                vec!["0xe000edf0", "4"]
+            ]
+        );
+        assert!(
+            !mi.contains("-data-write-memory")
+                && !mi.contains("-data-list-register-values")
+                && !mi.contains("-exec-continue")
+        );
+        reports.push(json!({"cpu":cpu,"automatic":automatic,"faults":faults,"manual":manual}));
+    }
+    fs::write(
+        out.join("evidence.json"),
+        serde_json::to_vec_pretty(&json!({"board_tests_executed":false,"reports":reports}))
+            .unwrap(),
+    )
+    .unwrap();
+}
+
+#[test]
 fn actual_executable_loads_structured_policy_and_rejects_bad_schema_before_connect() {
     use std::process::{Command, Stdio};
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

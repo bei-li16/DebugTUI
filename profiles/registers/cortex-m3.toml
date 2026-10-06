@@ -1,0 +1,8 @@
+# Generated offline by scripts/cmsis_registers.py; see third_party/cmsis-core/source-lock.json.
+# CMSIS-derived facts retain upstream Apache-2.0 copyright notices in third_party/cmsis-core.
+# Version 1 preserves legacy GDB metadata whose manual source remains Unknown.
+version = 1
+cpu = "cortex-m3"
+architecture = "armv7-m"
+description = "Read-only system catalogue; definitions do not prove target identity or transport support."
+extends = ["armv7m-common"]

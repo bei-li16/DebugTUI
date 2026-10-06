@@ -227,7 +227,7 @@ fn catalogue_inheritance_rejects_ambiguous_parents_group_conflicts_and_broken_lo
             .as_ref()
             .unwrap()
             .declared_in
-            .starts_with("builtin:cortex-m4")
+            .starts_with("builtin:armv7m-common")
     );
 }
 
