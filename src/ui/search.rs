@@ -1,12 +1,24 @@
 //! Files filtering and asynchronous ELF symbol navigation, independent of execution.
 use super::*;
 use crate::session::Symbol;
+use std::{cell::RefCell, sync::Arc};
 
 #[derive(Default)]
 pub(super) struct FileSearch {
     pub query: String,
     pub editing: bool,
     pub area: Rect,
+    /// Ranked rows for one query and one files list. Rendering asks for them
+    /// several times per frame; ranking a large ELF file list is not free.
+    filtered: RefCell<Option<FilteredFiles>>,
+}
+
+struct FilteredFiles {
+    query: String,
+    // Holding the list keeps its allocation alive, so pointer identity cannot
+    // be confused with a later list at the same address.
+    files: Arc<[String]>,
+    rows: Arc<[usize]>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -66,26 +78,40 @@ impl SymbolSearch {
 }
 
 impl App {
-    pub(super) fn filtered_files(&self) -> Vec<usize> {
-        if self.file_search.query.trim().is_empty() {
-            return (0..self.snapshot.files.len()).collect();
+    pub(super) fn filtered_files(&self) -> Arc<[usize]> {
+        let query = &self.file_search.query;
+        let files = &self.snapshot.files;
+        let mut cache = self.file_search.filtered.borrow_mut();
+        if let Some(hit) = cache
+            .as_ref()
+            .filter(|c| c.query == *query && Arc::ptr_eq(&c.files, files))
+        {
+            return hit.rows.clone();
         }
-        let mut found: Vec<_> = self
-            .snapshot
-            .files
-            .iter()
-            .enumerate()
-            .filter_map(|(i, path)| {
-                let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
-                crate::search::score(name, &self.file_search.query)
-                    .or_else(|| {
-                        crate::search::score(path, &self.file_search.query).map(|s| s + 100_000)
-                    })
-                    .map(|score| (score, i))
-            })
-            .collect();
-        found.sort();
-        found.into_iter().map(|(_, i)| i).collect()
+        let rows: Arc<[usize]> = if query.trim().is_empty() {
+            (0..files.len()).collect()
+        } else {
+            let mut matcher = crate::search::Matcher::new(query);
+            let mut found: Vec<_> = files
+                .iter()
+                .enumerate()
+                .filter_map(|(i, path)| {
+                    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+                    matcher
+                        .score(name)
+                        .or_else(|| matcher.score(path).map(|s| s + 100_000))
+                        .map(|score| (score, i))
+                })
+                .collect();
+            found.sort_unstable();
+            found.into_iter().map(|(_, i)| i).collect()
+        };
+        *cache = Some(FilteredFiles {
+            query: query.clone(),
+            files: files.clone(),
+            rows: rows.clone(),
+        });
+        rows
     }
 
     fn filter_changed(&mut self) {

@@ -165,7 +165,7 @@ pub struct Snapshot {
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub register_owner_generations: std::collections::BTreeMap<String, u64>,
     pub breakpoints: Vec<Breakpoint>,
-    pub files: Vec<String>,
+    pub files: Arc<[String]>,
     pub assembly: Vec<String>,
     pub memory: Vec<String>,
     pub generation: u64,
@@ -209,7 +209,7 @@ impl Default for Snapshot {
             register_samples: vec![],
             register_owner_generations: std::collections::BTreeMap::new(),
             breakpoints: vec![],
-            files: vec![],
+            files: Arc::default(),
             assembly: vec![],
             memory: vec![],
             generation: 0,
@@ -2073,7 +2073,7 @@ impl Engine {
             "symbols" => self.symbols(&text("query")),
             "files" => {
                 let r = self.mi("-file-list-exec-source-files")?;
-                self.snapshot.files = r
+                let mut files: Vec<String> = r
                     .data
                     .field("files")
                     .map(|v| {
@@ -2090,10 +2090,12 @@ impl Engine {
                             .collect()
                     })
                     .unwrap_or_default();
-                self.snapshot.files.sort();
-                self.snapshot.files.dedup();
+                files.sort();
+                files.dedup();
+                // Shared, not copied, by every later Snapshot publish.
+                self.snapshot.files = files.into();
                 self.publish();
-                Ok(json!({"files":self.snapshot.files}))
+                Ok(json!({"files":&*self.snapshot.files}))
             }
             "download" => {
                 if !self.project.tasks.download.trim().is_empty() {

@@ -702,7 +702,7 @@ mod tests {
         assert!(text.contains("one/main.c"));
         assert!(text.contains("two/main.c"));
         assert!(!a.source_is_frame());
-        a.snapshot.files = vec![second.clone()];
+        a.snapshot.files = vec![second.clone()].into();
         a.select_pane(7);
         a.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), None);
         assert_eq!(a.source_file, second);

@@ -75,10 +75,11 @@ impl Engine {
                 warnings.join("; ")
             ));
         }
-        symbols.retain(|s| crate::search::score(&s.name, query).is_some());
-        symbols.sort_by_key(|s| {
+        let mut matcher = crate::search::Matcher::new(query);
+        symbols.retain(|s| matcher.score(&s.name).is_some());
+        symbols.sort_by_cached_key(|s| {
             (
-                crate::search::score(&s.name, query),
+                matcher.score(&s.name),
                 s.name.clone(),
                 s.file.clone(),
                 s.line,

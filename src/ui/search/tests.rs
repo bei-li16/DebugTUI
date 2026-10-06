@@ -30,6 +30,31 @@ fn click(a: &mut App, area: Rect) {
 }
 
 #[test]
+fn files_filter_is_ranked_once_per_query_and_files_list() {
+    let mut a = App::new(Project::default(), false);
+    a.snapshot.files = ["src/main.c", "drivers/Spi.c", "hal/espi_hal.c"]
+        .map(str::to_owned)
+        .into();
+    a.file_search.query = "spi".into();
+    let first = a.filtered_files();
+    assert_eq!(&*first, [1, 2]);
+    // Frames reuse the ranked rows while neither input changes.
+    assert!(Arc::ptr_eq(&first, &a.filtered_files()));
+    a.file_search.query = "spix".into();
+    assert!(a.filtered_files().is_empty());
+    a.file_search.query = "spi".into();
+    let again = a.filtered_files();
+    assert_eq!(&*again, [1, 2]);
+    // A new list with the same contents is a new list: rank it again.
+    a.snapshot.files = ["Spi.c"].map(str::to_owned).into();
+    let replaced = a.filtered_files();
+    assert!(!Arc::ptr_eq(&again, &replaced));
+    assert_eq!(&*replaced, [0]);
+    a.file_search.query = "  ".into();
+    assert_eq!(&*a.filtered_files(), [0]);
+}
+
+#[test]
 fn files_filter_uses_matched_indices_for_keyboard_mouse_and_scrolling() {
     let mut a = App::new(Project::default(), false);
     a.snapshot.files = [
@@ -116,7 +141,8 @@ fn long_ci_paths_keep_the_matching_filename_visible() {
     a.snapshot.files = vec![format!(
         "/ci/{}/drivers/Spi_Irq.c",
         "long-workspace/".repeat(14)
-    )];
+    )]
+    .into();
     a.select_pane(7);
     a.file_search.query = "spi".into();
     assert!(render(&mut a, 80, 24).contains("Spi_Irq.c"));

@@ -326,7 +326,8 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
         6 => breakpoints::rows(a, start, rect.height as usize),
         7 => a
             .filtered_files()
-            .into_iter()
+            .iter()
+            .copied()
             .enumerate()
             .skip(start)
             .take(rect.height as usize)
