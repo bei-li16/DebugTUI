@@ -36,6 +36,7 @@ pub mod mpu;
 pub mod pmu;
 pub mod policy;
 pub mod provenance;
+pub mod r52_core;
 pub mod r52_debug;
 pub mod selector;
 pub mod stm;
@@ -183,8 +184,13 @@ impl Config {
         {
             return Err("Invalid component owner mapping: use explicit core:/cluster:/chip: identities and complete routes".into());
         }
-        if !matches!(self.cp15_command.as_str(), "" | "arm mrc" | "aarch64 mrc") {
-            return Err("registers.cp15_command must be arm mrc or aarch64 mrc".into());
+        if !matches!(
+            self.cp15_command.as_str(),
+            "" | "arm mrc" | "aarch64 mrc" | r52_core::COMMAND
+        ) {
+            return Err(
+                "registers.cp15_command must be arm mrc, aarch64 mrc or aarch64 r52_read".into(),
+            );
         }
         if !matches!(self.cp15_64_command.as_str(), "" | "aarch64 mrrc") {
             return Err("registers.cp15_64_command must be aarch64 mrrc".into());

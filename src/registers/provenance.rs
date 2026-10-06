@@ -61,6 +61,8 @@ pub enum Route {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Access {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub r52_core: Option<super::r52_core::Evidence>,
     /// Fresh physical evidence bound to this request, never an implementation fact.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub banked: Option<super::banked::Evidence>,

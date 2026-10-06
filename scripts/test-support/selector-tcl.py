@@ -166,6 +166,55 @@ def evaluate(data):
         if op == 'debugtui_adapter':
             return (0, 'old-adapter' if fault == 'adapter_mismatch' else
                     'debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault')
+        if op == 'debugtui_r52_protocol':
+            return (0, 'old-r52-adapter' if fault == 'r52_protocol' else
+                    'debugtui-r52-core-1 external-identity current-el2 dspsr dlr fresh-capacity scratch-readback stop-on-fault')
+        if op == 'r52_read':
+            assert len(args) == 1
+            reg = args[0]
+            scalars = {'midr', 'mpidr', 'sctlr', 'hsctlr', 'cpacr', 'hcr', 'mpuir',
+                       'hmpuir', 'prselr', 'hprselr', 'hprenr', 'mair0', 'mair1', 'hmair0', 'hmair1'}
+            region = re.fullmatch(r'(h?)pr([bl])ar(0|[1-9][0-9]?)', reg)
+            assert reg in scalars or (region and int(region[3]) < 24)
+            dscr = cpu.get('r52_dscr', '0x01050213')
+            midr = cpu.get('r52_midr', '0x411fd134')
+            current_el = (int(dscr, 16) >> 8) & 3
+            reason = cpu.get('r52_errors', {}).get(reg)
+            if int(dscr, 16) & (1 << 15): reason = 'access-restricted'
+            elif current_el != 2:
+                reason = 'access-restricted' if reg.startswith('h') else 'access-unknown'
+            if int(midr, 16) & 0xff0ffff0 != 0x410fd130: reason = 'reader-unsupported'
+            bank = 'el2' if reg in ('hprselr', 'hprenr', 'hmair0', 'hmair1') or (region and region[1]) else \
+                   'el1' if reg in ('prselr', 'mair0', 'mair1') or region else 'none'
+            count = cpu['el2_count' if bank == 'el2' else 'el1_count'] if bank != 'none' else 0
+            capacity = count if bank == 'el2' else count << 8
+            if bank == 'el2' and count == 0: reason = 'not-implemented'
+            elif bank != 'none' and count not in (16, 20, 24): reason = 'reader-unsupported'
+            elif region and int(region[3]) >= count: reason = 'not-implemented'
+            if reason:
+                return (1, 'debugtui-r52:' + reason, -300 if reason == 'reader-unsupported' else -308)
+            cpu['r52_data_reads'] = cpu.get('r52_data_reads', 0) + 1
+            if fault == 'r52_fault':
+                cpu['status'] = 'unknown'
+                return (1, 'Core state restoration failed: R52 fixture outcome unknown', -1)
+            base = 0x30000000 if name == 'cpu1' else 0x20000000
+            values = {'midr':midr, 'mpidr':'0x80000001' if name == 'cpu1' else '0x80000000',
+                      'sctlr':'0x00c50078', 'hsctlr':'0x30c50078', 'cpacr':'0x00000000', 'hcr':'0x00000002',
+                      'mpuir':f'0x{cpu["el1_count"] << 8:08x}', 'hmpuir':f'0x{cpu["el2_count"]:08x}',
+                      'prselr':f'0x{cpu["prselr"]:08x}', 'hprselr':f'0x{cpu["hprselr"]:08x}',
+                      'hprenr':'0x00000003', 'mair0':'0xff440400', 'mair1':'0x00000000',
+                      'hmair0':'0x0044ff00', 'hmair1':'0x00000000'}
+            raw = values.get(reg, f'0x{base + int(region[3])*0x10000 + (0xffc1 if region[2]=="l" else 0x1b):08x}' if region else None)
+            raw = cpu.get('r52_values', {}).get(reg, raw)
+            if fault == 'r52_short': raw = '0x1234'
+            if fault == 'r52_bare': return (0, raw)
+            if fault == 'r52_forged_el': dscr = '0x01050113'
+            if fault == 'r52_forged_bank': bank = 'el1' if bank == 'el2' else 'el2'
+            if fault == 'r52_forged_identity': midr = '0x511fd134'
+            if fault == 'r52_context_change':
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+            dspsr = cpu.get('r52_dspsr', '0xa2000410')
+            return (0, f'midr {midr} dscr {dscr} dspsr {dspsr} dlr 0x81234568 bank {bank} capacity 0x{capacity:08x} value {raw}')
         if op == 'debugtui_timer_protocol':
             return (0, 'old-timer-adapter' if fault == 'timer_protocol' else
                     'debugtui-armv8-timer-1 external-identity current-el dspsr dlr scratch-readback no-mode-change stop-on-fault')

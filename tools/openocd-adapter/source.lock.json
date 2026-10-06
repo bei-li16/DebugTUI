@@ -4,19 +4,20 @@
   "jimtcl_revision": "d5243a25c488dfe751ef218828f13516e04ea2ba",
   "protocol": "debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault",
   "patch": "0001-debugtui-armv8-register-adapter.patch",
-  "patch_sha256": "2e59520c6de50aa349efd7b0c8044ef08c01122a7cb7484b41eae9580b276133",
+  "patch_sha256": "e00fc84b3a10b1c84706463cbd3ae958da475713851f0c61e53f095a52a4426a",
   "patched_sources_sha256": {
-    "src/target/Makefile.am": "40ded49acc72b6666db39ee0d0b6f2b78d9de006462abee81d1403060f682564",
-    "src/target/aarch64.c": "934b771aebf8aefab4663e022bd0eed1a7914cfa354db7197788bef36e144a57",
-    "src/target/armv8_dpm.c": "f157c0014693e48191e9658f4525bda87c2b5a28b3bca09b5a7bc75390c4c9ff",
-    "src/target/armv8_dpm.h": "06b1b8a0fbc986402a037f465b4c2a57bc29312f2af030210bc307adfcce8b5e",
+    "src/target/Makefile.am": "35740e42bedbdaf2e8509d39fa376d8bb3e1f2fcd6badb37cd529cf96bb3ce73",
+    "src/target/aarch64.c": "b39ee17e7b29ba47c5c2fff15202d560445096724fac1f40b6cc3c55361d085d",
+    "src/target/armv8_dpm.c": "024dbf2d9cd7af8bd4705b62e09400aa23614f36433cb3912546bdd4bbc3f95e",
+    "src/target/armv8_dpm.h": "322ec4a1950c2b2946c5e9dcf224b5a2c4bf794f9da4f5c2d8750d1fa6047668",
     "src/target/armv8_debugtui.h": "4571b23076bda7cb0dd458ffc2c83bf2489694a5900f2e731b1c356737dc267e",
     "src/target/armv8_debugtui_banked.h": "4bdbaaea995aa15433d7624e7191fd9ce7261c3b91767f9aa698ddb9874761ac",
     "src/target/armv8_debugtui_vfp.h": "791698f8b1d79e01cfe6d5a470560ed385d8df4327d47f666b4b48e719f237ad",
     "src/target/armv8_debugtui_vfp_write.h": "0989bea39e1d0a2d1379de8e1c48f367e536da70216f008658f7c73288925dc2",
     "src/target/armv8_debugtui_timer.h": "b2705765c6e241feb77dc59b76afa6c65d9116b4662f95cacd8b25f46e5eab3c",
     "src/target/armv8_debugtui_pmu.h": "60c370305048a8020d1d789fe9c785154b9e2842c331de7b1ead9423e6295159",
-    "src/target/armv8_debugtui_gic.h": "faf03f0ccfdd91ec99ad3ef64d067f8f3a7364398401aaed6fded891d57717db"
+    "src/target/armv8_debugtui_gic.h": "faf03f0ccfdd91ec99ad3ef64d067f8f3a7364398401aaed6fded891d57717db",
+    "src/target/armv8_debugtui_r52.h": "2d47a35e444fca4c187cc9d11c1b51ff2f6fef91d5e207ec83f8a5dd04b5be39"
   },
   "board_support_verified": false,
   "installed_xpack_binary_equivalent": false,
@@ -49,5 +50,6 @@
   "pmu_protocol": "debugtui-armv8-pmu-1 external-identity current-el fresh-count direct-index mrrc64 no-enable no-selector-write stop-on-fault",
   "gic_protocol": "debugtui-armv8-gic-1 external-identity current-el fresh-capacity physical-icc hyp-ich no-ack no-enable stop-on-fault",
   "windows_candidate_sha256": null,
-  "linux_candidate_sha256": null
+  "linux_candidate_sha256": null,
+  "r52_core_protocol": "debugtui-r52-core-1 external-identity current-el2 dspsr dlr fresh-capacity scratch-readback stop-on-fault"
 }

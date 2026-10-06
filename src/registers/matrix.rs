@@ -445,6 +445,16 @@ fn plan(
         } => {
             if config.cp15_command.is_empty() {
                 Plan::missing("No CP15 MRC command configured")
+            } else if config.cp15_command == super::r52_core::COMMAND {
+                match super::r52_core::Request::from_reader(&register.reader) {
+                    Some(request) if register.bits == 32 && register.scope == Scope::Core => tcl(
+                        format!("{} {}", config.cp15_command, request.name),
+                        Some(super::r52_core::PROTOCOL),
+                    ),
+                    _ => Plan::missing(
+                        "No bounded R52 identity/control/MPU route for this definition",
+                    ),
+                }
             } else {
                 tcl(
                     format!("{} {cp} {op1} {crn} {crm} {op2}", config.cp15_command),

@@ -57,6 +57,7 @@ fn probe() -> capabilities::Probe {
                 .unwrap()
                 .evidence,
         ),
+        r52_core: None,
         timer: None,
         pmu: None,
         route: super::super::provenance::Route::TclRegister {

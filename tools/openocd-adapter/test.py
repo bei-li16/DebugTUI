@@ -77,6 +77,12 @@ def main():
                     '-o', str(gic_executable)], check=True)
     gic_tested = subprocess.run([str(gic_executable)], capture_output=True, text=True, check=True)
     (out/'gic-transfer-test.log').write_text(gic_tested.stdout+gic_tested.stderr, encoding='utf-8')
+    r52_executable = out/('r52-transfer.exe' if os.name == 'nt' else 'r52-transfer')
+    subprocess.run([args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror',
+                    '-I', str(source/'src/target'), str(here/'tests/r52-transfer.c'),
+                    '-o', str(r52_executable)], check=True)
+    r52_tested = subprocess.run([str(r52_executable)], capture_output=True, text=True, check=True)
+    (out/'r52-transfer-test.log').write_text(r52_tested.stdout+r52_tested.stderr, encoding='utf-8')
     subprocess.run([sys.executable, str(here/'tests/vfp-write-driver.py'),
                     '--out', str(out/'vfp-write-driver')], check=True)
     report = {'board_tests_executed': False, 'revision': revision,
@@ -95,6 +101,8 @@ def main():
               'gic_transaction_binary_sha256': digest(gic_executable),
               'timer_transaction_passed': True, 'timer_protocol': lock['timer_protocol'],
               'timer_transaction_binary_sha256': digest(timer_executable),
+              'r52_core_transaction_passed': True, 'r52_core_protocol': lock['r52_core_protocol'],
+              'r52_core_transaction_binary_sha256': digest(r52_executable),
               'backend_commands_passed': False, 'limitations':
               ['Transport/exception execution requires the deferred physical-core cases.']}
     if args.openocd:
@@ -106,6 +114,7 @@ def main():
         timer_protocol = lock['timer_protocol']
         pmu_protocol = lock['pmu_protocol']
         gic_protocol = lock['gic_protocol']
+        r52_core_protocol = lock['r52_core_protocol']
         # Initialize only the virtual adapter, keeping the target unexamined.
         # Exact native error codes prevent an init-mode rejection from falsely
         # passing an argument/state-guard test.
@@ -132,6 +141,8 @@ if {[aarch64 debugtui_pmu_protocol] ne "%s"} {error "PMU protocol mismatch"}
 help aarch64 pmu
 if {[aarch64 debugtui_gic_protocol] ne "%s"} {error "GIC protocol mismatch"}
 help aarch64 gic
+if {[aarch64 debugtui_r52_protocol] ne "%s"} {error "R52 protocol mismatch"}
+help aarch64 r52_read
 catch {init} dummy_init_result
 proc expect_error {body expected} {
     if {![catch {uplevel 1 $body} result]} {error "command unexpectedly succeeded"}
@@ -145,6 +156,16 @@ expect_error {aarch64 mrrc 15 0 14} -311
 expect_error {aarch64 isb} -311
 expect_error {aarch64 isb 0} -601
 expect_error {aarch64 debugtui_timer_protocol 0} -601
+expect_error {aarch64 debugtui_r52_protocol 0} -601
+expect_error {aarch64 r52_read} -601
+expect_error {aarch64 r52_read sctlr 0} -601
+foreach invalid {MIDR prbar24 hprlar24 prbar00 prlar-1 pmselr bpiall sctlr;} {expect_error [list aarch64 r52_read $invalid] -603}
+foreach reg {midr mpidr sctlr hsctlr cpacr hcr mpuir hmpuir prselr hprselr hprenr mair0 mair1 hmair0 hmair1} {expect_error [list aarch64 r52_read $reg] -311}
+foreach bank {pr hpr} {
+    for {set index 0} {$index < 24} {incr index} {
+        foreach part {bar lar} {expect_error [list aarch64 r52_read $bank$part$index] -311}
+    }
+}
 expect_error {aarch64 timer} -601
 expect_error {aarch64 timer cntpct 0} -601
 foreach invalid {CNTPCT cntp cntpct; cntpct0} {expect_error [list aarch64 timer $invalid] -603}
@@ -192,7 +213,7 @@ for {set index 0} {$index < 16} {incr index} {
 }
 puts "PASS: adapter protocol, command help, encoding bounds, unexamined target guards"
 shutdown
-''' % (protocol, bank_protocol, vfp_protocol, vfp_write_protocol, timer_protocol, pmu_protocol, gic_protocol)
+''' % (protocol, bank_protocol, vfp_protocol, vfp_write_protocol, timer_protocol, pmu_protocol, gic_protocol, r52_core_protocol)
         script_file = out/'backend-commands.tcl'
         script_file.write_text(script, encoding='utf-8')
         result = subprocess.run([str(backend), '-f', str(script_file)],

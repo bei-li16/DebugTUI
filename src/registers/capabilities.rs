@@ -97,7 +97,7 @@ impl Probe {
                 "cpu.mode",
                 n & 31,
                 "cpsr",
-                "Current physical frame 0 CPSR.M; Hyp is 0x1a",
+                "Stopped physical frame 0 CPSR.M; Hyp is 0x1a. Saved program mode is not current Debug EL or instruction permission",
             );
         }
         let (mmio, notes) = super::mmio_probe::decode(self);

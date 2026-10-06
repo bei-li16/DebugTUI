@@ -15,6 +15,7 @@ fn source(sample: &Sample, endpoint: Option<&str>, time: u64) -> Provenance {
     let mut provenance = Provenance::declared(&Reader::Gdb { name: "r0".into() });
     provenance.access = Some(Access {
         completed_ms: None,
+        r52_core: None,
         timer: None,
         pmu: None,
         gic: None,

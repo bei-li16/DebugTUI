@@ -190,6 +190,7 @@ fn gic_capacities_require_independent_current_native_interface_evidence() {
                     .reader,
             );
             provenance.access = Some(Access {
+                r52_core: None,
                 timer: None,
                 pmu: None,
                 banked: None,
@@ -353,6 +354,7 @@ fn pmu_physical_capacity_requires_matching_current_native_read_evidence_not_stop
             op2: 0,
         });
         provenance.access = Some(Access {
+            r52_core: None,
             timer: None,
             pmu: Some(evidence),
             gic: None,

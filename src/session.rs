@@ -28,6 +28,7 @@ mod memory_writes;
 mod mmio_probe;
 mod mpu;
 mod pmu;
+mod r52_core;
 mod register_adapter;
 mod register_matrix;
 mod registers;

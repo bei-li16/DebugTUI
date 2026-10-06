@@ -34,6 +34,32 @@ pub(super) fn new_session() -> u64 {
 }
 
 impl Engine {
+    fn register_access_denial(
+        &self,
+        catalogue: &Catalogue,
+        register: &Register,
+        facts: &BTreeMap<String, u64>,
+    ) -> Option<(Reason, String)> {
+        let checked_r52 = self.project.registers.cp15_command
+            == crate::registers::r52_core::COMMAND
+            && catalogue
+                .read_dependencies(register)
+                .is_ok_and(|dependencies| {
+                    dependencies.iter().all(|r| {
+                        r.scope == crate::registers::Scope::Core
+                            && (matches!(r.reader, Reader::Alias { .. })
+                                || (r.bits == 32
+                                    && crate::registers::r52_core::Request::from_reader(&r.reader)
+                                        .is_some()))
+                    })
+                });
+        if checked_r52 {
+            catalogue.checked_el2_backend_denial(register, facts, self.snapshot.state == "STOPPED")
+        } else {
+            catalogue.access_denial(register, facts, self.snapshot.state == "STOPPED", None)
+        }
+    }
+
     pub(super) fn register_topology(&self) -> crate::registers::Topology {
         let mut topology = self.project.registers.topology.clone();
         if topology.chip.is_empty() {
@@ -216,6 +242,15 @@ impl Engine {
                 format!("openocd:{}", self.project.registers.cp15_64_command),
                 None,
             ),
+            Reader::Cp15 { .. }
+                if self.project.registers.cp15_command == crate::registers::r52_core::COMMAND =>
+            {
+                (
+                    SampleView::PhysicalCore,
+                    format!("openocd:{}", self.project.registers.cp15_command),
+                    None,
+                )
+            }
             Reader::Alias { .. } => (SampleView::SelectedFrame, route_name(root), None),
             _ => (SampleView::PhysicalCore, route_name(root), None),
         };
@@ -349,13 +384,8 @@ impl Engine {
             }
             let owner = topology.owner(register.scope, &context.core);
             let (view, source, gdb_name) = self.register_sample_origin(register, &catalogue);
-            let access_denial = catalogue
-                .access_denial(
-                    register,
-                    &self.effective_register_facts(),
-                    self.snapshot.state == "STOPPED",
-                    None,
-                )
+            let access_denial = self
+                .register_access_denial(&catalogue, register, &self.effective_register_facts())
                 .or_else(|| {
                     if read_state == "RUNNING" {
                         crate::registers::running::denial(
@@ -589,9 +619,7 @@ impl Engine {
             .facts
             .clone()
             .unwrap_or_else(|| self.effective_register_facts());
-        if let Some(denial) =
-            catalogue.access_denial(register, &facts, self.snapshot.state == "STOPPED", None)
-        {
+        if let Some(denial) = self.register_access_denial(catalogue, register, &facts) {
             return Err(denial);
         }
         if catalogue.has_presence_rule(register)
@@ -723,6 +751,13 @@ impl Engine {
                     crm,
                     op2,
                 } => {
+                    if self.project.registers.cp15_command == crate::registers::r52_core::COMMAND {
+                        let request = crate::registers::r52_core::Request::from_reader(&register.reader)
+                            .filter(|_| register.bits == 32 && register.scope == crate::registers::Scope::Core)
+                            .ok_or_else(|| (Reason::ReaderUnsupported,
+                                "Definition has no bounded R52 identity/control/MPU route; no read sent".into()))?;
+                        return self.read_r52_core_register(&request);
+                    }
                     if self.project.registers.cp15_command.is_empty() {
                         return Err((
                             Reason::ReaderUnsupported,
@@ -1018,6 +1053,7 @@ impl Engine {
     }
     pub(super) fn plan_register_value_access(&mut self, route: Route, command: String) {
         self.register_value_access = Some(Access {
+            r52_core: None,
             timer: None,
             pmu: None,
             gic: None,

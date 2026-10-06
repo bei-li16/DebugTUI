@@ -2,6 +2,24 @@ use super::*;
 use serde_json::json;
 
 #[test]
+fn matrix_bounded_r52_plan_names_native_operations_without_claiming_observed_support() {
+    let mut inventory = report("cortex-r52");
+    inventory.environment.registers.cp15_command = r52_core::COMMAND.into();
+    inventory.environment.registers.tcl_endpoint = "localhost:6666".into();
+    inventory
+        .environment
+        .registers
+        .targets
+        .insert("core1".into(), "soc.r52.1".into());
+    inventory.refresh();
+    let entry = row(&inventory, "sctlr");
+    assert_eq!(entry.plan.operation, "aarch64 r52_read sctlr");
+    assert_eq!(entry.plan.protocol.as_deref(), Some(r52_core::PROTOCOL));
+    assert_eq!(entry.support, Support::Unobserved);
+    assert!(!row(&inventory, "cntfrq").plan.available);
+}
+
+#[test]
 fn matrix_stale_probe_never_overrides_configuration_or_claims_current_evidence() {
     let mut inventory = report("cortex-r52");
     inventory

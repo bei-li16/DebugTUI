@@ -123,6 +123,32 @@ pub(super) fn details(label: &str, provenance: &Provenance) -> Vec<String> {
             ));
         }
     }
+    if let Some(proof) = &access.r52_core {
+        match proof.current_el() {
+            Some(2) => {
+                text.push(format!(
+                    "R52 current Debug EL: 2; external MIDR: {} / EDSCR: {}",
+                    proof.midr.hex, proof.dscr.hex
+                ));
+                text.push(format!(
+                    "R52 stopped DSPSR: {} / DLR: {}",
+                    proof.dspsr.hex, proof.dlr.hex
+                ));
+                if proof.bank == crate::registers::r52_core::CapacityBank::None {
+                    text.push("R52 MPU capacity: not requested for this scalar".into());
+                } else {
+                    text.push(format!(
+                        "R52 fresh MPU capacity: {:?} / {}",
+                        proof.bank, proof.capacity.hex
+                    ));
+                }
+                text.push("Saved DSPSR is stopped program state, not access authorization. Proof and value belong to this request only.".into());
+            }
+            _ => text.push(
+                "R52 recorded Debug state is invalid or is not EL2; no permission inferred.".into(),
+            ),
+        }
+    }
     if let Some(proof) = &access.vfp {
         match proof.validate() {
             Ok(()) => {
@@ -284,6 +310,54 @@ fn endian(order: ByteOrder) -> &'static str {
 mod tests {
     use super::*;
     #[test]
+    fn r52_alias_details_keep_saved_user_state_separate_from_current_debug_evidence() {
+        use crate::registers::{
+            RawValue, Reader,
+            provenance::Access,
+            r52_core::{Request, Response},
+        };
+        let reader = Reader::Cp15 {
+            cp: 15,
+            op1: 0,
+            crn: 1,
+            crm: 0,
+            op2: 0,
+        };
+        let request = Request::from_reader(&reader).unwrap();
+        let response = Response::parse("midr 0x411fd134 dscr 0x01050213 dspsr 0xa2000410 dlr 0x81234568 bank none capacity 0x00000000 value 0x00c50078", &request).unwrap();
+        let mut origin = Provenance::declared(&Reader::Alias {
+            source: "sctlr".into(),
+            offset: 0,
+        });
+        origin.access = Some(serde_json::from_value::<Access>(serde_json::json!({
+            "r52_core":response.evidence,
+            "route":{"kind":"tcl_register","endpoint":"localhost:6666","target":"soc.r52.1","operation":"R52 read sctlr"},
+            "phase":"responded","command":"bounded R52 transaction","context":{"session":7,"generation":3,"core":"core1","frame":0},"timestamp_ms":10,"completed_ms":11
+        })).unwrap());
+        let text = details("Current value", &origin).join("\n");
+        for expected in [
+            "R52 current Debug EL: 2",
+            "0xa2000410",
+            "soc.r52.1",
+            "not access authorization",
+            "this request only",
+            "not requested for this scalar",
+        ] {
+            assert!(text.contains(expected), "{expected}: {text}");
+        }
+        origin
+            .access
+            .as_mut()
+            .unwrap()
+            .r52_core
+            .as_mut()
+            .unwrap()
+            .dscr = RawValue::parse("0x01050113", 32).unwrap();
+        let text = details("Old value", &origin).join("\n");
+        assert!(text.contains("no permission inferred"));
+        assert!(!text.contains("R52 current Debug EL: 2"));
+    }
+    #[test]
     fn floating_pair_details_explain_capacity_raw_bits_and_mapping_without_permissions() {
         use crate::registers::{
             Context, RawValue, Reader,
@@ -296,6 +370,7 @@ mod tests {
             banked: None,
             vfp: Some(response.evidence.clone()),
             vfp_pair: response.pair_evidence(Kind::Quad(0)),
+            r52_core: None,
             timer: None,
             pmu: None,
             gic: None,
@@ -381,6 +456,7 @@ mod tests {
                 vfp: None,
                 vfp_pair: None,
                 gic: Some(Response::parse(&wire, id, 32).unwrap().evidence),
+                r52_core: None,
                 timer: None,
                 pmu: None,
                 route: Route::TclRegister {
@@ -465,6 +541,7 @@ mod tests {
             let mut provenance = Provenance::declared(&reader);
             provenance.access = Some(crate::registers::provenance::Access {
                 completed_ms: None,
+                r52_core: None,
                 timer: None,
                 pmu: None,
                 gic: None,

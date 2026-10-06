@@ -324,6 +324,29 @@ impl Catalogue {
         stopped: bool,
         current_debug_el: Option<u8>,
     ) -> Option<(Reason, String)> {
+        self.access_preflight(register, facts, stopped, current_debug_el, false)
+    }
+
+    /// Delegate only the EL check to a bounded backend which proves current
+    /// EL2 before data instructions in this very transaction. This is not an
+    /// observed EL, and does not bypass owner, halt, enable or presence rules.
+    pub(crate) fn checked_el2_backend_denial(
+        &self,
+        register: &Register,
+        facts: &BTreeMap<String, u64>,
+        stopped: bool,
+    ) -> Option<(Reason, String)> {
+        self.access_preflight(register, facts, stopped, None, true)
+    }
+
+    fn access_preflight(
+        &self,
+        register: &Register,
+        facts: &BTreeMap<String, u64>,
+        stopped: bool,
+        current_debug_el: Option<u8>,
+        checked_el2_backend: bool,
+    ) -> Option<(Reason, String)> {
         let dependencies = match self.read_dependencies(register) {
             Ok(d) => d,
             Err(e) => return Some((Reason::Unknown, e)),
@@ -347,6 +370,15 @@ impl Catalogue {
         for r in dependencies {
             if let Some(min_el) = r.access_rule.min_el {
                 match current_debug_el {
+                    None if checked_el2_backend && min_el <= 2 => {}
+                    None if checked_el2_backend => {
+                        return Some((
+                            Reason::AccessRestricted,
+                            format!(
+                                "NeedEl({min_el}): bounded backend only supports current Debug EL2"
+                            ),
+                        ));
+                    }
                     Some(el) if el >= min_el => {}
                     Some(el) => {
                         return Some((

@@ -1,0 +1,27 @@
+{
+  "software_example": true,
+  "revision": "Replace with physical R52 revision",
+  "probe": "Replace with probe and transport",
+  "openocd_version": "Replace with verified backend version and SHA256",
+  "gdb_version": "Replace with GDB version and SHA256",
+  "evidence_source": "Replace software constants with separately captured firmware or ADS baseline",
+  "ap": 0,
+  "target": "cpu0",
+  "endpoint": "127.0.0.1:REPLACE",
+  "expected_midr": "0x411fd134",
+  "expected_dspsr": "0xa2000410",
+  "values": {
+    "midr": "0x411fd134", "mpidr": "0x80000000", "sctlr": "0x00c50078",
+    "hsctlr": "0x30c50078", "cpacr": "0x00000000", "hcr": "0x00000002",
+    "mpuir": "0x00001800", "hmpuir": "0x00000014",
+    "prselr": "0x00000001", "hprselr": "0x00000002", "hprenr": "0x00000003",
+    "mair0": "0xff440400", "mair1": "0x00000000", "hmair0": "0x0044ff00", "hmair1": "0x00000000",
+    "prbar0": "0x2000001b", "prlar23": "0x2017ffc1", "hprbar19": "0x2013001b"
+  },
+  "peer_core": "core1",
+  "peer_target": "cpu1",
+  "peer_values": {
+    "midr": "0x411fd134", "mpidr": "0x80000001", "sctlr": "0x00c50078",
+    "mpuir": "0x00001800", "hmpuir": "0x00000014", "prbar0": "0x3000001b"
+  }
+}

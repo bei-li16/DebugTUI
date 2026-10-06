@@ -2120,6 +2120,7 @@ mod tests {
                 );
                 provenance.access = Some(crate::registers::provenance::Access {
                     completed_ms: None,
+                    r52_core: None,
                     timer: None,
                     pmu: None,
                     gic: None,
@@ -2276,6 +2277,7 @@ mod tests {
                     .unwrap()
                     .evidence,
             ),
+            r52_core: None,
             timer: None,
             pmu: None,
             route: crate::registers::provenance::Route::TclRegister {

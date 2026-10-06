@@ -66,6 +66,7 @@ fn fixture() -> Probe {
                 require_owner_mapping: true,
             };
             let access = Access {
+                r52_core: None,
                 timer: None,
                 pmu: None,
                 gic: None,

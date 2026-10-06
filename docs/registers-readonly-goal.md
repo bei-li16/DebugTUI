@@ -2,6 +2,8 @@
 
 2026-10-06。开发分支 `codex/register-debugging`，起点 `b493a7f`，源码基线 0.9.3。该清单落实新的 Goal，取代旧 TODO 全部 71 项作为本次完成条件；旧记录保留作追溯。36 项以完整软件验收为计数边界。硬件用例准备属于软件交付，执行上板不属于本目标。
 
+当前摘要（迭代 14）：**23 完成 / 13 未完成**。A01～A10、B01～B11、C01/C02 已验收；C03～C06、D01～D04、E01～E05 待完成。本轮接通有界普通 CP15 生产事务与 host 路径，MPU 总览、selector 和完整新后端候选仍待接入及验收，未提前勾选 C03。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
+
 核心参考文档（保留绝对路径）：
 
 ```text
@@ -226,3 +228,16 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 严格 `cargo clippy --locked --all-targets -- -D warnings` **通过**，18.21 秒，日志 `readonly-r52-edscr-clippy-20261006.log`；fmt、Python 语法、diff、生产 patch 与固定 checkout 的反向匹配及十一项源摘要检查通过。补丁 SHA256 为 `2e59520c6de50aa349efd7b0c8044ef08c01122a7cb7484b41eae9580b276133`。当前新后端尚未完整构建；source.lock 的 Windows/Linux build verified 为 false、candidate SHA256 为 null，旧候选移入 previous_candidates，不能用历史命令通过证明当前补丁。
 - [状态修正说明](register-r52-debug-state.md)、各旧类别/后端说明的证据适用范围及 [四项新硬件 case](../tests/cases/register-r52-debug-state.md) 完成，硬件全部 **SKIPPED**；未上板、未升级 hardware verified、未发布 Release。三个核心参考文档的绝对引用保留。证据 manifest `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\readonly-r52-edscr-evidence-20261006.json` 记录源码、手册页、日志和报告摘要及本轮提交/远端核验。
 - **C03～C06、D01～D04、E01～E05** 继续未完成。普通 CP15 仍未接通当前 Debug 证明，R52 MPU/selector 仍借用保存 CPSR；本批共用 EL 解码不能单独授权任意 CP15。下一轮先接通受保护的合法 CP15 生产成功链路，再复用到 MPU/selector；后端命令稳定后构建及验收现有 Windows/Linux 候选，不每个子批次重复重建。Goal 保持 active。
+
+## 迭代 14：接通有界普通 R52 CP15 生产读取
+
+2026-10-06，C03 的普通读取子批次完成，累计保持 **23 完成 / 13 未完成**。迭代 13 已提交并推送为 `4ac9e31aa67737a4ec46bba0d3ac69f3244d45b8`；之后目标文档提交 `cda44e33d8d95745d5d30de645e94a14b93ddd7d` 已推送，属于范围与起点记录，没有增加 feature。
+
+- 新生产 `aarch64 r52_read NAME` 只接受已核对的 15 项身份/控制/MPU 标量及 96 项直接索引 MPU region。实际外部 MIDR/EDSCR 在任何 CPU 指令前证明 Arm D13、AArch32、当前 Debug EL2、HDD=0、完成且无故障；低 EL 明确 Unknown/Restricted，未适配身份 Unsupported，不切模式或写控制取得权限。逐次保存/恢复/回读 R0，复核完整 DSPSR/DLR、外部身份与状态；MPU 项核对正确 bank 的新鲜容量，容量拒绝也复核前置操作恢复，不执行 region 数据指令。任何不确定停止注入并隔离，不发布结果或自动重试。
+- Host 接入受限编码、严格协议/响应、实际 frame 0/线程/target、服务锁、取消和故障隔离，Alias 保留源证明。min_el 预检查只对全部依赖均为受限 core reader 的请求委托后端当次验证，不伪造当前 EL；owner、NeedHalt、NeedEnable、存在性和副作用门禁不变。能力 Probe 在新配置下走 MIDR/MPUIR/HMPUIR/CPACR 的生产路径，即使 GDB 提供同名值也不替代。当前 EL 与保存的 User DSPSR 分开显示；失败旧值保留原始来源，容量未请求不显示成“未实现”。旧配置和客户安装未改。
+- 完整单元 **496 通过、0 失败、2 既有 ignored**，51.07 秒；随后唯一生产修改为容量未请求的详情文字，相关 UI 专项 **1 通过**。整个 selector 集成 **126 通过、0 失败**，235.96 秒，包含新增 8 项普通读取 worker/实际 EXE 测试及既有 Banked/VFP/Timer/PMU/GIC/写入回归。计数为 **622 项所选 Cargo 测试通过**，专项不重复累加；不是完整 Cargo 或最终发布回归。新用例包含权限/元数据门禁、两个实际端点与 peer 隔离、保存 User 状态成功、独立动态容量、协议/证明伪造拒绝、取消/上下文、原旧值及恢复不确定隔离。首次失败分别修正夹具缺少上下文文件、旧来源断言，以及产品普通读取仍显示泛化 cp15 来源；未放宽协议或权限门禁。
+- 八个生产 C 事务模型套件与 Python 延后驱动 **8 项通过**。新增 R52 模型使用实际生产头文件和独立手写指令字，核对 **111 项成功、4360 个逐操作失败点、768 个独立容量组合**，以及 CPU/外部 MIDR 矛盾、DSPSR/DLR/EDSCR/容量变化与恢复检查。模型不执行真实 ARM 指令。最终报告为 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\r52-core-native-model-final-20261006\report.json`，`board_tests_executed=false`、`backend_commands_passed=false`。新 `test.py` 已增加完整候选的协议/命令/参数拒绝检查，尚未运行新 OpenOCD 可执行入口。
+- 延后驱动默认 **4 SKIPPED、零 I/O**；实际 DebugTUI EXE 加软件夹具的正向流程 **5 通过**，错误独立基线流程按预期失败并停止（2 通过/1 失败/2 跳过），结果由集成测试验收为成功。四项 [硬件 case](../tests/cases/register-r52-core-read.md) 与独立基线模板已准备，全部未上板；声明的 AP/探针参数不能代替实板观测。三个核心参考文档绝对路径完整保留。
+- 严格 `cargo clippy --locked --all-targets -- -D warnings` **通过**，18.03 秒；fmt、Python/Node/JSON 语法、diff 及固定 checkout 的补丁反向匹配与 12 项源摘要通过。当前补丁 SHA256 为 `e00fc84b3a10b1c84706463cbd3ae958da475713851f0c61e53f095a52a4426a`。Windows/Linux 新候选仍未完整构建，verified=false、候选摘要为空；历史二进制不作为当前补丁验收。
+- 本批日志位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-r52-core-unit-final-20261006.log`、`readonly-r52-core-ui-final-20261006.log`、`readonly-r52-core-selector-full-20261006.log`、`readonly-r52-core-clippy-final-20261006.log`、`readonly-r52-core-native-final-20261006.log`。证据 manifest `readonly-r52-core-evidence-20261006.json` 记录本轮源码、报告、日志、手册摘要及最终提交/远端核验；[配置与事务说明](register-r52-core-read.md) 写清仅当前子批次可用的协议边界。
+- **C03～C06、D01～D04、E01～E05** 继续未完成。下一批在既有 MPU 总览和 selector 事务内复用本批当前 Debug 证据，替换保存 CPSR 授权；保持现有可重入服务锁，不增加第二套事务框架。稳定后端后构建并验收 Windows/Linux 候选，然后完成界面/生命周期、完整回归、安装及非主分支 Release。Goal 保持 active，未发布 Release、未升级硬件 verified。

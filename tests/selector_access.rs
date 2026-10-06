@@ -39,6 +39,8 @@ mod mpu_cases;
 mod mrrc_cases;
 #[path = "selector_access/pmu_cases.rs"]
 mod pmu_cases;
+#[path = "selector_access/r52_core_cases.rs"]
+mod r52_core_cases;
 #[path = "selector_access/running_cases.rs"]
 mod running_cases;
 #[path = "selector_access/timer_adapter_cases.rs"]
@@ -207,6 +209,7 @@ fn fixture(fault: &'static str) -> Fixture {
                                 || script.contains("aarch64 timer")
                                 || script.contains("aarch64 pmu")
                                 || script.contains("aarch64 gic")
+                                || script.contains("aarch64 r52_read")
                                 || (current["allow_running_memory"] == true
                                     && script.contains("read_memory"))
                         }

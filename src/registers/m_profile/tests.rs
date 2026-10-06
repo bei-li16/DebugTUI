@@ -39,6 +39,7 @@ fn sample(catalogue: &Catalogue, id: &str, value: u64) -> Sample {
                 banked: None,
                 vfp: None,
                 vfp_pair: None,
+                r52_core: None,
                 timer: None,
                 pmu: None,
                 gic: None,

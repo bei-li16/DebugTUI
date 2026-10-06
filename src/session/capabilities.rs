@@ -106,6 +106,9 @@ impl Engine {
             sample.provenance.as_mut().unwrap().acquisition =
                 crate::registers::provenance::Acquisition::CapabilityProbe;
             let hyp = probe.raw("cpsr").is_some_and(|n| n & 31 == 0x1a);
+            let native_r52 = !is_m
+                && self.project.registers.cp15_command == crate::registers::r52_core::COMMAND
+                && crate::registers::r52_core::Request::from_reader(&register.reader).is_some();
             let gic = probe
                 .facts
                 .get("gic.system_interface")
@@ -129,7 +132,7 @@ impl Engine {
                         "Actual MIDR has not established an adapted Cortex-R52 identity; selected catalogue alone does not authorize optional probes",
                     ))
                 }
-                "hmpuir" if !hyp => Some((
+                "hmpuir" if !hyp && !native_r52 => Some((
                     Reason::AccessRestricted,
                     "EL2 access is not proven in this physical CPSR mode",
                 )),
@@ -168,7 +171,7 @@ impl Engine {
             } else {
                 // A genuine named GDB register is an independent read route.
                 self.register_value_access = None;
-                if is_m {
+                if is_m || native_r52 {
                     values.facts = Some(catalogue.observation_facts_for_owners(
                         &self.project.registers.facts,
                         Some(&probe),
@@ -177,7 +180,8 @@ impl Engine {
                         &self.register_topology(),
                     ));
                 }
-                let native = (id == "pmcr" && !self.project.registers.pmu_command.is_empty())
+                let native = native_r52
+                    || (id == "pmcr" && !self.project.registers.pmu_command.is_empty())
                     || (matches!(id, "icc_ctlr" | "ich_vtr")
                         && !self.project.registers.gic_command.is_empty());
                 let result = if native {

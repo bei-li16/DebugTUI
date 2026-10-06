@@ -2,6 +2,65 @@ use super::*;
 use serde_json::json;
 
 #[test]
+fn bounded_el2_preflight_delegates_only_el_and_preserves_alias_owner_enable_and_halt_rules() {
+    let mut c = catalogue();
+    c.registers[1].reader = Reader::Cp15 {
+        cp: 15,
+        op1: 4,
+        crn: 1,
+        crm: 1,
+        op2: 0,
+    };
+    c.registers[1].scope = Scope::Core;
+    c.registers[1].access_rule.min_el = Some(2);
+    let facts = BTreeMap::from([(field_key("identity", "ENABLE"), 1)]);
+    let alias = c.register("alias").unwrap();
+    assert_eq!(
+        c.access_denial(alias, &facts, true, None).unwrap().0,
+        Reason::Unknown
+    );
+    assert!(c.checked_el2_backend_denial(alias, &facts, true).is_none());
+    assert_eq!(
+        c.checked_el2_backend_denial(alias, &BTreeMap::new(), true)
+            .unwrap()
+            .0,
+        Reason::Unknown
+    );
+    assert_eq!(
+        c.checked_el2_backend_denial(
+            alias,
+            &BTreeMap::from([(field_key("identity", "ENABLE"), 0)]),
+            true
+        )
+        .unwrap()
+        .0,
+        Reason::FeatureDisabled
+    );
+    c.registers[1].scope = Scope::Unknown;
+    assert!(
+        c.checked_el2_backend_denial(&c.registers[2], &facts, true)
+            .unwrap()
+            .1
+            .contains("owner")
+    );
+    c.registers[1].scope = Scope::Core;
+    c.registers[1].access_rule.need_halt = Some(true);
+    assert!(
+        c.checked_el2_backend_denial(&c.registers[2], &facts, false)
+            .unwrap()
+            .1
+            .contains("NeedHalt")
+    );
+    c.registers[1].access_rule.min_el = Some(3);
+    assert_eq!(
+        c.checked_el2_backend_denial(&c.registers[2], &facts, true)
+            .unwrap()
+            .0,
+        Reason::AccessRestricted
+    );
+}
+
+#[test]
 fn dependency_depth_is_checked_even_when_parents_were_already_visited() {
     let mut c = catalogue();
     let source = c.registers[0].clone();
