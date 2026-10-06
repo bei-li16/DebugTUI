@@ -1834,8 +1834,14 @@ pub fn run(
         EnableBracketedPaste
     )
     .map_err(|e| e.to_string())?;
-    let mut terminal =
-        Terminal::new(CrosstermBackend::new(io::stdout())).map_err(|e| e.to_string())?;
+    // A full redraw is tens of kilobytes of escape sequences; std's 1 KiB line
+    // buffer split it into many console writes. Ratatui flushes every frame, and
+    // the terminal (and its buffer) is dropped before the guard restores modes.
+    let mut terminal = Terminal::new(CrosstermBackend::new(io::BufWriter::with_capacity(
+        64 * 1024,
+        io::stdout(),
+    )))
+    .map_err(|e| e.to_string())?;
     let (mut project, error) = match document.project() {
         Ok(project) => (project, initial_error),
         Err(e) => (Project::default(), Some(e)),
