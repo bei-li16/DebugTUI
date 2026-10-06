@@ -45,8 +45,8 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | B09 | M ID 探测与动态实例 | CPUID/ICTR/MPU_TYPE 等成功/缺失/非法结果 |
 | [x] | B10 | CorePrivate 和异构双核隔离 | 同 PPB 地址经不同核路由、缓存与失败隔离 |
 | [x] | B11 | 按 reader 运行态读取 | 安全 MMIO 正向、sysreg/GDB NeedHalt 拒绝 |
-| [ ] | C01 | R52 常用身份/控制完整描述 | 规定寄存器编码、位宽、主要字段及页码 |
-| [ ] | C02 | R52 MPU 完整描述/容量 | EL1/EL2、MAIR 与有效 region 范围 |
+| [x] | C01 | R52 常用身份/控制完整描述 | 规定寄存器编码、位宽、主要字段及页码 |
+| [x] | C02 | R52 MPU 完整描述/容量 | EL1/EL2、MAIR 与有效 region 范围 |
 | [ ] | C03 | 当前 Debug 权限一致性 | 普通 CP15/MPU/selector 新鲜 EL、trap、成功与拒绝 |
 | [ ] | C04 | 后端保存恢复和故障隔离 | scratch 回读、取消/错误、无盲目重试 |
 | [ ] | C05 | selector 单事务 | 保存选择读取恢复、失败不发布部分值 |
@@ -202,3 +202,15 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - [多核说明](register-cortex-m-multicore.md)、用户指南、[八项环境 case](../tests/cases/register-cortex-m-multicore.md)、独立基线模板和显式运行驱动完成。默认报告 `evidence/m-profile-multicore-hardware-1791280095686-6bb38e6f/report.json` 为 **0 passed/0 failed/4 skipped**；实际 EXE 软件报告 `evidence/m-profile-multicore-hardware-1791280095777-b195e51e/report.json` 为 **5 passed**；故意错误的首核 CPUID 基线报告 `evidence/m-profile-multicore-hardware-1791280099347-e0d65717/report.json` 为 **1 passed/1 expected failure/3 skipped**，在 region 写入及 peer 数据请求前正确停止。三个报告都在上述 C 盘构建目录，`board_tests_executed=false`。八项真实环境 case 均 SKIPPED，不升级 hardware verified；AP 声明不冒充实际物理映射。
 - 证据 manifest `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\readonly-m-multicore-evidence-20261006.json` 保存最终源文件、日志、报告 SHA256 和提交/远端核验。未执行上板、未修改或重建 OpenOCD；三个核心文档的绝对引用保留。
 - 剩余 **C01～C06、D01～D04、E01～E05**，共 15 项。下一批先核对 R52 身份/控制及 MPU 定义，再统一当前 Debug 证据：普通 reader 仍给权限判断传 None，MPU 与 selector 仍借用保存的 CPSR，不能作为本版完成状态。已核对指定 TRM 的实际 PDF 为 718 页/`100026_0104_01_en`，架构介绍为 26 页/`DEN0130_0100_en`；沿用已匹配 SHA256 的参考材料，不重读整本。最终回归、升版打包及非主分支 Release 仍待完成，Goal 保持 active。
+
+## 迭代 12：R52 常用定义、独立 MPU 容量与有界写回
+
+2026-10-06，完成 C01/C02，累计 **23 完成 / 13 未完成**。本轮复用已有 R52 草稿；起点为已推送的 `4935d0358ee4eae42fe52da4f9dcc17de7482a4c`，未重做前序 M/R 公共模型或异构隔离。
+
+- 核对指定 TRM 的实际 PDF，完善 15 项常用身份/控制/MPU/MAIR 与 96 项已有 direct region 定义，共 111 项。R52/R52+ 各仍为 1,999 项，全部原 reader、编码和非本批定义保持；未增加类别或 writer。字段、正常执行 EL/trap 条件、结构化章节/物理页、可信度及有据 reset 由独立元数据文件和现有生成器交付。源码范围核对记录为 `readonly-r52-core-model-scope-20261006.json`。
+- 保留 MIDR revision、MPIDR affinity 文字和 PRSELR 容量标题三处手册矛盾，标 medium，不自行裁决。EL1 容量 16/20/24 与 EL2 容量 0/16/20/24 分别处理；16 区 selector 使用 4 位，20/24 区使用 5 位，零 EL2 不请求 region 或写 selector。各 bank AP 权限、MAIR byte、BASE/LIMIT 边界沿用实际 MPU 模型。R52+ 仅继承 R52 参考定义，不宣称实际身份/差异已适配。见 [定义说明](register-r52-core-model.md)。
+- 新四项模型测试包含真实内置 TOML 的完整序列化/重新解析、编码/来源/复位边界、非对称字段与枚举、各 bank 条件和全部 direct 编码。首次完整单元 487 通过/2 失败/2 ignored，诊断确认 R52 写回为 4,274,262 字节，超过原 4 MiB 上限；Setup 同样因加载失败而缺少 CPU 详情，属于同一根因。修复为省略默认空枚举列表，保留显式空列表输入兼容及所有非空枚举；未提高资源上限、删除必要字段、修改显示断言或将失败改为跳过。两个原测试及新写回边界现已通过，首次失败与诊断日志保留。
+- 最终完整单元 **489 通过、0 失败、2 既有 ignored**，51.01 秒；相关集成 **37 通过**：R/M MPU 20 项、register_access 15 项、register_configuration 2 项（内层实际 EXE 16 case 及双 TCP 路由不重复计数）。当前合计 526 项通过是单元与所选集成的范围，未声称本轮运行了全部 Cargo 集成或最终发布回归。日志分别为 `readonly-r52-core-model-unit-final-20261006.log`、`readonly-r52-core-model-mpu-integration-20261006.log`、`readonly-r52-core-model-access-integration-20261006.log`。
+- 严格 `cargo clippy --locked --all-targets -- -D warnings` 通过，17.98 秒；fmt、diff 及六份目录的离线生成一致性检查通过，固定 CMSIS 输入校验通过。未改动/重建 OpenOCD。参考页提取 `r52-core-definition-pages-20261006.json` 与指定 TRM 的 SHA256 一致；上述日志、范围报告和最终源文件摘要统一记录于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\readonly-r52-core-model-evidence-20261006.json`，提交与远端 SHA 在该 manifest 及本轮最终输出核对。
+- [六项环境 case](../tests/cases/register-r52-core-model.md) 准备完成，全部 SKIPPED；未执行上板，不升级 hardware verified。软件夹具覆盖实际 MI/Tcl/EXE 与容量/恢复/配置边界，不模拟 ARM 执行或证明实际 AP/Debug 授权。
+- 剩余 **C03～C06、D01～D04、E01～E05**，共 13 项。下一轮统一普通 CP15、MPU、selector 的当前 Debug 证据与生产成功/拒绝路径；保存 CPSR/DSPSR、正常执行的访问描述和本轮模型通过均不能作为当前注入许可。C04/C05 完整事务、C06 支持边界、界面复验、最终回归/打包及非主分支 Release 继续未完成，Goal 保持 active。三个核心文档的绝对引用完整保留。

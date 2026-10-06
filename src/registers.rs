@@ -439,7 +439,7 @@ pub struct Field {
     pub segments: Vec<Segment>,
     #[serde(default)]
     pub access: Option<Access>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub enums: Vec<EnumValue>,
 }
 
@@ -1184,5 +1184,7 @@ impl Sample {
 
 #[cfg(test)]
 mod m_catalogue_tests;
+#[cfg(test)]
+mod r52_catalogue_tests;
 #[cfg(test)]
 mod tests;

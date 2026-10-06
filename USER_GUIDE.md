@@ -858,6 +858,8 @@ Headless 使用 `registers_select`，参数为当前 `context`、`kind`（`mpu_e
 
 Headless 使用 `registers_mpu`，参数为当前 `context`、`bank`（`el1`／`el2`）和可选 `read`。默认 `read=false` 仅解释当前缓存，不发送调试器请求；`read=true` 执行上述直接读取并返回 `samples`、`view` 与实际 owner。接口不支持通过用户目录把 MPU 固定动作重定向到有副作用的条目或共享 owner。
 
+R52 的常用身份/控制和 MPU 条目带实际 TRM 页码、主要字段与访问条件。SCTLR.FI 是 HSCTLR.FI 的 RO 副本，HCR.TRVM/TVM 分别表示读/写陷阱；MAIR 分别显示 Attr0–7。MIDR revision、MPIDR affinity 文字及 PRSELR 容量标题的手册矛盾明确保留为 Source conflict，不固定复位值或推导错误拓扑。EL2 MPU 容量 0 有效，selector 位宽随 16/20/24 区变化。目录来源及 normal-execution EL 说明不授予 Debug 注入权限；当前 Debug 权限统一仍在 C03 验收中。见 [R52 定义、来源与边界](docs/register-r52-core-model.md)。
+
 Cortex-M3/M4/M7 使用 `:mpu`／`:mpu m`，Headless 使用 `bank="m"`。先在物理 frame 0 暂停并 Probe，显式 Read 通过该核独立 Tcl/AP 通道读取 TYPE/CTRL 和全部有效 RBAR/RASR，单事务保存、选择、读取、恢复并回读 RNR。没有 MPU 时不读取控制/region；只写事务所需 RNR，不改 MPU 配置。失败/取消不发布部分 bank，旧值保留原来源并 stale；恢复或响应不确定进入 FAULT。indexed region 在 Snapshot 的 `register_mpu` 中保存，不覆盖普通当前 RNR 样本。打开、字段展开和滚动零 I/O；仅 GDB memory 路线不能执行此 bank 事务。配置和延后硬件用例见 [M MPU 说明](docs/register-cortex-m-mpu.md)。
 
 M 核 Debug/DWT/FPB 目录区分实现、容量和使能状态：DHCSR 仅手动单次读，DWT 未有 DEMCR.TRCENA 的有效证明时显示 NeedEnable/Unknown，不自动使能。M4/M7 的 CPACR 可展开 CP10/CP11 权限字段，显示保留编码及手册来源；其指令权限不替代外部调试授权。有效 MVFR0 证明后，FPU 配置与 GDB D/S/FPSCR 读取分别核对实际通道；同批 D/S 复用父样本，缺名或失败不显示零。模块支持边界、来源与默认 SKIPPED 的环境驱动见 [M Debug/FPU 说明](docs/register-cortex-m-modules.md)。

@@ -1,5 +1,11 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：R52 常用定义与独立 MPU 容量
+
+C01/C02 已完成描述、编码与容量模型验收：15 项常用身份/控制/MPU/MAIR 和 96 项已有 direct region 定义补齐字段、正常执行访问条件及手册来源；R52/R52+ 目录数量和读取路由保持。手册矛盾、未知复位值、EL2 零容量及 R52+ 未验证边界明确保留。目录写回省略默认空枚举列表，修复超过原 4 MiB 限制导致的用户覆盖及 Setup 加载回归。见 [定义说明](register-r52-core-model.md)，实时 feature 数及完整证据只维护于 [36 项账本](registers-readonly-goal.md) 的迭代 12。
+
+完整单元 489 通过、2 项既有 ignored；相关 MPU、读取与配置集成 37 通过；严格 Clippy、fmt、生成与 diff 检查通过。六项硬件 case 准备完成、SKIPPED，未上板或升级 verified。当前 Debug 权限与真实生产成功/拒绝链路仍由 C03 跟踪，C04/C05 恢复事务、C06 支持边界及最终交付继续待验收；正常执行 EL/trap 描述不授予注入权限。
+
 ## 2026-10-06：M7/M4 的 CorePrivate 与完整异构隔离
 
 B10 已完成：内置 M7/M4 目录经实际 Coordinator/MI/TCP/Tcl 验证同地址独立身份、容量、路由与缓存，覆盖共享/独立服务、单核错误/取消、帧/运行/身份与重连边界；UI 拒绝另一核的迟到值。生产访问代码复用既有实现。详见 [多核说明](register-cortex-m-multicore.md)，实时 feature 数和完整证据仅维护于 [36 项账本](registers-readonly-goal.md) 的迭代 11。

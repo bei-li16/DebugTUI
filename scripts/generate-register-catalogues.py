@@ -13,6 +13,7 @@ from register_gic_metadata import GIC_METADATA, GIC_ENCODINGS
 from register_mmio_metadata import MMIO_METADATA
 from register_stm_metadata import STM_METADATA
 from cmsis_registers import generate_m_catalogues
+from register_r52_core_metadata import r52_core_metadata, DOCUMENT as R52_DOCUMENT, VERSION as R52_VERSION
 
 MMIO_METADATA = {**MMIO_METADATA, **STM_METADATA}
 
@@ -30,6 +31,7 @@ def generate(cpu, m_profile=False, root=ROOT):
     def reg(id, group, bits=32, access="rw", kind="gdb", params=None, conditions=None, fields=None, effect=False):
         gic = GIC_METADATA.get(id)
         external = MMIO_METADATA.get(id) if kind == 'mmio' else None
+        core = r52_core_metadata(id) if not m_profile and kind == 'cp15' else None
         if gic:
             group = gic["group"]
         lines.extend(["", "[[registers]]", f"id = {q(id)}", f"name = {q(id.upper())}", f"group = {q(group)}", f"bits = {bits}", f"access = {q(access)}"])
@@ -56,12 +58,23 @@ def generate(cpu, m_profile=False, root=ROOT):
             conditions = [*(conditions or []), ("timer.present", 1, 1)]
         if id.startswith(('prbar','hprbar')) and id[-1:].isdigit(): description = "MPU region base address, permissions, shareability and execute-never attributes."
         if id.startswith(('prlar','hprlar')) and id[-1:].isdigit(): description = "MPU region inclusive limit, memory-attribute index and enable state."
+        if core:
+            description = core['description']
+            fields = core['fields']
+            if cpu == 'cortex-r52+':
+                description += ' Inherited R52 definition only; R52+ physical identity and differences remain unverified.'
         if group in ('single', 'double', 'quad'): description = "Floating-point storage view; overlapping S/D/Q aliases share one physical pair sample. MVFR controls implemented capacity; FPEXC.EN and traps control access."
         if group == 'vfp' and id != 'fpscr': description = ("Floating-point storage view; aliases use the same source sample. Availability depends on the implemented extension." if m_profile else "Raw floating-point identification or enable-control register; observation never enables the FPU.")
         lines.append(f"description = {q(description)}")
         params = params or {"name":id}
         route = [f"kind = {q(kind)}"] + [f"{key} = {q(value)}" for key,value in params.items()]
         lines.append("reader = { " + ", ".join(route) + " }")
+        if core:
+            assert bits == 32 and tuple(params[key] for key in ('op1','crn','crm','op2')) == core['encoding'], f'R52 encoding mismatch: {id}'
+            lines.append(f'source = {{ document = {q(R52_DOCUMENT)}, version = {q(R52_VERSION)}, number = "100026_0104_01_en", section = {q(core["section"])}, page = {core["page"]} }}')
+            lines.append(f'confidence = {q(core["confidence"])}')
+            if core['reset'] is not None:
+                lines.append(f'reset = {core["reset"]}')
         if group == "core" and kind == "gdb" and not fields and (id in ("sp", "lr", "pc") or id.startswith("r") and id[1:].isdigit()):
             lines.append(f'writer = {{ kind = "gdb_integer", name = {q(id)} }}')
             lines.append('write = { bits = 32, access = "read_write", effect = "modify", constraint = { kind = "none" }, read_side_effect = false, fields = [], reserved = "unknown", read_only_write = "unknown", verification = { kind = "modified" } }')
@@ -72,7 +85,7 @@ def generate(cpu, m_profile=False, root=ROOT):
         if external:
             lines.append(f'access_condition = {q(external["access_condition"])}')
         if kind in ("cp15", "cp15_64"):
-            condition = (timer or pmu or gic)["access_condition"] if (timer or pmu or gic) else "Halted physical core; access depends on current EL, traps and debug authorization."
+            condition = (core or timer or pmu or gic)["access_condition"] if (core or timer or pmu or gic) else "Halted physical core; access depends on current EL, traps and debug authorization."
             lines.append(f'access_condition = {q(condition)}')
         for condition in conditions or []:
             fact, minimum = condition[:2]
