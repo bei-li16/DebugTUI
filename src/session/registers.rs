@@ -57,6 +57,7 @@ impl Engine {
     }
     pub(super) fn invalidate_register_samples(&mut self) {
         let context = self.register_context();
+        self.invalidate_mpu_view();
         if self
             .snapshot
             .register_probe
@@ -79,6 +80,29 @@ impl Engine {
                         && sample.source == format!("gdb:{}", variable.name)
                 });
             }
+        }
+    }
+
+    pub(super) fn invalidate_mpu_view(&mut self) {
+        let Some(view) = self
+            .snapshot
+            .register_mpu
+            .as_ref()
+            .filter(|v| v.state == State::Valid)
+        else {
+            return;
+        };
+        let valid = self.snapshot.state == "STOPPED"
+            && view.valid_for(&self.register_context())
+            && self
+                .register_catalogue
+                .as_ref()
+                .ok()
+                .and_then(|c| c.as_ref())
+                .is_some_and(|(c, _)| c.cpu == view.cpu)
+            && self.effective_register_facts().get("mpu.regions") == Some(&u64::from(view.count));
+        if !valid {
+            self.snapshot.register_mpu.as_mut().unwrap().stale();
         }
     }
 
@@ -453,6 +477,7 @@ impl Engine {
                 }
             }
         }
+        self.invalidate_mpu_view();
     }
     pub(super) fn read_register_value(
         &mut self,

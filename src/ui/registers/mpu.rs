@@ -4,6 +4,7 @@ use crate::registers::mpu::{Bank, View};
 
 pub(super) struct Popup {
     bank: Bank,
+    m_profile: bool,
     count: Option<(Context, u8)>,
     scroll: usize,
     max_scroll: usize,
@@ -14,16 +15,26 @@ pub(super) struct Popup {
 }
 impl App {
     pub(in crate::ui) fn open_mpu_view(&mut self, arg: &str) {
+        let m_profile = self
+            .register_view
+            .catalogue
+            .as_ref()
+            .is_some_and(|c| crate::registers::m_profile::adapted_cpu(&c.cpu));
         if self
             .register_view
             .catalogue
             .as_ref()
-            .is_none_or(|c| c.architecture != "armv8-r-aarch32")
+            .is_none_or(|c| !m_profile && c.architecture != "armv8-r-aarch32")
         {
-            self.notice = "MPU overview requires an R52 AArch32 catalogue.".into();
+            self.notice = "MPU overview requires an adapted M3/M4/M7 or R52 catalogue.".into();
             return;
         }
         let bank = match arg.trim() {
+            "" | "m" if m_profile => Bank::El1,
+            _ if m_profile => {
+                self.notice = "Cortex-M uses :mpu or :mpu m (no EL1/EL2 banks)".into();
+                return;
+            }
             "el1" => Bank::El1,
             "el2" => Bank::El2,
             "" => {
@@ -47,6 +58,7 @@ impl App {
         };
         self.register_view.mpu_popup = Some(Popup {
             bank,
+            m_profile,
             count: None,
             scroll: 0,
             max_scroll: 0,
@@ -69,18 +81,32 @@ impl App {
             return;
         };
         let bank = popup.bank;
+        let m_profile = popup.m_profile;
         let context = self.register_context();
         if context.frame != 0
             || self.snapshot.register_probe.as_ref().is_none_or(|p| {
                 p.context != context
-                    || p.identity
-                        .as_ref()
-                        .is_none_or(|i| i.model.as_deref() != Some("Cortex-R52"))
-                    || !p.facts.contains_key(bank.count_fact())
+                    || p.identity.as_ref().is_none_or(|i| {
+                        if m_profile {
+                            i.model.as_ref().is_none_or(|model| {
+                                self.register_view
+                                    .catalogue
+                                    .as_ref()
+                                    .is_none_or(|c| model.to_ascii_lowercase() != c.cpu)
+                            })
+                        } else {
+                            i.model.as_deref() != Some("Cortex-R52")
+                        }
+                    })
+                    || !p.facts.contains_key(if m_profile {
+                        "mpu.regions"
+                    } else {
+                        bank.count_fact()
+                    })
             })
         {
             self.register_view.mpu_popup.as_mut().unwrap().error =
-                Some("Probe this physical R52 core at frame 0 before reading regions".into());
+                Some("Probe this physical core at frame 0 before reading regions".into());
             return;
         }
         let id = self.next_id;
@@ -91,7 +117,7 @@ impl App {
         self.submit(
             engine,
             "registers_mpu",
-            json!({"context":context,"bank":bank,"read":true}),
+            json!({"context":context,"bank":if m_profile {json!("m")} else {json!(bank)},"read":true}),
         );
         if !self.pending_commands.contains(&id) {
             self.register_view.pending = None;
@@ -115,6 +141,9 @@ impl App {
         };
         match popup.button {
             0 => {
+                if popup.m_profile {
+                    return;
+                }
                 popup.bank = if popup.bank == Bank::El1 {
                     Bank::El2
                 } else {
@@ -276,6 +305,74 @@ fn content(view: &View) -> Vec<String> {
     lines.extend(view.notes.iter().cloned());
     lines
 }
+fn m_content(
+    view: &crate::registers::mpu::m_profile::View,
+    catalogue: &Catalogue,
+    current: bool,
+) -> Vec<String> {
+    let mut lines = vec![
+        format!(
+            "{} {} · {} regions · {:?}",
+            view.owner,
+            view.cpu,
+            view.count,
+            if current { State::Valid } else { State::Stale }
+        ),
+        format!(
+            "RNR saved={} restored={}",
+            view.original_selector
+                .as_ref()
+                .map(|v| v.hex.as_str())
+                .unwrap_or("not read"),
+            view.restored_selector
+                .as_ref()
+                .map(|v| v.hex.as_str())
+                .unwrap_or("not read")
+        ),
+    ];
+    let mut show = |label: &str, sample: &Sample| {
+        let mut sample = sample.clone();
+        if !current {
+            sample.stale();
+        }
+        lines.push(format!(
+            "{label}: {}",
+            evidence(Some(&sample), &view.context)
+        ));
+        if current
+            && let Some(raw) = &sample.value
+            && let Some(register) = catalogue.register(&sample.id)
+        {
+            let fields: Vec<_> = register
+                .fields
+                .iter()
+                .filter_map(|f| {
+                    let value = f.extract(raw).ok()?;
+                    Some(format!(
+                        "{}={}{}",
+                        f.name,
+                        value.hex,
+                        f.enum_name(&value)
+                            .map(|n| format!(" ({n})"))
+                            .unwrap_or_default()
+                    ))
+                })
+                .collect();
+            lines.push(format!("  {}", fields.join(" · ")));
+        }
+    };
+    show("CPUID", &view.identity);
+    show("TYPE", &view.mpu_type);
+    if let Some(control) = &view.control {
+        show("CTRL", control);
+    }
+    for region in &view.regions {
+        show(&format!("#{} RBAR", region.index), &region.base);
+        show(&format!("#{} RASR", region.index), &region.attributes);
+    }
+    lines.push("Configuration samples; region fields use the selected core catalogue. No effective-address permission claim.".into());
+    lines
+}
 pub(super) fn wrap(lines: Vec<String>, width: usize) -> Vec<Line<'static>> {
     use unicode_width::UnicodeWidthChar;
     let mut result = vec![];
@@ -301,6 +398,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         return;
     };
     let bank = popup.bank;
+    let m_profile = popup.m_profile;
     let fresh = app
         .snapshot
         .register_probe
@@ -308,14 +406,48 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         .filter(|p| {
             p.context == context
                 && app.snapshot.state == "STOPPED"
-                && p.identity
-                    .as_ref()
-                    .is_some_and(|i| i.model.as_deref() == Some("Cortex-R52"))
+                && p.identity.as_ref().is_some_and(|i| {
+                    if m_profile {
+                        i.model.as_ref().is_some_and(|model| {
+                            app.register_view
+                                .catalogue
+                                .as_ref()
+                                .is_some_and(|c| model.to_ascii_lowercase() == c.cpu)
+                        })
+                    } else {
+                        i.model.as_deref() == Some("Cortex-R52")
+                    }
+                })
         })
-        .and_then(|p| p.facts.get(bank.count_fact()))
-        .and_then(|f| bank.validate_count(f.value).ok());
+        .and_then(|p| {
+            p.facts.get(if m_profile {
+                "mpu.regions"
+            } else {
+                bank.count_fact()
+            })
+        })
+        .and_then(|f| {
+            if m_profile {
+                u8::try_from(f.value)
+                    .ok()
+                    .filter(|n| matches!(n, 0 | 8 | 16))
+            } else {
+                bank.validate_count(f.value).ok()
+            }
+        });
     if let Some(n) = fresh {
         app.register_view.mpu_popup.as_mut().unwrap().count = Some((context.clone(), n));
+    } else if m_profile
+        && let Some(view) = &app.snapshot.register_mpu
+        && view.context.core == context.core
+        && app
+            .register_view
+            .catalogue
+            .as_ref()
+            .is_some_and(|c| c.cpu == view.cpu)
+    {
+        app.register_view.mpu_popup.as_mut().unwrap().count =
+            Some((view.context.clone(), view.count));
     }
     let popup = app.register_view.mpu_popup.as_ref().unwrap();
     let mut lines = vec![];
@@ -323,21 +455,39 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         if *observed != context || fresh.is_none() {
             lines.push("Region count is last-known; probe current stop before reading".into());
         }
-        let samples: Vec<_> = app
-            .register_view
-            .values
-            .values()
-            .cloned()
-            .map(|mut s| {
-                if app.snapshot.state != "STOPPED" {
-                    s.stale();
+        if m_profile {
+            if let Some(view) = &app.snapshot.register_mpu
+                && let Some(catalogue) = &app.register_view.catalogue
+            {
+                if view.context.core == context.core && view.cpu == catalogue.cpu {
+                    lines.extend(m_content(
+                        view,
+                        catalogue,
+                        fresh == Some(view.count) && view.valid_for(&context),
+                    ));
+                } else {
+                    lines.push("No MPU bank samples for this physical core".into());
                 }
-                s
-            })
-            .collect();
-        match View::from_samples(bank, u64::from(*count), &context, &samples) {
-            Ok(view) => lines.extend(content(&view)),
-            Err(e) => lines.push(e),
+            } else {
+                lines.push("Press Read to sample regions and restore RNR".into());
+            }
+        } else {
+            let samples: Vec<_> = app
+                .register_view
+                .values
+                .values()
+                .cloned()
+                .map(|mut s| {
+                    if app.snapshot.state != "STOPPED" {
+                        s.stale();
+                    }
+                    s
+                })
+                .collect();
+            match View::from_samples(bank, u64::from(*count), &context, &samples) {
+                Ok(view) => lines.extend(content(&view)),
+                Err(e) => lines.push(e),
+            }
         }
     } else {
         lines.push(format!(
@@ -349,7 +499,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         );
     }
     if popup.pending.is_some() {
-        lines.insert(0, "Reading current-core direct MPU registers…".into());
+        lines.insert(0, "Reading current-core MPU registers…".into());
     }
     if let Some(error) = &popup.error {
         lines.insert(0, format!("Error: {error}"));
@@ -387,7 +537,9 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         Rect::new(inner.x, inner.y, inner.width, visible),
     );
     let labels = [
-        if bank == Bank::El1 {
+        if m_profile {
+            "M regions"
+        } else if bank == Bank::El1 {
             "EL1 / EL2"
         } else {
             "EL2 / EL1"

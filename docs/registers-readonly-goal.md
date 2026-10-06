@@ -38,7 +38,7 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | B02 | SCB 与故障字段 | 常用状态/控制及 CFSR/HFSR/MMFAR/BFAR 定义 |
 | [x] | B03 | NVIC 与优先级来源 | 动态 bank/优先级位、无依据 Unknown、不写探测 |
 | [x] | B04 | SysTick 与读副作用 | CTRL/LOAD/VAL/CALIB、手动读与自动零 I/O |
-| [ ] | B05 | M MPU 与 region 读取 | TYPE/CTRL/RNR/RBAR/RASR、容量及保存恢复 |
+| [x] | B05 | M MPU 与 region 读取 | TYPE/CTRL/RNR/RBAR/RASR、容量及保存恢复 |
 | [ ] | B06 | Debug、DWT/FPB 身份容量 | 不轮询 DHCSR、不自动使能、门控原因 |
 | [ ] | B07 | M4 FPU 配置与身份 | CPACR/FPCCR/FPCAR/FPDSCR/MVFR、GDB regfile 复用 |
 | [ ] | B08 | M7 cache/TCM 配置 | TRM/CMSIS 有据定义、维护命令不执行 |
@@ -124,3 +124,17 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 初次集成遇到 Windows 时钟目录碰撞，改为进程内唯一计数而保留原读取次数断言；新增 UI 测试错误使用 key helper，改为实际 KeyEvent；Tcl 新夹具的 accepted socket 继承 nonblocking，明确还原 blocking 后通过。初始失败日志保留在同目录 `readonly-m-probe-mi-20261006.log`、`readonly-m-probe-regression-20261006.log`、`readonly-m-probe-final-mi-20261006.log`。这些是夹具/编译修正，没有放宽生产协议或跳过失败。
 - 严格 Clippy 全 target 最终通过（16.80 秒）：`readonly-m-probe-clippy-final-20261006.log`；首次仅提示 String 的冗余转换，等价去除后复验。`cargo fmt --all --check`、diff 检查、六份离线目录生成一致性和三项 Python 生成测试通过。正式目录未增加新的寄存器类别，未重建不变的 OpenOCD。
 - 文档 [M 身份、容量与 NVIC](register-cortex-m-probe.md) 和四项 [硬件 case](../tests/cases/register-cortex-m-probe.md) 完成，硬件全部 SKIPPED，来源引用保留。B05 的 region 事务、B06/B07/B08 整体模块验收、B10 生命周期和 B11 运行态仍未完成；已有 ID/目录/路线成果可复用，不能把它们重复开发。C01～C06、D01～D04、E01～E05 继续按清单推进。提交 SHA 与推送核验结果由本轮最终输出报告。
+
+## 迭代 6：M MPU region 单事务与恢复
+
+2026-10-06，完成 B05，累计 **15 完成 / 21 未完成**。迭代 5 已提交推送 `52c78f923111fc412f5fc12b7f52a3732af9af14`，开始本轮时再次核对本地/远端一致；用户要求修订的 [Goal 文本](registers-goal-objective.md) 随本轮保存，保留 14/22 的修订起点及实时清单优先规则。
+
+- 扩展既有 `registers_mpu` / `:mpu` 总览，M3/M4/M7 采用 `bank=m`。重用 CMSIS 定义、CorePrivate binding、服务 lease 和实际 MI/Tcl 传输；一个显式 target Tcl 事务重新核对 CPUID/TYPE/停止状态，保存 RNR、逐个选择/回读/读取 RBAR/RASR、恢复并验证，完整响应及最终线程/帧通过后才发布。只临时写 RNR，没有 MPU 配置写入、全局 target 切换或新 CPU 注入器。
+- 实际观测的 0/8/16 容量决定实例。没有 MPU 时只核对身份/TYPE，CTRL/selector 无样本，regions 为空；不制造零控制值。无法证明容量、修改固定 reader/权限/副作用定义、缺少独立 Tcl/AP 路线时在目标 I/O 前拒绝。GDB memory 保留普通当前 RNR 读取能力，不能冒充此 bank 事务。
+- Snapshot `register_mpu` 保存 indexed bank，复用每项 Sample/Reader/owner/Context/请求区间和来源，不覆盖普通当前 RNR 样本。失败/取消不发布部分值，旧 bank 保留原值、原时间和原来源并 stale；新的非法 TYPE、运行/换帧/重连等边界撤销有效性。恢复失败、损坏/断开的响应隔离服务为 FAULT，没有自动重试。M4/M7 的 core0/core2 经不同 target，Scope All 仍只读取选中核。
+- 第一批单元/集成回归 **461 单元通过、2 ignored**；相关身份、M ID、策略及共享集成 **29 通过**。完整 selector 套件 **90 通过、1 新夹具失败**，其中原有 81 项通过；新测试把零 I/O 的空 trace 当已初始化列表。修正 trace 初始化，并让自定义 M 目录清除已展开的 extends；GDB-only case 增加真实 MI 身份/容量基线，使其确实到达 unsupported-route 门禁。没有降低断言或跳过失败。回归日志 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\readonly-m-mpu-regression-final-20261006.log` 保留原失败，不把它标为全部通过。
+- 随后补齐 TYPE 撤销 bank 的规则及用例，最终 MPU 模型/UI 专项 **10/10**，M worker/Coordinator/真实 Tcl/实际 EXE 专项 **11/11**。最终日志为同目录 `readonly-m-mpu-unit-final-20261006.log`、`readonly-m-mpu-cases-final-20261006.log`。之后的生产改动仅为 M bank 缓存检查及未采样 selector 的空值表达，原 R52/空 bank 路径不变；没有宣称本轮运行全仓所有集成。实际 EXE 环境驱动正向和错误独立基线拒绝均通过。
+- Tcl 夹具最初只服务每连接一帧；改成持久连接后又暴露阻塞新连接的问题。最终同时接收多个连接的完整帧，在唯一 Tcl 解释器中顺序执行，原 81 项 selector 回归证明已有流程仍适用。保留 `readonly-m-mpu-first-20261006.log`、`readonly-m-mpu-focused-20261006.log`、`readonly-m-mpu-focused-final-20261006.log`、`readonly-m-mpu-final-20261006.log`、`readonly-m-mpu-multiplexed-20261006.log` 的编译/夹具失败和最终恢复，不伪造软件夹具为 ARM 实板。
+- `cargo fmt --all --check`、严格 Clippy 全 targets（17.15 秒）、diff 检查、六份离线目录生成一致性及 Node 语法检查通过。Clippy 日志 `readonly-m-mpu-clippy-20261006.log`。未修改或重建 OpenOCD。
+- [M MPU 文档](register-cortex-m-mpu.md)、用户指南及三项 [环境 case](../tests/cases/register-cortex-m-mpu.md) 完成；驱动 `scripts/test-m-profile-mpu-hardware.cjs` 默认三个阶段全部 SKIPPED、零目标 I/O，报告位于上述构建目录 `evidence/m-profile-mpu-hardware-1791266088629-c6f06ef9`。所有硬件未执行，verified 未升级。三个核心绝对参考路径均保留。
+- 剩余 A04；B06/B07/B08/B10/B11；C01～C06；D01～D04；E01～E05。下一批验收 M Debug/DWT/FPB 与 FPU/cache 模块整体行为，复用已有目录和 ID；完整异构生命周期、运行态、R52 当前 Debug 权限和 Release 仍未完成。最终提交 SHA 与远端核验由本轮输出和证据 manifest 记录。

@@ -29,6 +29,64 @@ def evaluate(data):
     barriers = 0
     interp = tkinter.Tcl()
 
+    def memory(name, op, *args):
+        cpu = state['targets'][name]
+        if op == 'curstate':
+            return (0, cpu['status'])
+        state['trace'].append([name, op, *args])
+        if cpu['status'] != 'halted':
+            return (1, 'physical M target is not halted')
+        cpu.setdefault('m_rnr', 3)
+        cpu.setdefault('m_original', cpu['m_rnr'])
+        count = cpu.get('m_count', 8)
+        if op == 'write_memory':
+            assert len(args) == 3 and int(args[0], 0) == 0xe000ed98 and args[1] == '32'
+            value = int(args[2], 0)
+            assert 0 <= value < count
+            restoring_m = cpu.get('m_failed', False) or cpu.get('m_pairs', 0) >= count
+            if fault == 'm_restore_write' and restoring_m:
+                return (1, 'fixture refuses RNR restoration')
+            cpu['m_rnr'] = value
+            cpu['m_last_restore'] = restoring_m
+            cpu['m_writes'] = cpu.get('m_writes', 0) + 1
+            if fault == 'm_select_after_write' and not restoring_m:
+                cpu['m_failed'] = True
+                return (1, 'fixture write applied before error')
+            return (0, '')
+        assert op == 'read_memory' and len(args) == 3 and args[1:] == ('32', '1')
+        address = int(args[0], 0)
+        model = cpu.get('m_cpuid', 0x410fc231)
+        values = {0xe000ed00: model, 0xe000e004: 2, 0xe000ed90: count << 8,
+                  0xe000ed94: 5, 0xe000ed98: cpu['m_rnr'], 0xe000edfc: 0,
+                  0xe0002000: 0x10000060, 0xe0001000: 0x40000000,
+                  0xe000ef40: 0x10110021, 0xe000ef44: 0x11000011, 0xe000ef48: 0}
+        if address == 0xe000ed9c:
+            if fault == 'm_base_read' and cpu['m_rnr'] == 2:
+                cpu['m_failed'] = True
+                return (1, 'fixture RBAR read refused')
+            values[address] = (0x30000000 if name == 'cpu1' else 0x20000000) + cpu['m_rnr'] * 0x10000 + cpu['m_rnr']
+        if address == 0xe000eda0:
+            if fault == 'm_rasr_read' and cpu['m_rnr'] == 2:
+                cpu['m_failed'] = True
+                return (1, 'fixture RASR read refused')
+            values[address] = 0x0307001f + cpu['m_rnr'] * 0x100
+            cpu['m_pairs'] = cpu.get('m_pairs', 0) + 1
+            if fault == 'm_context_change' and cpu['m_rnr'] == 2:
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+        if address == 0xe000ed98 and fault == 'm_select_readback' and cpu.get('m_writes') and not cpu.get('m_failed'):
+            cpu['m_failed'] = True
+            values[address] ^= 1
+        if address == 0xe000ed98 and fault == 'm_restore_readback' and cpu.get('m_last_restore'):
+            values[address] ^= 1
+        if address == 0xe000ed90 and fault == 'm_capacity':
+            values[address] = (16 if count == 8 else 8) << 8
+        if address == 0xe000ed00 and fault == 'm_final_identity' and cpu.get('m_pairs', 0) >= count:
+            values[address] ^= 0x10
+        if address == 0xe000ed98 and fault == 'm_invalid_original' and not cpu.get('m_writes'):
+            values[address] = count
+        assert address in values, f'unexpected MPU fixture address {address:#x}'
+        return (0, (f'0x{values[address]:08x}',))
+
 
     def targets(*args):
         if len(args) != 1:
@@ -391,7 +449,10 @@ def evaluate(data):
     interp.createcommand('target', lambda action: state['current'] if action == 'current' else '')
     for name in state['targets']:
         interp.createcommand(name, lambda action, name=name: state['targets'][name]['status'] if action == 'curstate' else '')
+    interp.createcommand('_fixture_memory', memory)
     interp.eval('''
+    proc cpu0 {op args} {set r [_fixture_memory cpu0 $op {*}$args]; if {[lindex $r 0]} {error [lindex $r 1]}; return [lindex $r 1]}
+    proc cpu1 {op args} {set r [_fixture_memory cpu1 $op {*}$args]; if {[lindex $r 0]} {error [lindex $r 1]}; return [lindex $r 1]}
     proc targets {name} {set r [_fixture_targets $name]; if {[lindex $r 0]} {error [lindex $r 1]}; return [lindex $r 1]}
     proc arm {op args} {set r [_fixture_arm $op {*}$args]; if {[lindex $r 0]} {if {[llength $r] == 3} {return -code error -errorcode [list OpenOCD [lindex $r 2]] [lindex $r 1]}; error [lindex $r 1]}; return [lindex $r 1]}
     proc aarch64 {op args} {return [arm $op {*}$args]}

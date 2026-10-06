@@ -56,7 +56,7 @@ impl FieldCondition {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AccessRule {
     /// Omitted keeps the conservative stopped-only policy. False is limited to memory readers.

@@ -1,6 +1,68 @@
 use super::*;
 use crate::registers::{RawValue, Reason, capabilities::Probe};
 use std::sync::{Arc, atomic::AtomicBool, mpsc};
+#[test]
+fn m_mpu_overview_uses_explicit_read_and_shows_stale_raw_without_field_derivation() {
+    let mut project = Project::default();
+    project.registers.cpu = "cortex-m3".into();
+    let mut app = App::new(project, false);
+    app.snapshot.state = "STOPPED".into();
+    app.snapshot.register_session = 1;
+    app.snapshot.generation = 2;
+    let mut proof = super::tests::app().snapshot.register_probe.unwrap();
+    proof.identity.as_mut().unwrap().model = Some("Cortex-M3".into());
+    let mut count = proof.facts["mpu.el1.regions"].clone();
+    count.value = 8;
+    proof.facts.insert("mpu.regions".into(), count);
+    app.snapshot.register_probe = Some(proof);
+    app.snapshot.register_mpu = Some(crate::registers::mpu::m_profile::View {
+        context: app.register_context(),
+        owner: "core:default".into(),
+        cpu: "cortex-m3".into(),
+        count: 8,
+        state: State::Valid,
+        identity: sample(&app, "scb.cpuid", "0x410fc231"),
+        mpu_type: sample(&app, "mpu.type", "0x800"),
+        control: Some(sample(&app, "mpu.ctrl", "0x5")),
+        original_selector: Some(RawValue::parse("0x3", 32).unwrap()),
+        restored_selector: Some(RawValue::parse("0x3", 32).unwrap()),
+        regions: vec![crate::registers::mpu::m_profile::Region {
+            index: 0,
+            base: sample(&app, "mpu.rbar", "0x20000000"),
+            attributes: sample(&app, "mpu.rasr", "0x0307001f"),
+        }],
+    });
+    let (engine, requests) = engine();
+    app.open_mpu_view("");
+    let text = render(&mut app, 112, 30);
+    assert!(text.contains("RBAR"));
+    assert!(text.contains("ENABLE="));
+    assert!(requests.try_recv().is_err());
+    app.key(
+        KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE),
+        Some(&engine),
+    );
+    assert!(app.register_view.mpu_popup.as_ref().unwrap().m_profile);
+    assert!(render(&mut app, 44, 12).contains("Read"));
+    assert!(requests.try_recv().is_err());
+    app.key(
+        KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE),
+        Some(&engine),
+    );
+    let request = requests.try_recv().unwrap();
+    assert_eq!(request.method, "registers_mpu");
+    assert_eq!(request.params["bank"], "m");
+    app.register_response(request.id, &json!({}), None);
+    app.snapshot.state = "RUNNING".into();
+    let text = render(&mut app, 112, 30);
+    assert!(text.contains("Stale"));
+    assert!(!text.contains("ENABLE="));
+    app.key(
+        KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE),
+        Some(&engine),
+    );
+    assert!(requests.try_recv().is_err());
+}
 fn sample(app: &App, id: &str, value: &str) -> Sample {
     Sample {
         id: id.into(),

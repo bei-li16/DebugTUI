@@ -176,6 +176,8 @@ pub struct Snapshot {
     pub register_generation: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub register_probe: Option<crate::registers::capabilities::Probe>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register_mpu: Option<crate::registers::mpu::m_profile::View>,
     pub async_supported: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core: Option<CoreStatus>,
@@ -212,6 +214,7 @@ impl Default for Snapshot {
             memory_selection_epoch: 0,
             register_generation: None,
             register_probe: None,
+            register_mpu: None,
             async_supported: false,
             core: None,
             cores: vec![],

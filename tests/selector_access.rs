@@ -25,6 +25,8 @@ mod banked_cases;
 mod cancel_cases;
 #[path = "selector_access/gic_cases.rs"]
 mod gic_cases;
+#[path = "selector_access/m_profile_mpu_cases.rs"]
+mod m_profile_mpu_cases;
 #[path = "selector_access/matrix_cases.rs"]
 mod matrix_cases;
 #[path = "selector_access/mpu_cases.rs"]
@@ -67,10 +69,13 @@ fn fixture(fault: &'static str) -> Fixture {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let directory = root.join("artifacts").join(format!(
-        "selector-{}-{sequence}-{nonce:x}",
-        std::process::id()
-    ));
+    let directory = std::env::var_os("DEBUGTUI_TEST_ARTIFACT_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| root.join("artifacts"))
+        .join(format!(
+            "selector-{}-{sequence}-{nonce:x}",
+            std::process::id()
+        ));
     fs::create_dir_all(directory.parent().unwrap()).unwrap();
     // Windows reuses process IDs; an old fixture must never supply this run's raw inputs.
     fs::create_dir(&directory).unwrap();
@@ -108,28 +113,61 @@ fn fixture(fault: &'static str) -> Fixture {
         true
     );
     let worker = std::thread::spawn(move || {
+        // Several workers and the bank transaction may keep separate connections
+        // open. Poll frames, then execute them serially in the one Tcl interpreter.
+        let mut connections: Vec<(std::net::TcpStream, Vec<u8>)> = vec![];
         while !stopping.load(Ordering::Relaxed) {
-            let mut stream = match listener.accept() {
-                Ok((stream, _)) => stream,
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::park_timeout(Duration::from_millis(5));
-                    continue;
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    stream.set_nonblocking(true).unwrap();
+                    connections.push((stream, vec![]));
                 }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(e) => panic!("TCL fixture accept: {e}"),
-            };
-            stream.set_nonblocking(false).unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(5)))
-                .unwrap();
-            let mut packet = vec![];
-            let mut byte = [0];
-            loop {
-                stream.read_exact(&mut byte).unwrap();
-                if byte[0] == 0x1a {
+            }
+            let mut complete = None;
+            for index in (0..connections.len()).rev() {
+                let mut byte = [0];
+                let mut closed = false;
+                let (stream, packet) = &mut connections[index];
+                loop {
+                    match stream.read(&mut byte) {
+                        Ok(0) => {
+                            closed = true;
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
+                        Err(error)
+                            if matches!(
+                                error.kind(),
+                                std::io::ErrorKind::ConnectionReset
+                                    | std::io::ErrorKind::ConnectionAborted
+                            ) =>
+                        {
+                            closed = true;
+                            break;
+                        }
+                        Err(error) => panic!("TCL fixture read: {error}"),
+                    }
+                    if byte[0] == 0x1a {
+                        complete = Some((index, std::mem::take(packet)));
+                        break;
+                    }
+                    packet.push(byte[0]);
+                }
+                if closed {
+                    connections.remove(index);
+                }
+                if complete.is_some() {
                     break;
                 }
-                packet.push(byte[0]);
             }
+            let Some((index, packet)) = complete else {
+                std::thread::park_timeout(Duration::from_millis(2));
+                continue;
+            };
+            let stream = &mut connections[index].0;
             let packet = String::from_utf8(packet).unwrap();
             let quoted = packet.strip_prefix("set __dt_code [catch \"").unwrap();
             let mut script = String::new();
@@ -154,7 +192,9 @@ fn fixture(fault: &'static str) -> Fixture {
                     .as_ref()
                     .is_some_and(|request| match request.method.as_str() {
                         "registers_select" => script.contains("arm mcr"),
-                        "registers_mpu" => script.contains("arm mrc"),
+                        "registers_mpu" => {
+                            script.contains("arm mrc") || script.contains("write_memory")
+                        }
                         "registers_read" => {
                             script.contains("aarch64 vfp")
                                 || script.contains("aarch64 banked")
@@ -174,18 +214,37 @@ fn fixture(fault: &'static str) -> Fixture {
             tcl_output.read_line(&mut response).unwrap();
             let result: Value = serde_json::from_str(&response).unwrap();
             *captured.lock().unwrap() = result["state"].clone();
+            if active_fault == "m_disconnect_reply" && script.contains("write_memory") {
+                connections.remove(index);
+                continue;
+            }
             let code = if result["ok"] == true { 0 } else { 1 };
             let response = format!(
                 "__DEBUGTUI_RPC__{code}:{}",
-                result["value"].as_str().unwrap()
+                if active_fault == "m_incomplete_reply" && script.contains("write_memory") {
+                    "410fc231 00000800"
+                } else {
+                    result["value"].as_str().unwrap()
+                }
             );
             fs::write(
                 directory.join("last-tcl.json"),
                 serde_json::to_vec_pretty(&json!({"input":input,"output":result})).unwrap(),
             )
             .unwrap();
-            stream.write_all(response.as_bytes()).unwrap();
-            stream.write_all(&[0x1a]).unwrap();
+            stream.set_nonblocking(false).unwrap();
+            stream
+                .set_write_timeout(Some(Duration::from_millis(500)))
+                .unwrap();
+            if stream
+                .write_all(response.as_bytes())
+                .and_then(|_| stream.write_all(&[0x1a]))
+                .is_err()
+            {
+                connections.remove(index);
+            } else {
+                stream.set_nonblocking(true).unwrap();
+            }
         }
         drop(tcl_input);
         assert!(process.wait().unwrap().success());

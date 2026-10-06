@@ -4,6 +4,7 @@ use crate::registers::{
     Catalogue, Context, Implementation, Sample, State,
     mpu::{Bank, View},
 };
+mod m_profile;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -16,6 +17,9 @@ struct Request {
 
 impl Engine {
     pub(super) fn mpu_regions(&mut self, params: &Json) -> Result<Json, String> {
+        if params["bank"] == "m" {
+            return self.m_profile_mpu(params);
+        }
         self.stopped()?;
         let request: Request =
             serde_json::from_value(params.clone()).map_err(|e| format!("MPU request: {e}"))?;

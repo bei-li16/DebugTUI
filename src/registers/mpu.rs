@@ -4,6 +4,7 @@ use super::{
     selector::{Kind, MpuRegion, decode_mpu},
 };
 use serde::{Deserialize, Serialize};
+pub mod m_profile;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
