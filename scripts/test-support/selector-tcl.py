@@ -214,7 +214,15 @@ def evaluate(data):
             if fault == 'r52_context_change':
                 Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
             dspsr = cpu.get('r52_dspsr', '0xa2000410')
-            return (0, f'midr {midr} dscr {dscr} dspsr {dspsr} dlr 0x81234568 bank {bank} capacity 0x{capacity:08x} value {raw}')
+            dlr = cpu.get('r52_dlr', '0x81234568')
+            if cpu.get('r52_mutate_on') == reg:
+                # Model a change between two completed backend transactions,
+                # after capturing this response's own consistent evidence.
+                cpu.update(cpu.pop('r52_mutations'))
+                cpu.pop('r52_mutate_on')
+            if cpu.get('r52_context_on') == reg:
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+            return (0, f'midr {midr} dscr {dscr} dspsr {dspsr} dlr {dlr} bank {bank} capacity 0x{capacity:08x} value {raw}')
         if op == 'debugtui_timer_protocol':
             return (0, 'old-timer-adapter' if fault == 'timer_protocol' else
                     'debugtui-armv8-timer-1 external-identity current-el dspsr dlr scratch-readback no-mode-change stop-on-fault')

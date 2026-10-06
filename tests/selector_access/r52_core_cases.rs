@@ -1,6 +1,6 @@
 use super::*;
 
-fn configured(fault: &'static str) -> Fixture {
+pub(super) fn configured(fault: &'static str) -> Fixture {
     let mut f = fixture(fault);
     f.project.registers.cp15_command = debugtui::registers::r52_core::COMMAND.into();
     f.project.registers.selector_command.clear();
@@ -11,7 +11,7 @@ fn configured(fault: &'static str) -> Fixture {
     }).to_string());
     f
 }
-fn native_reads(state: &Value) -> Vec<&Value> {
+pub(super) fn native_reads(state: &Value) -> Vec<&Value> {
     state["trace"]
         .as_array()
         .unwrap()

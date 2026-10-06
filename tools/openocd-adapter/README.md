@@ -2,7 +2,7 @@
 
 这是独立的 GPL-2.0-or-later OpenOCD 修改，固定上游 `d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e` 和 Jim Tcl 子模块版本。校验和见 `source.lock.json`，补丁可以干净应用到该提交。现有 xPack Windows OpenOCD 没有被替换；相同的 `0.12.0` 版本号不证明具备本适配器。
 
-当前补丁另提供有界普通 R52 读取 `aarch64 r52_read NAME` 及独立 `debugtui_r52_protocol`，见 [配置、当前 EL2 与事务边界](../../docs/register-r52-core-read.md)。本批实际生产 C 模型与 host 集成已验收，MPU 总览/selector 统一接入及完整新 OpenOCD 命令入口仍待完成；`source.lock.json` 的 Windows/Linux build verified 为 false、候选摘要为空。以下已构建候选的描述是各旧子批次的历史证据，不能证明当前补丁构建、当前安装或实板执行。新命令不接受任意 CP15 编码，不与旧 selector 参数直接混用。
+当前补丁另提供有界普通 R52 读取 `aarch64 r52_read NAME` 及独立 `debugtui_r52_protocol`，见 [配置、当前 EL2 与事务边界](../../docs/register-r52-core-read.md)。实际生产 C 模型与 host 集成已验收，MPU 总览已复用当前证据；selector 统一接入及完整新 OpenOCD 命令入口仍待完成。`source.lock.json` 的 Windows/Linux build verified 为 false、候选摘要为空。以下已构建候选的描述是各旧子批次的历史证据，不能证明当前补丁构建、当前安装或实板执行。新命令不接受任意 CP15 编码，不与旧 selector 参数直接混用。
 
 `aarch64 mrrc cpnum op1 CRm` 对暂停的 AArch32 核执行一次 MRRC，将 R0/R1 的低、高字拼成 64 位结果，输出固定 16 位十六进制。它先保存物理 R0/R1，恢复后回读检查，不用缓存代替物理原值。补丁也使该命令组的 `aarch64 mrc/mcr` 保存、恢复并回读 R0。通用 `arm mrc/mcr` 和内部旧 DPM 路径没有被改造。
 

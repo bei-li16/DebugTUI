@@ -1,6 +1,6 @@
 # R52 常用寄存器的受保护只读访问
 
-本批接通普通 32 位 CP15 读取的 host 与生产后端事务，是 C03 的子批次。支持已复核的 15 项身份/控制/MPU 标量及 96 项 EL1/EL2 MPU 直接索引定义，不增加目录类别。MPU 总览和 selector 的统一权限改造、完整 OpenOCD 候选构建与命令入口验收仍待完成；不能仅凭本批模型和 worker 通过勾选 C03。
+本批接通普通 32 位 CP15 读取的 host 与生产后端事务，是 C03 的子批次。支持已复核的 15 项身份/控制/MPU 标量及 96 项 EL1/EL2 MPU 直接索引定义，不增加目录类别。MPU 总览现已复用该事务并核对整批证据，见下节；selector 的统一权限改造、完整 OpenOCD 候选构建与命令入口验收仍待完成，不能仅凭本批模型和 worker 通过勾选 C03。
 
 三个核心参考保持绝对路径：
 
@@ -47,6 +47,18 @@ MPU 依赖项在同一事务读取正确 bank 的 MPUIR/HMPUIR，核对 EL1 的 
 host 的 min_el 预检查仅在全部读取依赖都是受限 core reader 时，把 EL 核实交给该事务中的后端；不把固定 EL2 写成观测事实。owner、NeedHalt、NeedEnable、实现条件、Alias 与副作用门禁继续生效。能力 Probe 的 MIDR、MPUIR、HMPUIR、CPACR 在新配置下也走该生产路径，不使用可见的 GDB 名称替代它，不用保存 CPSR 判断 HMPUIR 权限。
 
 响应固定为 `midr RAW32 dscr RAW32 dspsr RAW32 dlr RAW32 bank none|el1|el2 capacity RAW32 value RAW32`。所有原始值精确 32 位；外部 MIDR 与 CPU MIDR 数据必须一致。采样来源保留实际协议、target、endpoint、请求区间及 `access.r52_core`；失败旧值保留原来源。界面可查看当前 Debug 状态和停止程序状态，证据不授予后续请求权限。
+
+## MPU 总览
+
+在上述新配置下，`registers_mpu` 的 EL1/EL2 总览复用现有整批服务锁和每次 `r52_read`，直接索引读取容量内的 BAR/LAR，不写 selector。保存的 CPSR 可以是 User，权限由每次后端的当前 Debug EL2 证明独立判断。CPSR 的 GDB 来源继续保留；其完整程序状态和实际线程/帧在发布前复核，不能冒充后端权限。
+
+读前逐项核对有效目录的 reader、core 归属、宽度和副作用，并保留用户声明的更严格访问/实现条件。实际 MIDR 与本次 Probe 一致，新鲜 count 与 Probe 一致后才读取控制/MAIR/region；不因目录选了 R52 或旧 Probe 有容量就直接读取 index。每项必须有本次 owner/context 的响应证明，且外部 MIDR、DSPSR、DLR、EDSCR 的架构状态与整批首项一致，bank 容量的完整原始值与当次 count 一致。允许 EDSCR 的 DTR 传输标志改变，它们不表示权限变化。
+
+发布前重新物理读取 MIDR 和相应 MPUIR/HMPUIR，复核状态与完整容量；这些校验值不替换原始样本的请求来源。任一权限拒绝、未知、证明/容量变化、上下文改变、取消或后端故障都停止整批，不发布已读部分。旧样本按既有失效规则保留原值、时间和证明；恢复不确定继续 FAULT/服务隔离。整批证据一致性仍是顺序采样约束，不宣称硬件原子快照或地址的有效访问权限。
+
+零 EL2 bank 只读 MIDR/HMPUIR 及它们的最终校验，不读取 region、MAIR 或 MPU 控制。仅查看已缓存总览不产生 GDB/Tcl I/O。Scope All 下只有选中物理核心执行总览；切核需要对应 context 和 Probe，不能借用另一核容量或样本。旧 MRC 配置仍维持原有兼容行为，本目标的当前 Debug 权限验收以新协议为准。
+
+延后 [MPU 硬件 case](../tests/cases/register-r52-mpu-read.md) 复用 `scripts/test-mpu-regions-hardware.cjs`，增加可选 `current_debug` 独立期望，校验实际 EXE 返回的 route、当前状态和全部 region/MAIR。新模板为 `tests/fixtures/r52-native-mpu-board.example.json`；software_example 不能用于实板验收。
 
 ## 验证边界
 

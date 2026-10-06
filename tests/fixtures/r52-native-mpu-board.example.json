@@ -1,0 +1,54 @@
+{
+  "software_example": true,
+  "revision": "Deterministic R52 host fixture only; replace before hardware execution",
+  "probe": "No physical probe; software fixture",
+  "openocd_version": "MI/Tcl fixture; no OpenOCD executable or ARM instruction execution",
+  "gdb_version": "MI fixture; no physical core",
+  "evidence_source": "Independent software constants for the driver. Replace every expectation and declared route/tool/AP with dedicated firmware and physical debugger evidence.",
+  "frame_function": "main",
+  "expected_midr": "0x411fd134",
+  "peer_core": "core1",
+  "control_scope": "all",
+  "current_debug": {
+    "endpoint": "127.0.0.1:6666",
+    "targets": {"core0": "cpu0", "core1": "cpu1"},
+    "ap": {"core0": 0, "core1": 1},
+    "saved_dspsr": {"core0": "0xa2000410", "core1": "0xa2000410"}
+  },
+  "views": [
+    {
+      "bank": "el1", "count": 24,
+      "mair": ["0xff440400", "0x00000000"],
+      "regions": [
+        ["0x2000001b", "0x2000ffc1"], ["0x2001001b", "0x2001ffc1"],
+        ["0x2002001b", "0x2002ffc1"], ["0x2003001b", "0x2003ffc1"],
+        ["0x2004001b", "0x2004ffc1"], ["0x2005001b", "0x2005ffc1"],
+        ["0x2006001b", "0x2006ffc1"], ["0x2007001b", "0x2007ffc1"],
+        ["0x2008001b", "0x2008ffc1"], ["0x2009001b", "0x2009ffc1"],
+        ["0x200a001b", "0x200affc1"], ["0x200b001b", "0x200bffc1"],
+        ["0x200c001b", "0x200cffc1"], ["0x200d001b", "0x200dffc1"],
+        ["0x200e001b", "0x200effc1"], ["0x200f001b", "0x200fffc1"],
+        ["0x2010001b", "0x2010ffc1"], ["0x2011001b", "0x2011ffc1"],
+        ["0x2012001b", "0x2012ffc1"], ["0x2013001b", "0x2013ffc1"],
+        ["0x2014001b", "0x2014ffc1"], ["0x2015001b", "0x2015ffc1"],
+        ["0x2016001b", "0x2016ffc1"], ["0x2017001b", "0x2017ffc1"]
+      ]
+    },
+    {
+      "bank": "el2", "count": 20,
+      "mair": ["0x0044ff00", "0x00000000"],
+      "regions": [
+        ["0x2000001b", "0x2000ffc1"], ["0x2001001b", "0x2001ffc1"],
+        ["0x2002001b", "0x2002ffc1"], ["0x2003001b", "0x2003ffc1"],
+        ["0x2004001b", "0x2004ffc1"], ["0x2005001b", "0x2005ffc1"],
+        ["0x2006001b", "0x2006ffc1"], ["0x2007001b", "0x2007ffc1"],
+        ["0x2008001b", "0x2008ffc1"], ["0x2009001b", "0x2009ffc1"],
+        ["0x200a001b", "0x200affc1"], ["0x200b001b", "0x200bffc1"],
+        ["0x200c001b", "0x200cffc1"], ["0x200d001b", "0x200dffc1"],
+        ["0x200e001b", "0x200effc1"], ["0x200f001b", "0x200fffc1"],
+        ["0x2010001b", "0x2010ffc1"], ["0x2011001b", "0x2011ffc1"],
+        ["0x2012001b", "0x2012ffc1"], ["0x2013001b", "0x2013ffc1"]
+      ]
+    }
+  ]
+}

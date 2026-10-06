@@ -2,7 +2,7 @@
 
 2026-10-06。开发分支 `codex/register-debugging`，起点 `b493a7f`，源码基线 0.9.3。该清单落实新的 Goal，取代旧 TODO 全部 71 项作为本次完成条件；旧记录保留作追溯。36 项以完整软件验收为计数边界。硬件用例准备属于软件交付，执行上板不属于本目标。
 
-当前摘要（迭代 14）：**23 完成 / 13 未完成**。A01～A10、B01～B11、C01/C02 已验收；C03～C06、D01～D04、E01～E05 待完成。本轮接通有界普通 CP15 生产事务与 host 路径，MPU 总览、selector 和完整新后端候选仍待接入及验收，未提前勾选 C03。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
+当前摘要（迭代 15）：**23 完成 / 13 未完成**。A01～A10、B01～B11、C01/C02 已验收；C03～C06、D01～D04、E01～E05 待完成。普通 CP15 生产事务与 MPU 总览已接通当前 Debug 证据；selector 和完整新后端候选仍待接入及验收，未提前勾选 C03。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
 
 核心参考文档（保留绝对路径）：
 
@@ -241,3 +241,17 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 严格 `cargo clippy --locked --all-targets -- -D warnings` **通过**，18.03 秒；fmt、Python/Node/JSON 语法、diff 及固定 checkout 的补丁反向匹配与 12 项源摘要通过。当前补丁 SHA256 为 `e00fc84b3a10b1c84706463cbd3ae958da475713851f0c61e53f095a52a4426a`。Windows/Linux 新候选仍未完整构建，verified=false、候选摘要为空；历史二进制不作为当前补丁验收。
 - 本批日志位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-r52-core-unit-final-20261006.log`、`readonly-r52-core-ui-final-20261006.log`、`readonly-r52-core-selector-full-20261006.log`、`readonly-r52-core-clippy-final-20261006.log`、`readonly-r52-core-native-final-20261006.log`。证据 manifest `readonly-r52-core-evidence-20261006.json` 记录本轮源码、报告、日志、手册摘要及最终提交/远端核验；[配置与事务说明](register-r52-core-read.md) 写清仅当前子批次可用的协议边界。
 - **C03～C06、D01～D04、E01～E05** 继续未完成。下一批在既有 MPU 总览和 selector 事务内复用本批当前 Debug 证据，替换保存 CPSR 授权；保持现有可重入服务锁，不增加第二套事务框架。稳定后端后构建并验收 Windows/Linux 候选，然后完成界面/生命周期、完整回归、安装及非主分支 Release。Goal 保持 active，未发布 Release、未升级硬件 verified。
+
+## 迭代 15：MPU 总览接通当前 Debug 证据
+
+2026-10-06，C03 的 MPU 总览子批次完成，累计保持 **23 完成 / 13 未完成**。起点为已推送的 `7f83b91594cd5415f3e856af0888df0d31b3b796`，没有重写目标或增加冻结清单外的类别。
+
+- 在 `cp15_command="aarch64 r52_read"` 下，MPU 总览复用现有整批可重入服务锁、受限直接索引 reader 与后端当次 EL2 证明。保存 CPSR 可以是 User；它只记录停止前程序状态，完整值与线程/帧在发布前复核，不再用其模式授予 MPU 权限。每个条目的原始 route、owner、context、请求时间和 r52_core 证明保留；GDB CPSR 来源与 native CP15 来源分别标明。
+- 读前逐项验证有效目录的直接 reader、core 归属、32 位宽、读属性和副作用。新路径使用实际目录的更严格 min_el/NeedEnable/存在性条件及真实目录来源，不能借内置描述绕过用户限制。先核对 MIDR 与 Probe 和新鲜容量，再读取该 bank；整个批次核对外部身份、完整 DSPSR/DLR、架构 Debug 状态和容量原值，允许 DTR 传输标志改变。末尾强制重新物理读取 MIDR 与 MPUIR/HMPUIR 校验，不用缓存代替，也不以最终校验覆盖原采样来源。
+- 任一拒绝、未知、证明/容量变化、取消、实际帧/线程变化或恢复不确定时停止整批，已读部分不发布。失败旧样本保留原值、时间和证明并按既有规则失效；恢复不确定保持 FAULT/服务隔离。零 EL2 bank 仅读 MIDR/HMPUIR 与最后复核，零 region/MAIR/MPU 控制读取；缓存查看零 I/O。Scope All 只访问所选核，切核后必须使用新 context 与本核 Probe。旧 MRC 配置兼容行为保持，本版当前 Debug 权限验收使用新协议。
+- 新增 **7 项 worker/实际 EXE 测试**，验证两个真实端点、两 bank、独立 peer 数值、User 保存状态成功、缓存零 I/O、容量改变的执行前拒绝和零 EL2，以及两事务之间身份/DSPSR/DLR/容量漂移与最后容量复核。权限/故障中止保留完整旧来源；严格自定义目录、当前低 EL/HDD 在数据前拒绝；取消和实际帧改变完成当前事务后不发下一项。首轮 5 通过/1 失败是夹具取消触发器仅识别旧 MRC，补齐新命令识别后 **7/7 通过**，33.48 秒，失败日志保留，没有降低产品取消检查。
+- 既有 `scripts/test-mpu-regions-hardware.cjs` 在控制基线前 Probe，并复用该 Probe；可选 current_debug 期望验证完整响应的 route/当前 EL2/DSPSR 与独立 region/MAIR。新基线模板及 [四项延后硬件 case](../tests/cases/register-r52-mpu-read.md) 已准备。默认 **4 SKIPPED、零 I/O**；实际 EXE/软件夹具正向 **5 通过**，错误独立 region 基线按预期失败并停止（3 通过/1 失败/1 跳过），由集成用例验收为成功。所有报告 `board_tests_executed=false`，硬件 case 全部 SKIPPED；AP/工具声明不是实测证据。三个核心文档的绝对路径保留。
+- 最终完整单元 **496 通过、0 失败、2 既有 ignored**，51.73 秒；整个 selector 集成 **133 通过、0 失败**，252.61 秒，包含新 7 项、普通 CP15、既有 M/R selector/MPU 与相关读写回归。**629 项所选 Cargo 测试通过**，专项不重复加数，不声称完整 Cargo 或最终发布回归。严格 `cargo clippy --locked --all-targets -- -D warnings` **通过**，18.23 秒；fmt、Node/Python/JSON 语法、diff 和用户规格未变检查通过。
+- 后端生产补丁未修改，SHA256 仍为 `e00fc84b3a10b1c84706463cbd3ae958da475713851f0c61e53f095a52a4426a`，沿用迭代 14 同源码的八个 C 事务模型证据，不重复构建。完整 Windows/Linux 新候选和命令入口仍未验收，source.lock 的 build verified=false、候选摘要为空，旧二进制与软件夹具不作为当前后端执行证据。当前软件编译不能当作目标 ARM 指令或实板验证。
+- 本批日志在 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-r52-mpu-targeted-20261006.log`、`readonly-r52-mpu-targeted-final-20261006.log`、`readonly-r52-mpu-unit-20261006.log`、`readonly-r52-mpu-selector-full-20261006.log`、`readonly-r52-mpu-clippy-20261006.log`。manifest `readonly-r52-mpu-evidence-20261006.json` 记录测试/实际 EXE 报告、源码与三个核心参考摘要、最后提交与远端核验；[普通读取及 MPU 总览说明](register-r52-core-read.md) 已同步。
+- 剩余仍为 **C03～C06、D01～D04、E01～E05**。下一批实现有界 R52 MPU selector 后端单事务，使用当前 EL2、正确 bank 新鲜容量、合法原 selector、真正 ISB、选择/恢复回读及 stop-on-fault；不得以固定 Hyp 传入旧 Plan 伪造权限，也不继续扩大 PMU selector。接通 host 后构建并核验 Windows/Linux 后端候选，再完成最终界面/生命周期与非主分支发布验收。Goal 保持 active，未发布 Release。
