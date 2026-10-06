@@ -1,7 +1,7 @@
 //! Project selection and launch configuration. ELF inspection uses an offline GDB.
 use crate::{
     config::{Project, portable_path},
-    theme,
+    theme::{self, SplitCached},
 };
 use crossterm::event::{
     KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -1474,7 +1474,7 @@ impl Setup {
                 Constraint::Length(if area.height < 20 { 1 } else { 2 }),
                 Constraint::Length(if area.height < 20 { 1 } else { 2 }),
             ])
-            .split(area);
+            .split_cached(area);
         f.render_widget(
             Paragraph::new(vec![
                 Line::from(Span::styled(

@@ -565,7 +565,7 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect, shared_actions: bool) {
         Constraint::Length(toolbar_height),
         Constraint::Min(1),
     ])
-    .split(rect);
+    .split_cached(rect);
     // Source text actions share the tab row; reserve their space before drawing
     // tabs so their frames never cover another control's mouse target.
     let tab_area = Rect {
@@ -615,7 +615,7 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect, shared_actions: bool) {
         source(f, a, inner);
     } else if a.main_pane == 7 {
         let height = if inner.height >= 10 { 3 } else { 1 };
-        let rows = Layout::vertical([Constraint::Length(height), Constraint::Min(0)]).split(inner);
+        let rows = Layout::vertical([Constraint::Length(height), Constraint::Min(0)]).split_cached(inner);
         search::file_bar(f, a, rows[0]);
         view(f, a, 7, rows[1]);
         a.source_rect = a.view_rects[7];
@@ -652,7 +652,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
         Constraint::Min(1),
         Constraint::Length(local_height),
     ])
-    .split(rect);
+    .split_cached(rect);
     tabs(f, a, rows[0], &SIDE_PANES, a.side_pane, button_height);
     let title = match a.side_pane {
         2 => " Stack · click / Enter selects frame ",
@@ -815,7 +815,7 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
             1
         }),
     ])
-    .split(inner);
+    .split_cached(inner);
     let remove_width = if watch && rows[0].width >= 30 { 12 } else { 0 };
     let tab_area = Rect {
         width: rows[0].width.saturating_sub(remove_width),
@@ -1090,7 +1090,7 @@ fn console_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     f.render_widget(block, rect);
     let input_height = if rect.height >= 6 { 3 } else { 1 };
     let rows =
-        Layout::vertical([Constraint::Min(0), Constraint::Length(input_height)]).split(inner);
+        Layout::vertical([Constraint::Min(0), Constraint::Length(input_height)]).split_cached(inner);
     a.console_view.layout(rows[0], a.console.len());
     let latest = if a.console_view.follow {
         " LIVE · Latest ".into()
@@ -1509,7 +1509,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         Constraint::Length(1),
         Constraint::Length(1),
     ])
-    .split(area);
+    .split_cached(area);
     let header_rect = Rect {
         height: header_height,
         ..rows[0]
@@ -1588,14 +1588,14 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     let console_height =
         (((rows[1].height + search_height) / 4 + 1).clamp(3, 10) - search_height).max(2);
     let body =
-        Layout::vertical([Constraint::Min(3), Constraint::Length(console_height)]).split(rows[1]);
+        Layout::vertical([Constraint::Min(3), Constraint::Length(console_height)]).split_cached(rows[1]);
     if area.width >= 100 {
         let columns = Layout::horizontal([
             Constraint::Percentage(68),
             Constraint::Length(1),
             Constraint::Percentage(32),
         ])
-        .split(body[0]);
+        .split_cached(body[0]);
         main_panel(f, a, columns[0], shared_actions);
         side_panel(f, a, columns[2], false);
     } else if MAIN_PANES.contains(&a.pane) {
@@ -1685,7 +1685,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
             Constraint::Min(1),
             Constraint::Length(1),
         ])
-        .split(inner);
+        .split_cached(inner);
         let mut x = parts[0].x;
         for (name, shortcuts) in [(" Commands ", false), (" Shortcuts ", true)] {
             let hit = Rect::new(x, parts[0].y, name.len() as u16, 1);

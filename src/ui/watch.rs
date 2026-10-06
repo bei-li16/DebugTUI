@@ -19,10 +19,23 @@ pub(super) struct WatchRow<'a> {
 impl WatchRow<'_> {
     pub fn key(&self) -> String {
         if self.path.is_empty() && !self.more {
-            format!("watch:{}", self.root)
-        } else {
-            format!("watch-child:{}", json!([self.root, self.path, self.more]))
+            return format!("watch:{}", self.root);
         }
+        // Byte-identical to `json!([root, path, more])`, which keys saved
+        // formats and refresh policies, without building a JSON value per row.
+        use std::fmt::Write as _;
+        let mut key = String::with_capacity(self.root.len() + 24 + 4 * self.path.len());
+        key.push_str("watch-child:[");
+        key.push_str(&serde_json::to_string(self.root).unwrap_or_default());
+        key.push_str(",[");
+        for (i, step) in self.path.iter().enumerate() {
+            if i > 0 {
+                key.push(',');
+            }
+            let _ = write!(key, "{step}");
+        }
+        key.push_str(if self.more { "],true]" } else { "],false]" });
+        key
     }
     pub fn removable(&self) -> bool {
         self.path.is_empty() && !self.more
@@ -31,7 +44,6 @@ impl WatchRow<'_> {
 /// The visible part of one Watch/Locals row, owned so drawing can update hit
 /// lists and value history while the snapshot tree stays borrowed nowhere.
 struct WatchLine {
-    row: usize,
     key: String,
     format_key: String,
     root: String,
@@ -58,6 +70,28 @@ pub(super) fn row_count(watches: &[Variable]) -> usize {
         }
     }
     watches.iter().map(visit).sum()
+}
+#[cfg(test)]
+#[test]
+fn child_keys_match_the_json_form_used_by_saved_preferences() {
+    let value = Variable::default();
+    for (root, path, more) in [
+        ("counter", vec![0], false),
+        ("g.\"quoted\\path\"", vec![3, 14, 159], true),
+        ("数组[0]", vec![], true),
+        ("x", vec![usize::MAX], false),
+    ] {
+        let row = WatchRow {
+            root,
+            value: &value,
+            path: &path,
+            more,
+        };
+        assert_eq!(
+            row.key(),
+            format!("watch-child:{}", json!([root, path, more]))
+        );
+    }
 }
 pub(super) fn rows(watches: &[Variable]) -> Vec<WatchRow<'_>> {
     fn visit<'a>(out: &mut Vec<WatchRow<'a>>, root: &'a str, value: &'a Variable) {
@@ -319,7 +353,7 @@ impl App {
     }
     /// Copies only what the visible rows draw; the whole tree used to be cloned
     /// every frame, which cost more than drawing it.
-    fn watch_line(&self, pane: usize, row: usize, node: &WatchRow) -> WatchLine {
+    fn watch_line(&self, pane: usize, node: &WatchRow) -> WatchLine {
         let key = node.key();
         let (raw, changed, error) = (pane == 1)
             .then(|| self.watch_sample(&key))
@@ -333,7 +367,6 @@ impl App {
             });
         let tree = node.value.tree.as_ref();
         WatchLine {
-            row,
             format_key: if pane == 1 {
                 key.clone()
             } else if node.path.is_empty() {
@@ -366,18 +399,25 @@ impl App {
     }
     pub(super) fn watch_numeric_view(&mut self, f: &mut UiFrame, pane: usize, rect: Rect) {
         let start = self.view_tops[pane];
+        // Each node draws two rows (name, value): collect each visible node once.
+        let first = start / 2;
         let lines: Vec<WatchLine> = {
             let nodes = rows(if pane == 1 {
                 &self.snapshot.watches
             } else {
                 &self.snapshot.locals
             });
-            (start..start + rect.height as usize)
-                .map_while(|row| nodes.get(row / 2).map(|node| self.watch_line(pane, row, node)))
+            nodes
+                .iter()
+                .take((start + rect.height as usize).div_ceil(2))
+                .skip(first)
+                .map(|node| self.watch_line(pane, node))
                 .collect()
         };
-        for line in lines {
-            let row = line.row;
+        for row in start..start + rect.height as usize {
+            let Some(line) = lines.get(row / 2 - first) else {
+                break;
+            };
             let close_width = if pane == 1 && line.removable && rect.width >= 8 {
                 3
             } else {
@@ -394,9 +434,9 @@ impl App {
                 rect: hit,
                 pane,
                 row,
-                key: line.format_key,
-                name: line.name,
-                raw: line.raw,
+                key: line.format_key.clone(),
+                name: line.name.clone(),
+                raw: line.raw.clone(),
                 default: crate::config::Radix::Decimal,
             };
             let indent = "  ".repeat(line.depth);
@@ -465,9 +505,9 @@ impl App {
                     )
                 };
                 if pane == 1 {
-                    self.watch.expand_hits.push((arrow, line.key));
+                    self.watch.expand_hits.push((arrow, line.key.clone()));
                 } else {
-                    self.watch.local_expand_hits.push((arrow, line.key));
+                    self.watch.local_expand_hits.push((arrow, line.key.clone()));
                 }
                 // Value/name selection outside the disclosure arrow is unchanged.
                 if !line.more && arrow.right() > hit.x {
@@ -506,7 +546,7 @@ impl App {
                     close,
                 );
                 if show {
-                    self.watch.remove_hits.push((close, line.root));
+                    self.watch.remove_hits.push((close, line.root.clone()));
                 }
             }
             if !line.more {

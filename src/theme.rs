@@ -1,11 +1,41 @@
 //! Terminal-native visual language. No assets, fonts or rendering dependencies.
 use ratatui::{
     Frame,
-    layout::{Alignment, Rect},
+    layout::{Alignment, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Line,
     widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
+/// `Layout::split` with a per-thread cache. ratatui keeps its own cache behind
+/// its default `layout-cache` feature, which this build leaves off, so every
+/// uncached split re-runs the constraint solver: hundreds of allocations, and
+/// the same few layouts are solved again every frame.
+pub trait SplitCached {
+    fn split_cached(self, area: Rect) -> Rc<[Rect]>;
+}
+type Splits = HashMap<(Rect, Layout), Rc<[Rect]>>;
+impl SplitCached for Layout {
+    fn split_cached(self, area: Rect) -> Rc<[Rect]> {
+        thread_local! {
+            static SPLITS: RefCell<Splits> = RefCell::new(HashMap::new());
+        }
+        SPLITS.with_borrow_mut(|splits| {
+            let key = (area, self);
+            if let Some(rects) = splits.get(&key) {
+                return rects.clone();
+            }
+            // Resizing creates new keys; start over rather than grow forever.
+            if splits.len() >= 256 {
+                splits.clear();
+            }
+            let rects = key.1.split(area);
+            splits.insert(key, rects.clone());
+            rects
+        })
+    }
+}
 
 pub const CANVAS: Color = Color::Rgb(17, 21, 27);
 pub const PANEL: Color = Color::Rgb(23, 29, 37);

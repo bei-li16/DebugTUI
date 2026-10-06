@@ -519,7 +519,7 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
         Constraint::Length(2),
         Constraint::Length(1),
     ])
-    .split(inner);
+    .split_cached(inner);
     f.render_widget(
         Paragraph::new(if e.number.is_some() {
             "Location / type retained. Edit enabled state, condition and ignore count."

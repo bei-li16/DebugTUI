@@ -29,7 +29,13 @@ pub(super) struct SourceTabs {
 }
 
 impl App {
+    /// Drawing compares keys for the frame, every breakpoint and every trace,
+    /// so results are kept: canonicalizing is a file system call each time.
+    /// Snapshots and project switches clear them.
     pub(super) fn source_key(&self, file: &str) -> String {
+        if let Some(key) = self.source_keys.borrow().get(file) {
+            return key.clone();
+        }
         let resolved = self
             .project
             .source_path(file)
@@ -38,11 +44,15 @@ impl App {
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|| file.into());
         let path = path.replace('\\', "/");
-        if cfg!(windows) {
+        let key = if cfg!(windows) {
             path.to_lowercase()
         } else {
             path
-        }
+        };
+        self.source_keys
+            .borrow_mut()
+            .insert(file.to_owned(), key.clone());
+        key
     }
 
     fn save_source_position(&mut self) {
@@ -560,7 +570,7 @@ pub(super) fn draw_list(f: &mut UiFrame, a: &mut App) {
         Constraint::Min(1),
         Constraint::Length(1),
     ])
-    .split(inner);
+    .split_cached(inner);
     f.render_widget(
         Paragraph::new(format!(" / Filter: {}", a.sources.query))
             .style(Style::default().fg(theme::ACCENT).bg(theme::RAISED)),

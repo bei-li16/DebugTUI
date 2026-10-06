@@ -1,23 +1,27 @@
 //! Small C-like lexer: only visible lines allocate spans; no syntax database.
 use super::*;
 
-pub(super) fn selected_syntax(
-    line: &str,
+/// Spans borrow the line; only pieces containing tabs are copied to expand them.
+pub(super) fn selected_syntax<'a>(
+    line: &'a str,
     in_comment: &mut bool,
     selection: Option<(usize, usize)>,
-) -> Vec<Span<'static>> {
+) -> Vec<Span<'a>> {
     let mut result = Vec::new();
     let mut offset = 0;
+    let (a, b) = selection.unwrap_or((0, 0));
     scan(line, in_comment, |text, color| {
         let end = offset + text.len();
-        let (a, b) = selection.unwrap_or((0, 0));
-        let mut cuts = vec![offset, end];
-        if a > offset && a < end {
-            cuts.push(a);
+        // The token's ends plus at most the two selection edges.
+        let mut cuts = [offset, end, end, end];
+        let mut count = 2;
+        for cut in [a, b] {
+            if cut > offset && cut < end {
+                cuts[count] = cut;
+                count += 1;
+            }
         }
-        if b > offset && b < end {
-            cuts.push(b);
-        }
+        let cuts = &mut cuts[..count];
         cuts.sort_unstable();
         for pair in cuts.windows(2) {
             let style = if pair[0] >= a && pair[0] < b {
@@ -25,8 +29,13 @@ pub(super) fn selected_syntax(
             } else {
                 Style::default().fg(color)
             };
+            let piece: &'a str = &line[pair[0]..pair[1]];
             result.push(Span::styled(
-                line[pair[0]..pair[1]].replace('\t', "    "),
+                if piece.contains('\t') {
+                    std::borrow::Cow::Owned(piece.replace('\t', "    "))
+                } else {
+                    std::borrow::Cow::Borrowed(piece)
+                },
                 style,
             ));
         }

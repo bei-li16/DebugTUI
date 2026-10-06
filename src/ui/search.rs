@@ -501,7 +501,7 @@ pub(super) fn draw_symbols(f: &mut UiFrame, a: &mut App) {
         Constraint::Min(1),
         Constraint::Length(2),
     ])
-    .split(inner);
+    .split_cached(inner);
     super::render::input_box(
         f,
         rows[0],

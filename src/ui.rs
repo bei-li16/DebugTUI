@@ -5,7 +5,7 @@ use crate::{
     coordinator,
     launch::{Document, Launch, Setup},
     session::{EngineHandle, Event, Frame, Request, Snapshot, Variable},
-    theme,
+    theme::{self, SplitCached},
 };
 use crossterm::{
     event::{
@@ -297,6 +297,8 @@ pub struct App {
     /// Areas whose drawing depended on the pointer in the last frame. A mouse
     /// move that changes none of them cannot change what is on screen.
     hover_probes: RefCell<Vec<Rect>>,
+    /// Canonical source keys by file string; see `source_key`.
+    source_keys: RefCell<std::collections::HashMap<String, String>>,
     fx: effects::Effects,
     formats: formats::Formats,
     core_info: Option<(String, usize, usize)>,
@@ -377,6 +379,7 @@ impl App {
             help_scroll: 0,
             pointer: None,
             hover_probes: RefCell::default(),
+            source_keys: RefCell::default(),
             fx: effects::Effects::default(),
             formats: formats::Formats::default(),
             core_info: None,
@@ -494,6 +497,8 @@ impl App {
         match event {
             Event::LiveWatch { sample } => self.apply_live_watch(sample),
             Event::Snapshot { snapshot } => {
+                // Files may have appeared or moved since the last stop.
+                self.source_keys.get_mut().clear();
                 self.write_snapshot(&snapshot);
                 self.memory_snapshot(&snapshot);
                 let core_changed = snapshot.core.as_ref().map(|c| c.index)
@@ -2006,6 +2011,7 @@ pub fn run(
             match prepared {
                 Ok(project) => {
                     app.project = project.clone();
+                    app.source_keys.get_mut().clear();
                     app.fx = effects::Effects::default();
                     app.fx.mode = project.ui.animations;
                     app.formats = formats::Formats::default();

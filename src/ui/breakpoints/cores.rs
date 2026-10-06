@@ -143,7 +143,7 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App) {
         Constraint::Length(3),
         Constraint::Length(1),
     ])
-    .split(inner);
+    .split_cached(inner);
     f.render_widget(
         Paragraph::new(e.location.clone()).wrap(Wrap { trim: false }),
         parts[0],
