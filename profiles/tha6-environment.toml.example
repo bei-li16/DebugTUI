@@ -5,10 +5,15 @@ executable = "./gdb/arm-none-eabi-gdb.exe"
 args = ["-x", "${profile_dir}/gdb.cfg"]
 init = ["maintenance set dwarf unwind off", "set remotetimeout 10"]
 registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc", "cpsr"]
-# Optional project-level system register settings are documented in USER_GUIDE.
+# Optional project-level system register settings: docs/registers-readonly-guide.md.
 # Use [registers], independently of the gdb.registers name list above:
-# cpu="cortex-r52", tcl_endpoint="127.0.0.1:6666", cp15_command="arm mrc".
-# Add selector_command="arm mcr" only after verifying this actual backend;
+# cpu="cortex-r52", tcl_endpoint="127.0.0.1:6666".
+# The pinned modified adapter's bounded R52 readonly path uses the matching
+# cp15_command="aarch64 r52_read", selector_command="aarch64 r52_select",
+# isb_command="". Fresh current Debug EL2 proof is required, not saved CPSR.
+# This MPU selector protocol does not cover PMU; stock xPack is not equivalent.
+# Legacy cp15_command="arm mrc" / selector_command="arm mcr" is a separate
+# compatibility path requiring verified backend support and its own restrictions.
 # For the separately built pinned adapter, opt in with
 # banked_command="aarch64 banked"; stock xPack does not provide this protocol.
 # Banked access requires the stopped physical frame 0 and actual R52 MIDR.

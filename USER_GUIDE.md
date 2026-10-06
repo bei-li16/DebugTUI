@@ -708,11 +708,13 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 ## 开发与验证
 
+本次只读系统寄存器版本的固定范围是 M3/M4/M7、每核独立目录与 CorePrivate，以及 R52 当前 Debug EL2 的常用身份/控制/MPU 读取。配置模板、支持边界及后续事项见 [只读使用指南](docs/registers-readonly-guide.md)，可执行驱动与人工补充见 [本版用例入口](tests/cases/registers-readonly-release.md)。以下保留历史开发功能说明，Banked 低 EL、VFP 写入、完整 Timer/PMU/GIC/STM、Trace 和各类写入不扩大本 Goal；硬件验证全部待执行。
+
 ### 寄存器状态与读取取消（开发分支）
 
 寄存器配置先继承 Tools/profile 根设置及选定 backend，再由项目同名字段覆盖；芯片 CPU 关联只在没有显式 CPU/目录选择时填默认值。非空 catalogue 文件优先于 CPU preset，CPU preset 按用户同名文件、内置目录顺序选择。相对目录路径以声明它的项目/profile 为准；已有用户 override 损坏、不可读或为目录时报错，不回退。要改用 CPU preset，清除继承的 `catalogue`；要回到 GDB 列表，同时清空 `cpu` 与 `catalogue`。完整优先级与例证见 [配置自检](docs/register-configuration.md)。
 
-Setup 的 CPU registers 可选 M4、R52、R52+、用户 preset、Automatic 或 GDB；Register catalogue 可输入或 F2 浏览文件。CPU picker 内的 F2 同样浏览目录。F1 查看候选目录的名称、架构、来源、说明、支持条件及各核身份，方向键／翻页／Home／End／滚轮滚动，Esc／Close 返回草稿。选择与预览不启动读取，Ctrl+S 保存项目引用，不改写客户 profile 或目录。使用文件且未选 CPU preset 时显示 Catalogue file，不会误显示成原 GDB 列表。
+Setup 的 CPU registers 可选 M3、M4、M7、R52、R52+、用户 preset、Automatic 或 GDB；Register catalogue 可输入或 F2 浏览文件。CPU picker 内的 F2 同样浏览目录。F1 查看候选目录的名称、架构、来源、说明、支持条件及各核身份，方向键／翻页／Home／End／滚轮滚动，Esc／Close 返回草稿。选择与预览不启动读取，Ctrl+S 保存项目引用，不改写客户 profile 或目录。使用文件且未选 CPU preset 时显示 Catalogue file，不会误显示成原 GDB 列表。
 
 配置 CPU、目录 CPU、Chip 关联和 Observed CPU 分别显示；差异提示不自动改配置。芯片关联只是配置；当前停止核心没有有效 Probe 时显示 Unknown，其他核及旧 session／stop／frame 的身份不复用。Setup 改目标、工具或 TCL endpoint／target 等访问路由后，旧身份也不用于新草稿。选择 R52+ 目录不证明实际 R52+ 身份、可选扩展或 reader/writer 支持；完整操作及自检见 [Setup 目录选择](docs/register-setup-catalogues.md)。
 
@@ -825,6 +827,24 @@ Preview 不写 FP 数据，返回完整原始 pair 及单次草稿令牌。Apply
 
 ### 读取 MPU／PMU 选择器组（开发分支）
 
+本版 R52 有界 MPU 路径使用以下匹配的原生命令对；target 必须替换为对应物理核的实际名称。它只支持 MPU selector，不支持 PMU selector，stock xPack 不提供该独立协议。
+
+```toml
+[registers]
+cpu = "cortex-r52"
+tcl_endpoint = "127.0.0.1:6666"
+cp15_command = "aarch64 r52_read"
+selector_command = "aarch64 r52_select"
+isb_command = ""
+[registers.targets]
+core0 = "example.r52.0"
+core1 = "example.r52.1"
+```
+
+原生路径在暂停物理 frame 0、已 Probe 的容量内执行 **Read bank** / `registers_select`。每次事务以外部 MIDR/EDSCR 证明当前 Debug EL2，并核对完整 DSPSR/DLR、当前容量、原 selector 与 scratch 保存/恢复/回读；保存的 User CPSR/DSPSR 不影响已证明的当前 EL2 成功路径，也不独自授予权限。真正 ISB 在后端完成，不依赖或打开 CP15BEN；故障/恢复不确定不继续注入、不发布部分值、不换后端重试。配置、低 EL/R52+ 限制及 Windows/Linux 软件证据见 [R52 受保护访问](docs/register-r52-core-read.md)。
+
+以下说明保留旧 MRC/MCR 兼容路径及其 PMU selector 能力；这些旧路径条件与上面的原生 MPU 协议各自独立。
+
 普通 **Read** 继续使用 PRBARn／PRLARn、PMEVCNTRn／PMEVTYPERn 的直接索引通道。需要选择器通道时，在暂停物理核心的 frame 0 先 **Probe caps**，选中对应区域／事件计数器，再点击 **Read bank** 或执行 `:register-bank-read`。Scope All 仍只操作当前核心。区域索引必须小于实际 MPUIR／HMPUIR 数量；当前适配 R52 的 16／20／24 区域和最多 4 个 32 位 PMU 事件计数器，EL2 要求 Hyp。选择 PMU index 31 读取计数器不受支持，但保存的 PMSELR=31 可以原样恢复。
 
 工程需显式配置经过实际 OpenOCD 构建核对的命令对，例如：
@@ -850,7 +870,7 @@ Headless 使用 `registers_select`，参数为当前 `context`、`kind`（`mpu_e
 
 在 System Regs 点击 **MPU regions**，或使用 `:mpu el1`／`:mpu el2` 打开当前核心的区域总览。打开窗口、滚动和切换 EL1／EL2 只显示已有采样。方向键、PageUp／PageDown、Home／End 或滚轮浏览，Tab／Shift+Tab 选择底部按钮；`b` 切换组、`p` 显式 Probe、`r` 显式 Read、Esc 关闭。
 
-先在暂停核心的物理 frame 0 执行 Probe，再选择 **Read**。批次重新检查实际 GDB 线程／帧、CPSR 模式、MIDR 和 MPUIR／HMPUIR 数量，然后读取全部已实现的直接 PRBARn／PRLARn 或 HPRBARn／HPRLARn，以及相应 MAIR、SCTLR／HSCTLR；EL2 另显示 HCR 和 HPRENR。数量、身份、模式或上下文变化时丢弃结果并要求重新 Probe。读前验证整组目录编码，整个批次持有服务锁，不修改选择器或控制寄存器；Scope All 仍只读取当前物理核心。未实现的 EL2 MPU 不访问区域或 MAIR。
+先在暂停核心的物理 frame 0 执行 Probe，再选择 **Read**。批次检查实际 GDB 线程／帧、MIDR 和 MPUIR／HMPUIR 数量，读取容量内的直接 PRBARn／PRLARn 或 HPRBARn／HPRLARn，以及 MAIR、SCTLR／HSCTLR；EL2 另显示 HCR 和 HPRENR。原生 `aarch64 r52_read` 每项以新鲜当前 Debug EL2 证明权限，保存的 CPSR/DSPSR 只保留程序状态来源，发布前重新物理核对 MIDR/容量；任何权限/证明/容量/上下文变化或取消均停止整批、不发布部分值。旧 MRC 配置继续使用旧 CPSR 模式限制。读前检查有效目录和客户更严格条件，整个批次持有服务锁，不修改选择器或控制寄存器；Scope All 仍只读取当前物理核心。零 EL2 MPU 只核对身份/容量，不访问区域、MAIR 或 MPU 控制。
 
 每个区域显示 64 字节对齐的基址、包含末地址的限址、区域使能、AP、XN、SH 字段和 MAIR AttrIndex。MAIR 解码区分 Device 四种属性、Normal 的内外缓存策略及读／写分配提示，并保留 UNPREDICTABLE 编码。R52 忽略 transient 提示；SH 字段的解码适用于 Normal memory，Device 与 Normal non-cacheable 的实现行为另有说明。全局 MPU 开关与背景区开关分别来自对应 SCTLR／HSCTLR，不把区域 EN 当作全局使能。
 
@@ -858,7 +878,7 @@ Headless 使用 `registers_select`，参数为当前 `context`、`kind`（`mpu_e
 
 Headless 使用 `registers_mpu`，参数为当前 `context`、`bank`（`el1`／`el2`）和可选 `read`。默认 `read=false` 仅解释当前缓存，不发送调试器请求；`read=true` 执行上述直接读取并返回 `samples`、`view` 与实际 owner。接口不支持通过用户目录把 MPU 固定动作重定向到有副作用的条目或共享 owner。
 
-R52 的常用身份/控制和 MPU 条目带实际 TRM 页码、主要字段与访问条件。SCTLR.FI 是 HSCTLR.FI 的 RO 副本，HCR.TRVM/TVM 分别表示读/写陷阱；MAIR 分别显示 Attr0–7。MIDR revision、MPIDR affinity 文字及 PRSELR 容量标题的手册矛盾明确保留为 Source conflict，不固定复位值或推导错误拓扑。EL2 MPU 容量 0 有效，selector 位宽随 16/20/24 区变化。目录来源及 normal-execution EL 说明不授予 Debug 注入权限；当前 Debug 权限统一仍在 C03 验收中。见 [R52 定义、来源与边界](docs/register-r52-core-model.md)。
+R52 的常用身份/控制和 MPU 条目带实际 TRM 页码、主要字段与访问条件。SCTLR.FI 是 HSCTLR.FI 的 RO 副本，HCR.TRVM/TVM 分别表示读/写陷阱；MAIR 分别显示 Attr0–7。MIDR revision、MPIDR affinity 文字及 PRSELR 容量标题的手册矛盾明确保留为 Source conflict，不固定复位值或推导错误拓扑。EL2 MPU 容量 0 有效，selector 位宽随 16/20/24 区变化。目录来源及 normal-execution EL 说明不授予 Debug 注入权限；原生普通 CP15/MPU/selector 的当前 Debug 权限已完成 C03～C06 软件验收，实板仍待执行。见 [R52 定义](docs/register-r52-core-model.md) 与 [受保护访问](docs/register-r52-core-read.md)。
 
 Cortex-M3/M4/M7 使用 `:mpu`／`:mpu m`，Headless 使用 `bank="m"`。先在物理 frame 0 暂停并 Probe，显式 Read 通过该核独立 Tcl/AP 通道读取 TYPE/CTRL 和全部有效 RBAR/RASR，单事务保存、选择、读取、恢复并回读 RNR。没有 MPU 时不读取控制/region；只写事务所需 RNR，不改 MPU 配置。失败/取消不发布部分 bank，旧值保留原来源并 stale；恢复或响应不确定进入 FAULT。indexed region 在 Snapshot 的 `register_mpu` 中保存，不覆盖普通当前 RNR 样本。打开、字段展开和滚动零 I/O；仅 GDB memory 路线不能执行此 bank 事务。配置和延后硬件用例见 [M MPU 说明](docs/register-cortex-m-mpu.md)。
 

@@ -1,5 +1,7 @@
 # DebugTUI 功能测试
 
+本版只读系统寄存器的 [用例与入口清单](cases/registers-readonly-release.md) 关联 M3/M4/M7、多核、R52 core/MPU/selector 和生命周期的软件证据与延后硬件步骤。`node scripts/test-register-readonly-readiness.cjs --binary <EXE绝对路径>` 离线检查两份配置模板及八个驱动的默认 SKIPPED/零连接边界；不传 `--run`、不执行上板。当前完成数以 [冻结账本](../docs/registers-readonly-goal.md) 为准，下列旧批次数量保留为历史记录。
+
 绑定与面板来源：新增七项单元、两项 MI 集成，覆盖四核策略优先级、selection_epoch、Continue revision、芯片外设路线、旧来源/时间、错误 receipt 和 64 位精确 raw；原四核集成增加实际绑定读取及跨 worker 句柄拒绝。`node scripts/test-bus-provenance-fixture.cjs target/debug/debugtui.exe` 可重跑四核实际二进制＋MI/Tcl 模型的五阶段；`node scripts/test-bus-provenance-hardware.cjs` 默认只生成三项 skipped，不连接。原生 Memory 的 20 次运行采样携带停止绑定；[软件范围](../docs/bus-read-provenance.md)、[case/模板与执行命令](cases/bus-provenance.md) 不代替完整 BUS-T/H 或上板验收。
 
 Watch 地址解析：新增三项表达式、两项 UI 单元与七项真实 MI 管道集成，覆盖只读语法、前后线程/帧/PC、严格清理及调用策略恢复、实际 Request 取消、四核 Scope All 和 channel 类型拒绝；原生 Memory 另验证真实 GDB 的指针转换和类型。见 [软件范围](../docs/watch-address-resolution.md)、[三项延后环境 case](cases/watch-resolution.md)。未上板，不代表完整 BUS 验收。

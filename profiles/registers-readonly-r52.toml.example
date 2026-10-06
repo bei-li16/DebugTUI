@@ -1,0 +1,40 @@
+# Copy to an isolated project's debug.toml and replace endpoints/physical targets.
+# Requires the pinned modified OpenOCD adapter, not a stock version-number match.
+# See docs/register-r52-core-read.md and docs/registers-readonly-guide.md.
+version = 2
+[gdb]
+executable = "arm-none-eabi-gdb"
+[target]
+mode = "remote"
+[service]
+enabled = false
+[session]
+on_exit = "disconnect"
+[multicore]
+scope = "core"
+halt_peers = false
+
+[registers]
+cpu = "cortex-r52"
+cp15_command = "aarch64 r52_read"
+selector_command = "aarch64 r52_select"
+isb_command = ""
+tcl_endpoint = "127.0.0.1:6666"
+[registers.targets]
+core0 = "example.r52.0"
+core1 = "example.r52.1"
+
+[[cores]]
+name = "core0"
+endpoint = "127.0.0.1:3333"
+[[cores]]
+name = "core1"
+endpoint = "127.0.0.1:3334"
+
+# Each core inherits the root [registers]; use [cores.registers] for explicit overrides.
+# Clear selector_command when only ordinary reads/MPU overview are required.
+# This protocol covers bounded core/MPU reads and MPU selectors, not PMU selectors.
+# Actual Arm D13 R52, AArch32, current Debug EL2 and external proof are required.
+# Saved CPSR/DSPSR, a stopped target or a CPU preset cannot authorize injection.
+# No Banked/VFP/Timer/PMU/GIC/STM writer or feature-enable command is selected here.
+# The candidate has software build/entry evidence; hardware verification is pending.

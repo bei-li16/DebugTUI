@@ -12,7 +12,7 @@
 
 ## M-CAT-H03：SysTick / DHCSR 手动单次读
 
-当前运行态入口尚待独立验收，本用例要求目标已由 GDB 暂停。
+本用例验证暂停状态下的手动读副作用边界，要求目标已由 GDB 暂停。运行态入口 B11 已通过软件验收，独立硬件步骤见 `register-running.md`，仍为 SKIPPED。
 
 前置：测试固件已有 SysTick 配置，记录其独立状态；GDB/OpenOCD 正常管理核状态。操作：自动请求 `systick.ctrl`、`dcb.dhcsr` 后核对无内存读取；分别以 `manual=true` 请求一次，核对每项恰好一次、显示原始值及来源；再自动请求确认不重复访问。独立读取 LOAD/VAL/CALIB。预期：不直接轮询 DHCSR、不自动使能/重写 SysTick；COUNTFLAG 是否清除另行记录实际访问属性，不能把软件读清规则外推到 debugger read。证据：操作前后固件记录与完整传输日志；恢复：结束会话，不写回读清位。状态：SKIPPED。
 

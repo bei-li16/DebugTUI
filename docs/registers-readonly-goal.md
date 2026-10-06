@@ -2,7 +2,7 @@
 
 2026-10-06。开发分支 `codex/register-debugging`，起点 `b493a7f`，源码基线 0.9.3。该清单落实新的 Goal，取代旧 TODO 全部 71 项作为本次完成条件；旧记录保留作追溯。36 项以完整软件验收为计数边界。硬件用例准备属于软件交付，执行上板不属于本目标。
 
-当前摘要（迭代 18）：**31 完成 / 5 未完成**。A01～A10、B01～B11、C01～C06、D01～D04 已通过软件验收；E01～E05 待完成。本轮修复空闲目录遍历开销，完成真实交互 TUI 的 CPU/内存/MI 计数对照；无启用行、缓存与纯展示操作均无额外目标请求。硬件未执行、安装工具未替换、最终 Release 未发布。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
+当前摘要（迭代 19）：**33 完成 / 3 未完成**。A01～A10、B01～B11、C01～C06、D01～D04、E01/E02 已通过软件验收；E03～E05 待完成。本轮统一软件/延后硬件入口，补齐实际 EXE 验证的 M7＋M4/R52 双核模板，修正用户文档中的旧路径和已完成状态。八个硬件驱动默认 32 项 SKIPPED，受保护检查无子进程/网络连接。硬件未执行、安装工具未替换、最终 Release 未发布。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
 
 核心参考文档（保留绝对路径）：
 
@@ -57,8 +57,8 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | D02 | 状态、原因与旧值来源 | 各失败类别、灰显、失败非零、原来源保留 |
 | [x] | D03 | 全部生命周期边界 | 核/帧/运行/暂停/重连/共享 owner |
 | [x] | D04 | 按需 I/O 与只读边界 | 未启用不读、不扫描、不持久写控制；真实 TUI 空闲资源/请求对照 |
-| [ ] | E01 | 软件入口及硬件用例准备 | MI/Tcl/实际 CLI、可执行用例、上板 SKIPPED |
-| [ ] | E02 | 配置示例、用户文档及后续清单 | 新字段/有效值/支持限制和三份绝对引用 |
+| [x] | E01 | 软件入口及硬件用例准备 | MI/Tcl/实际 CLI、可执行用例、上板 SKIPPED |
+| [x] | E02 | 配置示例、用户文档及后续清单 | 新字段/有效值/支持限制和三份绝对引用 |
 | [ ] | E03 | 发布前完整回归与静态检查 | cargo/仓库静态检查、必要功能套件全通过 |
 | [ ] | E04 | 升版、构建、打包及一致性 | 隔离安装/版本/附件/对应源码核对 |
 | [ ] | E05 | 非主分支提交、tag、Release | 最终 SHA、tag 目标、已发布附件校验 |
@@ -305,3 +305,14 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 修复后实际 EXE SHA256 `f88783d8f58fb4ab3048c8cb3bd569db196ae91ff836a5e23cb69e9a2822c83e`。测量报告/每秒样本、配置、MI 原文及 UI 操作记录位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\evidence\register-idle-20261006`。日志为构建缓存中的 `readonly-idle-ui-first-20261006.log`、`readonly-idle-ui-final-20261006.log`、`readonly-idle-lifecycle-final-20261006.log`、`readonly-idle-binary-final-20261006.log`、`readonly-idle-clippy-final-20261006.log`；外部 `readonly-idle-evidence-20261006.json` 记录摘要、适用版本及本轮最终提交/推送结果。[按需与空闲验收说明](register-idle-readonly.md) 保存完整表格、测量边界和复测入口。
 - 本轮没有改 worker、M/R 目录、后端 C 事务、补丁、lock 或候选工具；相关 B/C/D01～D03 证据沿用，原有只读副作用/运行态/selector case 保持 SKIPPED。没有连接探针、执行 ARM 指令、升级硬件 verified 或替换本地工具；测量和 Node 夹具进程均已正常退出。三个核心绝对引用完整保留。
 - 剩余 **E01～E05** 共 5 项。下一批统一全部延后 case 与本版配置/用户文档，再以最终版本完成完整回归、实际历史包升级、非主分支 prerelease 及指定 tag 下载核验。Goal 继续 active，不以本轮专项或性能结果替代发布验收。
+
+## 迭代 19：用例入口、双核模板与支持边界
+
+2026-10-06，完成 **E01/E02**，累计 **33 完成 / 3 未完成**。迭代 18 提交 `b27cb2636f4770dd660afec9a36f1c714a9b1b62` 已推送，开始本轮时与远端一致。
+
+- [本版用例入口](../tests/cases/registers-readonly-release.md) 统一公共模型、M、R52、UI/生命周期的软件证据与八个延后硬件驱动、独立 JSON 基线、操作/预期/恢复方式。人工补充 case 明确列出，不让正常读取驱动自动制造异常、低 EL/HDD 或改变授权。已有 A～D 真实 worker/MI/TCP/Tcl、EXE、生产 C 模型和 native backend entry 证据保留适用范围；软件 fixture 不代表目标 ARM 指令或实板执行。
+- [只读使用指南](registers-readonly-guide.md) 与两份完整项目模板说明各核 CPU/目录继承、有效来源、CorePrivate/AP 映射、Unknown/NeedEnable、运行态限制、当前 Debug 与停止前状态的区别，以及范围外功能。M7＋M4 使用两个独占 PPB channel/target，R52 双核使用匹配的 `r52_read/r52_select` 和空 `isb_command`。占位 endpoint/target 不声明板级验证，不猜 AP。
+- `USER_GUIDE.md` 新增原生 R52 MPU 命令对与当前 Debug 权限说明；旧 MRC/MCR/PMU selector 明确保留为独立兼容路径。修正 MPU 总览、C03～C06、M CPU picker 和 B10/D03 的过时状态；架构/THA6 两模板/测试 README 链接本版范围，MCAL 启动动作未改变。三个核心绝对引用在指南和用例完整保留，用户 `tui-debugger-spec.md` 未修改、未提交。
+- 新增 `scripts/test-register-readonly-readiness.cjs`：**10 项通过、0 失败**。实际 EXE 原样加载两份模板、选择四个核，核对型号差异、owner、同地址独立 route、新协议、无观察事实、零 MI 与文件不变。八驱动各自独立进程默认 **32 项 SKIPPED、0 通过/失败**，预加载 guard 禁止子进程与 TCP 连接，所有 attempt log 为空，`board_tests_executed=false`。这是软件准备验收通过，不是 SKIPPED 硬件 case 通过。
+- 本轮 EXE 沿用迭代 18 的 `f88783d8f58fb4ab3048c8cb3bd569db196ae91ff836a5e23cb69e9a2822c83e`，生产 Rust/backend 未改，不重复无关全量回归或平台构建。详细 JSONL、route、模板摘要、guard、八驱动报告位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\evidence\register-readonly-readiness-1791297619490-2e69cc05`；本轮最终 manifest 为构建缓存中的 `readonly-readiness-evidence-20261006.json`。Node 语法、文件链接、JSON/TOML 和 diff 静态检查通过；所有测试进程正常退出。
+- 剩余 **E03/E04/E05**：确定未占用发布版本后完整回归/静态检查，构建和打包、真实历史包升级/隔离安装、非主分支 prerelease 与指定 tag 下载核验。Goal 保持 active；最终提交 SHA 与远端核对记录于外部 manifest 和本轮输出，未宣称最终 Release 已完成。

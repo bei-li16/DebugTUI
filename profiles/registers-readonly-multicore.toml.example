@@ -1,0 +1,62 @@
+# Copy to an isolated project's debug.toml, then fill in the actual board routes.
+# Generic M7 + M4 example; endpoints and target names are placeholders, not AP proof.
+# Do not use one target for both cores' private PPB. See docs/registers-readonly-guide.md.
+version = 2
+[gdb]
+executable = "arm-none-eabi-gdb"
+[target]
+mode = "remote"
+[service]
+enabled = false
+[session]
+on_exit = "disconnect"
+[multicore]
+scope = "core"
+halt_peers = false
+
+# Supply [program].elf and source_root for your own firmware if needed.
+[registers.targets]
+m7 = "example.m7"
+m4 = "example.m4"
+
+[[memory_access]]
+id = "m7_ppb"
+label = "M7 private PPB"
+tcl_endpoint = "127.0.0.1:6666"
+target = "example.m7"
+cores = ["m7"]
+while_running = false
+# Set while_running=true only after verifying this route supports running AP reads.
+[[memory_access]]
+id = "m4_ppb"
+label = "M4 private PPB"
+tcl_endpoint = "127.0.0.1:6666"
+target = "example.m4"
+cores = ["m4"]
+while_running = false
+
+[[cores]]
+name = "m7"
+endpoint = "127.0.0.1:3333"
+[cores.registers]
+cpu = "cortex-m7"
+tcl_endpoint = "127.0.0.1:6666"
+[cores.registers.component_owners.ppb."core:m7"]
+base = 0
+channel = "m7_ppb"
+little_endian = true
+
+[[cores]]
+name = "m4"
+endpoint = "127.0.0.1:3334"
+[cores.registers]
+cpu = "cortex-m4"
+tcl_endpoint = "127.0.0.1:6666"
+[cores.registers.component_owners.ppb."core:m4"]
+base = 0
+channel = "m4_ppb"
+little_endian = true
+
+# Use cpu="cortex-m3" for a verified M3 core; do not infer CPU/AP from a chip name.
+# Missing NVIC priority_bits stays Unknown; never discover it by writing IPR.
+# RO/RW catalogue labels do not enable a writer, DWT/FPU or cache maintenance.

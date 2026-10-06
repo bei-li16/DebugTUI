@@ -2,6 +2,8 @@
 
 ## 寄存器与内存访问开发分支（尚未发布）
 
+本次只读版本按 [冻结 Goal](docs/registers-readonly-goal.md) 验收 M3/M4/M7 与 R52 的明确范围。每核有效配置、继承目录及条件复用公共模型；CorePrivate 的路由、归属与缓存不能按地址合并。R52 普通 CP15/MPU/selector 使用匹配的 `aarch64 r52_read` / `aarch64 r52_select`，在 OpenOCD 内取得当前 Debug EL2 证明并保存/恢复/回读；停止前 CPSR/DSPSR 不授权注入，恢复未知隔离服务。详细 [范围与模板](docs/registers-readonly-guide.md)、[软件/硬件用例入口](tests/cases/registers-readonly-release.md) 区分软件验收、待上板和后续功能。下列历史子系统记录不扩大本次范围。
+
 `ui/registers/status.rs` shares row classification with expanded-row counts, excludes fields and groups, and requires current stopped context/owner for Valid. Its scrollable popup keeps complete selected-object reasons, raw provenance and sample time accessible. A local skipped-serde `Request` cancellation token passes through the coordinator for register, Watch resolution and explicit memory reads. Workers check between complete operations and before publication; MI/Tcl restoration is never interrupted by this token. Cancelled batches preserve old samples and cannot mask unknown restoration or broadcast to peer cores. See [status and cancellation](docs/register-read-status-and-cancel.md).
 
 `registers.rs` 定义版本化目录、读取路由、位域、精确原始值、实现条件及显式 core/cluster/chip 归属；`session/registers.rs` 按请求读取，错误按条目隔离。`ui/registers.rs` 展示分组树并只请求当前可见条目。旧 `Snapshot.registers` 保留，新增样本包含来源、原因、状态和上下文；目录或读取失败不证明硬件缺失。

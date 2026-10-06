@@ -1,6 +1,10 @@
 # Copy to the MCAL project root as debug-chip.toml.
 # Place tha6-environment.toml.example in .vscode as debug-env-chip.toml.
 # This is a board-specific MCAL startup policy, not part of the chip catalogue.
+# Optional readonly registers are independent of startup/reset policy; see
+# docs/registers-readonly-guide.md and registers-readonly-r52.toml.example.
+# Merge only reviewed [registers] settings; map keys to core.0/core.1/etc.
+# Verify physical target names in your CFG; no AP mapping is inferred here.
 version = 3
 watch = ["uart_cnt"]
 [tools]

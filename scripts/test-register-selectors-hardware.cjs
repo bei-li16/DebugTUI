@@ -10,7 +10,7 @@ const suite = new Cases(out, {
   board_tests_executed: !!options.run && !options['software-fixture'], core: options.core || null,
 });
 if (!options.run) {
-  for (const id of ids) suite.skip(id, 'Read one saved/restored physical-core selector bank', 'Requires --run with a declared paused fixture and verified MRC/MCR backend');
+  for (const id of ids) suite.skip(id, 'Read one saved/restored physical-core selector bank', 'Requires --run with a declared paused fixture and matching verified selector backend');
   suite.finish(); process.exit(0);
 }
 assert(options.project && options.core && options.case, '--run requires --project FILE --core NAME --case JSON');
