@@ -36,13 +36,17 @@ try {
         foreach ($entry in $metadata.files) {
             if ($entry -eq 'bin/') { continue }
             $source = Join-Path $root $entry
-            if (Test-Path -LiteralPath $source) { Copy-Item -LiteralPath $source -Destination $stage -Recurse }
+            if (Test-Path -LiteralPath $source) {
+                $destination = Join-Path $stage $entry.TrimEnd('/','\')
+                New-Item -ItemType Directory -Path (Split-Path $destination) -Force | Out-Null
+                Copy-Item -LiteralPath $source -Destination $destination -Recurse
+            }
         }
         $packed = (Invoke-Npm @('pack', $stage, '--json', '--pack-destination', $out)) -join "`n" | ConvertFrom-Json
         $script:packageFile = Join-Path $out $packed[0].filename
         $files = @($packed[0].files | ForEach-Object path)
         if ($files -notcontains 'bin/debugtui.exe' -or $files -notcontains 'LICENSE' -or $files -notcontains 'THIRD_PARTY_NOTICES.md') { throw 'Required executable/license files missing' }
-        if ($files | Where-Object { $_ -cnotmatch '^tests/cases/[^/]+\.md$' -and $_ -match '^(tools|tests|scripts|target|\.dev)/' }) { throw 'Development/environment files leaked into package' }
+        if ($files | Where-Object { $_ -cne 'tests/README.md' -and $_ -cnotmatch '^tests/cases/[^/]+\.md$' -and $_ -match '^(tools|tests|scripts|target|\.dev)/' }) { throw 'Development/environment files leaked into package' }
     }
     Test-Case 'PKG-02' 'Install an old package fixture inside a private prefix' {
         Copy-Item -LiteralPath $Binary -Destination "$fixture/bin/debugtui.exe"

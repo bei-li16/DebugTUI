@@ -2,7 +2,7 @@
 
 2026-10-06。开发分支 `codex/register-debugging`，起点 `b493a7f`，源码基线 0.9.3。该清单落实新的 Goal，取代旧 TODO 全部 71 项作为本次完成条件；旧记录保留作追溯。36 项以完整软件验收为计数边界。硬件用例准备属于软件交付，执行上板不属于本目标。
 
-当前摘要（迭代 20）：**34 完成 / 2 未完成**。A01～A10、B01～B11、C01～C06、D01～D04、E01～E03 已通过软件验收；E04/E05 待完成。本分支版本更新为 `0.10.0-readonly.1`，完整 24 功能套件、761 项 Cargo 测试及严格 Clippy 通过。本轮修正 Watch 删除后的保存基线、旧 TUI 脚本导航和打包文档门禁；硬件默认 32 项 SKIPPED。真实历史包已下载核验，最终升级/安装、附件、tag 和非主分支 Release 仍待完成；本地正式版及工具未替换。最新证据见文末，旧轮次记录按各自源码范围保留。
+当前摘要（迭代 21）：**35 完成 / 1 未完成**。A01～A10、B01～B11、C01～C06、D01～D04、E01～E04 已通过软件验收；仅 E05 的 tag、非主分支 prerelease 和公网下载验收待完成。版本为 `0.10.0-readonly.1`，完整 24 功能套件、761 项 Cargo 测试及严格 Clippy 通过；最终优化 EXE 的真实 v0.9.3 升级、安装/卸载/重装和生产 EXE/ZIP/npm 打包 14 项全部通过。独立 OpenOCD Windows 候选与 GPL 对应源码一致。硬件默认 32 项 SKIPPED，本地正式版及工具未替换。最新证据见文末，旧轮次记录按各自源码范围保留。
 
 核心参考文档（保留绝对路径）：
 
@@ -60,7 +60,7 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | E01 | 软件入口及硬件用例准备 | MI/Tcl/实际 CLI、可执行用例、上板 SKIPPED |
 | [x] | E02 | 配置示例、用户文档及后续清单 | 新字段/有效值/支持限制和三份绝对引用 |
 | [x] | E03 | 发布前完整回归与静态检查 | cargo/仓库静态检查、必要功能套件全通过 |
-| [ ] | E04 | 升版、构建、打包及一致性 | 隔离安装/版本/附件/对应源码核对 |
+| [x] | E04 | 升版、构建、打包及一致性 | 隔离安装/版本/附件/对应源码核对 |
 | [ ] | E05 | 非主分支提交、tag、Release | 最终 SHA、tag 目标、已发布附件校验 |
 
 状态起点 **0 完成 / 36 未完成**；已有成果会在本清单对应测试复验后计入。不得仅因旧记录或部分实现勾选。后续每轮在此记软件证据、完成数和提交推送结果；不以等待上板延长 Goal。
@@ -328,3 +328,13 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 严格 Clippy 全 target **通过**，25.61 秒。Rust fmt、20 个 PowerShell、68 个 Node、16 个 Python、32 个 JSON 的语法/格式检查，六目录离线再生成、五项 CMSIS 测试、三个绝对引用及用户规格摘要检查通过。最终 EXE 再验 readiness **10 通过**，八硬件驱动默认 **32 SKIPPED、零子进程/网络尝试**，报告 `evidence\register-readonly-readiness-1791300881754-c181910f\report.json`。最终 debug EXE SHA256 `d1bfc8842c335a25570ddb21909f50876d5deae83e3c9e046331db47fd40aba9`；Release 构建与交付验收另归 E04。
 - 后端 source/patch 未改、平台未重建：九个生产 C 事务模型、八项 Python 测试及真实 Windows 候选命令入口复验通过，候选摘要仍为 `0820f197803c55ecf756d7b7ef33f6c82ef97821b2764561ad71d32455e779a0`。Windows DLL/对应源码等 **11 检查通过**；对应源码在全新目录脱离工作区验证，内部九个模型和命令均通过。历史 source-package 外层汇总仍写 7，本轮逐项核对包含 r52_core/r52_selector 的九个内部字段，不用外层数字代替其覆盖证明。未执行 ARM 指令/上板，board verified 保持 false。
 - 真实旧 v0.9.3 包与其发布的 SHA256SUMS 已下载核对，包 SHA256 `f3a9b1ffe151563c4b678e2a177ad123a03166a70e77aea32b28c73417c07676`，位于构建缓存 `historical-release-v0.9.3`。本轮尚未把这份真实旧包升级到最终 Release 产物，E04 不勾选；非主分支 tag/Release、附件及下载校验仍归 E05。源文件、日志、最终提交和远端核对记录在外部 `readonly-final-regression-evidence-20261006.json`，Goal 保持 active。
+
+## 迭代 21：最终优化包与真实旧版升级
+
+2026-10-06，完成 **E04**，累计 **35 完成 / 1 未完成**。起点开发分支及远端均为 `5ec0f32ae716088d8118032e06f51d35b145c077`。生产代码、目录和后端未改，复用迭代 20 完整回归与已有 Windows/Linux 构建，不重复全量编译。
+
+- 最终 Release 优化构建版本 `debugtui 0.10.0-readonly.1`，EXE 15,285,760 字节，SHA256 `eac50b06182282124fe7a9b2e4f16d7f76846352ca9466198d5ecba2bcd98a20`。构建日志 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\readonly-final-release-build-20261006.log`。
+- 以发布摘要核对的真实 v0.9.3 tgz 为升级基线，运行 `test-register-distribution.cjs` 的实际生产打包、EXE、ZIP、npm 入口，**14 通过 / 0 失败 / 0 skipped**。npm postinstall 实际执行；升级/重复安装/卸载/重装保留有效、损坏、嵌套和目录形式客户内容，五个 CPU 目录解析一致，初始化失败使安装失败。报告 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\evidence\distribution\register-distribution-1791302156623-b2f8a61e\report.json`，子进程原文和包保留。
+- 当前 Windows OpenOCD 候选、对应源码 ZIP 和配方摘要逐项核对一致。独立解包源码的内层报告九项 C 模型与真实命令均为 true、board false；前轮 11 项 DLL/包验收仍适用。保留外层旧七项摘要与内层九项的区别，不更改未变化的平台或宣称实板通过。本次分发 Windows 候选及对应源码，Linux 软件构建证据保留。
+- [交付说明](registers-readonly-release.md) 记录版本、构建/历史包/候选/对应源码摘要、隔离安装边界、安装地址、限制、后续事项和三份核心绝对引用。生产打包包含文档和 case 文档，环境工具不混入。
+- 剩余仅 **E05**：将本轮提交推送，tag 指向已验证开发分支，上传附件及校验和，发布 prerelease，按指定 tag 下载并验证公网升级/安装和对应源码。当前远端正式 latest 仍为 v0.9.3；未发布的 v0.10.0-readonly.1 不标为完成。本轮提交、最终包清单和远端核对记录于外部 `readonly-final-distribution-evidence-20261006.json`。Goal 保持 active，用户规格只读保留，上板全部未执行。- 根工程首次打包门禁发现 npm 自动收录父级 `tests/README.md`，隔离复制只带 case 目录而未暴露它。将该 README 显式列为随包文档并纳入真实 fixture/必需 payload，门禁只豁免这一个 README 和一级 case Markdown；`.cjs` 测试泄漏仍被独立拒绝。修正旧 PowerShell fixture 的目录复制以保留源布局，避免 nested 文件扁平化覆盖。修复后重新执行真实历史包 14 项全部通过，PowerShell 分发 7 项全部通过，改动脚本语法及 diff 检查通过。后者报告 `G:\Data\GitFiles\DebugTUI\artifacts\distribution-20261006-235600-e71a8b96\report.json`。生产 Rust/backend 无变更，不再次运行无关全 Cargo。根目录生产打包成功，ZIP 每个 payload 与当前源文件及 npm 清单逐项摘要一致。

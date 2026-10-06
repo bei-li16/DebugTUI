@@ -12,7 +12,7 @@ const metadata=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')
 const cpus=['cortex-m3','cortex-m4','cortex-m7','cortex-r52','cortex-r52+'];
 const required=['profiles/install.cjs','profiles/devices.toml','profiles/registers/armv7m-common.toml',
   ...cpus.map(cpu=>`profiles/registers/${cpu}.toml`),'profiles/registers-readonly-multicore.toml.example',
-  'profiles/registers-readonly-r52.toml.example','docs/registers-readonly-guide.md','tests/cases/registers-readonly-release.md'];
+  'profiles/registers-readonly-r52.toml.example','docs/registers-readonly-guide.md','tests/cases/registers-readonly-release.md','tests/README.md'];
 const historical=Boolean(options['previous-package']);
 assert(historical===Boolean(options['previous-sha256']) && historical===Boolean(options['previous-version']),'Previous package, SHA256 and version must be provided together');
 const suite=new Cases(out,{layer:'production npm/EXE/ZIP, private prefix and config roots',board_tests_executed:false,binary,binary_sha256:hash(binary),version:metadata.version,upgrade_baseline:historical?'verified historical package':'synthetic package replacement fixture; not a historical release'});
