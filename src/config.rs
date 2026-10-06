@@ -642,6 +642,10 @@ impl Project {
         item: &str,
         root: Option<&str>,
     ) -> Option<&RefreshPolicy> {
+        // The common project has no policies; skip building lookup keys.
+        if self.ui.refresh.is_empty() {
+            return None;
+        }
         let mut prefixes = vec![];
         if !self.debug.chip.is_empty() {
             prefixes.push(format!("chip:{}|{core}|", self.debug.chip));

@@ -28,6 +28,37 @@ impl WatchRow<'_> {
         self.path.is_empty() && !self.more
     }
 }
+/// The visible part of one Watch/Locals row, owned so drawing can update hit
+/// lists and value history while the snapshot tree stays borrowed nowhere.
+struct WatchLine {
+    row: usize,
+    key: String,
+    format_key: String,
+    root: String,
+    name: String,
+    raw: String,
+    changed: bool,
+    error: bool,
+    more: bool,
+    removable: bool,
+    depth: usize,
+    type_name: Option<String>,
+    expandable: bool,
+    expanded: bool,
+    limited: bool,
+}
+/// Same count as `rows(watches).len()` without building the list.
+pub(super) fn row_count(watches: &[Variable]) -> usize {
+    fn visit(value: &Variable) -> usize {
+        match &value.tree {
+            Some(tree) if tree.expanded => {
+                1 + tree.children.iter().map(visit).sum::<usize>() + usize::from(tree.has_more)
+            }
+            _ => 1,
+        }
+    }
+    watches.iter().map(visit).sum()
+}
 pub(super) fn rows(watches: &[Variable]) -> Vec<WatchRow<'_>> {
     fn visit<'a>(out: &mut Vec<WatchRow<'a>>, root: &'a str, value: &'a Variable) {
         let path = value
@@ -286,29 +317,68 @@ impl App {
             default: crate::config::Radix::Decimal,
         })
     }
+    /// Copies only what the visible rows draw; the whole tree used to be cloned
+    /// every frame, which cost more than drawing it.
+    fn watch_line(&self, pane: usize, row: usize, node: &WatchRow) -> WatchLine {
+        let key = node.key();
+        let (raw, changed, error) = (pane == 1)
+            .then(|| self.watch_sample(&key))
+            .flatten()
+            .unwrap_or_else(|| {
+                (
+                    node.value.value.clone(),
+                    node.value.changed,
+                    node.value.error,
+                )
+            });
+        let tree = node.value.tree.as_ref();
+        WatchLine {
+            row,
+            format_key: if pane == 1 {
+                key.clone()
+            } else if node.path.is_empty() {
+                self.numeric_key(9, node.root)
+            } else {
+                format!("{}:{}", self.numeric_key(9, node.root), json!(node.path))
+            },
+            key,
+            root: node.root.into(),
+            name: node.value.name.clone(),
+            raw,
+            changed,
+            error,
+            more: node.more,
+            removable: node.removable(),
+            depth: node.path.len() + usize::from(node.more),
+            type_name: tree.map(|t| t.type_name.clone()),
+            expandable: tree.is_some_and(|t| {
+                t.child_count > 0
+                    || (pane == 9
+                        && (t.type_name.contains("struct ")
+                            || t.type_name.contains("union ")
+                            || t.type_name.contains("class ")
+                            || t.type_name.contains('*')
+                            || t.type_name.contains('[')))
+            }),
+            expanded: tree.is_some_and(|t| t.expanded),
+            limited: tree.is_some_and(|t| t.limited),
+        }
+    }
     pub(super) fn watch_numeric_view(&mut self, f: &mut UiFrame, pane: usize, rect: Rect) {
-        let watches = if pane == 1 {
-            self.snapshot.watches.clone()
-        } else {
-            self.snapshot.locals.clone()
-        };
-        let nodes = rows(&watches);
         let start = self.view_tops[pane];
-        for row in start..start + rect.height as usize {
-            let Some(node) = nodes.get(row / 2) else {
-                break;
-            };
-            let mut displayed = node.value.clone();
-            if let Some((text, changed, error)) = (pane == 1)
-                .then(|| self.watch_sample(&node.key()))
-                .flatten()
-            {
-                displayed.value = text;
-                displayed.changed = changed;
-                displayed.error = error;
-            }
-            let value = &displayed;
-            let close_width = if pane == 1 && node.removable() && rect.width >= 8 {
+        let lines: Vec<WatchLine> = {
+            let nodes = rows(if pane == 1 {
+                &self.snapshot.watches
+            } else {
+                &self.snapshot.locals
+            });
+            (start..start + rect.height as usize)
+                .map_while(|row| nodes.get(row / 2).map(|node| self.watch_line(pane, row, node)))
+                .collect()
+        };
+        for line in lines {
+            let row = line.row;
+            let close_width = if pane == 1 && line.removable && rect.width >= 8 {
                 3
             } else {
                 0
@@ -324,34 +394,18 @@ impl App {
                 rect: hit,
                 pane,
                 row,
-                key: if pane == 1 {
-                    node.key()
-                } else if node.path.is_empty() {
-                    self.numeric_key(9, node.root)
-                } else {
-                    format!("{}:{}", self.numeric_key(9, node.root), json!(node.path))
-                },
-                name: value.name.clone(),
-                raw: value.value.clone(),
+                key: line.format_key,
+                name: line.name,
+                raw: line.raw,
                 default: crate::config::Radix::Decimal,
             };
-            let tree = value.tree.as_ref();
-            let expandable = tree.is_some_and(|t| {
-                t.child_count > 0
-                    || (pane == 9
-                        && (t.type_name.contains("struct ")
-                            || t.type_name.contains("union ")
-                            || t.type_name.contains("class ")
-                            || t.type_name.contains('*')
-                            || t.type_name.contains('[')))
-            });
-            let indent = "  ".repeat(node.path.len() + usize::from(node.more));
-            let spans = if node.more {
+            let indent = "  ".repeat(line.depth);
+            let spans = if line.more {
                 vec![Span::styled(
                     format!(
                         "{indent}  {}",
                         if row % 2 == 0 {
-                            if tree.is_some_and(|t| t.limited) {
+                            if line.limited {
                                 "Expansion limit reached"
                             } else {
                                 "… Load more (Enter)"
@@ -363,11 +417,7 @@ impl App {
                     Style::default().fg(theme::MUTED),
                 )]
             } else if row % 2 == 0 {
-                let arrow = match (
-                    expandable,
-                    tree.is_some_and(|t| t.expanded),
-                    self.project.ui.unicode,
-                ) {
+                let arrow = match (line.expandable, line.expanded, self.project.ui.unicode) {
                     (true, true, true) => "▾",
                     (true, false, true) => "▸",
                     (true, true, false) => "-",
@@ -376,18 +426,20 @@ impl App {
                 };
                 vec![
                     Span::styled(
-                        format!("{indent}{arrow} {}", value.name),
+                        format!("{indent}{arrow} {}", item.name),
                         Style::default().fg(theme::MUTED),
                     ),
                     Span::styled(
-                        tree.map(|t| format!("  {}", t.type_name))
+                        line.type_name
+                            .as_ref()
+                            .map(|t| format!("  {t}"))
                             .unwrap_or_default(),
                         Style::default().fg(theme::DIM),
                     ),
                 ]
             } else {
                 let mut spans = vec![Span::raw(format!("{indent}    "))];
-                spans.extend(self.numeric_spans(&item, value.changed, value.error));
+                spans.extend(self.numeric_spans(&item, line.changed, line.error));
                 spans
             };
             let selected = self.pane == pane && self.selected(pane) / 2 == row / 2;
@@ -401,8 +453,8 @@ impl App {
                 vec![Line::from(spans).style(Style::default().bg(bg))],
                 hit,
             );
-            if node.more || (expandable && row % 2 == 0) {
-                let arrow = if node.more {
+            if line.more || (line.expandable && row % 2 == 0) {
+                let arrow = if line.more {
                     hit
                 } else {
                     Rect::new(
@@ -413,12 +465,12 @@ impl App {
                     )
                 };
                 if pane == 1 {
-                    self.watch.expand_hits.push((arrow, node.key()));
+                    self.watch.expand_hits.push((arrow, line.key));
                 } else {
-                    self.watch.local_expand_hits.push((arrow, node.key()));
+                    self.watch.local_expand_hits.push((arrow, line.key));
                 }
                 // Value/name selection outside the disclosure arrow is unchanged.
-                if !node.more && arrow.right() > hit.x {
+                if !line.more && arrow.right() > hit.x {
                     item.rect.x = arrow.right();
                     item.rect.width = hit.right().saturating_sub(item.rect.x);
                 }
@@ -454,10 +506,10 @@ impl App {
                     close,
                 );
                 if show {
-                    self.watch.remove_hits.push((close, node.root.into()));
+                    self.watch.remove_hits.push((close, line.root));
                 }
             }
-            if !node.more {
+            if !line.more {
                 self.formats.hits.push(item);
             }
         }

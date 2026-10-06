@@ -40,6 +40,16 @@ pub(super) struct Item {
     pub peripheral: Option<(usize, usize)>,
     pub safe_auto: bool,
 }
+fn watch_item(node: &watch::WatchRow) -> Item {
+    Item {
+        key: node.key(),
+        name: node.value.name.clone(),
+        watch: Some((node.root.into(), node.path.to_vec())),
+        memory: None,
+        peripheral: None,
+        safe_auto: true,
+    }
+}
 struct Sample {
     legacy: bool,
     binding: Option<Binding>,
@@ -147,16 +157,34 @@ impl App {
             .refresh_policy(core, &item.key, root.as_deref())
     }
     pub(super) fn watch_monitor_item(&self, row: usize) -> Option<Item> {
-        let nodes = watch::rows(&self.snapshot.watches);
-        let node = nodes.get(row / 2).filter(|n| !n.more)?;
-        Some(Item {
-            key: node.key(),
-            name: node.value.name.clone(),
-            watch: Some((node.root.into(), node.path.to_vec())),
-            memory: None,
-            peripheral: None,
-            safe_auto: true,
-        })
+        watch::rows(&self.snapshot.watches)
+            .get(row / 2)
+            .filter(|n| !n.more)
+            .map(watch_item)
+    }
+    /// Visible peripheral registers and Watch scalars, flattening the Watch
+    /// tree once rather than once per visible row.
+    fn visible_monitor_items(&self) -> Vec<Item> {
+        let mut items = self.visible_peripheral_monitors();
+        if self.variable_pane == 1 && self.view_rects[1].height > 0 {
+            let start = self.view_tops[1] / 2;
+            let end = (self.view_tops[1] + self.view_rects[1].height as usize).div_ceil(2);
+            items.extend(
+                watch::rows(&self.snapshot.watches)
+                    .iter()
+                    .skip(start)
+                    .take(end.saturating_sub(start))
+                    .filter(|n| {
+                        !n.more
+                            && n.value
+                                .tree
+                                .as_ref()
+                                .is_none_or(|t| t.child_count == 0 || t.type_name.contains('*'))
+                    })
+                    .map(watch_item),
+            );
+        }
+        items
     }
     pub(super) fn open_monitor(&mut self, pane: usize, row: usize) {
         let item = match pane {
@@ -694,31 +722,13 @@ impl App {
         {
             return false;
         }
-        let mut items = self.visible_peripheral_monitors();
-        if self.variable_pane == 1 && self.view_rects[1].height > 0 {
-            let rows = watch::rows(&self.snapshot.watches);
-            let start = self.view_tops[1] / 2;
-            let end = (self.view_tops[1] + self.view_rects[1].height as usize).div_ceil(2);
-            let indices = rows
-                .iter()
-                .enumerate()
-                .skip(start)
-                .take(end.saturating_sub(start))
-                .filter(|(_, n)| {
-                    !n.more
-                        && n.value
-                            .tree
-                            .as_ref()
-                            .is_none_or(|t| t.child_count == 0 || t.type_name.contains('*'))
-                })
-                .map(|(i, _)| i * 2)
-                .collect::<Vec<_>>();
-            items.extend(
-                indices
-                    .into_iter()
-                    .filter_map(|i| self.watch_monitor_item(i)),
-            );
-        }
+        // Without any refresh policy nothing polls on its own; only an explicit
+        // one-shot read can be queued, and that needs no visible-item scan.
+        let items = if self.project.ui.refresh.is_empty() {
+            vec![]
+        } else {
+            self.visible_monitor_items()
+        };
         if let Some((item, _)) = self.monitor.next_read.take() {
             let exists = item.watch.as_ref().is_none_or(|_| {
                 watch::rows(&self.snapshot.watches)

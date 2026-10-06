@@ -204,9 +204,9 @@ impl App {
         }
         if pane == 4 {
             let (address, raw) = self
-                .memory_bytes()
-                .into_iter()
-                .nth(row * self.memory_columns())?;
+                .memory_tokens()
+                .nth(row * self.memory_columns())
+                .map(|(address, b)| (address, format!("0x{b}")))?;
             return Some(Item {
                 register: None,
                 rect: Rect::default(),
@@ -402,24 +402,34 @@ impl App {
         } else {
             theme::TEXT
         };
-        let mut spans = value
-            .chars()
-            .enumerate()
-            .map(|(i, ch)| {
-                let digit_changed = aligned
-                    && i < value.find(char::is_whitespace).unwrap_or(value.len())
-                    && ch.is_ascii_hexdigit()
-                    && old.as_ref().and_then(|s| s.chars().nth(i)) != Some(ch);
-                Span::styled(
-                    ch.to_string(),
-                    Style::default().fg(if !stale && changed && (!aligned || digit_changed) {
-                        theme::AMBER
-                    } else {
-                        fg
-                    }),
-                )
-            })
-            .collect::<Vec<_>>();
+        // Per-character colours, emitted as one span per run of equal colour
+        // rather than one allocated span per character.
+        let digits = value.find(char::is_whitespace).unwrap_or(value.len());
+        let mut old_chars = old.as_deref().map(str::chars);
+        let mut spans: Vec<Span<'static>> = vec![];
+        let mut run = String::new();
+        let mut run_fg = fg;
+        for (i, ch) in value.chars().enumerate() {
+            let old_ch = old_chars.as_mut().and_then(Iterator::next);
+            let digit_changed =
+                aligned && i < digits && ch.is_ascii_hexdigit() && old_ch != Some(ch);
+            let color = if !stale && changed && (!aligned || digit_changed) {
+                theme::AMBER
+            } else {
+                fg
+            };
+            if color != run_fg && !run.is_empty() {
+                spans.push(Span::styled(
+                    std::mem::take(&mut run),
+                    Style::default().fg(run_fg),
+                ));
+            }
+            run_fg = color;
+            run.push(ch);
+        }
+        if !run.is_empty() {
+            spans.push(Span::styled(run, Style::default().fg(run_fg)));
+        }
         spans.push(Span::styled(
             format!("  {}{}", if changed { "• " } else { "" }, tag(base)),
             Style::default().fg(theme::DIM),
@@ -434,27 +444,32 @@ impl App {
             self.watch_numeric_view(f, pane, rect);
             return;
         }
-        let vars = match pane {
-            1 => &self.snapshot.watches,
-            9 => &self.snapshot.locals,
-            _ => &self.snapshot.registers,
-        }
-        .clone();
         let stride = if pane == 3 { 1 } else { 2 };
         let start = self.view_tops[pane];
-        for row in start..start + rect.height as usize {
-            let Some(v) = vars.get(row / stride) else {
-                break;
+        // Copy the visible rows only, not the whole register list every frame.
+        let visible: Vec<_> = {
+            let vars = match pane {
+                1 => &self.snapshot.watches,
+                9 => &self.snapshot.locals,
+                _ => &self.snapshot.registers,
             };
+            (start..start + rect.height as usize)
+                .map_while(|row| {
+                    vars.get(row / stride)
+                        .map(|v| (row, v.name.clone(), v.value.clone(), v.changed, v.error))
+                })
+                .collect()
+        };
+        for (row, name, value, changed, error) in visible {
             let hit = Rect::new(rect.x, rect.y + (row - start) as u16, rect.width, 1);
             let item = Item {
                 register: None,
                 rect: hit,
                 pane,
                 row,
-                key: self.numeric_key(pane, &v.name),
-                name: v.name.clone(),
-                raw: v.value.clone(),
+                key: self.numeric_key(pane, &name),
+                name,
+                raw: value,
                 default: if pane == 3 {
                     Radix::Hex
                 } else {
@@ -463,19 +478,19 @@ impl App {
             };
             let spans = if stride == 2 && row % 2 == 0 {
                 vec![Span::styled(
-                    format!("  {}", v.name),
+                    format!("  {}", item.name),
                     Style::default().fg(theme::MUTED),
                 )]
             } else {
                 let mut spans = vec![Span::styled(
                     if pane == 3 {
-                        format!("  {:8} ", v.name)
+                        format!("  {:8} ", item.name)
                     } else {
                         "    ".into()
                     },
                     Style::default().fg(theme::MUTED),
                 )];
-                spans.extend(self.numeric_spans(&item, v.changed, v.error));
+                spans.extend(self.numeric_spans(&item, changed, error));
                 spans
             };
             let selected = self.formats.selected.as_ref() == Some(&item.key)
@@ -496,30 +511,37 @@ impl App {
     pub(super) fn memory_columns(&self) -> usize {
         (self.view_rects[4].width.saturating_sub(12) as usize / 12).clamp(1, 16)
     }
+    /// Address and hex digits of each sampled byte, borrowed from the sample.
+    fn memory_tokens(&self) -> impl Iterator<Item = (u64, &str)> + '_ {
+        self.memory_lines().iter().flat_map(|line| {
+            let mut parts = line.split_whitespace();
+            let base = u64::from_str_radix(parts.next().unwrap_or("").trim_start_matches("0x"), 16)
+                .unwrap_or(0);
+            parts.enumerate().map(move |(i, b)| (base + i as u64, b))
+        })
+    }
+    #[cfg(test)]
     pub(super) fn memory_bytes(&self) -> Vec<(u64, String)> {
-        self.memory_lines()
-            .iter()
-            .flat_map(|line| {
-                let mut parts = line.split_whitespace();
-                let base =
-                    u64::from_str_radix(parts.next().unwrap_or("").trim_start_matches("0x"), 16)
-                        .unwrap_or(0);
-                parts
-                    .enumerate()
-                    .map(move |(i, b)| (base + i as u64, format!("0x{b}")))
-            })
+        self.memory_tokens()
+            .map(|(address, b)| (address, format!("0x{b}")))
             .collect()
+    }
+    pub(super) fn memory_byte_count(&self) -> usize {
+        self.memory_tokens().count()
     }
     pub(super) fn memory_view(&mut self, f: &mut UiFrame, rect: Rect) {
         let cols = self.memory_columns();
-        let bytes = self.memory_bytes();
-        for (row, chunk) in bytes
-            .chunks(cols)
-            .enumerate()
-            .skip(self.view_tops[4])
-            .take(rect.height as usize)
-        {
-            let y = rect.y + (row - self.view_tops[4]) as u16;
+        let top = self.view_tops[4];
+        // Format only the visible rows of the sample.
+        let bytes: Vec<(u64, String)> = self
+            .memory_tokens()
+            .skip(top * cols)
+            .take(rect.height as usize * cols)
+            .map(|(address, b)| (address, format!("0x{b}")))
+            .collect();
+        for (offset, chunk) in bytes.chunks(cols).enumerate() {
+            let row = top + offset;
+            let y = rect.y + offset as u16;
             f.render_widget(
                 Paragraph::new(format!("{:08x} ", chunk[0].0))
                     .style(Style::default().fg(theme::MUTED)),

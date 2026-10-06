@@ -1449,17 +1449,17 @@ impl App {
     fn view_len(&self, pane: usize) -> usize {
         match pane {
             0 => self.source.len(),
-            1 => watch::rows(&self.snapshot.watches).len() * 2,
+            1 => watch::row_count(&self.snapshot.watches) * 2,
             2 => self.snapshot.stack.len(),
             3 if self.register_view.enabled() => self.register_view.rows.len(),
             3 => self.snapshot.registers.len(),
-            4 => self.memory_bytes().len().div_ceil(self.memory_columns()),
+            4 => self.memory_byte_count().div_ceil(self.memory_columns()),
             5 => self.snapshot.assembly.len(),
             6 => self.snapshot.breakpoints.len(),
             7 => self.filtered_files().len(),
             8 => self.logs.len(),
             10 => self.peripherals.len(),
-            _ => watch::rows(&self.snapshot.locals).len() * 2,
+            _ => watch::row_count(&self.snapshot.locals) * 2,
         }
     }
     fn set_view_top(&mut self, pane: usize, top: usize) {
