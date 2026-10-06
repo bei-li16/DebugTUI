@@ -167,7 +167,13 @@ fn reads(out: &Path) -> usize {
 
 #[test]
 fn register_matrix_scope_all_uses_one_core_and_expires_shared_receipts_after_peer_activity() {
-    let (project, out) = fixture("matrix", true);
+    let (mut project, out) = fixture("matrix", true);
+    // Keep the peer running during the export. The fixture's default 10 ms
+    // automatic stop queues unrelated stack refreshes after the log checkpoint.
+    project
+        .gdb
+        .env
+        .insert("DEBUGTUI_TEST_PAUSE".into(), "event".into());
     let engine = coordinator::spawn(project);
     call(&engine, 1, "connect", json!({}));
     call(&engine, 2, "control_scope", json!({"scope":"all"}));
@@ -208,6 +214,14 @@ fn register_matrix_scope_all_uses_one_core_and_expires_shared_receipts_after_pee
     select(&engine, 0);
     call(&engine, 5, "continue", json!({"scope":"core"}));
     select(&engine, 1);
+    let status = call(&engine, 50, "status", json!({}));
+    assert!(
+        status["cores"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|c| c["name"] == "core0" && c["state"] == "RUNNING")
+    );
     let commands = fs::read_to_string(out.join("commands.txt")).unwrap();
     let expired = call(&engine, 6, "registers_matrix", json!({}));
     for id in ["private", "cluster_alias", "chip_alias"] {

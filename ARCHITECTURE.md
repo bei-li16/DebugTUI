@@ -6,7 +6,7 @@
 
 `registers.rs` 定义版本化目录、读取路由、位域、精确原始值、实现条件及显式 core/cluster/chip 归属；`session/registers.rs` 按请求读取，错误按条目隔离。`ui/registers.rs` 展示分组树并只请求当前可见条目。旧 `Snapshot.registers` 保留，新增样本包含来源、原因、状态和上下文；目录或读取失败不证明硬件缺失。
 
-`session/register_matrix.rs` 提供纯缓存 `registers_matrix`，由 `registers/matrix.rs` 汇总类别、全依赖位宽/条件、配置路线及完整观察索引。协调器在响应边界重新核对共享 owner epoch、过滤 Probe 并重算矩阵；运行、旧上下文或未接受的共享值不成为当前观察。配置计划和读取结果分开保留，12 个 AArch32 计划类别的硬件支持保持 unverified，缺少 STM 目录也显式列出；[能力矩阵](docs/register-capability-matrix.md) 导出没有目标 I/O。
+`session/register_matrix.rs` 提供纯缓存 `registers_matrix`，由 `registers/matrix.rs` 汇总类别、全依赖位宽/条件、配置路线及完整观察索引。协调器在响应边界重新核对共享 owner epoch、过滤 Probe 并重算矩阵；运行、旧上下文或未接受的共享值不成为当前观察。配置计划和读取结果分开保留，12 个 AArch32 计划类别的硬件支持保持 unverified，STM 目录和未观察类别均显式列出；[能力矩阵](docs/register-capability-matrix.md) 导出没有目标 I/O。
 
 `launch/channels.rs` 编辑项目的 `memory_access` 草稿，不改写继承的工具 profile。配置加载记录实际来源。`ui/monitor.rs` 的 Watch／外设策略按芯片、核心和条目保存，绑定及迟到响应检查会话、停止代次和栈帧；Watch 地址仍由 GDB 在暂停时解析。
 
@@ -213,3 +213,5 @@ R52 MMIO 目录通过统一 session/registers → read_memory_channel 进入 GDB
 可选 registers.mmio_probe=true 通过固定三组件有界 RO 请求形成当前物理身份证明；数据路径要求同 context 的有效组件证明。独立 mmio_probe.ID/.after 样本保留实际 memory route/aperture、前后区间及 owner；GIC组被Debug前后复核包围，按手册精确 R52字段解码，不使用逻辑core名称推断地址或affinity。coordinator对 Probe 和普通样本同样绑定/验证共享owner epoch；peer生命周期、请求期间epoch变化和worker FIFO失效均清除相关共享事实。原配置单独保存、未知不变成No、64位两字非原子；完整范围见 [MMIO Probe](docs/register-mmio-probe.md)。
 
 VFP数据响应在 `provenance.access.vfp_pair` 记录首个D编号、完整128位pair和同次MVFR0/MVFR1/FPEXC。`PairEvidence`验证存储容量/位宽/视图范围；session请求级ReadCache共享完整原始来源，Alias继续记录独立的source/offset/bits。S/D/Q的派生及显示使用逻辑位序，lane0是低位，不依赖内存端序。该元数据描述已取得的存储，不授予执行权限；v2另以 `provenance.access.vfp` 保存外部MIDR/EDSCR、停止DSPSR/DLR及HCPTR，控制值也保留相同访问证明。旧JSON缺字段不制造证明；完整低EL后端适配继续在REG-304跟踪。[存储视图](docs/register-storage-views.md)、[当前状态自检](docs/register-vfp-proof.md)。
+
+`registers/stm.rs` 复用 MMIO 原始请求证据，独立于 CPU MIDR 验证 STM v1.1 核心及可选控制类；`session/stm.rs` 仅由显式 chip owner 映射启用，错误 identity 或后验变化立即停止后续地址。核心前后各15项包围可选HWE/DMA前后请求；所有路线、owner/epoch和请求顺序都验证。`session/registers.rs` 对内置和自定义 STM reader 均执行当前 Proof、定义地址、位宽和功能过滤，不能靠配置事实或手工读取绕过。复用共享chip生命周期、服务锁和请求取消；读选择器本身但不修改它，未实现新writer/Trace数据路径。[STM范围](docs/register-stm.md)。

@@ -32,3 +32,5 @@ Config、Topology 与 Component 的未知字段/错误类型由严格 schema 拒
 本批修复芯片默认覆盖 profile 显式 CPU 的优先级错误。有效选择先于芯片关联，使实际 `registers_list` 与 Setup Automatic 的“继承 profile/chip”语义一致。选择 R52+ 目录不等于已证明实际 R52+ 身份；未识别硬件仍遵守既有 Unknown/禁止扩展探测规则。
 
 完整回归、F24 与严格 Clippy 的最终记录见 [开发进度](registers-development-status.md)。环境 case 见 [配置验收](../tests/cases/register-configuration.md)，均为 SKIPPED；实际终端视觉、各类交付安装升级和完整 CPU/后端能力矩阵仍未完成。
+
+STM需要明确chip owner的控制区映射，不能从CPU型号或 `components` 无归属映射推断。可选 `stm_hwe`/`stm_dma` 只有同基址、通道和字节序的独立映射才探测；数据读取总是依赖当前Proof，`mmio_probe=false`不关闭此校验。完整示例、功能条件和范围见[STM](register-stm.md)。

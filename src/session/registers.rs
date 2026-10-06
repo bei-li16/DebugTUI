@@ -585,6 +585,7 @@ impl Engine {
                     require_owner_mapping,
                 } => {
                     if self.project.registers.mmio_probe
+                        && !crate::registers::stm::component(component)
                         && !self.snapshot.register_probe.as_ref().is_some_and(|probe| {
                             self.snapshot.state == "STOPPED"
                                 && crate::registers::mmio_probe::applicable(
@@ -607,6 +608,24 @@ impl Engine {
                         .component(component, owner.as_deref(), *require_owner_mapping)
                         .map_err(|error| (Reason::ReaderUnsupported, error))?
                         .clone();
+                    if crate::registers::stm::component(component)
+                        && !self.snapshot.register_probe.as_ref().is_some_and(|probe| {
+                            crate::registers::stm::data_allowed(
+                                probe,
+                                component,
+                                *offset,
+                                register.bits,
+                            ) && crate::registers::stm::applicable(
+                                probe,
+                                &self.register_context(),
+                                component,
+                                owner.as_deref(),
+                                &binding,
+                            )
+                        })
+                    {
+                        return Err((Reason::ReaderUnsupported,"STM requires a fresh owner-scoped component/control proof and a defined read-only configuration address; run registers_probe".into()));
+                    }
                     let address = binding.base.checked_add(*offset).ok_or_else(|| {
                         (Reason::TransportError, "Component address overflows".into())
                     })?;

@@ -1,5 +1,11 @@
 # DebugTUI 验证记录
 
+## REG-406 STM（2026-10-06，开发分支）
+
+完整Cargo **406单元＋175集成通过，2 ignored，共581通过**；F24 **156/156**为证据匹配模式数，非用例数。525324 ms无超时；其他**22外层功能套件未选择**。完整报告/Markdown/unit.log逐字节镜像 `artifacts/functional-1791244770256-6c55a69d/`，61份原始子报告保留于总报告引用位置；Node大产物留在C盘，核对 `artifacts/register-stm-report-mirror.json`。严格Clippy通过，日志 `artifacts/register-stm-clippy.log`；目录再生成及后端11项源锁静态核对通过，见 `artifacts/register-stm-static-audit.json`。
+
+八项新单元、六项worker/EXE集成覆盖独立组件身份/功能、可选接口、保留编码、四核/Scope All、真实AP大端路线、身份/权限/映射拒绝、peer代次失效和后验变化停止读取；失败旧值保留来源。独立RAM驱动正向及未就绪/身份错误/参考值不符的拒绝路径已验证。软件夹具不证明芯片集成或实板权限；八项环境case全部SKIPPED，默认驱动五阶段SKIPPED；独立C基线仅离线编译。 首轮既有共享矩阵夹具自动停止竞争及修复记录见[STM自检](docs/register-stm.md)，原完整MI日志不变断言保留。只勾选REG-406，28完成／43待完成，目标active；未上板、未全局安装或发布Release。
+
 ## REG-007只读能力矩阵（2026-10-06，开发分支）
 
 完整Cargo **398单元＋169集成通过，2 ignored，共567通过**；F24 **154/154**证据模式匹配，531352 ms无超时，其余22外层套件未选择。总报告/Markdown/unit.log逐字节镜像 `artifacts/functional-1791241698266-d38320e0/`，56份原始子报告在F盘，核对 `artifacts/register-matrix-report-mirror.json`。严格Clippy通过，日志 `artifacts/register-matrix-clippy.log`；后端源锁静态核对通过，见 `artifacts/register-matrix-static-audit.json`。

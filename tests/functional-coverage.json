@@ -185,7 +185,9 @@
         "actual_binary_register_matrix_is_read_only_and_preserves_isolated_configuration",
         "register_matrix_scope_all_uses_one_core_and_expires_shared_receipts_after_peer_activity",
         "register_matrix_exports_native_vfp_receipts_and_quarantined_failures_without_target_io",
-        "deferred_register_matrix_driver_runs_actual_binary_and_rejects_bad_independent_values"
+        "deferred_register_matrix_driver_runs_actual_binary_and_rejects_bad_independent_values",
+        "registers::stm::tests::",
+        "mmio_owners::stm_cases::"
       ],
       "sources": [
         "src/registers.rs",
@@ -357,7 +359,17 @@
         "scripts/test-register-matrix-hardware.cjs",
         "tests/fixtures/register-matrix-board.example.json",
         "docs/register-capability-matrix.md",
-        "tests/cases/register-matrix.md"
+        "tests/cases/register-matrix.md",
+        "src/registers/stm.rs",
+        "src/registers/stm/tests.rs",
+        "src/session/stm.rs",
+        "scripts/register_stm_metadata.py",
+        "scripts/test-register-stm-hardware.cjs",
+        "tests/register_mmio/stm_cases.rs",
+        "tests/fixtures/register-stm-board.example.json",
+        "tests/fixtures/register-stm-board.c",
+        "docs/register-stm.md",
+        "tests/cases/register-stm.md"
       ],
       "limits": [
         "目录及 MI/TCL 软件夹具不证明目标实现或实际后端能力",

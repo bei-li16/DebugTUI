@@ -191,3 +191,5 @@ R52 MMIO：register_mmio.rs 验证四个非连续 worker/两 cluster、显式 ow
 新鲜 MMIO Probe：四项独立手册数据单元验证身份、容量、请求/owner/context/AP来源、拒绝字段和旧配置兼容；五项真实worker/EXE测试覆盖42请求、普通读保持Proof、peer在请求中及发布后使共享事实失效、失败旧值保留、big-endian AP两字与独立RAM驱动正/负向流程。入口 node scripts/test-register-mmio-probe-hardware.cjs 默认五项 SKIPPED；[六项环境case](cases/register-mmio-probe.md)、独立21项C/JSON仅准备及离线编译。[范围与证据](../docs/register-mmio-probe.md) 不代表完整REG-405/BUS-006或上板完成。
 
 S/D/Q视图证据见[自检](../docs/register-storage-views.md)，包含同次128位pair/容量raw、独立64字/80视图及四种正常startup对象；[八项环境case](cases/register-storage-views.md)均SKIPPED。`DEBUGTUI_TEST_ARTIFACT_ROOT`可把Node测试产物放到其他磁盘；功能入口同时收集工程/该目录/独立分发目录的本轮报告，默认仍用工程artifacts。Rust/Tcl夹具仍保留工程内的命令日志，不改变用例或断言。
+
+STM：八项新单元和六项真实worker/EXE集成覆盖Arm STM v1.1身份/容量、STM-500配置、可选HWE/DMA类、保留编码、严格owner/AP路线、四核/Scope All、peer失效、后验身份改变和失败旧值。独立六项RAM驱动的正向与三类负向验证通过；入口 `node scripts/test-register-stm-hardware.cjs` 默认五阶段SKIPPED，[八项环境case](cases/register-stm.md)全部延后。C独立基线只离线编译，未上板；参见[范围](../docs/register-stm.md)。

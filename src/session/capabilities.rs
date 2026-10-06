@@ -192,6 +192,9 @@ impl Engine {
         if self.project.registers.mmio_probe && self.register_access_fault.is_none() {
             self.probe_mmio_capabilities(&mut probe)?;
         }
+        if self.register_access_fault.is_none() {
+            self.probe_stm_capabilities(&mut probe)?;
+        }
         probe.gdb_names = self.reg_names.clone();
         probe.notes.sort();
         probe.notes.dedup();

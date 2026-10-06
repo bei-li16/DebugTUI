@@ -1,5 +1,15 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：REG-406 STM只读配置与独立组件证明
+
+Arm STM v1.1共同身份/功能与STM-500配置区共46项目录，显式chip映射触发有界Probe；可选HWE/DMA需独立同aperture/路线映射和控制类证明。身份、物理路线、owner/代次、上下文及请求次序不依赖CPU MIDR。数据路径始终要求当前Proof/定义地址/实际功能，不写控制、选择器、unlock或stimulus；Trace数据采集解码未接入。详见[STM自检](register-stm.md)。
+
+八项新单元、六项worker/EXE集成覆盖独立组件身份/功能、可选接口、保留编码、四核/Scope All、真实AP大端路线、身份/权限/映射拒绝、peer代次失效和后验变化停止读取；失败旧值保留来源。独立RAM驱动正向及未就绪/身份错误/参考值不符的拒绝路径已验证。软件夹具不证明芯片集成或实板权限；八项环境case全部SKIPPED，默认驱动五阶段SKIPPED；独立C基线仅离线编译。
+
+完整Cargo **406单元＋175集成通过，2 ignored，共581通过**；F24 **156/156**为证据匹配模式数，非用例数。525324 ms无超时；其他**22外层功能套件未选择**。完整报告/Markdown/unit.log逐字节镜像 `artifacts/functional-1791244770256-6c55a69d/`，61份原始子报告保留于总报告引用位置；Node大产物留在C盘，核对 `artifacts/register-stm-report-mirror.json`。严格Clippy通过，日志 `artifacts/register-stm-clippy.log`；目录再生成及后端11项源锁静态核对通过，见 `artifacts/register-stm-static-audit.json`。
+
+仅新增勾选REG-406，**28完成／43待完成**。目标active，完整低EL/其余类别、BUS/writer、完整验收与工具整合/安装/升版/Release仍待完成。源码及既有全局安装仍为0.9.3；本轮提交并推送非主分支 `codex/register-debugging`。
+
 ## 2026-10-06：REG-007只读能力矩阵与全类别边界
 
 新增纯缓存 `registers_matrix`，导出类别、精确位宽、全别名依赖/状态条件、选中core/owner、配置endpoint/target/协议和完整观察索引。共享owner在协调器响应边界再次过滤/重算，旧Probe不覆盖配置事实；失败旧值保留原证据。覆盖12个AArch32计划类别，STM明确待补，全部hardware_support保持unverified。配置路线完整不表示后端/协议/权限已通过。详见[能力矩阵](register-capability-matrix.md)；Scope All不广播，disconnected/RUNNING/FAULT导出不进行目标I/O。
@@ -276,7 +286,7 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 
 ## 完整任务仍需完成的部分
 
-2026-10-06 按逐项软件证据自检：TODO 有 71 项开发条目，当前已完成／未完成为 27/44；逐项范围见框架、配置、Setup、目录交付、条件依据、生命周期、共享归属、读取来源、状态与取消及能力矩阵自检，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新完整 Cargo 和实际 GDB 回归见上方批次记录。其他功能 suite 仍需在完整任务验收时统一运行。F24／F26 的银行、MRRC、VFP 和变量写入测试映射不能替代整份 TODO 验收。
+2026-10-06 按逐项软件证据自检：TODO 有 71 项开发条目，当前已完成／未完成为 28/43；逐项范围见框架、配置、Setup、目录交付、条件依据、生命周期、共享归属、读取来源、状态与取消及能力矩阵自检，完整任务尚未完成。下表覆盖全部条目范围，说明已有实现和阻止完整验收的缺口；“有实现”不表示该阶段的全部要求已通过。最新完整 Cargo 和实际 GDB 回归见上方批次记录。其他功能 suite 仍需在完整任务验收时统一运行。F24／F26 的银行、MRRC、VFP 和变量写入测试映射不能替代整份 TODO 验收。
 
 | 条目范围 | 已有实现与证据 | 尚未完成／需补验收 |
 |---|---|---|
@@ -284,14 +294,14 @@ SVD 外设 writer 只发送一个对齐的 8/16/32 位 `target write_memory`；�
 | REG-101–110 | 严格目录、精确原始值/字段/别名、逐项 reader、上下文/owner、四核显式拓扑与独立共享代次／路由缓存、CPU/目录 Setup、内置与用户目录、三态条件；REG-102 的配置层/路径/芯片关联、REG-108 的完整目录预览／取消／保存／配置差异与当前核心身份提示、REG-107 的目录载荷／初始化／隔离安装／客户文件保留、REG-110 的全父链条件／WO／当前与原值依据已核对；`registers.rs`、`tests/register_access.rs`、覆盖矩阵 F24 | 正式升版后重新验证完整产物、真实版本升级与公网安装；各新增类别的身份/条件/别名适配仍需完成 |
 | REG-201–211 | 树、字段、列、说明、搜索、逐核偏好、MPU 总览；新增总数/显示/当前有效/分类计数、完整原因弹窗、实际缺失筛选、请求取消及恢复／Scope All 软件证据；REG-201/202/203/204/205/206/207/209/210/211 已核对，实际路由与保留值来源分开记录 | REG-208 的实际 PowerShell/VS Code 宽窄中文/对比度视觉验收仍需补足；全部目标类别仍需完整验收，不以软件缓冲截图代替终端验收 |
 | REG-301–308 | R52 目录、32 位 MRC、直接 EL1/EL2 MPU 与 MAIR、保存/恢复选择器、故障隔离与完整服务锁；真实 ISB／MRRC 和专用银行后端的新目录构建与离线验证；REG-H02 驱动与 8 模式钩子；`session/banked.rs` 及银行事务测试；Hyp VFP/FPSCR 与 MVFR/FPEXC、D16/D32 别名、REG-H03 四类软件用例 | 合法 EL1/Guest/User 读取、更多模式延后用例及未知 R52+ 身份仍未完成 |
-| REG-401–408 | REG-402/403 的 Timer MRRC 与单项一致性、REG-404 的当前原生 PMU 容量与 32/64 位读取、REG-408 的原生 ICC/ICH 独立容量及 ICV AP 条件/No 完整依据；Windows/Linux 七协议候选与离线固件/延后驱动已有软件证据 | 完整低 EL Timer/ICV 权限、完整 Debug/GIC Distributor/Redistributor MMIO、STM 的实际存在性与映射、Bao EL2/Guest 场景及其他延后驱动；上板未执行 |
+| REG-401–408 | REG-402/403 的 Timer MRRC 与单项一致性、REG-404 的当前原生 PMU 容量与 32/64 位读取、REG-408 的原生 ICC/ICH 独立容量及 ICV AP 条件/No 完整依据、REG-406的STM只读配置与独立组件Proof；Windows/Linux 七协议候选与离线固件/延后驱动已有软件证据 | 完整低 EL Timer/ICV 权限、完整 Debug/GIC Distributor/Redistributor MMIO、STM 的实际存在性与映射、Bao EL2/Guest 场景及其他延后驱动；上板未执行 |
 | REG-501–506 | 软件回归、严格 Clippy、F24–F26 覆盖来源和限制、增量用户手册/开发记录/示例 | 全部延后案例与原功能回归，完整架构/环境/mcal-vsconfig 配套文档，最终升版、产物/profile 一致性、安装升级、非主分支推送与 Release |
 | BUS-001–008 | Setup 通道编辑、各面板入口、路由/来源、范围和绑定失效、运行限制/无回退；`src/launch/channels.rs`、`src/ui/monitor.rs`、`src/session/memory.rs`、F25 | 新增系统寄存器 MMIO 模块的完整接入及相应 BUS 延后场景/Issue #1 完整验收 |
 | WRITE-001–012 | Core 整数、声明 RAM、8/16/32 位 MMIO、typed Watch/Locals writer；正负 Infinity、精确 NaN payload 的 GDB 常量检查及条件 Python buffer；C++ RAM 引用、实际 DWARF signed/unsigned 128 位和 1–64 位位域／新鲜邻接事务软件后端；Hyp S/D/Q 独立 raw writer、物理 pair／邻接和旧别名失效、实际二进制延后主机流程；草稿/权限/owner/服务锁/结果/取消；SVD 字段及部分特殊语义；F26 | 系统/状态/银行、合法 EL1/Guest/User VFP 和 64 位 MMIO writer；变量 long double／完整继承成员映射，配套 ARM GDB 的精确 NaN 主机接口；一次写、解锁、自清零等实际策略；全部类别的重叠缓存及 WRITE-T/H 和最终版本化交付 |
 
 测试矩阵自检：REG-T01–T11、BUS-T01–T05、WRITE-T01–T12 必须随上述缺口逐项补足，现有绿色软件测试不能覆盖未接入的类别。延后驱动当前覆盖 REG-H01/H14 能力子集、REG-H02 模式银行独立基线和权限拒绝、REG-H03 Hyp VFP 四类独立基线、REG-H04/H06 选择器子集、REG-H04 完整 MPU/MAIR、REG-H05 Timer MRRC 基线/高字驱动、WRITE-H01 typed 变量子集、WRITE-H02 Core、WRITE-H03 Hyp S/D/Q 底层与 DebugTUI 主机、WRITE-H04 RAM 子集；其余 REG-H/BUS-H/WRITE-H 的可执行用例仍需准备。上板执行按本任务要求不做，交付仍须写好所有相应 case 并记录未执行；不能把 skipped 计为 passed。
 
-完整运行工具版本／哈希与目标描述、可选类别／R52+ 及板级身份能力矩阵（基础显式能力采样十五项，mmio_probe增加42个请求；完整矩阵已形成，真实类别能力仍待补）；最终工具集与 profile 整合、安装升级；完整 GIC 物理／虚拟、Debug、STM 配置状态目录及板级映射；变量 long double／完整继承成员映射、配套 ARM GDB 精确 NaN 支持、64 位 MMIO writer 和其余写入类别的跨面板编辑；系统／银行／FP 状态 writer、合法 EL1/Guest/User VFP、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、最终推送及 Release。浮点／向量显示、RAM 引用、实际 128 位整数和 DWARF 位域／邻接事务软件后端已有证据，Hyp VFP 实际读取与原始写入通道、别名和主机链路已有软件证据；EL1/Guest 合法访问及完整 PowerShell／VS Code 终端视觉验收仍待完成。R52 编译器无 128 位标量时保持不适用，不把变量软件后端等同于向量 writer。不得因基础框架或部分 writer 通过测试而把完整 TODO 或 Goal 标为完成。
+完整运行工具版本／哈希与目标描述、可选类别／R52+ 及板级身份能力矩阵（基础显式能力采样十五项，mmio_probe增加42个请求；完整矩阵已形成，真实类别能力仍待补）；最终工具集与 profile 整合、安装升级；完整 GIC 物理／虚拟、Debug以及STM板级映射/其他型号适配；变量 long double／完整继承成员映射、配套 ARM GDB 精确 NaN 支持、64 位 MMIO writer 和其余写入类别的跨面板编辑；系统／银行／FP 状态 writer、合法 EL1/Guest/User VFP、一次写／解锁／自清零策略；全部延后上板用例、完整文档和发布构建、安装、最终推送及 Release。浮点／向量显示、RAM 引用、实际 128 位整数和 DWARF 位域／邻接事务软件后端已有证据，Hyp VFP 实际读取与原始写入通道、别名和主机链路已有软件证据；EL1/Guest 合法访问及完整 PowerShell／VS Code 终端视觉验收仍待完成。R52 编译器无 128 位标量时保持不适用，不把变量软件后端等同于向量 writer。不得因基础框架或部分 writer 通过测试而把完整 TODO 或 Goal 标为完成。
 
 ## 当前 writer 矩阵
 

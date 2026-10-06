@@ -594,6 +594,26 @@ id = "debug_external"
 name = "Core External Debug MMIO"
 parent = "debug"
 
+[[groups]]
+id = "stm"
+name = "Chip STM Control"
+parent = "system"
+
+[[groups]]
+id = "stm_core"
+name = "STM Identity and Configuration"
+parent = "stm"
+
+[[groups]]
+id = "stm_hwe"
+name = "Optional STM Hardware Events"
+parent = "stm"
+
+[[groups]]
+id = "stm_dma"
+name = "Optional STM DMA Control"
+parent = "stm"
+
 [[registers]]
 id = "gicd_ctlr"
 name = "GICD_CTLR"
@@ -87255,6 +87275,1178 @@ max = 1
 name = "IDENTITY_BYTE"
 segments = [{ offset = 0, width = 8 }]
 description = "Raw component identification byte."
+
+[[registers]]
+id = "stm_cidr0"
+name = "STM_CIDR0"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "CoreSight component identification byte 0."
+reader = { kind = "mmio", component = "stm", offset = 4080, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ID"
+segments = [{ offset = 0, width = 8 }]
+description = "Raw identification byte."
+
+[[registers]]
+id = "stm_cidr1"
+name = "STM_CIDR1"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "CoreSight component identification byte 1."
+reader = { kind = "mmio", component = "stm", offset = 4084, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ID"
+segments = [{ offset = 0, width = 8 }]
+description = "Raw identification byte."
+
+[[registers]]
+id = "stm_cidr2"
+name = "STM_CIDR2"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "CoreSight component identification byte 2."
+reader = { kind = "mmio", component = "stm", offset = 4088, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ID"
+segments = [{ offset = 0, width = 8 }]
+description = "Raw identification byte."
+
+[[registers]]
+id = "stm_cidr3"
+name = "STM_CIDR3"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "CoreSight component identification byte 3."
+reader = { kind = "mmio", component = "stm", offset = 4092, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ID"
+segments = [{ offset = 0, width = 8 }]
+description = "Raw identification byte."
+
+[[registers]]
+id = "stm_pidr0"
+name = "STM_PIDR0"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Peripheral identification byte 0; CPU MIDR does not identify STM."
+reader = { kind = "mmio", component = "stm", offset = 4064, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ID"
+segments = [{ offset = 0, width = 8 }]
+description = "Raw identification byte."
+
+[[registers]]
+id = "stm_pidr1"
+name = "STM_PIDR1"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Peripheral identification byte 1; CPU MIDR does not identify STM."
+reader = { kind = "mmio", component = "stm", offset = 4068, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ID"
+segments = [{ offset = 0, width = 8 }]
+description = "Raw identification byte."
+
+[[registers]]
+id = "stm_pidr2"
+name = "STM_PIDR2"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Peripheral identification byte 2; CPU MIDR does not identify STM."
+reader = { kind = "mmio", component = "stm", offset = 4072, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ID"
+segments = [{ offset = 0, width = 8 }]
+description = "Raw identification byte."
+
+[[registers]]
+id = "stm_pidr3"
+name = "STM_PIDR3"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Peripheral identification byte 3; CPU MIDR does not identify STM."
+reader = { kind = "mmio", component = "stm", offset = 4076, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ID"
+segments = [{ offset = 0, width = 8 }]
+description = "Raw identification byte."
+
+[[registers]]
+id = "stm_pidr4"
+name = "STM_PIDR4"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Peripheral identification byte 4; CPU MIDR does not identify STM."
+reader = { kind = "mmio", component = "stm", offset = 4048, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ID"
+segments = [{ offset = 0, width = 8 }]
+description = "Raw identification byte."
+
+[[registers]]
+id = "stm_devarch"
+name = "STM_DEVARCH"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Architectural identity; this adapter requires Arm STM v1.1."
+reader = { kind = "mmio", component = "stm", offset = 4028, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "ARCHID"
+segments = [{ offset = 0, width = 16 }]
+description = "STM architecture identifier 0x0A63."
+[[registers.fields]]
+name = "REVISION"
+segments = [{ offset = 16, width = 4 }]
+description = "Architecture revision."
+[[registers.fields]]
+name = "PRESENT"
+segments = [{ offset = 20, width = 1 }]
+description = "Architectural identity present."
+[[registers.fields]]
+name = "ARCHITECT"
+segments = [{ offset = 21, width = 11 }]
+description = "Architecture designer."
+
+[[registers]]
+id = "stm_devtype"
+name = "STM_DEVTYPE"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Trace-source device classification; adapted STM value 0x63."
+reader = { kind = "mmio", component = "stm", offset = 4044, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "MAJOR"
+segments = [{ offset = 0, width = 4 }]
+description = "Major device class."
+[[registers.fields]]
+name = "SUB"
+segments = [{ offset = 4, width = 4 }]
+description = "Device subclass."
+
+[[registers]]
+id = "stm_devid"
+name = "STM_DEVID"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Implemented stimulus-port count; reading this ID sends no stimulus."
+reader = { kind = "mmio", component = "stm", offset = 4040, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "NUMSP"
+segments = [{ offset = 0, width = 17 }]
+description = "Stimulus ports, up to 65536."
+
+[[registers]]
+id = "stm_feat1r"
+name = "STM_FEAT1R"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Raw architectural feature word 1; undefined/reserved capability encodings remain unknown."
+reader = { kind = "mmio", component = "stm", offset = 3744, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "PROT"
+segments = [{ offset = 0, width = 4 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "TS"
+segments = [{ offset = 4, width = 2 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "TSFREQ"
+segments = [{ offset = 6, width = 1 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "FORCETS"
+segments = [{ offset = 7, width = 1 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "SYNC"
+segments = [{ offset = 8, width = 2 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "TRACEBUS"
+segments = [{ offset = 10, width = 4 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "TRIGCTL"
+segments = [{ offset = 14, width = 2 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "TSPRESCALE"
+segments = [{ offset = 16, width = 2 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "HWTEN"
+segments = [{ offset = 18, width = 2 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "SYNCEN"
+segments = [{ offset = 20, width = 2 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "SWOEN"
+segments = [{ offset = 22, width = 2 }]
+description = "Raw architectural feature encoding."
+
+[[registers]]
+id = "stm_feat2r"
+name = "STM_FEAT2R"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Raw architectural feature word 2; undefined/reserved capability encodings remain unknown."
+reader = { kind = "mmio", component = "stm", offset = 3748, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "SPTER"
+segments = [{ offset = 0, width = 2 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "SPER"
+segments = [{ offset = 2, width = 1 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "SPCOMP"
+segments = [{ offset = 4, width = 2 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "SPOVERRIDE"
+segments = [{ offset = 6, width = 1 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "PRIVMASK"
+segments = [{ offset = 7, width = 2 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "SPTRTYPE"
+segments = [{ offset = 9, width = 2 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "DSIZE"
+segments = [{ offset = 12, width = 4 }]
+description = "Raw architectural feature encoding."
+[[registers.fields]]
+name = "SPTYPE"
+segments = [{ offset = 16, width = 2 }]
+description = "Raw architectural feature encoding."
+
+[[registers]]
+id = "stm_feat3r"
+name = "STM_FEAT3R"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Raw architectural feature word 3; undefined/reserved capability encodings remain unknown."
+reader = { kind = "mmio", component = "stm", offset = 3752, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "NUMMAST"
+segments = [{ offset = 0, width = 7 }]
+description = "Raw architectural feature encoding."
+
+[[registers]]
+id = "stm_sper"
+name = "STM_SPER"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Stimulus enable mask for the current port bank."
+reader = { kind = "mmio", component = "stm", offset = 3584, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.conditions]]
+fact = "stm.sper"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw configuration; masks apply to the current selected bank."
+
+[[registers]]
+id = "stm_spter"
+name = "STM_SPTER"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Stimulus trigger mask for the current port bank."
+reader = { kind = "mmio", component = "stm", offset = 3616, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.conditions]]
+fact = "stm.sptrigger"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw configuration; masks apply to the current selected bank."
+
+[[registers]]
+id = "stm_spscr"
+name = "STM_SPSCR"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Current stimulus-port selector; this reader preserves it."
+reader = { kind = "mmio", component = "stm", offset = 3680, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw configuration; masks apply to the current selected bank."
+
+[[registers]]
+id = "stm_spmscr"
+name = "STM_SPMSCR"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Current stimulus master selector; this reader preserves it."
+reader = { kind = "mmio", component = "stm", offset = 3684, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw configuration; masks apply to the current selected bank."
+
+[[registers]]
+id = "stm_spoverrider"
+name = "STM_SPOVERRIDER"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Port override configuration; no override is applied."
+reader = { kind = "mmio", component = "stm", offset = 3688, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.conditions]]
+fact = "stm.override"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw configuration; masks apply to the current selected bank."
+
+[[registers]]
+id = "stm_spmoverrider"
+name = "STM_SPMOVERRIDER"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Master override configuration; no override is applied."
+reader = { kind = "mmio", component = "stm", offset = 3692, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.conditions]]
+fact = "stm.override"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw configuration; masks apply to the current selected bank."
+
+[[registers]]
+id = "stm_sptrigcsr"
+name = "STM_SPTRIGCSR"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Stimulus trigger configuration and status."
+reader = { kind = "mmio", component = "stm", offset = 3696, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.conditions]]
+fact = "stm.trigger_control"
+min = 1
+max = 2
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw configuration; masks apply to the current selected bank."
+
+[[registers]]
+id = "stm_tsfreqr"
+name = "STM_TSFREQR"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Declared trace timestamp frequency."
+reader = { kind = "mmio", component = "stm", offset = 3724, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.conditions]]
+fact = "stm.timestamp_frequency"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw configuration; masks apply to the current selected bank."
+
+[[registers]]
+id = "stm_syncr"
+name = "STM_SYNCR"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Synchronization configuration; no packets are generated."
+reader = { kind = "mmio", component = "stm", offset = 3728, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.conditions]]
+fact = "stm.sync"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw configuration; masks apply to the current selected bank."
+
+[[registers]]
+id = "stm_auxcr"
+name = "STM_AUXCR"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Raw STM-500 implementation-specific auxiliary control."
+reader = { kind = "mmio", component = "stm", offset = 3732, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Raw configuration; masks apply to the current selected bank."
+
+[[registers]]
+id = "stm_tcsr"
+name = "STM_TCSR"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "STM-500 trace configuration and busy status; this viewer does not enable tracing."
+reader = { kind = "mmio", component = "stm", offset = 3712, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "EN"
+segments = [{ offset = 0, width = 1 }]
+description = "Trace enable."
+access = "rw"
+[[registers.fields]]
+name = "TSEN"
+segments = [{ offset = 1, width = 1 }]
+description = "Timestamp enable."
+access = "rw"
+[[registers.fields]]
+name = "SYNCEN"
+segments = [{ offset = 2, width = 1 }]
+description = "Synchronization enable."
+access = "ro"
+[[registers.fields]]
+name = "COMPEN"
+segments = [{ offset = 5, width = 1 }]
+description = "Compression enable."
+access = "rw"
+[[registers.fields]]
+name = "TRACEID"
+segments = [{ offset = 16, width = 7 }]
+description = "Trace source ID."
+access = "rw"
+[[registers.fields]]
+name = "BUSY"
+segments = [{ offset = 23, width = 1 }]
+description = "Trace activity busy."
+access = "ro"
+
+[[registers]]
+id = "stm_itctrl"
+name = "STM_ITCTRL"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Integration mode configuration; displayed raw, with no writes."
+reader = { kind = "mmio", component = "stm", offset = 3840, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Integration mode configuration."
+
+[[registers]]
+id = "stm_claimset"
+name = "STM_CLAIMSET"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Implemented claim tag mask; displayed raw, with no writes."
+reader = { kind = "mmio", component = "stm", offset = 4000, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Implemented claim tag mask."
+
+[[registers]]
+id = "stm_claimclr"
+name = "STM_CLAIMCLR"
+group = "stm_core"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Current claim tags; displayed raw, with no writes."
+reader = { kind = "mmio", component = "stm", offset = 4004, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Current claim tags."
+
+[[registers]]
+id = "stm_lsr"
+name = "STM_LSR"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Software lock status; displayed raw, with no writes."
+reader = { kind = "mmio", component = "stm", offset = 4020, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Software lock status."
+
+[[registers]]
+id = "stm_authstatus"
+name = "STM_AUTHSTATUS"
+group = "stm_core"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Debug authentication status; displayed raw, with no writes."
+reader = { kind = "mmio", component = "stm", offset = 4024, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Debug authentication status."
+
+[[registers]]
+id = "stm_tsstimr"
+name = "STM_TSSTIMR"
+group = "stm_core"
+bits = 32
+access = "wo"
+scope = "chip"
+description = "Timestamp stimulus command; write-only and never read or written by this viewer."
+reader = { kind = "mmio", component = "stm", offset = 3716, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+
+[[registers]]
+id = "stm_lar"
+name = "STM_LAR"
+group = "stm_core"
+bits = 32
+access = "wo"
+scope = "chip"
+description = "Software unlock command; write-only and never read or written by this viewer."
+reader = { kind = "mmio", component = "stm", offset = 4016, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+
+[[registers]]
+id = "stm_heer"
+name = "STM_HEER"
+group = "stm_hwe"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Hardware event enable mask for the current bank. Explicit optional interface mapping required."
+reader = { kind = "mmio", component = "stm_hwe", offset = 3328, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_hwe.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Hardware event enable mask for the current bank."
+
+[[registers]]
+id = "stm_heter"
+name = "STM_HETER"
+group = "stm_hwe"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Hardware event trigger mask for the current bank. Explicit optional interface mapping required."
+reader = { kind = "mmio", component = "stm_hwe", offset = 3360, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_hwe.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.conditions]]
+fact = "stm_hwe.trigger"
+min = 1
+max = 1
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Hardware event trigger mask for the current bank."
+
+[[registers]]
+id = "stm_hebsr"
+name = "STM_HEBSR"
+group = "stm_hwe"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Current hardware event bank selector; preserved. Explicit optional interface mapping required."
+reader = { kind = "mmio", component = "stm_hwe", offset = 3424, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_hwe.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.conditions]]
+fact = "stm_hwe.events"
+min = 33
+max = 256
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Current hardware event bank selector; preserved."
+
+[[registers]]
+id = "stm_hemcr"
+name = "STM_HEMCR"
+group = "stm_hwe"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "Hardware event main control. Explicit optional interface mapping required."
+reader = { kind = "mmio", component = "stm_hwe", offset = 3428, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_hwe.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Hardware event main control."
+
+[[registers]]
+id = "stm_heextmuxr"
+name = "STM_HEEXTMUXR"
+group = "stm_hwe"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "External hardware event multiplexer. Explicit optional interface mapping required."
+reader = { kind = "mmio", component = "stm_hwe", offset = 3432, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_hwe.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.conditions]]
+fact = "stm_hwe.mux"
+min = 1
+max = 5
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "External hardware event multiplexer."
+
+[[registers]]
+id = "stm_hemasterr"
+name = "STM_HEMASTERR"
+group = "stm_hwe"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Hardware event master assignment. Explicit optional interface mapping required."
+reader = { kind = "mmio", component = "stm_hwe", offset = 3572, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_hwe.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Hardware event master assignment."
+
+[[registers]]
+id = "stm_heidr"
+name = "STM_HEIDR"
+group = "stm_hwe"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Optional hardware-event control class and revision."
+reader = { kind = "mmio", component = "stm_hwe", offset = 3580, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_hwe.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "CLASS"
+segments = [{ offset = 0, width = 4 }]
+description = "Adapted control class 1."
+[[registers.fields]]
+name = "CLASSREV"
+segments = [{ offset = 4, width = 4 }]
+description = "Adapted class revision 0 or 1."
+
+[[registers]]
+id = "stm_hefeat1r"
+name = "STM_HEFEAT1R"
+group = "stm_hwe"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Optional hardware-event capacity; core feature HWTEN does not prove this interface absent."
+reader = { kind = "mmio", component = "stm_hwe", offset = 3576, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_hwe.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "HETER"
+segments = [{ offset = 0, width = 1 }]
+description = "Trigger mask implemented."
+[[registers.fields]]
+name = "NUMHE"
+segments = [{ offset = 15, width = 9 }]
+description = "Hardware events, up to 256."
+[[registers.fields]]
+name = "HEEXTMUX"
+segments = [{ offset = 28, width = 3 }]
+description = "Multiplexer width encoding."
+
+[[registers]]
+id = "stm_dmastatr"
+name = "STM_DMASTATR"
+group = "stm_dma"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "DMA status; explicit adapted class 2 interface required, no command is issued."
+reader = { kind = "mmio", component = "stm_dma", offset = 3084, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_dma.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "DMA status."
+
+[[registers]]
+id = "stm_dmactlr"
+name = "STM_DMACTLR"
+group = "stm_dma"
+bits = 32
+access = "rw"
+scope = "chip"
+description = "DMA control; explicit adapted class 2 interface required, no command is issued."
+reader = { kind = "mmio", component = "stm_dma", offset = 3088, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_dma.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "DMA control."
+
+[[registers]]
+id = "stm_dmaidr"
+name = "STM_DMAIDR"
+group = "stm_dma"
+bits = 32
+access = "ro"
+scope = "chip"
+description = "Optional DMA control class; explicit adapted class 2 interface required, no command is issued."
+reader = { kind = "mmio", component = "stm_dma", offset = 3324, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_dma.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+[[registers.fields]]
+name = "RAW"
+segments = [{ offset = 0, width = 32 }]
+description = "Optional DMA control class."
+
+[[registers]]
+id = "stm_dmastart"
+name = "STM_DMASTART"
+group = "stm_dma"
+bits = 32
+access = "wo"
+scope = "chip"
+description = "DMA start command; explicit adapted class 2 interface required, no command is issued."
+reader = { kind = "mmio", component = "stm_dma", offset = 3076, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_dma.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
+
+[[registers]]
+id = "stm_dmastop"
+name = "STM_DMASTOP"
+group = "stm_dma"
+bits = 32
+access = "wo"
+scope = "chip"
+description = "DMA stop command; explicit adapted class 2 interface required, no command is issued."
+reader = { kind = "mmio", component = "stm_dma", offset = 3080, require_owner_mapping = true }
+access_condition = "Explicit chip owner and 4 KiB control aperture; fresh STM identity/features and optional control-class proof required. Power, authentication and bus permission remain separate. This viewer does not write controls, selectors, locks or stimulus ports. Event and stimulus masks describe the currently selected bank only."
+[[registers.conditions]]
+fact = "stm.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm_dma.present"
+min = 1
+max = 1
+[[registers.conditions]]
+fact = "stm.part"
+min = 2403
+max = 2403
 
 [[registers]]
 id = "midr"

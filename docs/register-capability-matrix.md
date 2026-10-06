@@ -39,7 +39,7 @@ observations 保留最新失败的 provenance 和旧值的 last_value_provenance
 | GIC 虚拟 ICH/ICV | 独立 GIC v1 / 32 | VM 控制与虚拟影子视图区分；不宣称读取正在运行的 Guest | [GIC](register-gic.md)；完整虚拟上下文 REG-405 待补 |
 | GICD/GICR MMIO | 指定 GDB byte-range 或 TCL memory / 32、64 | 显式组件基址/owner、核心通道、可选新鲜身份/容量证明；64 位非原子 | [MMIO](register-mmio.md)、[证明](register-mmio-probe.md)；完整模块、板级 AP 映射与 BUS-006 待补 |
 | Debug | CP15 或显式组件 MMIO / 32、64 | 核私有外部 Debug 身份/容量、物理地址与配置 owner 分开 | [MMIO](register-mmio.md)、[证明](register-mmio-probe.md)；完整 Debug/低 EL REG-405 待补 |
-| STM | 目录、板级存在性、基址/AP 路线及读取策略未适配 / 未确定 | 不从缺少目录推断硬件 No，不盲扫地址 | planned_classes 明确保留零目录、unverified；REG-406 待补；Trace 采集/解码不在本项范围 |
+| STM | 明确 GDB/AP memory / 32 | 芯片归属、STM v1.1身份/功能和可选类 Proof；STM-500配置 | [STM](register-stm.md)；46项目录，hardware_support仍unverified，环境case延后；不含Trace采集/解码 |
 
 软件验证：七项单元覆盖两目录/全条目、类别/位宽、协议路线优先级、条件 No/Unknown、完整/缺失/错误 receipt、共享 epoch、旧 Probe、MMIO 地址/位宽/字节序和别名父链。实际 CLI 六项离线用例逐字节核对客户配置；worker 集成验证 Scope All 当前 core1、peer 失效、原生 VFP 完整缓存及故障隔离中的零新增 I/O。延后驱动通过实际 EXE/MI/TCP/Tcl 软件夹具的四阶段，并验证独立值不符时失败。
 

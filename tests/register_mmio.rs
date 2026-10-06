@@ -600,4 +600,8 @@ mod mmio_owners {
         use super::*;
         include!("register_mmio/fresh_probe.rs");
     }
+    mod stm_cases {
+        use super::*;
+        include!("register_mmio/stm_cases.rs");
+    }
 }

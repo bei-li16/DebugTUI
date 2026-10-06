@@ -1,0 +1,18 @@
+{
+  "software_example": true,
+  "mapping_verified": true,
+  "frame_function": "debugtui_stm_fixture_stop",
+  "evidence_source": "Software-only fictitious address/values; replace with an independent STM-500 stopped firmware snapshot",
+  "ready": "debugtui_stm_reference[0].ready",
+  "core_tag": "debugtui_stm_reference[0].core_tag",
+  "expected_core_tag": 0,
+  "component": {"owner":"chip:board","base":"0x51000000","little_endian":true,"route":{"kind":"gdb_memory","endpoint":"localhost:6730"}},
+  "registers": [
+    {"id":"stm_tcsr","reference":"debugtui_stm_reference[0].raw[0]","expected":"0x12340021"},
+    {"id":"stm_sper","reference":"debugtui_stm_reference[0].raw[1]","expected":"0x55aa55aa"},
+    {"id":"stm_spscr","reference":"debugtui_stm_reference[0].raw[2]","expected":"0x00000003"},
+    {"id":"stm_spmscr","reference":"debugtui_stm_reference[0].raw[3]","expected":"0x00000004"},
+    {"id":"stm_feat1r","reference":"debugtui_stm_reference[0].raw[4]","expected":"0x00008240"},
+    {"id":"stm_devid","reference":"debugtui_stm_reference[0].raw[5]","expected":"0x00010000"}
+  ]
+}

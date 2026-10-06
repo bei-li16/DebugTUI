@@ -239,7 +239,8 @@ impl Report {
                 state_conditions
                     .push("Physical frame 0; current target/thread checked by reader".into());
             }
-            if matches!(root.reader, Reader::Mmio { .. }) && config.mmio_probe {
+            if matches!(&root.reader, Reader::Mmio { component, .. } if config.mmio_probe || super::stm::component(component))
+            {
                 state_conditions
                     .push("Fresh owner-scoped MMIO identity/capacity proof required".into());
             }

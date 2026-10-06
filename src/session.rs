@@ -31,6 +31,7 @@ mod register_adapter;
 mod register_matrix;
 mod registers;
 mod selectors;
+mod stm;
 mod symbols;
 mod timer;
 mod variable_writes;

@@ -48,7 +48,7 @@ const item=(matrix,id)=>{const row=matrix.rows.find(r=>r.id===id);assert(row,id)
       for(const cpu of ['cortex-r52','cortex-r52+'])for(const matrix of matrices(run(`[registers]\ncpu='${cpu}'\n`))) {
         assert.equal(matrix.catalogue.cpu,cpu);assert.equal(matrix.rows.length,matrix.catalogue.registers.length);
         assert.equal(matrix.planned_classes.length,12);assert(matrix.planned_classes.every(c=>c.hardware_support==='unverified'));
-        assert.equal(matrix.planned_classes.find(c=>c.id==='stm').entries,0);
+        assert.equal(matrix.planned_classes.find(c=>c.id==='stm').entries,46);
         for(const [id,bits]of [['r0',32],['d0',64],['q0',128],['cntpct',64]])assert.equal(item(matrix,id).bits,bits);
         assert.equal(item(matrix,'d0').support,'route_unavailable');assert.equal(item(matrix,'cntpct').plan.transport,'gdb');
         result.push({cpu,context:matrix.context,rows:matrix.rows.length});

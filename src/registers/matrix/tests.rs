@@ -109,7 +109,7 @@ fn matrix_declared_categories_widths_and_conditions_never_imply_observed_support
             .iter()
             .find(|c| c.id == "stm")
             .unwrap();
-        assert_eq!(stm.entries, 0);
+        assert_eq!(stm.entries, 46);
         assert_eq!(stm.hardware_support, "unverified");
         assert!(
             inventory

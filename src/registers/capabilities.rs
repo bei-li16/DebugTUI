@@ -94,6 +94,9 @@ impl Probe {
         let (mmio, notes) = super::mmio_probe::decode(self);
         self.facts.extend(mmio);
         self.notes.extend(notes);
+        let (stm, notes) = super::stm::decode(self);
+        self.facts.extend(stm);
+        self.notes.extend(notes);
         if !self
             .identity
             .as_ref()

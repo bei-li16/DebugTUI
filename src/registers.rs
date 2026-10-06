@@ -28,6 +28,7 @@ pub mod mpu;
 pub mod pmu;
 pub mod provenance;
 pub mod selector;
+pub mod stm;
 pub mod timer;
 pub mod vfp;
 

@@ -11,6 +11,9 @@ from register_timer_metadata import TIMER_METADATA
 from register_pmu_metadata import PMU_METADATA
 from register_gic_metadata import GIC_METADATA, GIC_ENCODINGS
 from register_mmio_metadata import MMIO_METADATA
+from register_stm_metadata import STM_METADATA
+
+MMIO_METADATA = {**MMIO_METADATA, **STM_METADATA}
 
 ROOT = Path(__file__).resolve().parents[1] / "profiles" / "registers"
 q = json.dumps
@@ -111,6 +114,10 @@ def generate(cpu, m_profile=False, root=ROOT):
         group('gicd', 'Cluster Distributor MMIO', 'gic')
         group('gicr', 'Core Redistributor MMIO', 'gic')
         group('debug_external', 'Core External Debug MMIO', 'debug')
+        group('stm', 'Chip STM Control', 'system')
+        group('stm_core', 'STM Identity and Configuration', 'stm')
+        group('stm_hwe', 'Optional STM Hardware Events', 'stm')
+        group('stm_dma', 'Optional STM DMA Control', 'stm')
         for name, metadata in MMIO_METADATA.items():
             reg(name, metadata['group'], bits=metadata['bits'], access=metadata['access'], kind='mmio',
                 params=dict(component=metadata['component'],offset=metadata['offset'],require_owner_mapping=True),

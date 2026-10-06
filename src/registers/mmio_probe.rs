@@ -67,12 +67,12 @@ enum Transport {
     Tcl(String, String, String, String, ByteOrder),
 }
 #[derive(PartialEq, Eq)]
-struct Aperture {
-    base: u64,
+pub(super) struct Aperture {
+    pub(super) base: u64,
     transport: Transport,
 }
 
-fn observed<'a>(
+pub(super) fn observed<'a>(
     probe: &'a Probe,
     d: &Descriptor,
     after: bool,
@@ -98,7 +98,11 @@ fn observed<'a>(
         .as_ref()
         .ok_or_else(|| format!("{id}: no completed request"))?;
     let core = format!("core:{}", probe.context.core);
-    let owner_ok = if d.component == "gicd" {
+    let owner_ok = if super::stm::component(d.component) {
+        s.owner
+            .as_deref()
+            .is_some_and(|o| o.starts_with("chip:") && o.len() > 5)
+    } else if d.component == "gicd" {
         s.owner
             .as_deref()
             .is_some_and(|o| o.starts_with("cluster:") && o.len() > 8)

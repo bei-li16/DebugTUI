@@ -8,7 +8,7 @@ use crate::registers::{
 };
 
 impl Engine {
-    fn mmio_identity_sample(
+    pub(super) fn mmio_identity_sample(
         &mut self,
         probe: &mut Probe,
         d: &Descriptor,
@@ -19,7 +19,9 @@ impl Engine {
             self.snapshot.register_probe = None;
             return Err("Context changed; discarded MMIO capability probe".into());
         }
-        let scope = if d.component == "gicd" {
+        let scope = if crate::registers::stm::component(d.component) {
+            Scope::Chip
+        } else if d.component == "gicd" {
             Scope::Cluster
         } else {
             Scope::Core

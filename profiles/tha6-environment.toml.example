@@ -54,3 +54,8 @@ ready = "Listening on port 3336 for gdb connections"
 # registers.pmu_command="aarch64 pmu" explicitly opts in to the independent read-only PMU protocol.
 # Current Debug EL2, fresh PMCR.N and identity are checked; lower-EL traps remain Unknown.
 # Indexed event reads preserve PMSELR; observation never enables/resets counters.
+
+# STM is a chip component, not implied by an R52 CPU. Map its verified control
+# aperture in the project via registers.component_owners.stm."chip:<id>".
+# Optional stm_hwe/stm_dma need explicit mappings to the same aperture/route.
+# See docs/register-stm.md; no base/AP or stimulus address is guessed here.

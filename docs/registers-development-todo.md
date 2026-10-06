@@ -374,7 +374,10 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 2026-10-05 PMU 批次完成 REG-404 的软件要求：R52 当前 Debug EL2 的新鲜外部身份与原生 PMCR/HDCR 证据确认四项 32 位事件容量，周期一次 MRRC 读取完整 64 位；直接索引保持 PMSELR，明确 SEL=31 的 type 别名与 count UNDEFINED，不开始/清空/配置计数。旧 CPSR.Hyp 数量推断已纠正；专用独立协议、逐核来源、错误隔离与取消均有软件证据。生产 C 的 1,614 个失败点、190 项拒绝、208 项状态变化以及 Windows/Linux 重建与本机包验证通过；完整 Cargo 514 项通过、2 ignored，F24 127/127，严格 Clippy 通过。[十项环境 case](../tests/cases/register-pmu.md) 已准备且均 SKIPPED，默认驱动五项 SKIPPED；低 EL 权限、外部 PMU MMIO 通道、R52+ 身份和最终工具交付未宣称完成，相关范围继续在通用权限/BUS/后续模块/交付任务跟踪。当前已完成／未完成 **23/48**，详见 [PMU 自检](register-pmu.md) 与 [开发进度](registers-development-status.md)。
 
 - [ ] REG-405：接入 GIC、Debug 等适用寄存器，明确 MMIO、CP15 与每核或共享归属；有读副作用的项目仅手工读取并标明。
-- [ ] REG-406：芯片确有 STM 时接入其适合只读的配置和状态寄存器，区分配置空间与 stimulus 空间；本阶段不实现 Trace 数据流采集与解码。[Arm STM 编程说明](https://developer.arm.com/community/arm-community-blogs/b/tools-software-ides-blog/posts/programming-arm-s-system-trace-macrocell)
+- [x] REG-406：芯片确有 STM 时接入其适合只读的配置和状态寄存器，区分配置空间与 stimulus 空间；本阶段不实现 Trace 数据流采集与解码。[Arm STM 编程说明](https://developer.arm.com/community/arm-community-blogs/b/tools-software-ides-blog/posts/programming-arm-s-system-trace-macrocell)
+
+2026-10-06完成REG-406的软件实现与延后环境case：Arm STM v1.1身份/功能和STM-500只读配置、可选HWE/DMA控制区共有46项；chip owner、显式4KiB映射、实际GDB/AP路线、前后Proof及功能过滤始终校验，不修改选择器、不访问stimulus、无writer或Trace采集。八项单元、六项worker/EXE集成，完整581通过/2ignored、F24 156/156与严格Clippy通过。[八项环境case](../tests/cases/register-stm.md)均SKIPPED；芯片存在性和AP集成仍待实际环境确认。其余条目保持原状态，当前28完成／43待完成，详见[STM自检](register-stm.md)。
+
 - [ ] REG-407：完成 Bao EL2 下的 Timer、Virt 和 MPU 验证，检查切核及 Guest 运行时的数据归属和状态解释。
 - [x] REG-408：落实 GIC AP 可选寄存器的条件过滤与错误解释，按实际实现和接口区分物理 ICC、虚拟 ICV 及 ICH 能力；验证 5/6/7 位条件夹具和 R52 实板 AP0R0/AP1R0，禁止试读已确认未实现项，目标版本 v0.11.1。
 
