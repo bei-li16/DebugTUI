@@ -520,6 +520,10 @@ Watch 总线监测的地址仅在停止时由 GDB 按原类型解析；支持成
 
 当前分支的能力与未完成项见 [开发进度](docs/registers-development-status.md)。这些说明及软件夹具验证不代表新接口已通过上板验收。
 
+开发分支的三个面板校验成功 receipt 后才显示新值；首次显示 configured，成功显示 sampled，失败保留旧值时显示 retained/stale 和原来源。GDB 未确认连接时显示 unknown，配置 endpoint 只作为提示。策略按芯片/核心条目、同域 Watch 根、旧核心键、无作用域键依次覆盖；缺省手工 GDB。外设手动刷新和编辑器采用同一有效通道。
+
+`watch_resolve` 成功新增 `binding_id`、`selection_epoch`；Watch 客户端后续 `memory_read` 携带 `watch_binding`、原 Context/epoch/address/bits/little_endian。`status.memory_selection_epoch` 反映同帧线程等选择变化；切帧、重连、Console 和新停止代次使旧句柄失效。稳定运行 AP 使用原停止绑定不额外查询 GDB；旧数值地址客户端仍可省略绑定字段。详见 [绑定生命周期、兼容规则与来源限制](docs/bus-read-provenance.md)。
+
 ## 运行时刷新
 
 1. 在 **Watch / Peripherals** 的数值上右键（或选中后按 `f`），点击 **Memory access / Live refresh**（快捷键 `r`）。位域使用所属寄存器的读取策略，显示进制仍独立。

@@ -1,5 +1,19 @@
 //! Resolve a typed Watch address only in a proven stopped thread/frame.
 use super::*;
+#[derive(Clone)]
+pub(in crate::session) struct WatchBinding {
+    context: Context,
+    epoch: u64,
+    thread: String,
+    pc: String,
+    root: String,
+    path: Vec<usize>,
+    elf: std::path::PathBuf,
+    endpoint: Option<String>,
+    address: u64,
+    bits: u64,
+    little: bool,
+}
 
 impl Engine {
     pub(in crate::session) fn resolve_watch(&mut self, p: &Json) -> Result<Json, String> {
@@ -23,6 +37,9 @@ impl Engine {
             return Err("Watch child path exceeds its bounds".into());
         }
         let before = self.selected_register_frame()?;
+        if before.1 != boundary.context.frame {
+            return Err("Selected GDB frame does not match the requested Watch context".into());
+        }
         literal_address(&before.2).map_err(|_| "Cannot verify the selected frame address")?;
         self.finish_memory_read(&boundary)?;
         let mut result = self.without_target_calls(|engine| {
@@ -44,7 +61,79 @@ impl Engine {
         result["frame_address"] = json!(after.2);
         result["source"] = json!("gdb_typed_address");
         result["state"] = json!("STOPPED");
+        let context = self.register_context();
+        self.watch_bindings.retain(|_, proof| {
+            proof.context == context
+                && proof.epoch == self.snapshot.memory_selection_epoch
+                && !(proof.root == expression && proof.path == path)
+        });
+        if self.watch_bindings.len() >= 256 {
+            self.watch_bindings.clear();
+        }
+        self.watch_binding_serial = self.watch_binding_serial.wrapping_add(1);
+        let id = format!("{}:{}", self.register_session, self.watch_binding_serial);
+        self.watch_bindings.insert(
+            id.clone(),
+            WatchBinding {
+                context,
+                epoch: self.snapshot.memory_selection_epoch,
+                thread: after.0,
+                pc: after.2,
+                root: expression.into(),
+                path,
+                elf: self.project.program.elf.clone(),
+                endpoint: self.connected_gdb_endpoint.clone(),
+                address: result["address"].as_u64().unwrap(),
+                bits: result["bits"].as_u64().unwrap(),
+                little: result["little_endian"].as_bool().unwrap(),
+            },
+        );
+        result["binding_id"] = json!(id);
+        result["selection_epoch"] = json!(self.snapshot.memory_selection_epoch);
         Ok(result)
+    }
+
+    pub(super) fn check_watch_binding(
+        &mut self,
+        p: &Json,
+        boundary: &ReadBoundary,
+    ) -> Result<(), String> {
+        let Some(id) = p.get("watch_binding") else {
+            return Ok(());
+        };
+        let id = id.as_str().ok_or("Watch binding must be a string")?;
+        let proof = self
+            .watch_bindings
+            .get(id)
+            .cloned()
+            .ok_or("Watch binding expired; resolve the selected Watch while stopped")?;
+        if proof.context != boundary.context
+            || proof.epoch != self.snapshot.memory_selection_epoch
+            || proof.elf != self.project.program.elf
+            || proof.endpoint != self.connected_gdb_endpoint
+            || !self.watch_names.contains(&proof.root)
+            || p["address"].as_u64() != Some(proof.address)
+            || p["bits"].as_u64() != Some(proof.bits)
+            || p["little_endian"].as_bool() != Some(proof.little)
+        {
+            return Err(
+                "Watch binding no longer matches its context, program or typed address".into(),
+            );
+        }
+        if self.snapshot.state == "STOPPED" {
+            let frame = self.selected_register_frame()?;
+            if frame != (proof.thread, proof.context.frame, proof.pc) {
+                self.snapshot.memory_selection_epoch =
+                    self.snapshot.memory_selection_epoch.wrapping_add(1);
+                self.watch_bindings.clear();
+                self.publish();
+                return Err(
+                    "Watch binding belongs to a different selected thread, frame or PC".into(),
+                );
+            }
+            self.finish_memory_read(boundary)?;
+        }
+        Ok(())
     }
 
     fn resolve_watch_object(

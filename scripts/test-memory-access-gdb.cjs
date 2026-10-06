@@ -62,10 +62,13 @@ int main(void) { for (;;) { counter++; } }
     const beforeResolve=await cmd('registers_list');
     const binding=await cmd('watch_resolve',{expression:variable,context:beforeResolve.context});assert.equal(binding.bits,32);assert.equal(binding.little_endian,true);
     assert.deepEqual(binding.context,beforeResolve.context);assert.equal(binding.source,'gdb_typed_address');assert.equal(binding.state,'STOPPED');assert(binding.thread);assert(binding.frame_address);
+    assert.equal(typeof binding.binding_id,'string');assert(binding.binding_id);assert(Number.isSafeInteger(binding.selection_epoch));
+    const boundRead=(channel='ahb',ok=true)=>cmd('memory_read',{address:binding.address,bits:binding.bits,little_endian:binding.little_endian,channel,context:binding.context,selection_epoch:binding.selection_epoch,watch_binding:binding.binding_id},ok);
     assert.equal(binding.signed,false);assert.equal(binding.float,false);
     const stopped=await cmd('status');assert.equal(stopped.state,'STOPPED');assert(!stopped.core,'Single-core stays on direct Session path');
     const gdbValue=(await cmd('evaluate',{expression:variable})).value;
     assert.equal((await read(binding.address)).value,Number(gdbValue));
+    assert.equal((await boundRead()).value,Number(gdbValue));
     if(hardware){
       assert.equal((await read(binding.address,'core-tcl')).value,Number(gdbValue));
       for(const address of [0x40023808,0x40020400,0xe0042000]){
@@ -94,7 +97,7 @@ int main(void) { for (;;) { counter++; } }
     const before=await cmd('status');assert.equal(before.state,'RUNNING');const miStart=mi.length;
     const samples=[];
     for(let i=0;i<20;i++){
-      samples.push({at:Date.now(),value:(await read(binding.address)).value});
+      samples.push({at:Date.now(),value:(await boundRead()).value});
       if(hardware) await read(0x40020400);
       await pause(100);
     }
@@ -103,8 +106,9 @@ int main(void) { for (;;) { counter++; } }
     const after=await cmd('status');assert.equal(after.state,'RUNNING');assert.equal(after.generation,before.generation);
     if(hardware)assert(new Set(samples.map(s=>s.value)).size>1,'Target tick must keep advancing during bus reads');
     fs.writeFileSync(path.join(out,'live-samples.json'),JSON.stringify(samples,null,2));
-    report.push('20 running bus samples at 100 ms; unchanged stopped generation; zero GDB commands; stopped-only channels rejected');
+    report.push('20 running bus samples using the stopped Watch binding at 100 ms; unchanged stopped generation; zero GDB commands; stopped-only channels rejected');
     await cmd('pause');assert.equal((await cmd('status')).state,'STOPPED');
+    const beforeExpired=mi.length;await boundRead('ahb',false);assert.equal(mi.length,beforeExpired,'Expired Watch binding must reject before transport');
     await cmd('stepi');await cmd('wait_stopped');await cmd('disassemble',{address:'$pc'});
     const final=await cmd('status');assert.equal(final.state,'STOPPED');assert(final.registers.length>0);assert(final.assembly.length>0);
     if(hardware)assert.equal((await read(binding.address)).value,Number((await cmd('evaluate',{expression:variable})).value));

@@ -42,6 +42,7 @@ const suites = [
   js('search','scripts/test-search-gdb.cjs',[binary],true),
   js('breakpoints','scripts/test-breakpoints-gdb.cjs',[binary],true),
   js('memory','scripts/test-memory-access-gdb.cjs',[binary],true),
+  js('bus-provenance','scripts/test-bus-provenance-fixture.cjs',[binary]),
   js('svd','scripts/test-svd-gdb.cjs',['--native',binary],true),
   js('logs','scripts/test-logs-gdb.cjs',[binary],true),
   js('multicore','scripts/test-multicore-gdb.cjs',[binary],true),

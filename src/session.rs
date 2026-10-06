@@ -23,6 +23,7 @@ mod breakpoints;
 mod capabilities;
 mod gic;
 mod memory;
+pub(crate) use memory::literal_address;
 mod memory_writes;
 mod mmio_probe;
 mod mpu;
@@ -169,6 +170,8 @@ pub struct Snapshot {
     pub generation: u64,
     #[serde(default)]
     pub register_session: u64,
+    #[serde(default)]
+    pub memory_selection_epoch: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub register_generation: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -206,6 +209,7 @@ impl Default for Snapshot {
             memory: vec![],
             generation: 0,
             register_session: 0,
+            memory_selection_epoch: 0,
             register_generation: None,
             register_probe: None,
             async_supported: false,
@@ -460,6 +464,8 @@ struct Engine {
     watch_expansions: watch::Expansions,
     memory_connections: std::collections::HashMap<String, std::net::TcpStream>,
     memory_context_epoch: u64,
+    watch_bindings: std::collections::HashMap<String, memory::WatchBinding>,
+    watch_binding_serial: u64,
     rpc_echo: crate::live_watch::RpcEcho,
     saved_breakpoints: Vec<crate::config::BreakpointSpec>,
     unresolved_breakpoints: Vec<Breakpoint>,
@@ -620,6 +626,8 @@ impl Engine {
             watch_expansions: Default::default(),
             memory_connections: Default::default(),
             memory_context_epoch: 0,
+            watch_bindings: Default::default(),
+            watch_binding_serial: 0,
             rpc_echo: Default::default(),
             saved_breakpoints,
             unresolved_breakpoints: vec![],
@@ -750,6 +758,13 @@ impl Engine {
             // A thread selection can change without changing the frame level or
             // stop generation. Fence reads that were already in flight.
             self.memory_context_epoch = self.memory_context_epoch.wrapping_add(1);
+        }
+        if matches!(&incoming, Incoming::Record(r) if r.kind == '=' && matches!(r.class.as_str(), "thread-selected" | "thread-exited" | "thread-group-exited"))
+        {
+            self.snapshot.memory_selection_epoch =
+                self.snapshot.memory_selection_epoch.wrapping_add(1);
+            self.watch_bindings.clear();
+            self.publish();
         }
         if matches!(&incoming, Incoming::Record(r) if r.class == "thread-selected") {
             self.write_drafts.clear();
@@ -1096,6 +1111,7 @@ impl Engine {
         self.project.prepare()?;
         crate::debug_access::recover(&self.project)?;
         self.register_session = registers::new_session();
+        self.watch_bindings.clear();
         self.register_access_fault = None;
         self.register_catalogue = self.project.registers.load();
         self.snapshot = Snapshot::default();
@@ -1539,6 +1555,7 @@ impl Engine {
         Ok(())
     }
     fn disconnect(&mut self) -> Result<Json, String> {
+        self.watch_bindings.clear();
         self.connected_gdb_endpoint = None;
         self.memory_connections.clear();
         self.rpc_echo = Default::default();
@@ -1942,6 +1959,10 @@ impl Engine {
                 self.write_drafts.clear();
                 self.stopped()?;
                 let index = p.get("level").and_then(Json::as_u64).unwrap_or(0);
+                self.snapshot.memory_selection_epoch =
+                    self.snapshot.memory_selection_epoch.wrapping_add(1);
+                self.watch_bindings.clear();
+                self.publish();
                 self.mi(&format!("-stack-select-frame {index}"))?;
                 self.refresh()?;
                 Ok(json!({"frame":self.snapshot.frame}))

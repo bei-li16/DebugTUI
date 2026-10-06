@@ -32,4 +32,4 @@ GDB 的 `access.route.endpoint` 只有在 DebugTUI 已选择连接、其后没�
 
 只处理响应边界前已经到达的通知；返回后发生的状态变化仍须由视图/协调器的后续快照失效，不将主机采样区间声称为硬件原子快照。没有为每次 AP 读取额外查询 GDB 的物理线程或运行状态。
 
-后续 [Watch 地址解析](watch-address-resolution.md) 已补齐解析期间的函数调用策略、线程/帧/PC 证明及严格清理，并将局部取消接入实际 Session/Coordinator 请求。解析完成后的绑定缓存生命周期、各面板从 receipt 展示实际路线、旧样本来源、全部覆盖/持久化规则，以及 BUS-H01–03 的可执行完整驱动和 Issue #1 验收证据仍未完成。因此不勾选 BUS 整项，不增加已完成 feature 数，不发布 Release。
+后续 [Watch 地址解析](watch-address-resolution.md) 已补齐解析期间的函数调用策略、线程/帧/PC 证明及严格清理，并将局部取消接入实际 Session/Coordinator 请求；[绑定与读取来源](bus-read-provenance.md) 补齐解析后句柄、同帧线程代次、路线指纹、统一覆盖及实际 receipt/保留来源，并准备三项子集环境驱动。新增系统 MMIO 全模块、混合服务竞争、完整 BUS-T/H 和 Issue #1 验收仍未完成。因此不勾选 BUS 整项，不增加已完成 feature 数，不发布 Release。

@@ -354,11 +354,11 @@ pub(crate) fn validate_memory_access(
             return Err("memory_access needs unique simple ids, target and tcl_endpoint without control characters".into());
         }
         let mut assigned = std::collections::HashSet::new();
-        if access
-            .cores
-            .iter()
-            .any(|name| !assigned.insert(name) || !cores.iter().any(|core| &core.name == name))
-        {
+        if access.cores.iter().any(|name| {
+            !assigned.insert(name)
+                || !(cores.is_empty() && name == "default")
+                    && !cores.iter().any(|core| &core.name == name)
+        }) {
             return Err(format!(
                 "Memory access {} references an unknown or duplicate core",
                 access.id
@@ -607,6 +607,32 @@ fn resolve_launch_paths(value: &mut toml::Value, base: &Path) {
     }
 }
 impl Project {
+    /// Canonical chip/core item, root fallback, legacy core item/root, then
+    /// unscoped item/root. Absence means the built-in manual GDB policy.
+    pub fn refresh_policy(
+        &self,
+        core: &str,
+        item: &str,
+        root: Option<&str>,
+    ) -> Option<&RefreshPolicy> {
+        let mut prefixes = vec![];
+        if !self.debug.chip.is_empty() {
+            prefixes.push(format!("chip:{}|{core}|", self.debug.chip));
+        }
+        prefixes.push(format!("{core}|"));
+        prefixes.push(String::new());
+        for prefix in prefixes {
+            if let Some(policy) = self.ui.refresh.get(&format!("{prefix}{item}")) {
+                return Some(policy);
+            }
+            if let Some(root) = root
+                && let Some(policy) = self.ui.refresh.get(&format!("{prefix}{root}"))
+            {
+                return Some(policy);
+            }
+        }
+        None
+    }
     pub fn load(path: &Path) -> Result<Self, String> {
         Self::load_with_environment(Some(path), None)
     }
@@ -1527,5 +1553,75 @@ open = ["targets APB_1; mww 0x80420140 0x3"]
         assert_eq!(p.live_watch.as_ref().unwrap().bus_target, "AHB_3");
         assert!(p.sync.is_some());
         assert!(p.validate().is_ok());
+    }
+    #[test]
+    fn refresh_policy_uses_chip_core_leaf_root_and_legacy_precedence() {
+        for index in 0..4 {
+            let mut project = Project::default();
+            project.debug.chip = "chip-a".into();
+            let core = format!("core{index}");
+            let root = "watch:object";
+            let leaf = "watch-child:[\"object\",[1],false]";
+            let keys = [
+                format!("chip:chip-a|{core}|{leaf}"),
+                format!("chip:chip-a|{core}|{root}"),
+                format!("{core}|{leaf}"),
+                format!("{core}|{root}"),
+                leaf.into(),
+                root.into(),
+            ];
+            for (rank, key) in keys.iter().enumerate() {
+                project.ui.refresh.insert(
+                    key.clone(),
+                    RefreshPolicy {
+                        channel: format!("route-{rank}"),
+                        interval_ms: 50 + rank as u64,
+                    },
+                );
+            }
+            for (rank, key) in keys.iter().enumerate() {
+                assert_eq!(
+                    project
+                        .refresh_policy(&core, leaf, Some(root))
+                        .unwrap()
+                        .channel,
+                    format!("route-{rank}")
+                );
+                project.ui.refresh.remove(key);
+            }
+            assert!(project.refresh_policy(&core, leaf, Some(root)).is_none());
+            project.ui.refresh.insert(
+                format!("chip:chip-a|{core}|{root}"),
+                RefreshPolicy {
+                    channel: "chip-only".into(),
+                    interval_ms: 0,
+                },
+            );
+            project.debug.chip = "chip-b".into();
+            assert!(project.refresh_policy(&core, leaf, Some(root)).is_none());
+        }
+    }
+    #[test]
+    fn memory_channel_default_owner_is_only_valid_in_a_single_core_project() {
+        let mut channel = MemoryAccess {
+            id: "bus".into(),
+            target: "soc.bus".into(),
+            tcl_endpoint: "localhost:6666".into(),
+            cores: vec!["default".into()],
+            ..Default::default()
+        };
+        assert!(validate_memory_access(std::slice::from_ref(&channel), &[]).is_ok());
+        channel.cores.push("default".into());
+        assert!(validate_memory_access(std::slice::from_ref(&channel), &[]).is_err());
+        channel.cores = vec!["single".into()];
+        assert!(validate_memory_access(std::slice::from_ref(&channel), &[]).is_err());
+        channel.cores = vec!["default".into()];
+        let cores = vec![Core {
+            name: "core0".into(),
+            ..Default::default()
+        }];
+        assert!(validate_memory_access(std::slice::from_ref(&channel), &cores).is_err());
+        channel.cores = vec!["core0".into()];
+        assert!(validate_memory_access(std::slice::from_ref(&channel), &cores).is_ok());
     }
 }

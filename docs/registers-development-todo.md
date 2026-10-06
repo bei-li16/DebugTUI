@@ -4,7 +4,7 @@
 
 本计划将现有通用寄存器列表扩展为具有 Arm Development Studio 分组、位域和状态展示能力的寄存器窗口，并纳入 GitHub 开放 Issues 中的总线访问 target 配置、展示以及变量/内存/寄存器写入需求。优先服务 THA6206 的 MCAL 与 Bao 调试，同时保持单核、多核以及 STM32 等既有目标的兼容性。寄存器读取按“确认读取能力 → 建立数据模型 → 改造界面 → 扩展读取 → 实板验收”推进；总线入口与写入能力分别跟踪，写入不作为前期只读版本的发布条件。
 
-状态：开发中。2026-10-06 按逐项软件证据核对，71 项中已完成 28 项、未完成 43 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md)、[GIC 自检](register-gic.md)、[新鲜 MMIO Probe](register-mmio-probe.md)、[存储视图](register-storage-views.md)、[后端源码](register-backend-source.md)、[能力矩阵](register-capability-matrix.md)、[STM 自检](register-stm.md) 和开发进度。MMIO Probe及 [总线读取边界](bus-read-boundary.md)、[Watch 地址解析](watch-address-resolution.md) 是 REG-405/BUS 的子集，不单独增加完成项。本计划不代表扩展寄存器已经在实板上读取成功。
+状态：开发中。2026-10-06 按逐项软件证据核对，71 项中已完成 28 项、未完成 43 项；勾选项的范围及证据见 [框架自检](register-framework-audit.md)、[配置自检](register-configuration.md)、[Setup 目录选择](register-setup-catalogues.md)、[目录交付](register-distribution.md)、[缓存生命周期](register-cache-lifecycle.md)、[共享归属](register-shared-owners.md)、[读取来源](register-read-provenance.md)、[条件依据](register-eligibility.md)、[GIC 自检](register-gic.md)、[新鲜 MMIO Probe](register-mmio-probe.md)、[存储视图](register-storage-views.md)、[后端源码](register-backend-source.md)、[能力矩阵](register-capability-matrix.md)、[STM 自检](register-stm.md) 和开发进度。MMIO Probe及 [总线读取边界](bus-read-boundary.md)、[Watch 地址解析](watch-address-resolution.md) 和 [绑定与面板来源](bus-read-provenance.md) 是 REG-405/BUS 的子集，不单独增加完成项。本计划不代表扩展寄存器已经在实板上读取成功。
 
 ## 当前版本与新功能版本计划
 
@@ -408,6 +408,8 @@ MPU 优先验证直接 PRBARn、PRLARn 访问；必须使用 PRSELR、HPRSELR �
 - [ ] BUS-006：统一可寻址 Watch 标量、外设、Memory 与系统寄存器 MMIO 的读取路由；Watch 需要先由 GDB 解析地址和类型，寄存器变量及无地址表达式明确说明不能走 AP，不将任意表达式直接当成内存地址。
 - [ ] BUS-007：覆盖错误 target、通道不可用、权限、运行能力与读副作用；失败不静默回退到 GDB 或其他 AP，不隐式 halt 或 resume。
 - [ ] BUS-008：完成 BUS-T01 至 BUS-T05、BUS-H01 至 BUS-H03，更新通道配置示例、用户手册和功能覆盖矩阵，提供 Issue #1 的验收证据。
+
+2026-10-06：[绑定与面板来源](bus-read-provenance.md) 已补齐 worker 句柄/selection_epoch、静默线程/帧/PC 检查、chip/core/root/旧键覆盖、三个面板的实际 receipt 和旧值来源；外设手工读取与 typed writer 的通道策略一致。七项新单元、两项 MI 集成及四核实际二进制主机驱动验证子集，原生 Memory 使用停止绑定做运行采样。三项子集环境 case 及模板已准备、未上板；完整 BUS-T/H、混合服务竞争、新系统 MMIO 全模块和 Issue #1 整体验收仍待完成，不勾选整项，28 完成／43 未完成。
 
 完成条件：用户可在 TUI 配置和选择可用入口，并能看到每次读取的实际 target；各面板策略一致，原有通道和调试执行行为保持兼容。
 

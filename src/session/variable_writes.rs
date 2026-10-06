@@ -171,11 +171,6 @@ impl Engine {
         }
         if target["pane"] == "watch" {
             let core = self.project.preference_core.as_deref().unwrap_or("single");
-            let prefix = if self.project.debug.chip.is_empty() {
-                format!("{core}|")
-            } else {
-                format!("chip:{}|{core}|", self.project.debug.chip)
-            };
             let leaf = if path.is_empty() {
                 format!("watch:{expression}")
             } else {
@@ -183,15 +178,7 @@ impl Engine {
             };
             if self
                 .project
-                .ui
-                .refresh
-                .get(&format!("{prefix}{leaf}"))
-                .or_else(|| {
-                    self.project
-                        .ui
-                        .refresh
-                        .get(&format!("{prefix}watch:{expression}"))
-                })
+                .refresh_policy(core, &leaf, Some(&format!("watch:{expression}")))
                 .is_some_and(|p| !p.channel.is_empty() && p.channel != "gdb")
             {
                 return Err("This Watch uses an explicit bus channel; typed assignment cannot silently switch to GDB".into());

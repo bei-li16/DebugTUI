@@ -75,6 +75,8 @@ impl Engine {
 
     pub(super) fn invalidate_register_boundary(&mut self) {
         self.write_drafts.clear();
+        self.watch_bindings.clear();
+        self.snapshot.memory_selection_epoch = self.snapshot.memory_selection_epoch.wrapping_add(1);
         self.reg_names.clear();
         self.snapshot.generation += 1;
         self.snapshot.register_probe = None;

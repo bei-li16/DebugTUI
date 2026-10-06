@@ -26,10 +26,13 @@ mod tests {
         a
     }
     fn response(a: &mut App, request: &Request, value: Option<u64>) {
+        let result = value
+            .map(|value| memory_access::scalar_fixture(a, request, value))
+            .unwrap_or(Value::Null);
         a.update(Event::Response {
             id: request.id,
             ok: value.is_some(),
-            result: json!({"value":value}),
+            result,
             error: value.is_none().then(|| "Unreadable memory".into()),
         });
     }
@@ -96,7 +99,7 @@ mod tests {
         a.toggle_peripheral(None);
         assert!(a.ensure_visible_data(Some(&engine)));
         let req = rx.try_recv().unwrap();
-        assert_eq!(req.method, "peripheral_read");
+        assert_eq!(req.method, "memory_read");
         assert_eq!(req.params["address"], 0x40000000u64);
         response(&mut a, &req, Some(42));
         // Other visible rows are write-only or have read side effects.
@@ -210,7 +213,7 @@ mod tests {
                 Some(&engine),
             );
             let req = rx.try_recv().unwrap();
-            assert_eq!(req.method, "peripheral_read");
+            assert_eq!(req.method, "memory_read");
             response(&mut a, &req, Some(0x1234));
         }
         a.editing = true;
@@ -220,6 +223,113 @@ mod tests {
         );
         assert_eq!(a.input, "r");
         assert!(rx.try_recv().is_err());
+    }
+    #[test]
+    fn chip_scoped_peripheral_route_is_used_for_manual_reads_and_writes_with_retained_origin() {
+        let mut a = app();
+        let (engine, requests) = session::test_channel();
+        a.project.debug.chip = "chip-a".into();
+        a.snapshot.register_generation = Some(7);
+        a.snapshot.generation = 900;
+        a.snapshot.memory_selection_epoch = 5;
+        a.project.memory_access.push(crate::config::MemoryAccess {
+            id: "bus".into(),
+            target: "soc.bus".into(),
+            tcl_endpoint: "localhost:6666".into(),
+            while_running: true,
+            cores: vec!["default".into()],
+            ..Default::default()
+        });
+        a.project.memory_access_source = "profile:chip-a.toml".into();
+        a.project
+            .ui
+            .refresh
+            .insert("single|svd:TestDevice:PORT.DATA".into(), Default::default());
+        a.project.ui.refresh.insert(
+            "chip:chip-a|single|svd:TestDevice:PORT.DATA".into(),
+            crate::config::RefreshPolicy {
+                channel: "bus".into(),
+                interval_ms: 0,
+            },
+        );
+        a.toggle_peripheral(Some(true));
+        a.selection = 1;
+        assert_eq!(
+            a.peripheral_edit_candidate().unwrap().target["channel"],
+            "bus"
+        );
+        a.refresh_peripheral(Some(&engine));
+        let request = requests.recv().unwrap();
+        assert_eq!(request.method, "memory_read");
+        assert_eq!(request.params["channel"], "bus");
+        assert_eq!(request.params["context"]["generation"], 7);
+        assert_eq!(request.params["selection_epoch"], 5);
+        response(&mut a, &request, Some(43));
+        assert!(a.access_caption(PANE, 1).contains("sampled: bus → soc.bus"));
+        a.refresh_peripheral(Some(&engine));
+        let request = requests.recv().unwrap();
+        let mut forged = memory_access::scalar_fixture(&a, &request, 99);
+        forged["access"]["route"]["target"] = json!("soc.other");
+        a.update(Event::Response {
+            id: request.id,
+            ok: true,
+            result: forged,
+            error: None,
+        });
+        assert_eq!(a.peripherals.values[&(0, 0)].value, Some(43));
+        let caption = a.access_caption(PANE, 1);
+        assert!(
+            caption.contains("retained / stale: bus → soc.bus")
+                && caption.contains("profile:chip-a.toml")
+                && caption.contains("error:"),
+            "{caption}"
+        );
+        assert!(!a.ensure_visible_data(Some(&engine)));
+        a.snapshot.state = "RUNNING".into();
+        a.refresh_peripheral(Some(&engine));
+        let request = requests.recv().unwrap();
+        response(&mut a, &request, Some(44));
+        assert!(a.monitor_fresh("svd:TestDevice:PORT.DATA"));
+        let mut next = a.snapshot.clone();
+        next.state = "FAULT".into();
+        a.update(Event::Snapshot {
+            snapshot: Box::new(next),
+        });
+        assert_eq!(a.peripherals.values[&(0, 0)].value, Some(44));
+        assert!(a.access_caption(PANE, 1).contains("retained / stale"));
+        let mut next = a.snapshot.clone();
+        next.state = "STOPPED".into();
+        next.generation += 1;
+        next.register_generation = Some(8);
+        a.update(Event::Snapshot {
+            snapshot: Box::new(next),
+        });
+        a.refresh_peripheral(Some(&engine));
+        let request = requests.recv().unwrap();
+        response(&mut a, &request, None);
+        assert_eq!(a.peripherals.values[&(0, 0)].value, Some(44));
+        assert_eq!(
+            a.peripherals.values[&(0, 0)]
+                .receipt
+                .as_ref()
+                .unwrap()
+                .access
+                .context
+                .generation,
+            7
+        );
+        assert!(
+            a.access_caption(PANE, 1)
+                .contains("retained / stale: bus → soc.bus")
+        );
+        a.project.memory_access[0].target = "soc.changed".into();
+        assert_eq!(a.peripheral_format_item(1).unwrap().raw, "—");
+        let mut next = a.snapshot.clone();
+        next.memory_selection_epoch += 1;
+        a.update(Event::Snapshot {
+            snapshot: Box::new(next),
+        });
+        assert!(a.peripherals.values.is_empty());
     }
     #[test]
     fn render_svd_previews_when_requested() {
@@ -276,6 +386,8 @@ struct Reading {
     error: Option<String>,
     changed: bool,
     previous: Option<u64>,
+    receipt: Option<memory_access::Receipt>,
+    route_key: String,
 }
 #[derive(Default)]
 pub(super) struct Peripherals {
@@ -326,6 +438,12 @@ impl Peripherals {
             value.stamp.clear();
         }
     }
+    pub fn clear_values(&mut self) {
+        self.values.clear();
+    }
+    pub(super) fn forget_value(&mut self, key: RegisterKey) {
+        self.values.remove(&key);
+    }
     fn selected_register(&self, index: usize) -> Option<RegisterKey> {
         match self.rows.get(index)? {
             Row::Register(p, r) | Row::Field(p, r, _) => Some((*p, *r)),
@@ -348,6 +466,8 @@ impl Peripherals {
                         .or_else(|| value.is_none().then(|| "No register value returned".into())),
                     previous: old,
                     changed: old.zip(value).is_some_and(|(a, b)| a != b),
+                    receipt: None,
+                    route_key: String::new(),
                 },
             );
             self.pending = None;
@@ -375,11 +495,15 @@ impl App {
             _ => crate::writes::Selection::Register,
         };
         let key = format!("svd:{}:{}.{}", device.name, peripheral.name, register.name);
+        let core = self
+            .snapshot
+            .core
+            .as_ref()
+            .map(|c| c.name.as_str())
+            .unwrap_or("single");
         let channel = self
             .project
-            .ui
-            .refresh
-            .get(&self.monitor_key(&key))
+            .refresh_policy(core, &key, None)
             .map(|p| p.channel.clone())
             .unwrap_or_default();
         Ok(writes::Candidate {
@@ -428,18 +552,41 @@ impl App {
         key: RegisterKey,
         value: Option<u64>,
         error: Option<&str>,
+        receipt: Option<memory_access::Receipt>,
+        route_key: String,
     ) {
         let previous = self.peripherals.values.get(&key).and_then(|v| v.value);
         self.peripherals.values.insert(
             key,
             Reading {
                 stamp: self.view_stamp(),
-                value,
+                value: value.or(previous),
                 error: error.map(str::to_owned),
                 previous,
                 changed: previous.zip(value).is_some_and(|(a, b)| a != b),
+                receipt,
+                route_key,
             },
         );
+    }
+    fn peripheral_reading_fresh(&self, row: usize, reading: &Reading) -> bool {
+        reading.error.is_none()
+            && reading.receipt.as_ref().is_some_and(|receipt| {
+                receipt.state == self.snapshot.state
+                    && receipt.access.context == self.register_context()
+            })
+            && self
+                .peripheral_monitor_item(row)
+                .is_some_and(|item| self.monitor_fresh(&item.key))
+    }
+    fn peripheral_reading(&self, row: usize, key: RegisterKey) -> Option<&Reading> {
+        self.peripherals.values.get(&key).filter(|reading| {
+            reading.route_key.is_empty()
+                || self.peripheral_monitor_item(row).is_some_and(|item| {
+                    reading.route_key
+                        == self.memory_route_fingerprint(&self.monitor_policy(&item).channel)
+                })
+        })
     }
     pub(super) fn peripheral_format_item(&self, row: usize) -> Option<formats::Item> {
         let device = self.peripherals.device.as_ref()?;
@@ -451,7 +598,7 @@ impl App {
         let peripheral = &device.peripherals[p];
         let register = &peripheral.registers[r];
         let mut name = format!("{}.{}", peripheral.name, register.name);
-        let mut value = self.peripherals.values.get(&(p, r)).and_then(|v| v.value);
+        let mut value = self.peripheral_reading(row, (p, r)).and_then(|v| v.value);
         if let Some(i) = field {
             let f = &register.fields[i];
             name.push('.');
@@ -499,25 +646,6 @@ impl App {
         self.selection = selected.min(self.peripherals.len().saturating_sub(1));
     }
     pub(super) fn refresh_peripheral(&mut self, engine: Option<&EngineHandle>) {
-        if let Some(item) = self.peripheral_monitor_item(self.selected(PANE))
-            && self.project.ui.refresh.contains_key(&format!(
-                "{}|{}",
-                self.snapshot
-                    .core
-                    .as_ref()
-                    .map(|c| c.name.as_str())
-                    .unwrap_or("single"),
-                item.key
-            ))
-        {
-            self.manual_monitor(engine, item);
-            return;
-        }
-        if self.snapshot.state != "STOPPED" || !self.pending_commands.is_empty() {
-            self.notice =
-                "Stop the target and wait for the current command before refreshing.".into();
-            return;
-        }
         let Some(key) = self.peripherals.selected_register(self.selected(PANE)) else {
             self.notice = "Select a peripheral register, then click Refresh or press r.".into();
             return;
@@ -531,36 +659,13 @@ impl App {
             .iter()
             .position(|row| matches!(row,Row::Register(p,r) if (*p,*r)==key))
             && let Some(item) = self.peripheral_monitor_item(row)
-            && self.project.ui.refresh.contains_key(&format!(
-                "{}|{}",
-                self.snapshot
-                    .core
-                    .as_ref()
-                    .map(|c| c.name.as_str())
-                    .unwrap_or("single"),
-                item.key
-            ))
         {
             return self.manual_monitor(engine, item);
         }
-        if engine.is_none() || self.demo {
-            return false;
-        }
-        let Some(device) = &self.peripherals.device else {
-            return false;
-        };
-        let register = &device.peripherals[key.0].registers[key.1];
-        if !register.readable_width() || device.little_endian.is_none() {
-            self.notice = "Cannot read: write-only, unsupported width/alignment, or unspecified SVD byte order.".into();
-            return false;
-        }
-        let params = json!({"address":register.address,"bits":register.bits,"little_endian":device.little_endian,"context":{
-            "session":self.snapshot.register_session,"generation":self.snapshot.generation,"frame":self.snapshot.frame.level,
-            "core":self.snapshot.core.as_ref().map(|core|core.name.as_str()).unwrap_or("default")}});
-        self.peripherals.pending = Some((self.next_id, key, self.view_stamp()));
-        self.pending_view = Some((self.next_id, PANE));
-        self.submit(engine, "peripheral_read", params);
-        true
+        self.notice =
+            "Cannot read: write-only, unsupported width/alignment, or unspecified SVD byte order."
+                .into();
+        false
     }
     pub(super) fn ensure_peripherals(&mut self, engine: Option<&EngineHandle>) -> bool {
         if self.side_pane != PANE || self.view_rects[PANE].height == 0 {
@@ -608,7 +713,6 @@ impl App {
             return;
         };
         let selected = self.selected(PANE);
-        let stamp = self.view_stamp();
         let rows: Vec<_> = self
             .peripherals
             .rows
@@ -638,9 +742,17 @@ impl App {
                     }
                     Row::Register(p, r) => {
                         let register = &device.peripherals[p].registers[r];
-                        let reading = self.peripherals.values.get(&(p, r));
+                        let reading = self.peripheral_reading(index, (p, r));
                         let text = if let Some(error) = reading.and_then(|v| v.error.as_ref()) {
-                            format!("! {error}")
+                            reading
+                                .and_then(|v| v.value)
+                                .map(|value| {
+                                    format!(
+                                        "0x{value:0width$X} · ! {error}",
+                                        width = register.bits as usize / 4
+                                    )
+                                })
+                                .unwrap_or_else(|| format!("! {error}"))
                         } else if let Some(value) = reading.and_then(|v| v.value) {
                             format!("0x{value:0width$X}", width = register.bits as usize / 4)
                         } else if !register.readable {
@@ -669,13 +781,12 @@ impl App {
                             text,
                             reading.is_some_and(|v| v.changed),
                             reading.is_some_and(|v| v.error.is_some()),
-                            reading.is_some_and(|v| v.stamp != stamp)
-                                || self.snapshot.state != "STOPPED",
+                            reading.is_some_and(|v| !self.peripheral_reading_fresh(index, v)),
                         )
                     }
                     Row::Field(p, r, i) => {
                         let field = &device.peripherals[p].registers[r].fields[i];
-                        let reading = self.peripherals.values.get(&(p, r));
+                        let reading = self.peripheral_reading(index, (p, r));
                         let value = reading
                             .and_then(|v| v.value)
                             .map(|value| format!("0x{:X}", field.value(value)))
@@ -692,8 +803,7 @@ impl App {
                                 .and_then(|v| v.previous.zip(v.value))
                                 .is_some_and(|(old, new)| field.value(old) != field.value(new)),
                             false,
-                            reading.is_some_and(|v| v.stamp != stamp)
-                                || self.snapshot.state != "STOPPED",
+                            reading.is_some_and(|v| !self.peripheral_reading_fresh(index, v)),
                         )
                     }
                 };

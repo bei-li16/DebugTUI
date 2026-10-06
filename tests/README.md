@@ -1,5 +1,7 @@
 # DebugTUI 功能测试
 
+绑定与面板来源：新增七项单元、两项 MI 集成，覆盖四核策略优先级、selection_epoch、Continue revision、芯片外设路线、旧来源/时间、错误 receipt 和 64 位精确 raw；原四核集成增加实际绑定读取及跨 worker 句柄拒绝。`node scripts/test-bus-provenance-fixture.cjs target/debug/debugtui.exe` 可重跑四核实际二进制＋MI/Tcl 模型的五阶段；`node scripts/test-bus-provenance-hardware.cjs` 默认只生成三项 skipped，不连接。原生 Memory 的 20 次运行采样携带停止绑定；[软件范围](../docs/bus-read-provenance.md)、[case/模板与执行命令](cases/bus-provenance.md) 不代替完整 BUS-T/H 或上板验收。
+
 Watch 地址解析：新增三项表达式、两项 UI 单元与七项真实 MI 管道集成，覆盖只读语法、前后线程/帧/PC、严格清理及调用策略恢复、实际 Request 取消、四核 Scope All 和 channel 类型拒绝；原生 Memory 另验证真实 GDB 的指针转换和类型。见 [软件范围](../docs/watch-address-resolution.md)、[三项延后环境 case](cases/watch-resolution.md)。未上板，不代表完整 BUS 验收。
 
 总线读取边界：`session::memory::tests::`、`live_watch::tests::` 与 `tests/register_access.rs` 新增六项单元、一项 MI 管道集成，验证读取中的异步状态/同帧线程变化、前后取消、旧 Context、精确响应地址、大小端、坏响应连接失效和下一次显式请求重连；restoration failure 继续隔离。Memory/SVD 原生 GDB 外层套件补充兼容验证。[三项延后环境 case](cases/bus-read-boundary.md) 均 SKIPPED；[软件范围](../docs/bus-read-boundary.md) 不代表 BUS 整项或实板完成。

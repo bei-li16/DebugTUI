@@ -30,4 +30,4 @@ Watch 的解析请求携带当前 Context。Watch/Peripherals 监测请求使用
 
 最终回归和证据见 [开发进度](registers-development-status.md)，[三项环境 case](../tests/cases/watch-resolution.md) 均 SKIPPED，未上板。软件夹具不能证明目标权限、AP 核归属或物理线程身份。
 
-尚未完成：同帧线程在解析结束后再次改变时的完整绑定缓存生命周期、配置路线指纹失效、各面板成功 receipt/旧值来源展示、chip-scoped 外设策略统一、全部 BUS 环境驱动和 Issue #1 整体验收。因此不增加 TODO 勾选；其余低 EL、writer、最终验收、升版和非主分支 Release 仍待完成。
+后续 [绑定与读取来源](bus-read-provenance.md) 已补齐同帧线程/帧/PC 的绑定读取前证明、worker 句柄与 selection_epoch、配置路线指纹、芯片级外设策略和各面板成功 receipt/旧来源展示，并准备三项子集环境驱动。全部 BUS 环境场景、混合服务竞争、新增系统 MMIO 全模块及 Issue #1 整体验收仍未完成。因此不增加 TODO 勾选；其余低 EL、writer、最终验收、升版和非主分支 Release 仍待完成。

@@ -13,6 +13,8 @@ pub(super) struct Binding {
     pub signed: bool,
     #[serde(default)]
     pub float: bool,
+    #[serde(default)]
+    pub binding_id: String,
 }
 impl Binding {
     fn display(&self, value: u64) -> String {
@@ -45,6 +47,10 @@ struct Sample {
     session: u64,
     frame: u32,
     channel: String,
+    request_context: crate::registers::Context,
+    epoch: u64,
+    route_key: String,
+    receipt: Option<memory_access::Receipt>,
     pub value: Option<u64>,
     pub text: String,
     pub error: Option<String>,
@@ -62,6 +68,9 @@ struct Pending {
     key: String,
     resolve: bool,
     policy: RefreshPolicy,
+    request_context: crate::registers::Context,
+    epoch: u64,
+    route_key: String,
 }
 struct Popup {
     item: Item,
@@ -88,6 +97,19 @@ impl Monitor {
     pub fn busy(&self) -> bool {
         self.pending.is_some()
     }
+    pub fn invalidate_bindings(&mut self) {
+        for sample in self.samples.values_mut() {
+            if sample
+                .binding
+                .as_ref()
+                .is_some_and(|binding| !binding.binding_id.is_empty())
+            {
+                sample.binding = None;
+            }
+        }
+        self.popup = None;
+        self.next_read = None;
+    }
     pub fn modal(&self) -> bool {
         self.popup.is_some()
     }
@@ -108,22 +130,21 @@ impl App {
             format!("chip:{}|{key}", self.project.debug.chip)
         }
     }
-    fn monitor_policy(&self, item: &Item) -> RefreshPolicy {
-        self.project
-            .ui
-            .refresh
-            .get(&self.monitor_key(&item.key))
+    pub(super) fn monitor_policy(&self, item: &Item) -> RefreshPolicy {
+        self.monitor_policy_override(item)
             .cloned()
-            .or_else(|| {
-                item.watch.as_ref().and_then(|(root, _)| {
-                    self.project
-                        .ui
-                        .refresh
-                        .get(&self.monitor_key(&format!("watch:{root}")))
-                        .cloned()
-                })
-            })
             .unwrap_or_default()
+    }
+    fn monitor_policy_override(&self, item: &Item) -> Option<&RefreshPolicy> {
+        let core = self
+            .snapshot
+            .core
+            .as_ref()
+            .map(|c| c.name.as_str())
+            .unwrap_or("single");
+        let root = item.watch.as_ref().map(|(root, _)| format!("watch:{root}"));
+        self.project
+            .refresh_policy(core, &item.key, root.as_deref())
     }
     pub(super) fn watch_monitor_item(&self, row: usize) -> Option<Item> {
         let nodes = watch::rows(&self.snapshot.watches);
@@ -179,7 +200,7 @@ impl App {
                 .as_ref()
                 .map(|core| core.endpoint.as_str())
                 .unwrap_or(&self.project.target.endpoint);
-            format!("GDB {core} @ {endpoint} · stopped only")
+            format!("configured GDB {core} @ {endpoint} · stopped only")
         } else if let Some(channel) = self
             .project
             .memory_access
@@ -187,10 +208,11 @@ impl App {
             .find(|channel| channel.id == policy.channel)
         {
             format!(
-                "{} → {} @ {} · {}",
+                "configured {} → {} @ {} · source={} · {}",
                 channel.id,
                 channel.target,
                 channel.tcl_endpoint,
+                self.project.memory_access_source,
                 if channel.while_running {
                     "running + stopped"
                 } else {
@@ -207,21 +229,48 @@ impl App {
             10 => self.peripheral_monitor_item(row),
             _ => None,
         };
-        self.memory_access_description(
+        let configured = self.memory_access_description(
             &item
                 .as_ref()
                 .map(|item| self.monitor_policy(item))
                 .unwrap_or_default(),
-        )
+        );
+        if let Some(item) = item
+            && let Some(sample) = self.monitor.samples.get(&self.monitor_key(&item.key))
+        {
+            if let Some(receipt) = &sample.receipt {
+                let fresh = self.monitor_fresh(&item.key)
+                    && sample.route_key
+                        == self.memory_route_fingerprint(&self.monitor_policy(&item).channel);
+                return format!(
+                    "{}: {}{}",
+                    if fresh { "sampled" } else { "retained / stale" },
+                    receipt.caption(),
+                    sample
+                        .error
+                        .as_ref()
+                        .map(|e| format!(" · error: {e}"))
+                        .unwrap_or_default()
+                );
+            }
+            if sample.legacy {
+                return format!("legacy raw · origin receipt unavailable · {configured}");
+            }
+            if let Some(error) = &sample.error {
+                return format!("{configured} · error: {error}");
+            }
+        }
+        format!("{configured} · not sampled")
     }
+
     fn monitor_channels(&self) -> Vec<(String, String)> {
-        let core = self.snapshot.core.as_ref().map(|c| &c.name);
+        let core = self.register_context().core;
         std::iter::once((String::new(), "GDB · selected core · stopped only".into()))
             .chain(
                 self.project
                     .memory_access
                     .iter()
-                    .filter(|a| a.cores.is_empty() || core.is_some_and(|c| a.cores.contains(c)))
+                    .filter(|a| a.cores.is_empty() || a.cores.contains(&core))
                     .map(|a| {
                         (
                             a.id.clone(),
@@ -374,11 +423,11 @@ impl App {
             return false;
         }
         if self.snapshot.state == "RUNNING"
-            && !self
-                .project
-                .memory_access
-                .iter()
-                .any(|a| a.id == policy.channel && a.while_running)
+            && !self.project.memory_access.iter().any(|a| {
+                a.id == policy.channel
+                    && a.while_running
+                    && (a.cores.is_empty() || a.cores.contains(&self.register_context().core))
+            })
         {
             return false;
         }
@@ -387,6 +436,19 @@ impl App {
         let session = self.snapshot.register_session;
         let frame = self.snapshot.frame.level;
         let request_context = self.register_context();
+        let epoch = self.snapshot.memory_selection_epoch;
+        let route_key = self.memory_route_fingerprint(&policy.channel);
+        if self.monitor.samples.get(&key).is_some_and(|sample| {
+            sample.request_context.session != request_context.session
+                || sample.request_context.core != request_context.core
+                || sample.request_context.frame != request_context.frame
+                || sample.epoch != epoch
+                || sample.route_key != route_key
+                || sample.channel != policy.channel
+        }) && let Some(register) = item.peripheral
+        {
+            self.peripherals.forget_value(register);
+        }
         let sample = self
             .monitor
             .samples
@@ -398,6 +460,10 @@ impl App {
                 session,
                 frame,
                 channel: policy.channel.clone(),
+                request_context: request_context.clone(),
+                epoch,
+                route_key: route_key.clone(),
+                receipt: None,
                 value: None,
                 text: String::new(),
                 error: None,
@@ -405,25 +471,37 @@ impl App {
                 due: Instant::now(),
                 sampled: None,
             });
-        if (sample.generation != generation || sample.session != session || sample.frame != frame)
-            && self.snapshot.state == "STOPPED"
+        if sample.request_context != request_context
+            || sample.epoch != epoch
+            || sample.route_key != route_key
+            || sample.channel != policy.channel
         {
             sample.binding = item.memory.clone();
-            sample.generation = generation;
-            sample.session = session;
-            sample.frame = frame;
-            sample.sampled = None;
-            sample.value = None;
+            if sample.request_context.session != request_context.session
+                || sample.request_context.core != request_context.core
+                || sample.request_context.frame != request_context.frame
+                || sample.epoch != epoch
+                || sample.route_key != route_key
+                || sample.channel != policy.channel
+            {
+                sample.sampled = None;
+                sample.value = None;
+                sample.receipt = None;
+            }
+            sample.error = None;
         }
-        if sample.channel != policy.channel {
-            sample.channel = policy.channel.clone();
-            sample.sampled = None;
-            sample.value = None;
-        }
-        let (method, params, resolve) = if let Some(binding) = &sample.binding {
+        sample.generation = generation;
+        sample.session = session;
+        sample.frame = frame;
+        sample.request_context = request_context.clone();
+        sample.epoch = epoch;
+        sample.route_key = route_key.clone();
+        sample.channel = policy.channel.clone();
+        let (method, mut params, resolve) = if let Some(binding) = &sample.binding {
             (
                 "memory_read",
-                json!({"address":binding.address,"bits":binding.bits,"little_endian":binding.little_endian,"channel":policy.channel,"context":request_context}),
+                json!({"address":binding.address,"bits":binding.bits,"little_endian":binding.little_endian,"channel":policy.channel,"context":request_context,"selection_epoch":epoch,
+                    "watch_binding":if binding.binding_id.is_empty(){None}else{Some(&binding.binding_id)}}),
                 false,
             )
         } else if self.snapshot.state == "STOPPED"
@@ -431,7 +509,7 @@ impl App {
         {
             (
                 "watch_resolve",
-                json!({"expression":expression,"path":path,"context":request_context}),
+                json!({"expression":expression,"path":path,"context":request_context,"selection_epoch":epoch}),
                 true,
             )
         } else {
@@ -439,6 +517,9 @@ impl App {
             sample.due = Instant::now() + Duration::from_secs(1);
             return false;
         };
+        if params.get("watch_binding").is_some_and(Value::is_null) {
+            params.as_object_mut().unwrap().remove("watch_binding");
+        }
         let id = self.next_id;
         self.next_id += 1;
         if let Err(error) = engine.send(Request::new(id, method, params)) {
@@ -455,6 +536,9 @@ impl App {
             key,
             resolve,
             policy,
+            request_context,
+            epoch,
+            route_key,
         });
         true
     }
@@ -474,20 +558,56 @@ impl App {
             || pending.generation != self.snapshot.generation
             || pending.session != self.snapshot.register_session
             || pending.frame != self.snapshot.frame.level
+            || pending.request_context != self.register_context()
+            || pending.epoch != self.snapshot.memory_selection_epoch
+            || pending.route_key != self.memory_route_fingerprint(&pending.policy.channel)
+            || pending.policy != self.monitor_policy(&pending.item)
         {
             return true;
         }
         let expected = self.register_context();
+        let binding = self
+            .monitor
+            .samples
+            .get(&pending.key)
+            .and_then(|sample| sample.binding.clone());
+        let receipt = if !pending.resolve && error.is_none() {
+            binding
+                .as_ref()
+                .map(|b| {
+                    self.memory_receipt(
+                        result,
+                        &memory_access::Expected {
+                            context: &pending.request_context,
+                            epoch: pending.epoch,
+                            channel: &pending.policy.channel,
+                            address: &format!("0x{:x}", b.address),
+                            bits: b.bits as u16,
+                            little: b.little_endian,
+                            dump: false,
+                        },
+                    )
+                })
+                .unwrap_or_else(|| Err("Memory response has no matching binding".into()))
+                .map(Some)
+        } else {
+            Ok(None)
+        };
         let Some(sample) = self.monitor.samples.get_mut(&pending.key) else {
             return true;
         };
         let mut error = error.map(str::to_owned);
+        if let Err(reason) = &receipt {
+            error = Some(reason.clone());
+        }
         if pending.resolve && error.is_none() {
             let resolved_context =
                 serde_json::from_value::<crate::registers::Context>(result["context"].clone());
             let binding = serde_json::from_value::<Binding>(result.clone()).and_then(|binding| {
                 if resolved_context.as_ref().is_ok_and(|c| *c == expected)
                     && self.snapshot.state == "STOPPED"
+                    && result["selection_epoch"].as_u64() == Some(pending.epoch)
+                    && !binding.binding_id.is_empty()
                     && result["source"] == "gdb_typed_address"
                     && result["state"] == "STOPPED"
                     && result["thread"].as_str().is_some_and(|t| !t.is_empty())
@@ -519,11 +639,19 @@ impl App {
                     .map(|b| b.display(value))
                     .unwrap_or_default();
                 sample.sampled = Some(Instant::now());
+                sample.receipt = receipt.unwrap();
             } else {
                 error = Some("Memory response has no value".into());
             }
         }
         sample.error = error.clone();
+        if pending.item.watch.is_some()
+            && error
+                .as_ref()
+                .is_some_and(|error| error.starts_with("Watch binding"))
+        {
+            sample.binding = None;
+        }
         if pending.resolve && error.is_none() {
             self.monitor.next_read = Some((pending.item.clone(), pending.policy.clone()));
         }
@@ -535,8 +663,19 @@ impl App {
             } else {
                 pending.policy.interval_ms.max(50)
             });
+        let retained_receipt = sample.receipt.clone();
         if let Some(register) = pending.item.peripheral {
-            self.apply_peripheral_monitor(register, result["value"].as_u64(), error.as_deref());
+            self.apply_peripheral_monitor(
+                register,
+                if error.is_none() {
+                    result["value"].as_u64()
+                } else {
+                    None
+                },
+                error.as_deref(),
+                retained_receipt,
+                pending.route_key,
+            );
         }
         true
     }
@@ -629,7 +768,19 @@ impl App {
         let key = self.monitor_key(&format!("watch:{}", live.expression));
         // Explicit per-item memory access/refresh settings take precedence over
         // the legacy raw-global poller; do not overwrite typed samples.
-        if self.project.ui.refresh.contains_key(&key) {
+        if self
+            .project
+            .refresh_policy(
+                self.snapshot
+                    .core
+                    .as_ref()
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("single"),
+                &format!("watch:{}", live.expression),
+                None,
+            )
+            .is_some()
+        {
             return;
         }
         let previous = self.monitor.samples.get(&key).and_then(|s| s.value);
@@ -642,6 +793,10 @@ impl App {
                 session: self.snapshot.register_session,
                 frame: self.snapshot.frame.level,
                 channel: String::new(),
+                request_context: self.register_context(),
+                epoch: self.snapshot.memory_selection_epoch,
+                route_key: String::new(),
+                receipt: None,
                 value: live.value,
                 text: live
                     .value
@@ -666,12 +821,25 @@ impl App {
         if sample.generation != self.snapshot.generation
             || sample.session != self.snapshot.register_session
             || sample.frame != self.snapshot.frame.level
+            || sample.epoch != self.snapshot.memory_selection_epoch
+            || (!sample.legacy
+                && sample.route_key != self.memory_route_fingerprint(&sample.channel))
             || (sample.legacy && self.snapshot.state != "RUNNING")
         {
             return None;
         }
         if let Some(error) = &sample.error {
-            return Some((format!("! {error}"), false, true));
+            return Some((
+                format!(
+                    "{}! {error}",
+                    sample
+                        .value
+                        .map(|_| format!("{} (stale) · ", sample.text))
+                        .unwrap_or_default()
+                ),
+                false,
+                true,
+            ));
         }
         sample
             .value
@@ -688,6 +856,13 @@ impl App {
                 && s.session == self.snapshot.register_session
                 && s.frame == self.snapshot.frame.level
                 && (!s.legacy || self.snapshot.state == "RUNNING")
+                && s.epoch == self.snapshot.memory_selection_epoch
+                && (s.legacy
+                    || (s.route_key == self.memory_route_fingerprint(&s.channel)
+                        && s.receipt.as_ref().is_some_and(|r| {
+                            r.state == self.snapshot.state
+                                && r.access.context == self.register_context()
+                        })))
                 && s.error.is_none()
                 && s.sampled.is_some_and(|at| {
                     at.elapsed()
@@ -698,11 +873,11 @@ impl App {
     pub(super) fn manual_monitor(&mut self, engine: Option<&EngineHandle>, item: Item) -> bool {
         let policy = self.monitor_policy(&item);
         if self.snapshot.state == "RUNNING"
-            && !self
-                .project
-                .memory_access
-                .iter()
-                .any(|a| a.id == policy.channel && a.while_running)
+            && !self.project.memory_access.iter().any(|a| {
+                a.id == policy.channel
+                    && a.while_running
+                    && (a.cores.is_empty() || a.cores.contains(&self.register_context().core))
+            })
         {
             self.notice="Selected memory access requires a stopped core. Pause or select a running-capable channel.".into();
             return false;
@@ -809,6 +984,7 @@ mod tests {
     }
     fn resolved(a: &mut App, id: u64) {
         let result = json!({"address":536870912,"bits":32,"little_endian":true,"signed":false,"float":false,
+            "binding_id":"fixture-binding","selection_epoch":a.snapshot.memory_selection_epoch,
             "context":a.register_context(),"thread":"1","frame_address":"0x100000008","source":"gdb_typed_address","state":"STOPPED"});
         assert!(a.monitor_response(id, &result, None));
     }
@@ -827,6 +1003,7 @@ mod tests {
             assert_eq!(request.method, "watch_resolve");
             assert_eq!(request.params["context"], json!(a.register_context()));
             let mut result = json!({"address":536870912,"bits":32,"little_endian":true,
+                "binding_id":"fixture-binding","selection_epoch":a.snapshot.memory_selection_epoch,
                 "context":a.register_context(),"thread":"1","frame_address":"0x100000008",
                 "source":"gdb_typed_address","state":"STOPPED"});
             match scenario {
@@ -942,7 +1119,8 @@ mod tests {
         assert!(a.ensure_monitors(Some(&engine)));
         let request = rx.try_recv().unwrap();
         assert_eq!(request.method, "memory_read");
-        a.monitor_response(request.id, &json!({"value":1}), None);
+        let result = memory_access::scalar_fixture(&a, &request, 1);
+        a.monitor_response(request.id, &result, None);
         assert!(!a.ensure_monitors(Some(&engine))); // configured interval, no busy polling
         a.snapshot.state = "RUNNING".into();
         a.monitor
@@ -953,7 +1131,8 @@ mod tests {
         let request = rx.try_recv().unwrap();
         assert_eq!(request.method, "memory_read");
         assert_eq!(request.params["channel"], "bus");
-        a.monitor_response(request.id, &json!({"value":7}), None);
+        let result = memory_access::scalar_fixture(&a, &request, 7);
+        a.monitor_response(request.id, &result, None);
         assert_eq!(
             a.watch_sample("watch:counter"),
             Some(("7".into(), true, false))
@@ -1130,5 +1309,64 @@ mod tests {
             assert!(!a.ensure_monitors(Some(&engine)));
             assert!(rx.try_recv().is_err());
         }
+    }
+    #[test]
+    fn watch_binding_survives_continue_revision_but_thread_epoch_and_route_changes_discard_samples()
+    {
+        let (mut a, (engine, requests)) = (app(), session::test_channel());
+        a.snapshot.generation = 100;
+        a.snapshot.register_generation = Some(7);
+        assert!(a.ensure_monitors(Some(&engine)));
+        resolved(&mut a, requests.recv().unwrap().id);
+        assert!(a.ensure_monitors(Some(&engine)));
+        let read = requests.recv().unwrap();
+        let result = memory_access::scalar_fixture(&a, &read, 1);
+        a.monitor_response(read.id, &result, None);
+        let mut next = a.snapshot.clone();
+        next.state = "RUNNING".into();
+        next.generation += 1;
+        a.update(Event::Snapshot {
+            snapshot: Box::new(next),
+        });
+        a.monitor
+            .samples
+            .values_mut()
+            .for_each(|sample| sample.due = Instant::now());
+        assert!(a.ensure_monitors(Some(&engine)));
+        let read = requests.recv().unwrap();
+        assert_eq!(read.method, "memory_read");
+        assert_eq!(read.params["watch_binding"], "fixture-binding");
+        assert_eq!(read.params["context"]["generation"], 7);
+        let result = memory_access::scalar_fixture(&a, &read, 2);
+        a.monitor_response(read.id, &result, None);
+        let sampled = a.monitor.samples.values().next().unwrap().sampled;
+        let item = a.watch_monitor_item(0).unwrap();
+        assert!(a.manual_monitor(Some(&engine), item));
+        let read = requests.recv().unwrap();
+        a.monitor_response(read.id, &Value::Null, Some("AP failure"));
+        assert_eq!(a.monitor.samples.values().next().unwrap().sampled, sampled);
+        assert!(
+            a.watch_sample("watch:counter")
+                .unwrap()
+                .0
+                .contains("2 (stale)")
+        );
+        assert!(
+            a.access_caption(1, 0)
+                .contains("retained / stale: bus → soc.bus")
+        );
+        a.project.memory_access[0].target = "soc.changed".into();
+        assert!(a.watch_sample("watch:counter").is_none());
+        let item = a.watch_monitor_item(0).unwrap();
+        assert!(!a.manual_monitor(Some(&engine), item));
+        assert!(requests.try_recv().is_err());
+        let mut next = a.snapshot.clone();
+        next.memory_selection_epoch += 1;
+        a.update(Event::Snapshot {
+            snapshot: Box::new(next),
+        });
+        assert!(a.monitor.samples.is_empty());
+        assert!(!a.ensure_monitors(Some(&engine)));
+        assert!(requests.try_recv().is_err());
     }
 }

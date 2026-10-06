@@ -7,6 +7,7 @@ use crate::registers::{
 };
 mod expression;
 mod watch;
+pub(super) use watch::WatchBinding;
 
 struct ReadBoundary {
     context: Context,
@@ -52,6 +53,11 @@ impl Engine {
             }
         }
         self.memory_read_not_cancelled()?;
+        if let Some(epoch) = p.get("selection_epoch")
+            && epoch.as_u64() != Some(self.snapshot.memory_selection_epoch)
+        {
+            return Err("Memory request belongs to an expired thread selection".into());
+        }
         Ok(ReadBoundary {
             context,
             epoch: self.memory_context_epoch,
@@ -211,7 +217,7 @@ impl Engine {
         Ok(
             json!({"address":format!("0x{base:x}"),"bytes":bytes,"channel":channel,
             "target":target,"endpoint":endpoint,"source":source,"context":context,
-            "state":self.snapshot.state,"atomic":false,"access":self.register_value_access}),
+            "state":self.snapshot.state,"atomic":false,"selection_epoch":self.snapshot.memory_selection_epoch,"access":self.register_value_access}),
         )
     }
     pub(super) fn memory_channels(&self) -> Result<Json, String> {
@@ -222,6 +228,7 @@ impl Engine {
     }
     pub(super) fn read_memory_channel(&mut self, p: &Json) -> Result<Json, String> {
         let boundary = self.begin_memory_read(p)?;
+        self.check_watch_binding(p, &boundary)?;
         let channel = memory_channel(p)?;
         if channel.is_empty() {
             return self.read_memory_gdb_scalar(p, &boundary);
@@ -314,7 +321,7 @@ impl Engine {
             ),
         );
         Ok(
-            json!({"value":value,"raw":crate::registers::RawValue::from_integer(u128::from(value),bits as u16)?,"address":address,"bits":bits,"channel":channel,"target":access.target,"endpoint":access.tcl_endpoint,"source":self.project.memory_access_source,"state":self.snapshot.state,"atomic":false,"context":boundary.context,"access":self.register_value_access}),
+            json!({"value":value,"raw":crate::registers::RawValue::from_integer(u128::from(value),bits as u16)?,"address":address,"bits":bits,"channel":channel,"target":access.target,"endpoint":access.tcl_endpoint,"source":self.project.memory_access_source,"state":self.snapshot.state,"atomic":false,"context":boundary.context,"selection_epoch":self.snapshot.memory_selection_epoch,"access":self.register_value_access}),
         )
     }
 
@@ -368,7 +375,7 @@ impl Engine {
             json!({"value":value,"raw":crate::registers::RawValue::from_integer(u128::from(value), bits as u16)?,
             "address":address,"bits":bits,"channel":"","target":boundary.context.core,
             "endpoint":self.project.target.endpoint,"source":"GDB","state":self.snapshot.state,
-            "atomic":false,"context":boundary.context,"access":self.register_value_access}),
+            "atomic":false,"context":boundary.context,"selection_epoch":self.snapshot.memory_selection_epoch,"access":self.register_value_access}),
         )
     }
 }
@@ -382,7 +389,7 @@ fn memory_channel(p: &Json) -> Result<&str, String> {
     }
 }
 
-pub(super) fn literal_address(address: &str) -> Result<u64, String> {
+pub(crate) fn literal_address(address: &str) -> Result<u64, String> {
     let digits = address
         .strip_prefix("0x")
         .or_else(|| address.strip_prefix("0X"));

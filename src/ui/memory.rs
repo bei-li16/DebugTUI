@@ -14,6 +14,8 @@ struct Pending {
     context: Context,
     channel: String,
     range: MemoryRange,
+    epoch: u64,
+    route_key: String,
 }
 struct Sample {
     key: String,
@@ -23,14 +25,16 @@ struct Sample {
     state: String,
     lines: Vec<String>,
     sampled: Instant,
-    route: String,
+    receipt: memory_access::Receipt,
+    epoch: u64,
+    route_key: String,
 }
 #[derive(Default)]
 pub(super) struct MemoryView {
     popup: Option<Popup>,
     pending: Option<Pending>,
     sample: Option<Sample>,
-    attempted: Option<(String, Context, String)>,
+    attempted: Option<(String, Context, String, u64)>,
     error: Option<String>,
     hits: Vec<(Rect, usize)>,
 }
@@ -56,13 +60,21 @@ impl App {
         }
     }
     pub(super) fn memory_snapshot(&mut self, next: &Snapshot) {
-        let owner_changed = next.core.as_ref().map(|core| (&core.name, core.index))
+        let owner_changed = next
+            .core
+            .as_ref()
+            .map(|core| (&core.name, core.index, &core.endpoint))
             != self
                 .snapshot
                 .core
                 .as_ref()
-                .map(|core| (&core.name, core.index))
-            || next.register_session != self.snapshot.register_session;
+                .map(|core| (&core.name, core.index, &core.endpoint))
+            || next.register_session != self.snapshot.register_session
+            || next.memory_selection_epoch != self.snapshot.memory_selection_epoch;
+        if owner_changed {
+            self.memory_panel.sample = None;
+            self.memory_panel.attempted = None;
+        }
         if owner_changed
             || next.generation != self.snapshot.generation
             || next.frame.level != self.snapshot.frame.level
@@ -90,10 +102,18 @@ impl App {
         )
     }
     fn memory_range(&self) -> MemoryRange {
+        let core = self
+            .snapshot
+            .core
+            .as_ref()
+            .map(|core| core.name.as_str())
+            .unwrap_or("single");
         self.project
             .ui
             .memory
             .get(&self.memory_key())
+            .or_else(|| self.project.ui.memory.get(&format!("{core}|memory:range")))
+            .or_else(|| self.project.ui.memory.get("memory:range"))
             .cloned()
             .unwrap_or_default()
     }
@@ -102,6 +122,17 @@ impl App {
             .ui
             .refresh
             .get(&self.memory_key())
+            .or_else(|| {
+                self.project.refresh_policy(
+                    self.snapshot
+                        .core
+                        .as_ref()
+                        .map(|core| core.name.as_str())
+                        .unwrap_or("single"),
+                    "memory:range",
+                    None,
+                )
+            })
             .map(|p| p.channel.clone())
             .unwrap_or_default()
     }
@@ -372,7 +403,9 @@ impl App {
         if !manual && self.snapshot.state != "STOPPED" {
             return false;
         }
-        let attempt = (key.clone(), context.clone(), channel.clone());
+        let epoch = self.snapshot.memory_selection_epoch;
+        let route_key = self.memory_route_fingerprint(&channel);
+        let attempt = (key.clone(), context.clone(), route_key.clone(), epoch);
         if !manual && self.memory_panel.attempted.as_ref() == Some(&attempt) {
             return false;
         }
@@ -386,9 +419,11 @@ impl App {
             context: context.clone(),
             channel: channel.clone(),
             range: range.clone(),
+            epoch,
+            route_key,
         });
         self.view_tops[4] = 0;
-        self.submit(Some(engine), "memory_dump", json!({"address":range.address,"count":range.count,"channel":channel,"context":context}));
+        self.submit(Some(engine), "memory_dump", json!({"address":range.address,"count":range.count,"channel":channel,"context":context,"selection_epoch":epoch}));
         true
     }
     pub(super) fn memory_response(&mut self, id: u64, result: &Value, error: Option<&str>) -> bool {
@@ -407,6 +442,8 @@ impl App {
             || pending.context != self.register_context()
             || pending.channel != self.memory_channel()
             || pending.range != self.memory_range()
+            || pending.epoch != self.snapshot.memory_selection_epoch
+            || pending.route_key != self.memory_route_fingerprint(&pending.channel)
         {
             return true;
         }
@@ -426,6 +463,28 @@ impl App {
                 .ok_or("Memory response has no address")?;
             let base = u64::from_str_radix(address.trim_start_matches("0x"), 16)
                 .map_err(|_| "Invalid memory response address")?;
+            if let Ok(requested) = crate::session::literal_address(&pending.range.address)
+                && requested != base
+            {
+                return Err("Memory response belongs to a different requested address".into());
+            }
+            let route_address = if pending.channel.is_empty() {
+                pending.range.address.clone()
+            } else {
+                format!("0x{base:x}")
+            };
+            let receipt = self.memory_receipt(
+                result,
+                &memory_access::Expected {
+                    context: &pending.context,
+                    epoch: pending.epoch,
+                    channel: &pending.channel,
+                    address: &route_address,
+                    bits: (pending.range.count * 8) as u16,
+                    little: true,
+                    dump: true,
+                },
+            )?;
             let bytes = result["bytes"]
                 .as_array()
                 .ok_or("Memory response has no bytes")?;
@@ -465,11 +524,9 @@ impl App {
                 state: result["state"].as_str().unwrap_or("").into(),
                 lines,
                 sampled: Instant::now(),
-                route: format!(
-                    "{} @ {}",
-                    result["target"].as_str().unwrap_or("?"),
-                    result["endpoint"].as_str().unwrap_or("?")
-                ),
+                receipt,
+                epoch: pending.epoch,
+                route_key: pending.route_key,
             })
         })();
         match decoded {
@@ -488,12 +545,20 @@ impl App {
         if let Some(sample) = &self.memory_panel.sample {
             if sample.key == self.memory_key()
                 && sample.context.session == self.snapshot.register_session
+                && sample.epoch == self.snapshot.memory_selection_epoch
+                && sample.channel == self.memory_channel()
+                && sample.range == self.memory_range()
+                && sample.route_key == self.memory_route_fingerprint(&sample.channel)
             {
                 return &sample.lines;
             }
             return &[];
         }
-        &self.snapshot.memory
+        if self.demo {
+            &self.snapshot.memory
+        } else {
+            &[]
+        }
     }
     pub(super) fn memory_caption(&self) -> String {
         let range = self.memory_range();
@@ -503,28 +568,29 @@ impl App {
         });
         let status = if self.memory_panel.busy() {
             "reading".into()
-        } else if let Some(error) = &self.memory_panel.error {
-            format!(
-                "{}error: {error}",
-                if self.memory_panel.sample.is_some() {
-                    "stale · "
-                } else {
-                    ""
-                }
-            )
         } else if let Some(sample) = &self.memory_panel.sample {
             let fresh = sample.key == self.memory_key()
                 && sample.context == self.register_context()
                 && sample.channel == self.memory_channel()
                 && sample.range == self.memory_range()
                 && sample.state == self.snapshot.state
+                && sample.epoch == self.snapshot.memory_selection_epoch
+                && sample.route_key == self.memory_route_fingerprint(&sample.channel)
+                && self.memory_panel.error.is_none()
                 && (self.snapshot.state == "STOPPED" || !sample.channel.is_empty());
             format!(
-                "{} · {} · {}s ago",
-                if fresh { "sampled" } else { "stale" },
-                sample.route,
-                sample.sampled.elapsed().as_secs()
+                "{} · {} · {}s ago{}",
+                if fresh { "sampled" } else { "retained / stale" },
+                sample.receipt.caption(),
+                sample.sampled.elapsed().as_secs(),
+                self.memory_panel
+                    .error
+                    .as_ref()
+                    .map(|error| format!(" · error: {error}"))
+                    .unwrap_or_default()
             )
+        } else if let Some(error) = &self.memory_panel.error {
+            format!("error: {error}")
         } else {
             "not read".into()
         };
@@ -625,8 +691,10 @@ mod tests {
     }
 
     fn result(app: &App, channel: &str) -> Value {
-        json!({"address":"0x100000008","bytes":[0,127,128,255],"context":app.register_context(),
-            "channel":channel,"state":app.snapshot.state,"target":"soc.bus","endpoint":"127.0.0.1:6666","atomic":false})
+        let mut result = memory_access::fixture(app, channel, "0x100000008", 32, true, true);
+        result["address"] = json!("0x100000008");
+        result["bytes"] = json!([0, 127, 128, 255]);
+        result
     }
 
     #[test]
@@ -839,5 +907,120 @@ mod tests {
         assert!(!app.memory_panel.modal());
         assert!(!app.memory_caption().contains("core0 read failed"));
         assert!(requests.try_recv().is_err());
+    }
+    #[test]
+    fn memory_rejects_incomplete_or_wrong_receipts_and_retains_the_observed_origin() {
+        let (engine, requests) = session::test_channel();
+        let mut app = app();
+        app.project.target.endpoint = "configured:3333".into();
+        app.request_memory_dump(Some(&engine), true);
+        let read = requests.recv().unwrap();
+        app.memory_response(read.id, &result(&app, ""), None);
+        let initial = app.memory_bytes();
+        assert!(!initial.is_empty());
+        let caption = app.memory_caption();
+        assert!(
+            caption.contains("@ unknown") && caption.contains("configured configured:3333"),
+            "{caption}"
+        );
+        for scenario in [
+            "no-access",
+            "endpoint",
+            "address",
+            "route-address",
+            "command",
+            "time",
+            "phase",
+            "epoch",
+            "width",
+            "byte-order",
+            "atomic",
+            "state",
+        ] {
+            app.request_memory_dump(Some(&engine), true);
+            let read = requests.recv().unwrap();
+            let mut bad = result(&app, "");
+            match scenario {
+                "no-access" => {
+                    bad.as_object_mut().unwrap().remove("access");
+                }
+                "endpoint" => bad["access"]["route"]["endpoint"] = json!("other:3333"),
+                "address" => bad["address"] = json!("0x10000000c"),
+                "route-address" => bad["access"]["route"]["address"] = json!("0x10000000c"),
+                "command" => {
+                    bad["access"]["command"] = json!("-data-read-memory-bytes 0x10000000c 4")
+                }
+                "time" => bad["access"]["completed_ms"] = json!(0),
+                "phase" => bad["access"]["phase"] = json!("started"),
+                "epoch" => bad["selection_epoch"] = json!(app.snapshot.memory_selection_epoch + 1),
+                "width" => bad["access"]["route"]["bits"] = json!(64),
+                "byte-order" => bad["access"]["route"]["byte_order"] = json!("big"),
+                "atomic" => bad["atomic"] = json!(true),
+                "state" => bad["state"] = json!("RUNNING"),
+                _ => unreachable!(),
+            }
+            assert!(app.memory_response(read.id, &bad, None));
+            assert_eq!(app.memory_bytes(), initial, "{scenario}");
+            let caption = app.memory_caption();
+            assert!(
+                caption.contains("retained / stale")
+                    && caption.contains("@ unknown")
+                    && caption.contains("error:"),
+                "{scenario}: {caption}"
+            );
+            assert!(!app.ensure_memory_dump(Some(&engine)));
+            assert!(requests.try_recv().is_err());
+        }
+        let mut next = app.snapshot.clone();
+        next.memory_selection_epoch += 1;
+        next.memory = vec!["100000008 ff ff ff ff".into()];
+        app.update(Event::Snapshot {
+            snapshot: Box::new(next),
+        });
+        assert!(app.memory_bytes().is_empty());
+        assert!(!app.memory_caption().contains("retained"));
+    }
+    #[test]
+    fn memory_legacy_ranges_and_routes_are_overridden_by_chip_core_settings_and_endpoint_changes() {
+        let (engine, requests) = session::test_channel();
+        let mut app = app();
+        app.project.ui.memory.clear();
+        let range = MemoryRange {
+            address: "0x100000008".into(),
+            count: 4,
+        };
+        app.project
+            .ui
+            .memory
+            .insert("memory:range".into(), range.clone());
+        app.project.ui.refresh.insert(
+            "memory:range".into(),
+            crate::config::RefreshPolicy {
+                channel: "ap".into(),
+                interval_ms: 0,
+            },
+        );
+        assert_eq!(app.memory_range(), range);
+        assert_eq!(app.memory_channel(), "ap");
+        app.project
+            .ui
+            .refresh
+            .insert(app.memory_key(), Default::default());
+        assert_eq!(app.memory_channel(), "");
+        app.project.ui.refresh.remove(&app.memory_key());
+        app.request_memory_dump(Some(&engine), true);
+        let read = requests.recv().unwrap();
+        app.memory_response(read.id, &result(&app, "ap"), None);
+        assert_eq!(app.memory_bytes().len(), 4);
+        app.request_memory_dump(Some(&engine), true);
+        let read = requests.recv().unwrap();
+        let old = result(&app, "ap");
+        app.project.memory_access[0].tcl_endpoint = "other:6666".into();
+        app.memory_response(read.id, &old, None);
+        assert!(app.memory_bytes().is_empty());
+        assert!(app.memory_panel.error.is_none());
+        assert!(app.ensure_memory_dump(Some(&engine)));
+        let next = requests.recv().unwrap();
+        assert_eq!(next.params["channel"], "ap");
     }
 }

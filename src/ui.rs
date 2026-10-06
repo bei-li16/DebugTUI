@@ -56,6 +56,7 @@ mod highlight;
 #[cfg(test)]
 mod live_watch_tests;
 mod memory;
+mod memory_access;
 mod monitor;
 mod peripherals;
 mod registers;
@@ -510,15 +511,22 @@ impl App {
                 self.fx.snapshot(&self.snapshot, &snapshot);
                 self.reconcile_watch_selection(&snapshot);
                 self.reconcile_break_selection(&snapshot, core_changed);
-                if core_changed
-                    || matches!(
-                        snapshot.state.as_str(),
-                        "DISCONNECTED" | "STARTING GDB" | "FAULT"
-                    )
-                {
+                let memory_owner_changed = core_changed
+                    || snapshot.memory_selection_epoch != self.snapshot.memory_selection_epoch
+                    || snapshot.register_session != self.snapshot.register_session
+                    || snapshot.core.as_ref().map(|c| (&c.name, &c.endpoint))
+                        != self.snapshot.core.as_ref().map(|c| (&c.name, &c.endpoint));
+                if memory_owner_changed {
+                    self.view_stamps.fill(None);
+                    self.peripherals.clear_values();
+                    self.monitor.invalidate();
+                } else if matches!(
+                    snapshot.state.as_str(),
+                    "DISCONNECTED" | "STARTING GDB" | "FAULT"
+                ) {
                     self.view_stamps.fill(None);
                     self.peripherals.invalidate();
-                    self.monitor.invalidate();
+                    self.monitor.invalidate_bindings();
                 }
                 let moved = core_changed
                     || snapshot.generation != self.snapshot.generation

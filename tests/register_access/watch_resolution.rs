@@ -66,7 +66,14 @@ fn fixture(
 
 #[test]
 fn multicore_watch_proof_and_cancellation_stay_on_the_selected_worker_under_scope_all() {
-    let (mut project, transcript) = fixture_project("four-core", &[], vec!["counter".into()]);
+    let (mut project, transcript) = fixture_project(
+        "four-core",
+        &[(
+            "DEBUGTUI_TEST_MEMORY_BLOCKS",
+            r#"[{begin="0x100000004",contents="11000000"}]"#,
+        )],
+        vec!["counter".into()],
+    );
     project.cores = (0..4)
         .map(|index| debugtui::config::Core {
             name: format!("core{index}"),
@@ -79,6 +86,7 @@ fn multicore_watch_proof_and_cancellation_stay_on_the_selected_worker_under_scop
     response(&engine, 2, "control_scope", json!({"scope":"all"}));
     fs::write(&transcript, "").unwrap();
     let mut first = json!(null);
+    let mut first_binding = json!(null);
     for index in [0, 1, 2, 3] {
         response(
             &engine,
@@ -108,6 +116,28 @@ fn multicore_watch_proof_and_cancellation_stay_on_the_selected_worker_under_scop
         );
         assert_eq!(binding["context"], listed["context"]);
         assert_eq!(binding["context"]["core"], format!("core{index}"));
+        if index == 0 {
+            first_binding = binding.clone();
+        } else {
+            let mut wrong_worker = binding_params(&binding);
+            wrong_worker["watch_binding"] = first_binding["binding_id"].clone();
+            assert!(
+                request_error(&engine, 14 + index * 10, "memory_read", wrong_worker)
+                    .contains("Watch binding expired")
+            );
+        }
+        let read = response(
+            &engine,
+            15 + index * 10,
+            "memory_read",
+            binding_params(&binding),
+        );
+        assert_eq!(read["value"], 17);
+        assert_eq!(read["access"]["context"], listed["context"]);
+        assert_eq!(
+            read["access"]["route"]["configured_endpoint"],
+            format!("localhost:{}", 3333 + index)
+        );
     }
     let before_cancel = fs::read_to_string(&transcript).unwrap();
     assert_eq!(
@@ -176,6 +206,169 @@ fn request_error(engine: &session::EngineHandle, id: u64, method: &str, params: 
             return error.unwrap();
         }
     }
+}
+fn binding_params(binding: &Value) -> Value {
+    json!({"address":binding["address"],"bits":binding["bits"],"little_endian":binding["little_endian"],
+        "context":binding["context"],"selection_epoch":binding["selection_epoch"],"watch_binding":binding["binding_id"],"channel":""})
+}
+
+#[test]
+fn watch_binding_detects_silent_thread_frame_and_pc_changes_before_memory_dispatch() {
+    for scenario in ["thread", "frame", "pc"] {
+        let (engine, transcript) = fixture(
+            &format!("binding-{scenario}"),
+            &[(
+                "DEBUGTUI_TEST_MEMORY_BLOCKS",
+                r#"[{begin="0x100000004",contents="11000000"}]"#,
+            )],
+            vec!["counter".into()],
+        );
+        let binding = response(&engine, 2, "watch_resolve", json!({"expression":"counter"}));
+        assert!(!binding["binding_id"].as_str().unwrap().is_empty());
+        let read = response(&engine, 3, "memory_read", binding_params(&binding));
+        assert_eq!(read["value"], 17);
+        let mut actual = json!({"thread":"1","frame":0,"pc":"0x100000008"});
+        match scenario {
+            "thread" => actual["thread"] = json!("2"),
+            "frame" => actual["frame"] = json!(1),
+            "pc" => actual["pc"] = json!("0x10000000c"),
+            _ => unreachable!(),
+        }
+        let context_path = transcript.parent().unwrap().join("context.json");
+        fs::write(&context_path, actual.to_string()).unwrap();
+        fs::write(&transcript, "").unwrap();
+        assert!(
+            request_error(&engine, 4, "memory_read", binding_params(&binding))
+                .contains("different selected thread, frame or PC")
+        );
+        let commands = fs::read_to_string(&transcript).unwrap();
+        assert!(commands.contains("-thread-info") && commands.contains("-stack-info-frame"));
+        assert!(!commands.contains("-data-read-memory-bytes"));
+        no_target_changes(&commands);
+        let status = response(&engine, 5, "status", json!({}));
+        assert_eq!(
+            status["memory_selection_epoch"].as_u64().unwrap(),
+            binding["selection_epoch"].as_u64().unwrap() + 1
+        );
+        fs::write(&transcript, "").unwrap();
+        let expected = if scenario == "frame" {
+            "expired core, frame or stop context"
+        } else {
+            "expired thread selection"
+        };
+        assert!(
+            request_error(&engine, 6, "memory_read", binding_params(&binding)).contains(expected)
+        );
+        assert!(fs::read_to_string(&transcript).unwrap().is_empty());
+        fs::write(
+            &context_path,
+            json!({"thread":"1","frame":0,"pc":"0x100000008"}).to_string(),
+        )
+        .unwrap();
+        response(&engine, 7, "refresh", json!({}));
+        let fresh = response(&engine, 8, "watch_resolve", json!({"expression":"counter"}));
+        assert_ne!(fresh["binding_id"], binding["binding_id"]);
+        assert_eq!(
+            response(&engine, 9, "memory_read", binding_params(&fresh))["value"],
+            17
+        );
+        response(&engine, 99, "quit", json!({}));
+    }
+}
+
+#[test]
+fn watch_binding_rejects_modified_type_and_expires_on_resolve_frame_and_reconnect() {
+    let (engine, transcript) = fixture(
+        "binding-lifetime",
+        &[(
+            "DEBUGTUI_TEST_MEMORY_BLOCKS",
+            r#"[{begin="0x100000004",contents="11000000"}]"#,
+        )],
+        vec!["counter".into()],
+    );
+    let binding = response(&engine, 2, "watch_resolve", json!({"expression":"counter"}));
+    fs::write(&transcript, "").unwrap();
+    for (index, scenario) in [
+        "token-null",
+        "token-empty",
+        "address",
+        "bits",
+        "endian",
+        "epoch",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let mut bad = binding_params(&binding);
+        match *scenario {
+            "token-null" => bad["watch_binding"] = Value::Null,
+            "token-empty" => bad["watch_binding"] = json!(""),
+            "address" => bad["address"] = json!(0x100000008u64),
+            "bits" => bad["bits"] = json!(64),
+            "endian" => bad["little_endian"] = json!(false),
+            "epoch" => bad["selection_epoch"] = json!(999),
+            _ => unreachable!(),
+        }
+        request_error(&engine, 10 + index as u64, "memory_read", bad);
+        assert!(
+            fs::read_to_string(&transcript).unwrap().is_empty(),
+            "{scenario}"
+        );
+    }
+    let fresh = response(
+        &engine,
+        20,
+        "watch_resolve",
+        json!({"expression":"counter"}),
+    );
+    assert_ne!(fresh["binding_id"], binding["binding_id"]);
+    fs::write(&transcript, "").unwrap();
+    assert!(
+        request_error(&engine, 21, "memory_read", binding_params(&binding))
+            .contains("Watch binding expired")
+    );
+    assert!(fs::read_to_string(&transcript).unwrap().is_empty());
+    response(&engine, 22, "frame", json!({"level":0}));
+    fs::write(&transcript, "").unwrap();
+    assert!(
+        request_error(&engine, 23, "memory_read", binding_params(&fresh))
+            .contains("expired thread selection")
+    );
+    assert!(fs::read_to_string(&transcript).unwrap().is_empty());
+    let before_reconnect = response(
+        &engine,
+        24,
+        "watch_resolve",
+        json!({"expression":"counter"}),
+    );
+    response(&engine, 25, "disconnect", json!({}));
+    response(&engine, 26, "connect", json!({}));
+    fs::write(&transcript, "").unwrap();
+    assert!(
+        request_error(
+            &engine,
+            27,
+            "memory_read",
+            binding_params(&before_reconnect)
+        )
+        .contains("expired core")
+    );
+    assert!(fs::read_to_string(&transcript).unwrap().is_empty());
+    let fresh = response(
+        &engine,
+        28,
+        "watch_resolve",
+        json!({"expression":"counter"}),
+    );
+    assert_ne!(
+        fresh["context"]["session"],
+        before_reconnect["context"]["session"]
+    );
+    assert_eq!(
+        response(&engine, 29, "memory_read", binding_params(&fresh))["value"],
+        17
+    );
+    response(&engine, 99, "quit", json!({}));
 }
 
 fn no_target_changes(commands: &str) {

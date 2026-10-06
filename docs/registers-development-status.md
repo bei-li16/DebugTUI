@@ -1,5 +1,19 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：BUS 绑定生命周期、统一策略与实际来源
+
+Watch 新增 worker 绑定句柄与 selection_epoch，停止读取前重新证明实际线程/帧/PC；参数修改、重新解析、换帧及重连后的旧句柄在内存 dispatch 前拒绝。同帧线程通知发布失效快照，稳定运行 AP 使用原停止绑定不额外查询 GDB；协调器 Continue revision 与实际 worker 停止 Context 分开。统一芯片/核心/条目、Watch 根继承及旧键覆盖，外设手工读取、默认 GDB、轮询和编辑器不绕过芯片策略，typed Watch writer 也遵循同一有效策略。见 [绑定与面板来源](bus-read-provenance.md)。
+
+三个面板核对成功 receipt 的实际 route/命令、Context/epoch、状态、时间、宽度/字节序及精确 raw。GDB unknown endpoint 与 configured 提示分开；AP target/配置来源不能冒充硬件核归属。普通失败和新停止点失败保留原值、时间与来源并显示 retained/stale；线程/帧/session/core endpoint 或配置路线变化清除或隐藏旧值，迟到结果拒绝。跨停止点值比较基线保留，避免过度失效丢掉变化高亮。
+
+新增 **7 单元＋2 MI 集成**；原四核 Scope All 用例增加实际绑定读与跨 worker 句柄拒绝。最终 **单次 cargo test --locked：424 单元＋185 集成＝609 通过，2 ignored**，Doc-tests 0 项，退出码 0，无整体超时。严格 Clippy、格式及 diff 检查通过。F24 **156/156**、F25 **31/31** 为完整 Cargo 日志中的证据匹配模式数，不是 case 或完整 TODO 数。首次变化高亮断言、换帧后的具体拒绝原因断言和 Clippy lint 已修正，原始失败日志保留。
+
+实际二进制原生 Memory **8623 ms**、SVD **1795 ms** 与可重跑四核 bus-provenance **8221 ms** 均通过；Memory 的 20 次运行中采样携带停止时绑定并验证零额外 MI，暂停后旧绑定在 transport 前拒绝。新增 `scripts/test-bus-provenance-fixture.cjs` 在严格 MI/TCP 软件模型运行同一个延后驱动，五阶段通过，包含逐核 GDB/AP/范围、参数/旧句柄拒绝与显式重连。首次夹具缺 transcript 路径及 Tcl 包装命令匹配错误已修正；setup 失败现在也进入失败报告，不把清理通过当作验收通过。所有软件模型均不作为实板证据。
+
+完整 Cargo、Clippy、专项及原生日志在 `artifacts/bus-provenance-*.log`。外层报告 [functional-1791252923910-164e24d1](../artifacts/functional-1791252923910-164e24d1/report.json) 顶层文件从 C 盘逐字节镜像，核对 `artifacts/bus-provenance-report-mirror.json`；子报告保留 JSON 中的原绝对路径，镜像 Markdown 相对子链接保持原文。最终源码/二进制哈希、609 项/模式/驱动和远程交付证据见 `artifacts/bus-provenance-final-evidence.json`。外层 unit 未选择，已由独立完整 Cargo 验证；其他 **20 个外层功能套件未选择**，不改写 runner 的原始计数。
+
+延后驱动默认不启动调试器，使用不存在的 binary 参数也只生成 **3 skipped**；[三个环境 case](../tests/cases/bus-provenance.md) 与模板已准备、未上板。本批为完整 BUS 的绑定/来源子集，新增系统 MMIO 全模块、混合客户端/选择器竞争、完整 BUS-T/H 和 Issue #1 整体验收仍待完成，不增加整项勾选：**28 完成／43 未完成**。低 EL、writer、终端视觉和最终整套验收及非主分支 Release 继续推进；目标 active。本轮在 `codex/register-debugging` 提交推送，版本仍 0.9.3，未替换全局安装或发布 Release。
+
 ## 2026-10-06：Watch 地址解析证明与实际请求取消
 
 Watch 根表达式和 GDB 返回路径先通过有界只读语法校验，再在 may-call-functions 保护下取得原类型地址；解析前后证明选中线程、停止状态、帧级别和 PC。关键步骤检查 Context/通知代次/取消；对象清理及策略恢复必须完成，失败拒绝绑定并进入 FAULT。成功结果提供 GDB 类型地址来源和线程/帧 Context，UI 校验后才安排总线读取。普通内存请求的局部取消原先未接入 worker，本轮修复 Session/Coordinator 转发，并改用实际 worker 的停止代次构造监测请求，避免把多核协调器 revision 当作 Context。显式错误 channel 类型不回退 GDB。见 [Watch 地址解析](watch-address-resolution.md)。

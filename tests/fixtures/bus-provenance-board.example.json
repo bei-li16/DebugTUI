@@ -1,0 +1,21 @@
+{
+  "software_example": true,
+  "fixture_ram": true,
+  "startup_actions_disabled": true,
+  "cores": [
+    {
+      "name": "core0",
+      "expression": "counter",
+      "address": "0x100000004",
+      "bits": 32,
+      "little_endian": true,
+      "expected": "0x00000011",
+      "expected_bytes": "11000000",
+      "channel": "bus",
+      "target": "soc.bus",
+      "tcl_endpoint": "127.0.0.1:6666",
+      "gdb_endpoint": "localhost:3333",
+      "configuration_source": "project:G:/Tests/isolated-bus.toml"
+    }
+  ]
+}
