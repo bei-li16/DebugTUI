@@ -247,8 +247,7 @@ impl Engine {
         self.refresh_breakpoints()?;
         self.remember_breakpoints();
         self.publish();
-        self.project
-            .save_preferences(self.watch_names.clone(), self.saved_breakpoints.clone())
+        self.persist_preferences()
             .map_err(|e| format!("Breakpoint changed in GDB, but saving the project failed: {e}"))
     }
     fn update_breakpoint(&mut self, b: &Breakpoint, o: &Options) -> Result<(), String> {

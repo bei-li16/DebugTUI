@@ -9,8 +9,10 @@ const options=parseOptions(process.argv.slice(2),['--binary','--previous-package
 const binary=path.resolve(options.binary||path.join(root,'target/debug/debugtui.exe'));
 const out=outputDirectory('register-distribution',process.env.DEBUGTUI_DISTRIBUTION_ARTIFACT_ROOT), stage=path.join(out,'project 工程'), config=path.join(out,'npm 客户配置');
 const metadata=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
-const cpus=['cortex-m4','cortex-r52','cortex-r52+'];
-const required=['profiles/install.cjs','profiles/devices.toml',...cpus.map(cpu=>`profiles/registers/${cpu}.toml`)];
+const cpus=['cortex-m3','cortex-m4','cortex-m7','cortex-r52','cortex-r52+'];
+const required=['profiles/install.cjs','profiles/devices.toml','profiles/registers/armv7m-common.toml',
+  ...cpus.map(cpu=>`profiles/registers/${cpu}.toml`),'profiles/registers-readonly-multicore.toml.example',
+  'profiles/registers-readonly-r52.toml.example','docs/registers-readonly-guide.md','tests/cases/registers-readonly-release.md'];
 const historical=Boolean(options['previous-package']);
 assert(historical===Boolean(options['previous-sha256']) && historical===Boolean(options['previous-version']),'Previous package, SHA256 and version must be provided together');
 const suite=new Cases(out,{layer:'production npm/EXE/ZIP, private prefix and config roots',board_tests_executed:false,binary,binary_sha256:hash(binary),version:metadata.version,upgrade_baseline:historical?'verified historical package':'synthetic package replacement fixture; not a historical release'});
@@ -128,11 +130,21 @@ function assertPreserved() { assert.deepEqual(snapshot(config),preserved,'Instal
       assert(!fs.existsSync(path.join(packed,'tools')));
       return {assets:assets.assets,sha256sums:assets.sha256sums};
     });
-    await suite.test('REG-PKG-OMITTED','Production packer rejects missing catalogue/profile payloads',async()=>{
-      const bad=path.join(out,'omitted profiles');copyProject(bad);
-      const wrong={...metadata,files:metadata.files.filter(item=>item!=='profiles/')};fs.writeFileSync(path.join(bad,'package.json'),JSON.stringify(wrong));
+    await suite.test('REG-PKG-OMITTED','Production packer rejects missing payloads and executable tests',async()=>{
+      const rejected=[];
+      for(const omitted of ['profiles/','docs/','tests/cases/']) {
+        const bad=path.join(out,'omitted '+omitted.replaceAll('/','-'));copyProject(bad);
+        const wrong={...metadata,files:metadata.files.filter(item=>item!==omitted)};
+        fs.writeFileSync(path.join(bad,'package.json'),JSON.stringify(wrong));
+        const result=powershell(path.join(bad,'scripts/package.ps1'),['-SkipBuild']);
+        assert.notEqual(result.status,0);assert((result.stderr+result.stdout).includes('Register catalogue/profile asset omitted'));
+        rejected.push(omitted);
+      }
+      const bad=path.join(out,'executable case leak');copyProject(bad);
+      fs.writeFileSync(path.join(bad,'tests/cases/not-documentation.cjs'),'throw Error("must never ship or execute");');
       const result=powershell(path.join(bad,'scripts/package.ps1'),['-SkipBuild']);
-      assert.notEqual(result.status,0);assert((result.stderr+result.stdout).includes('Register catalogue/profile asset omitted'));return {rejected:true};
+      assert.notEqual(result.status,0);assert((result.stderr+result.stdout).includes('Environment or development dependencies leaked'));
+      return {omitted_rejected:rejected,executable_case_rejected:true};
     });
     await suite.test('REG-PKG-DIRECT','Direct EXE initializes empty extension location and contains all built-ins',async()=>{
       const directory=path.join(out,'direct EXE'), user=path.join(out,'direct config');fs.mkdirSync(directory);const exe=path.join(directory,'debugtui.exe');fs.copyFileSync(assets.exe,exe);

@@ -58,9 +58,16 @@ endpoint='local.1'
     # the action buttons. ELF path prefix is skipped while remapping is off.
     Wait-Screen '\u203a Project' | Out-Null
     $terminal.Send("${esc}[A")
-    Wait-Screen '\u203a Source remap' | Out-Null
-    $terminal.Send("${esc}[B")
-    Wait-Screen '\u203a Project' | Out-Null
+    Wait-Screen '\u203a Memory channels' | Out-Null
+    foreach ($field in @('Register catalogue','CPU registers','Source remap')) {
+        $terminal.Send("${esc}[A")
+        Wait-Screen ('\u203a '+[regex]::Escape($field)) | Out-Null
+    }
+    # The disabled ELF prefix is skipped between Source remap and CPU registers.
+    foreach ($field in @('CPU registers','Register catalogue','Memory channels','Project')) {
+        $terminal.Send("${esc}[B")
+        Wait-Screen ('\u203a '+[regex]::Escape($field)) | Out-Null
+    }
     $terminal.Send(("`t"*2)+"`r") # Project -> Chip
     Wait-Screen 'Choose chip' | Out-Null
     $terminal.Send("`r")

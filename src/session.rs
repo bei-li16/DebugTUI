@@ -1636,9 +1636,7 @@ impl Engine {
         self.flush_logs();
         if (self.watch_names != self.project.watch
             || self.saved_breakpoints != self.project.breakpoints)
-            && let Err(e) = self
-                .project
-                .save_preferences(self.watch_names.clone(), self.saved_breakpoints.clone())
+            && let Err(e) = self.persist_preferences()
         {
             self.log("error", format!("Save preferences: {e}"));
         }
@@ -1654,6 +1652,15 @@ impl Engine {
         } else {
             Ok(json!({"disconnected":true}))
         }
+    }
+    fn persist_preferences(&mut self) -> Result<(), String> {
+        self.project
+            .save_preferences(self.watch_names.clone(), self.saved_breakpoints.clone())?;
+        // A breakpoint edit also saves Watch. Compare later edits with that
+        // successful save, so returning to the startup list still gets written.
+        self.project.watch.clone_from(&self.watch_names);
+        self.project.breakpoints.clone_from(&self.saved_breakpoints);
+        Ok(())
     }
     fn execute(&mut self, method: &str, p: &Json) -> Result<Json, String> {
         if matches!(

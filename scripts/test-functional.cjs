@@ -83,9 +83,10 @@ async function execute(suite) {
       timedOut=true;
       if(process.platform==='win32') spawnSync('taskkill.exe',['/PID',String(child.pid),'/T','/F'],{windowsHide:true,timeout:10000});
       else child.kill('SIGKILL');
-    // Cargo includes sequential integration tests with real npm/ZIP packaging.
-    // Keep a bounded budget for the whole suite; child-process limits still apply.
-    },suite.id==='unit'?600000:180000);
+    // Cargo includes sequential integration tests and real npm/ZIP packaging
+    // for five CPU catalogues. The distribution check alone takes about four
+    // minutes; allow fifteen for the complete Cargo stage. Per-child limits stay.
+    },suite.id==='unit'?900000:180000);
     const finish=async(code,error)=>{
       if(done)return;done=true;clearTimeout(timer); await new Promise(r=>log.end(r));
       const artifacts=artifactRoots.flatMap(directory=>fs.readdirSync(directory).filter(name=>!before.get(directory).has(name)).map(name=>path.join(directory,name)));

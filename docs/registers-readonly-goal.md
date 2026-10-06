@@ -2,7 +2,7 @@
 
 2026-10-06。开发分支 `codex/register-debugging`，起点 `b493a7f`，源码基线 0.9.3。该清单落实新的 Goal，取代旧 TODO 全部 71 项作为本次完成条件；旧记录保留作追溯。36 项以完整软件验收为计数边界。硬件用例准备属于软件交付，执行上板不属于本目标。
 
-当前摘要（迭代 19）：**33 完成 / 3 未完成**。A01～A10、B01～B11、C01～C06、D01～D04、E01/E02 已通过软件验收；E03～E05 待完成。本轮统一软件/延后硬件入口，补齐实际 EXE 验证的 M7＋M4/R52 双核模板，修正用户文档中的旧路径和已完成状态。八个硬件驱动默认 32 项 SKIPPED，受保护检查无子进程/网络连接。硬件未执行、安装工具未替换、最终 Release 未发布。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
+当前摘要（迭代 20）：**34 完成 / 2 未完成**。A01～A10、B01～B11、C01～C06、D01～D04、E01～E03 已通过软件验收；E04/E05 待完成。本分支版本更新为 `0.10.0-readonly.1`，完整 24 功能套件、761 项 Cargo 测试及严格 Clippy 通过。本轮修正 Watch 删除后的保存基线、旧 TUI 脚本导航和打包文档门禁；硬件默认 32 项 SKIPPED。真实历史包已下载核验，最终升级/安装、附件、tag 和非主分支 Release 仍待完成；本地正式版及工具未替换。最新证据见文末，旧轮次记录按各自源码范围保留。
 
 核心参考文档（保留绝对路径）：
 
@@ -59,7 +59,7 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | D04 | 按需 I/O 与只读边界 | 未启用不读、不扫描、不持久写控制；真实 TUI 空闲资源/请求对照 |
 | [x] | E01 | 软件入口及硬件用例准备 | MI/Tcl/实际 CLI、可执行用例、上板 SKIPPED |
 | [x] | E02 | 配置示例、用户文档及后续清单 | 新字段/有效值/支持限制和三份绝对引用 |
-| [ ] | E03 | 发布前完整回归与静态检查 | cargo/仓库静态检查、必要功能套件全通过 |
+| [x] | E03 | 发布前完整回归与静态检查 | cargo/仓库静态检查、必要功能套件全通过 |
 | [ ] | E04 | 升版、构建、打包及一致性 | 隔离安装/版本/附件/对应源码核对 |
 | [ ] | E05 | 非主分支提交、tag、Release | 最终 SHA、tag 目标、已发布附件校验 |
 
@@ -316,3 +316,15 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 新增 `scripts/test-register-readonly-readiness.cjs`：**10 项通过、0 失败**。实际 EXE 原样加载两份模板、选择四个核，核对型号差异、owner、同地址独立 route、新协议、无观察事实、零 MI 与文件不变。八驱动各自独立进程默认 **32 项 SKIPPED、0 通过/失败**，预加载 guard 禁止子进程与 TCP 连接，所有 attempt log 为空，`board_tests_executed=false`。这是软件准备验收通过，不是 SKIPPED 硬件 case 通过。
 - 本轮 EXE 沿用迭代 18 的 `f88783d8f58fb4ab3048c8cb3bd569db196ae91ff836a5e23cb69e9a2822c83e`，生产 Rust/backend 未改，不重复无关全量回归或平台构建。详细 JSONL、route、模板摘要、guard、八驱动报告位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\evidence\register-readonly-readiness-1791297619490-2e69cc05`；本轮最终 manifest 为构建缓存中的 `readonly-readiness-evidence-20261006.json`。Node 语法、文件链接、JSON/TOML 和 diff 静态检查通过；所有测试进程正常退出。
 - 剩余 **E03/E04/E05**：确定未占用发布版本后完整回归/静态检查，构建和打包、真实历史包升级/隔离安装、非主分支 prerelease 与指定 tag 下载核验。Goal 保持 active；最终提交 SHA 与远端核对记录于外部 manifest 和本轮输出，未宣称最终 Release 已完成。
+
+## 迭代 20：最终版本完整回归与保存修复
+
+2026-10-06，完成 **E03**，累计 **34 完成 / 2 未完成**。开始时开发分支 HEAD/远端均为 `f82c523f6ec62d8c247bf3805153ee0abe1f6dc3`，只有用户规格未跟踪。远端正式 Release 为 v0.9.3，v0.10.0-readonly.1 未占用；更新 Cargo.toml/Cargo.lock/package.json 项目版本，依赖锁其余内容未改。
+
+- 本版文档和延后 case 以 Markdown 随 npm/ZIP 交付，包仍排除测试代码、fixtures/scripts、环境工具及开发依赖。门禁和实际分发测试扩展到 M 公共/M3/M4/M7/R52/R52+ 六份目录、五种核的模板/内置完整字段一致性，以及两份只读配置和指南/用例入口。缺 profiles/docs/cases 或把可执行测试放进 cases 的独立负向打包均被拒绝。`test-release.ps1` 增加明确 tag 的公网验收，默认 latest 行为保留；本轮未执行发布后的公网流程。
+- 首轮 24 套件有 4 项失败：Cargo 在 602.6 秒触发旧十分钟上限而被截断，两项 TUI 脚本按旧方向键次数进入错误字段，以及真实 GDB completion 暴露 Watch 保存问题。新增目录/文档和五 CPU 分发检查本身耗时 236.5 秒，完整 Cargo 上限校准为十五分钟，子进程限时未放宽；保留首轮全部日志，不将截断结果计为通过。
+- TUI 脚本现在逐步验证 Memory channels/Catalogue/CPU/Source remap 焦点，明确测试禁用 ELF prefix 跳过及启用后可访问；原芯片选择、保存和扫描/取消/超时/清理断言保留。两项独立复验通过。Watch 问题来自断点保存了当前 Watch 后仍与启动列表比较：删除全部 Watch 回到原空列表时，disconnect 跳过保存，文件保留 counter。现在只有保存成功才更新 Watch/断点比较基线；失败不前移基线。原磁盘空列表、运行时零目标请求、重连不恢复删除项的真实 GDB 断言保持不变并通过。
+- 第二个 Cargo 复验因生产保存修复使其源码过时而主动终止，已确认并终止本任务的唯一 Node/Cargo 子树；不是通过结果，也不是等待消失。修复后的最终程序重新执行完整功能回归：**24 套件全部通过、0 失败、0 未执行**；Cargo **761 通过、0 失败、2 既有 ignored**（500 单元＋261 集成；20 个测试二进制/文档结果），Cargo 阶段 788.503 秒无超时。最终真实 TUI devices/source-remap 分别 10.239/25.466 秒，completion 3.514 秒通过。完整报告 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\evidence\functional-1791299827400-74f89fdd\report.json`，其原始日志/子报告保留，不以历史 feature group 数代替冻结 36 项。
+- 严格 Clippy 全 target **通过**，25.61 秒。Rust fmt、20 个 PowerShell、68 个 Node、16 个 Python、32 个 JSON 的语法/格式检查，六目录离线再生成、五项 CMSIS 测试、三个绝对引用及用户规格摘要检查通过。最终 EXE 再验 readiness **10 通过**，八硬件驱动默认 **32 SKIPPED、零子进程/网络尝试**，报告 `evidence\register-readonly-readiness-1791300881754-c181910f\report.json`。最终 debug EXE SHA256 `d1bfc8842c335a25570ddb21909f50876d5deae83e3c9e046331db47fd40aba9`；Release 构建与交付验收另归 E04。
+- 后端 source/patch 未改、平台未重建：九个生产 C 事务模型、八项 Python 测试及真实 Windows 候选命令入口复验通过，候选摘要仍为 `0820f197803c55ecf756d7b7ef33f6c82ef97821b2764561ad71d32455e779a0`。Windows DLL/对应源码等 **11 检查通过**；对应源码在全新目录脱离工作区验证，内部九个模型和命令均通过。历史 source-package 外层汇总仍写 7，本轮逐项核对包含 r52_core/r52_selector 的九个内部字段，不用外层数字代替其覆盖证明。未执行 ARM 指令/上板，board verified 保持 false。
+- 真实旧 v0.9.3 包与其发布的 SHA256SUMS 已下载核对，包 SHA256 `f3a9b1ffe151563c4b678e2a177ad123a03166a70e77aea32b28c73417c07676`，位于构建缓存 `historical-release-v0.9.3`。本轮尚未把这份真实旧包升级到最终 Release 产物，E04 不勾选；非主分支 tag/Release、附件及下载校验仍归 E05。源文件、日志、最终提交和远端核对记录在外部 `readonly-final-regression-evidence-20261006.json`，Goal 保持 active。

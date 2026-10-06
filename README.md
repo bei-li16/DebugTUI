@@ -4,7 +4,7 @@
 
 DebugTUI 是基于 GDB/MI 的终端调试工作台，可在 PowerShell、Windows Terminal 或 VS Code 终端中使用。支持源码断点、单步、Watch、寄存器与 SVD 外设查看、单核/多核调试，以及调用工程的 Build / Download 命令。
 
-当前版本 **0.9.3**，发布包支持 **Windows x64**。调试时无需 VS Code、Python 或 Node 常驻进程；GDB、调试服务和下载工具由工程提供。
+本分支版本 **0.10.0-readonly.1**，用于非主分支只读系统寄存器预发布，支持 **Windows x64**。正式版安装地址仍指向最新正式 Release。M3/M4/M7、多核与 R52 当前 Debug EL2 的范围见 [只读指南](docs/registers-readonly-guide.md)；硬件用例尚未执行。调试时无需 VS Code、Python 或 Node 常驻进程；GDB、调试服务和下载工具由工程提供。
 
 ## 怎么用
 

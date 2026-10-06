@@ -40,6 +40,16 @@ function Finish-Terminal {
         $script:terminal=$null
     }
 }
+function Select-RemapField([bool]$PrefixEnabled) {
+    Wait-Screen '\u203a Project' | Out-Null
+    $fields = @('Memory channels','Register catalogue','CPU registers')
+    if ($PrefixEnabled) { $fields += 'ELF path prefix' }
+    $fields += 'Source remap'
+    foreach ($field in $fields) {
+        $terminal.Send("${esc}[A")
+        Wait-Screen ('\u203a '+[regex]::Escape($field)) | Out-Null
+    }
+}
 function Exercise-Setup([string]$Id,[string]$Program,[string]$LocalRoot,[string]$ExpectedPrefix) {
     $directory = Join-Path $out $Id
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
@@ -67,7 +77,8 @@ animations='off'
     Wait-Screen 'Source remap.*No' | Out-Null
     Wait-Screen 'Ctrl\+Q: exit' | Out-Null
     $terminal.Screen() | Set-Content -LiteralPath (Join-Path $directory 'setup-disabled.screen.txt') -Encoding utf8
-    $terminal.Send(("${esc}[A" * 2) + "`r") # Disabled prefix is skipped.
+    Select-RemapField $false # Disabled prefix is skipped; verify every focus step.
+    $terminal.Send("`r")
     Wait-Screen 'source files; columns: found / covered' | Out-Null
     Wait-Screen '\[found\]' | Out-Null
     if ($ExpectedPrefix) { Wait-Screen ([regex]::Escape($ExpectedPrefix) + ' ->') | Out-Null }
@@ -93,7 +104,8 @@ animations='off'
     Finish-Terminal
     $script:terminal = [DebugTuiTerminal]::new($Binary, '--setup', $directory, 120, 36)
     Wait-Screen 'Source remap.*Yes' | Out-Null
-    $terminal.Send(("${esc}[A" * 3) + "`r") # Enabled prefix participates in navigation.
+    Select-RemapField $true # Enabled prefix participates in navigation.
+    $terminal.Send("`r")
     Wait-Screen 'Source remap.*No' | Out-Null
     $terminal.Send([string][char]19)
     Start-Sleep -Milliseconds 100
@@ -144,7 +156,8 @@ animations='off'
         [IO.File]::WriteAllText((Join-Path $directory 'debug.toml'), $text)
         $script:terminal = [DebugTuiTerminal]::new($Binary, '--setup', $directory, 120, 36)
         Wait-Screen 'Ctrl\+Q: exit' | Out-Null
-        $terminal.Send(("${esc}[A" * 2) + "`r")
+        Select-RemapField $false
+        $terminal.Send("`r")
         $deadline = [datetime]::UtcNow.AddSeconds(5)
         $pidFile = Join-Path $directory 'scan.pid'
         while (-not (Test-Path -LiteralPath $pidFile) -and [datetime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 30 }
