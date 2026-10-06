@@ -3,6 +3,7 @@ use crate::{
     config::{ControlScope, Core, Project},
     logging::{Stamp, Trace},
     session::{self, CoreStatus, EngineHandle, Event, Request, Snapshot},
+    wake::{Doorbell, RingOnDrop},
 };
 
 mod breakpoints;
@@ -24,19 +25,29 @@ use std::{
 };
 
 pub fn spawn(project: Project) -> EngineHandle {
+    spawn_with(project, Doorbell::default())
+}
+
+/// Like `spawn`, ringing `notify` after each event for the caller.
+pub fn spawn_with(project: Project, notify: Doorbell) -> EngineHandle {
     // No extra worker, latency or cancellation indirection for existing projects.
     if project.cores.is_empty() && project.live_watch.is_none() && project.sync.is_none() {
-        return session::spawn(project);
+        return session::spawn_with(project, notify);
     }
     let (commands, requests) = mpsc::channel();
     let (events, receiver) = mpsc::sync_channel(512);
     let cancellation = Arc::new(AtomicBool::new(false));
     let cancel = cancellation.clone();
-    thread::spawn(move || Coordinator::new(project, events, cancel).run(requests));
+    let inbox = Doorbell::default();
+    let worker_inbox = inbox.clone();
+    thread::spawn(move || {
+        Coordinator::new_with(project, events, cancel, worker_inbox, notify).run(requests)
+    });
     EngineHandle {
         commands,
         events: receiver,
         cancellation,
+        bell: RingOnDrop(inbox),
     }
 }
 struct EngineEntry {
@@ -94,9 +105,29 @@ struct Coordinator {
     group_stop: Option<usize>,
     shared_epochs: BTreeMap<String, u64>,
     shared_samples: BTreeMap<(usize, String, String), registers::SharedSample>,
+    /// Rung by requests, per-core events, Live Watch and service output.
+    inbox: Doorbell,
+    /// The consumer's bell, rung after every event.
+    notify: Doorbell,
 }
 impl Coordinator {
+    #[cfg(test)]
     fn new(project: Project, events: SyncSender<Event>, cancellation: Arc<AtomicBool>) -> Self {
+        Self::new_with(
+            project,
+            events,
+            cancellation,
+            Doorbell::default(),
+            Doorbell::default(),
+        )
+    }
+    fn new_with(
+        project: Project,
+        events: SyncSender<Event>,
+        cancellation: Arc<AtomicBool>,
+        inbox: Doorbell,
+        notify: Doorbell,
+    ) -> Self {
         let multi = !project.cores.is_empty();
         let cores = if multi {
             project.cores.clone()
@@ -113,11 +144,14 @@ impl Coordinator {
             .map(|(i, c)| EngineEntry {
                 name: c.name.clone(),
                 endpoint: c.endpoint.clone(),
-                handle: session::spawn(if multi {
-                    derive_project(&project, c, i)
-                } else {
-                    project.clone()
-                }),
+                handle: session::spawn_with(
+                    if multi {
+                        derive_project(&project, c, i)
+                    } else {
+                        project.clone()
+                    },
+                    inbox.clone(),
+                ),
                 snapshot: Snapshot::default(),
                 revision: 0,
                 exited: false,
@@ -153,6 +187,8 @@ impl Coordinator {
             group_stop: None,
             shared_epochs: BTreeMap::new(),
             shared_samples: BTreeMap::new(),
+            inbox,
+            notify,
         }
     }
     fn multi(&self) -> bool {
@@ -162,6 +198,7 @@ impl Coordinator {
         if self.events.send(event).is_err() {
             self.cancellation.store(true, Ordering::Relaxed);
         }
+        self.notify.ring();
     }
     fn log_at(&mut self, channel: &str, text: String, stamp: Stamp) {
         let channel = if text.trim_start().starts_with(crate::live_watch::RPC_MARKER) {
@@ -274,7 +311,10 @@ impl Coordinator {
             let markers = service.ready.clone();
             let tx = ready_tx.clone();
             let logs = self.server_log_tx.clone();
-            thread::spawn(move || server_log::read_stream(stream, channel, &markers, tx, logs));
+            let bell = self.inbox.clone();
+            thread::spawn(move || {
+                server_log::read_stream(stream, channel, &markers, tx, logs, &bell)
+            });
         }
         self.server = Some(child);
         let deadline = Instant::now() + Duration::from_millis(service.timeout_ms);
@@ -301,13 +341,30 @@ impl Coordinator {
             thread::sleep(Duration::from_millis(20));
         }
     }
-    fn flush_server_logs(&mut self) {
+    /// Returns true when the batch limit stopped the flush early.
+    fn flush_server_logs(&mut self) -> bool {
         for _ in 0..128 {
             let Ok((stamp, channel, text)) = self.server_logs.try_recv() else {
-                break;
+                return false;
             };
             self.log_at(&channel, text, stamp);
         }
+        true
+    }
+    /// The earliest moment the current batch must be re-checked without any
+    /// new event: a worker reply timeout or a group-stop deadline.
+    fn next_deadline(&self) -> Option<Instant> {
+        let batch = self.batch.as_ref()?;
+        let group = match batch.steps.front() {
+            Some(Step::WaitGroupStop(deadline)) => Some(*deadline),
+            _ => None,
+        };
+        batch
+            .waiting
+            .map(|(_, _, deadline)| deadline)
+            .into_iter()
+            .chain(group)
+            .min()
     }
     fn stop_service(&mut self) {
         self.live_watch = None;
@@ -361,7 +418,7 @@ impl Coordinator {
             return;
         };
         if let Some(config) = &self.project.live_watch {
-            match crate::live_watch::spawn(config, names) {
+            match crate::live_watch::spawn_with(config, names, self.inbox.clone()) {
                 Ok(h) => self.live_watch = Some(h),
                 Err(e) => self.log("error", format!("Live Watch unavailable: {e}")),
             }
@@ -410,11 +467,21 @@ impl Coordinator {
                     e.handle.cancellation.store(true, Ordering::Relaxed);
                 }
             }
-            self.flush_server_logs();
+            // A source that filled its batch may have more queued: loop again
+            // instead of sleeping.
+            let mut backlog = self.flush_server_logs();
             for i in 0..self.engines.len() {
-                for _ in 0..128 {
+                let mut drained = 0;
+                loop {
+                    if drained == 128 {
+                        backlog = true;
+                        break;
+                    }
                     match self.engines[i].handle.events.try_recv() {
-                        Ok(event) => self.event(i, event),
+                        Ok(event) => {
+                            drained += 1;
+                            self.event(i, event);
+                        }
                         Err(mpsc::TryRecvError::Disconnected) => {
                             self.worker_exit(i);
                             break;
@@ -428,6 +495,7 @@ impl Coordinator {
             }
             if let Some(live) = &self.live_watch {
                 let events: Vec<_> = live.events.try_iter().take(64).collect();
+                backlog |= events.len() == 64;
                 for event in events {
                     self.live_event(event);
                 }
@@ -446,7 +514,7 @@ impl Coordinator {
             {
                 break;
             }
-            match requests.recv_timeout(Duration::from_millis(20)) {
+            let idle = match requests.try_recv() {
                 Ok(req) if req.is_quit() => {
                     if self.exiting {
                         self.reply(req.id, Json::Null, Some("Session already closing".into()));
@@ -459,6 +527,7 @@ impl Coordinator {
                     }
                     self.queue
                         .push_front(Request::new(req.id, "quit", json!({})));
+                    false
                 }
                 Ok(req) => {
                     if self.queue.len() >= 64 || self.exiting {
@@ -466,16 +535,23 @@ impl Coordinator {
                     } else {
                         self.queue.push_back(req);
                     }
+                    false
                 }
-                Err(mpsc::RecvTimeoutError::Disconnected)
+                Err(mpsc::TryRecvError::Disconnected)
                     if !self.exiting && !self.queue.iter().any(|r| r.method == "quit") =>
                 {
                     self.cancellation.store(true, Ordering::Relaxed);
                     self.queue.clear();
                     self.queue
                         .push_back(Request::new(u64::MAX, "quit", json!({})));
+                    false
                 }
-                Err(_) => {}
+                Err(_) => true,
+            };
+            // Every producer rings the inbox, so with nothing queued the only
+            // other reason to run is a step deadline.
+            if idle && !backlog {
+                self.inbox.wait(self.next_deadline());
             }
         }
         self.stop_service();

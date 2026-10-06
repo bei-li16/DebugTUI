@@ -1250,6 +1250,28 @@ impl App {
             self.selections[pane]
         }
     }
+    /// The earliest future moment a timer-driven step needs the loop: debounced
+    /// queries, interval refreshes or polling a background ELF scan. Steps
+    /// already due were attempted this pass; whatever blocked them ends with an
+    /// event that wakes the loop anyway.
+    fn next_deadline(&self) -> Option<Instant> {
+        let now = Instant::now();
+        let scan = self
+            .setup
+            .as_ref()
+            .filter(|setup| setup.scanning())
+            .map(|_| now + Duration::from_millis(50));
+        [
+            self.completion_deadline(),
+            self.symbol_search_deadline(),
+            self.monitor_deadline(),
+            scan,
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|&at| at > now)
+        .min()
+    }
     /// Hover test for drawing; records the area so pointer moves that cross no
     /// recorded edge can skip redrawing.
     fn pointer_over(&self, rect: Rect) -> bool {
@@ -1880,10 +1902,33 @@ pub fn run(
             app.setup.as_mut().unwrap().message = format!("Error: {e}");
         }
     }
+    // Input, worker events and timers all wake one bell, so the loop sleeps
+    // until something is due instead of polling every 20 ms.
+    let bell = crate::wake::Doorbell::default();
+    let (input_tx, inputs) = std::sync::mpsc::channel();
+    {
+        let bell = bell.clone();
+        std::thread::Builder::new()
+            .name("terminal-input".into())
+            .spawn(move || {
+                loop {
+                    let input = event::read().map_err(|e| e.to_string());
+                    let failed = input.is_err();
+                    if input_tx.send(input).is_err() {
+                        break;
+                    }
+                    bell.ring();
+                    if failed {
+                        break;
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+    }
     let mut engine = if demo {
         None
     } else {
-        Some(coordinator::spawn(project.clone()))
+        Some(coordinator::spawn_with(project.clone(), bell.clone()))
     };
     if !demo && app.setup.is_none() {
         if connect_ready {
@@ -1904,7 +1949,10 @@ pub fn run(
             return Ok(());
         }
         let mut worker_exited = false;
+        // Set while a source may still hold queued work: loop, don't sleep.
+        let mut backlog = false;
         if let Some(engine) = &engine {
+            backlog = true;
             for _ in 0..128 {
                 match engine.events.try_recv() {
                     Ok(event) => {
@@ -1934,7 +1982,10 @@ pub fn run(
                         }
                         dirty = true;
                     }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        backlog = false;
+                        break;
+                    }
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                         return Err("Debug session worker exited unexpectedly".into());
                     }
@@ -2001,7 +2052,7 @@ pub fn run(
                     app.completion = completion::Completion::default();
                     app.confirm = None;
                     let connect_ready = project.clone().prepare_workspace().unwrap_or(false);
-                    engine = Some(coordinator::spawn(project));
+                    engine = Some(coordinator::spawn_with(project, bell.clone()));
                     if connect_ready {
                         app.submit(engine.as_ref(), "connect", json!({}));
                     } else {
@@ -2014,7 +2065,7 @@ pub fn run(
                         setup.pending = false;
                         setup.message = format!("Error: {e}");
                     }
-                    engine = Some(coordinator::spawn(app.project.clone()));
+                    engine = Some(coordinator::spawn_with(app.project.clone(), bell.clone()));
                 }
             }
             dirty = true;
@@ -2074,8 +2125,18 @@ pub fn run(
             settle_at = None;
             last_draw = Instant::now();
         }
-        if event::poll(Duration::from_millis(20)).map_err(|e| e.to_string())? {
-            match event::read().map_err(|e| e.to_string())? {
+        // One input per pass, as before; after handling one, loop (and draw)
+        // before sleeping.
+        let input = match inputs.try_recv() {
+            Ok(input) => Some(input?),
+            Err(std::sync::mpsc::TryRecvError::Empty) => None,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                return Err("Terminal input reader stopped".into());
+            }
+        };
+        backlog |= input.is_some();
+        if let Some(input) = input {
+            match input {
                 Input::Key(key) => {
                     if app.key(key, engine.as_ref()) {
                         return Ok(());
@@ -2133,6 +2194,24 @@ pub fn run(
                     }
                 }
             }
+        }
+        if !backlog {
+            let mut deadline = app.next_deadline();
+            let mut sooner = |at: Instant| deadline = Some(deadline.map_or(at, |d| d.min(at)));
+            if dirty {
+                sooner(last_draw + Duration::from_millis(25));
+            }
+            // A passed settle time has already marked the frame dirty above.
+            if let Some(at) = settle_at.filter(|&at| at > Instant::now()) {
+                sooner(at);
+            }
+            if app.fx.focused && app.pending_task.is_some() {
+                sooner(last_task_clock + Duration::from_secs(1));
+            }
+            if let Some(at) = app.fx.next_tick(app.project.ui.animations, active) {
+                sooner(at);
+            }
+            bell.wait(deadline);
         }
     }
 }

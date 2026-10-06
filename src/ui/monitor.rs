@@ -156,6 +156,22 @@ impl App {
         self.project
             .refresh_policy(core, &item.key, root.as_deref())
     }
+    /// When the next visible interval refresh falls due.
+    pub(super) fn monitor_deadline(&self) -> Option<Instant> {
+        if self.project.ui.refresh.is_empty() || self.monitor.busy() {
+            return None;
+        }
+        self.visible_monitor_items()
+            .into_iter()
+            .filter(|item| item.safe_auto && self.monitor_policy(item).interval_ms > 0)
+            .map(|item| {
+                self.monitor
+                    .samples
+                    .get(&self.monitor_key(&item.key))
+                    .map_or_else(Instant::now, |sample| sample.due)
+            })
+            .min()
+    }
     pub(super) fn watch_monitor_item(&self, row: usize) -> Option<Item> {
         watch::rows(&self.snapshot.watches)
             .get(row / 2)

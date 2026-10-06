@@ -1081,6 +1081,10 @@ impl Setup {
     pub fn tick(&mut self) -> bool {
         self.mapping.as_mut().is_some_and(remap::Mapping::tick)
     }
+    /// A background ELF scan is running and `tick` must poll for its result.
+    pub fn scanning(&self) -> bool {
+        self.mapping.as_ref().is_some_and(remap::Mapping::scanning)
+    }
     fn open_projects(&mut self) -> Result<(), String> {
         let picker = Picker::projects(self.document.base())?;
         if picker.choices.is_empty() {

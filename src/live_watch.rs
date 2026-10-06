@@ -1,5 +1,5 @@
 //! Optional OpenOCD raw scalar monitoring. No GDB or single-core dependency.
-use crate::{config::LiveWatchConfig, logging::Stamp, session::Event};
+use crate::{config::LiveWatchConfig, logging::Stamp, session::Event, wake::Doorbell};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
@@ -218,16 +218,29 @@ pub fn spawn(
     config: &LiveWatchConfig,
     watch_names: Vec<String>,
 ) -> Result<LiveWatchHandle, String> {
+    spawn_with(config, watch_names, Doorbell::default())
+}
+
+/// Like `spawn`, ringing `notify` after each queued sample or log line.
+pub fn spawn_with(
+    config: &LiveWatchConfig,
+    watch_names: Vec<String>,
+    notify: Doorbell,
+) -> Result<LiveWatchHandle, String> {
     let symbols = SymbolTable::from_elf(&config.elf)?;
     let (tx, rx) = mpsc::sync_channel(64);
     let cancellation = Arc::new(AtomicBool::new(false));
     let cancel = cancellation.clone();
     let config = config.clone();
     thread::spawn(move || {
+        let send = |event: Event| {
+            let _ = tx.try_send(event);
+            notify.ring();
+        };
         let started = Instant::now();
         let log = |text: String| {
             let stamp = Stamp::now();
-            let _ = tx.try_send(Event::Log {
+            send(Event::Log {
                 channel: "live".into(),
                 text,
                 elapsed_ms: stamp.elapsed_ms(started),
@@ -272,7 +285,7 @@ pub fn spawn(
                         .ok_or_else(|| format!("Invalid memory value for {name}: {text}"))?;
                     // Deliver every successful sample, including unchanged values,
                     // so the Watch freshness indicator reflects actual reads.
-                    let _ = tx.try_send(Event::LiveWatch {
+                    send(Event::LiveWatch {
                         sample: LiveWatchSample {
                             expression: name.clone(),
                             address: symbol.address,
@@ -295,7 +308,7 @@ pub fn spawn(
                 Err(e) => {
                     stream = None;
                     for (name, symbol) in &resolved {
-                        let _ = tx.try_send(Event::LiveWatch {
+                        send(Event::LiveWatch {
                             sample: LiveWatchSample {
                                 expression: name.clone(),
                                 address: symbol.address,

@@ -8,6 +8,7 @@ pub(super) fn read_stream(
     markers: &[String],
     ready: SyncSender<()>,
     logs: SyncSender<(Stamp, String, String)>,
+    bell: &Doorbell,
 ) {
     let mut pending = Vec::new();
     let mut ready_sent = markers.is_empty();
@@ -19,19 +20,25 @@ pub(super) fn read_stream(
             && markers
                 .iter()
                 .any(|m| pending.windows(m.len().max(1)).any(|w| w == m.as_bytes()));
+        let mut emitted = false;
         while let Some(end) = pending.iter().position(|&b| b == b'\n') {
             let line: Vec<_> = pending.drain(..=end).collect();
             emit_line(&line, channel, &logs);
+            emitted = true;
         }
         if ready_now || n == 0 || pending.len() >= 1024 * 1024 {
             if !pending.is_empty() {
                 emit_line(&pending, channel, &logs);
                 pending.clear();
+                emitted = true;
             }
             if ready_now {
                 ready_sent = true;
                 let _ = ready.try_send(());
             }
+        }
+        if emitted {
+            bell.ring();
         }
         if n == 0 {
             break;
@@ -76,6 +83,7 @@ mod tests {
             &["service ready".into()],
             tx,
             logs,
+            &Doorbell::default(),
         );
         assert!(rx.try_recv().is_ok());
         assert_eq!(

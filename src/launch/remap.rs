@@ -40,6 +40,9 @@ impl Mapping {
             Err(error) => self.error = error,
         }
     }
+    pub fn scanning(&self) -> bool {
+        self.scan.is_some()
+    }
     pub fn tick(&mut self) -> bool {
         let Some(scan) = &self.scan else {
             return false;

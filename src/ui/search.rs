@@ -188,6 +188,16 @@ impl App {
         }
     }
 
+    /// When the typing pause ends and a changed symbol query may be sent.
+    pub(super) fn symbol_search_deadline(&self) -> Option<Instant> {
+        let search = &self.symbol_search;
+        (search.open
+            && !search.busy()
+            && !search.query.trim().is_empty()
+            && search.requested.as_ref() != Some(&self.symbol_key()))
+        .then(|| search.changed + Duration::from_millis(200))
+    }
+
     pub(super) fn ensure_symbol_search(&mut self, engine: Option<&EngineHandle>) -> bool {
         if !self.symbol_search.open || self.setup.is_some() || self.quitting {
             return false;

@@ -255,6 +255,7 @@ fn engine() -> (EngineHandle, mpsc::Receiver<Request>) {
             commands,
             events,
             cancellation: Arc::new(AtomicBool::new(false)),
+            bell: Default::default(),
         },
         requests,
     )

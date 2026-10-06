@@ -1,7 +1,9 @@
+pub use crate::wake::Doorbell;
 use crate::{
     config::{Project, portable_path},
     logging::{Stamp, Trace},
     mi::{self, Record, Value},
+    wake::RingOnDrop,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
@@ -310,13 +312,37 @@ pub struct EngineHandle {
     pub(crate) commands: Sender<Request>,
     pub events: Receiver<Event>,
     pub cancellation: Arc<AtomicBool>,
+    /// The worker's bell. Declared last: dropping the handle rings it only
+    /// after `commands` is gone, so the worker wakes to a disconnected channel.
+    pub(crate) bell: RingOnDrop,
+}
+/// Cancels a worker's current operation from another thread. Setting the
+/// flag alone would not wake a coordinator that is asleep on its bell.
+#[derive(Clone)]
+pub struct Canceller {
+    flag: Arc<AtomicBool>,
+    bell: Doorbell,
+}
+impl Canceller {
+    pub fn cancel(&self) {
+        self.flag.store(true, Ordering::Relaxed);
+        self.bell.ring();
+    }
 }
 impl EngineHandle {
+    pub fn canceller(&self) -> Canceller {
+        Canceller {
+            flag: self.cancellation.clone(),
+            bell: self.bell.0.clone(),
+        }
+    }
     pub fn send(&self, request: Request) -> Result<(), String> {
         if request.is_quit() {
             self.cancellation.store(true, Ordering::Relaxed);
         }
-        self.commands.send(request).map_err(|e| e.to_string())
+        self.commands.send(request).map_err(|e| e.to_string())?;
+        self.bell.0.ring();
+        Ok(())
     }
 }
 impl Drop for EngineHandle {
@@ -334,24 +360,35 @@ pub(crate) fn test_channel() -> (EngineHandle, Receiver<Request>) {
             commands,
             events,
             cancellation: Arc::new(AtomicBool::new(false)),
+            bell: Default::default(),
         },
         requests,
     )
 }
 
 pub fn spawn(project: Project) -> EngineHandle {
+    spawn_with(project, Doorbell::default())
+}
+
+/// Like `spawn`, ringing `notify` after each event so the caller can sleep
+/// until there is something to read instead of polling.
+pub fn spawn_with(project: Project, notify: Doorbell) -> EngineHandle {
     let (commands, requests) = mpsc::channel();
     let (events, receiver) = mpsc::sync_channel(512);
     let cancellation = Arc::new(AtomicBool::new(false));
     let worker_cancellation = cancellation.clone();
+    let inbox = Doorbell::default();
+    let worker_inbox = inbox.clone();
     thread::spawn(move || {
-        let mut e = Engine::new(project, events, worker_cancellation);
-        e.run(requests);
+        Engine::new(project, events, worker_cancellation)
+            .with_bells(worker_inbox, notify)
+            .run(requests);
     });
     EngineHandle {
         commands,
         events: receiver,
         cancellation,
+        bell: RingOnDrop(inbox),
     }
 }
 
@@ -374,19 +411,24 @@ pub(crate) fn tool_environment(
     command.envs(values);
 }
 
-#[derive(Clone)]
-struct Logs(Arc<Mutex<VecDeque<(Stamp, String, String)>>>);
+#[derive(Clone, Default)]
+struct Logs {
+    queue: Arc<Mutex<VecDeque<(Stamp, String, String)>>>,
+    /// The worker's bell: reader threads wake it for each line.
+    bell: Doorbell,
+}
 impl Logs {
     fn push(&self, channel: &str, text: String) {
-        if let Ok(mut q) = self.0.lock() {
+        if let Ok(mut q) = self.queue.lock() {
             if q.len() >= 512 {
                 q.pop_front();
             }
             q.push_back((Stamp::now(), channel.into(), text));
         }
+        self.bell.ring();
     }
     fn drain(&self) -> Vec<(Stamp, String, String)> {
-        self.0
+        self.queue
             .lock()
             .map(|mut q| q.drain(..).collect())
             .unwrap_or_default()
@@ -468,6 +510,10 @@ struct Engine {
     gdb: Option<Gdb>,
     server: Option<ServerProcess>,
     logs: Logs,
+    /// Rung by requests, GDB output and log lines; the idle worker sleeps on it.
+    inbox: Doorbell,
+    /// The consumer's bell, rung after every event.
+    notify: Doorbell,
     trace: Option<Trace>,
     session_started: Instant,
     refresh_pending: bool,
@@ -629,7 +675,9 @@ impl Engine {
             snapshot: Snapshot::default(),
             gdb: None,
             server: None,
-            logs: Logs(Arc::new(Mutex::new(VecDeque::new()))),
+            logs: Logs::default(),
+            inbox: Doorbell::default(),
+            notify: Doorbell::default(),
             trace: None,
             session_started: Instant::now(),
             refresh_pending: false,
@@ -658,8 +706,16 @@ impl Engine {
             read_cancel: Arc::new(AtomicBool::new(false)),
         }
     }
+    fn with_bells(mut self, inbox: Doorbell, notify: Doorbell) -> Self {
+        // Readers clone `logs` only once GDB or a service starts, after this.
+        self.logs.bell = inbox.clone();
+        self.inbox = inbox;
+        self.notify = notify;
+        self
+    }
     fn emit(&self, event: Event) {
         let _ = self.events.send(event);
+        self.notify.ring();
     }
     fn publish(&self) {
         self.emit(Event::Snapshot {
@@ -721,7 +777,7 @@ impl Engine {
                     }
                 }
             }
-            match requests.recv_timeout(Duration::from_millis(20)) {
+            match requests.try_recv() {
                 Ok(request) => {
                     self.read_cancel = if request.is_cancellable_read() {
                         request.read_cancel.clone()
@@ -751,11 +807,15 @@ impl Engine {
                         error: result.err(),
                     });
                 }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(mpsc::TryRecvError::Disconnected) => {
                     let _ = self.disconnect();
                     break;
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
+                // Requests, GDB records and log lines all ring the inbox; none
+                // arrived since the drain above, so sleep until one does.
+                Err(mpsc::TryRecvError::Empty) => {
+                    self.inbox.wait(None);
+                }
             }
         }
         self.emit(Event::Exit);
@@ -1185,7 +1245,13 @@ impl Engine {
         let stdout = child.stdout.take().unwrap();
         log_reader(child.stderr.take().unwrap(), "gdb-error", self.logs.clone());
         let (tx, rx) = mpsc::sync_channel(256);
+        let bell = self.inbox.clone();
         thread::spawn(move || {
+            let send = |incoming| {
+                let sent = tx.send(incoming).is_ok();
+                bell.ring();
+                sent
+            };
             let mut reader = BufReader::new(stdout);
             let mut line = Vec::new();
             loop {
@@ -1194,19 +1260,19 @@ impl Engine {
                     Ok(0) | Err(_) => break,
                     Ok(n) => {
                         if n >= 1024 * 1024 {
-                            let _ = tx.send(Incoming::Invalid("MI record exceeds 1 MiB".into()));
+                            send(Incoming::Invalid("MI record exceeds 1 MiB".into()));
                             break;
                         }
                         let parsed = mi::parse(&String::from_utf8_lossy(&line));
                         match parsed {
                             Ok(Some(r)) => {
-                                if tx.send(Incoming::Record(r)).is_err() {
+                                if !send(Incoming::Record(r)) {
                                     return;
                                 }
                             }
                             Ok(None) => {}
                             Err(e) => {
-                                if tx.send(Incoming::Invalid(e)).is_err() {
+                                if !send(Incoming::Invalid(e)) {
                                     return;
                                 }
                             }
@@ -1214,7 +1280,7 @@ impl Engine {
                     }
                 }
             }
-            let _ = tx.send(Incoming::Closed);
+            send(Incoming::Closed);
         });
         self.gdb = Some(Gdb {
             child,

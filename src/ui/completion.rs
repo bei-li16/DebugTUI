@@ -166,6 +166,14 @@ impl App {
         true
     }
 
+    /// When the typing pause ends and a waiting completion query may be sent.
+    pub(super) fn completion_deadline(&self) -> Option<Instant> {
+        (self.completion.key.is_some()
+            && !self.completion.requested
+            && self.completion.pending.is_none())
+        .then(|| self.completion.changed + Duration::from_millis(150))
+    }
+
     pub(super) fn ensure_completion(&mut self, engine: Option<&EngineHandle>) -> bool {
         let changed = self.sync_completion();
         if self.demo

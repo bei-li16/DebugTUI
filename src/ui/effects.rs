@@ -99,6 +99,14 @@ impl Effects {
             self.pressed = None;
         }
     }
+    /// When `tick` will next report a frame by itself; None while idle.
+    pub fn next_tick(&self, mode: Motion, active: bool) -> Option<Instant> {
+        if !self.focused || mode == Motion::Off || (self.pulses.is_empty() && !active) {
+            return None;
+        }
+        let interval = if self.pulses.is_empty() { 400 } else { 40 };
+        Some(self.last_tick + Duration::from_millis(interval))
+    }
     pub fn tick(&mut self, mode: Motion, active: bool) -> bool {
         self.mode = mode;
         if !self.focused {
