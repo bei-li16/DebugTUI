@@ -1,5 +1,7 @@
 # R52 GIC 能力与只读访问自检
 
+当前补充：[R52 EDSCR 修正](register-r52-debug-state.md) 使用 HDD[15] 并接受 RES1[16]；本文后续构建证据属于旧补丁，新候选仍待构建验证。
+
 2026-10-06，源码基线 0.9.3，开发分支 `codex/register-debugging`。本批覆盖 REG-408 的软件要求与 REG-405 的系统寄存器子集。按本任务要求不执行上板；十项环境 case 与可执行驱动已准备，均不能计为物理验证。完整 Debug、GIC Distributor/Redistributor MMIO、低 EL ICV 和 R52+ 实际身份仍未完成。
 
 ## 手册依据与接口

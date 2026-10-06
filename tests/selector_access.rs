@@ -352,6 +352,85 @@ fn selector_writes(state: &Value) -> Vec<&Value> {
 }
 
 #[test]
+fn real_r52_edscr_res1_reaches_physical_workers_and_hdd_restrictions_keep_old_proof() {
+    let mut f = fixture("");
+    f.project.registers.cp15_command.clear();
+    f.project.registers.cp15_64_command.clear();
+    f.project.registers.selector_command.clear();
+    f.project.registers.banked_command = "aarch64 banked".into();
+    f.project.registers.vfp_command = "aarch64 vfp".into();
+    f.project.registers.timer_command = "aarch64 timer".into();
+    f.project.registers.pmu_command = "aarch64 pmu".into();
+    f.project.registers.gic_command = "aarch64 gic".into();
+    for module in ["timer", "pmu", "gic"] {
+        f.project
+            .registers
+            .facts
+            .insert(format!("{module}.present"), 1);
+    }
+    // Independent DDI 0568A.c G2.1.8 witness: ITE, RES1[18,16],
+    // current Debug EL2, external halt request. Saved User DSPSR is separate.
+    let modules = ["bank", "vfp", "timer", "pmu", "gic"];
+    let mut cpu = json!({"pmselr":3,"bank_mode":0x1a,
+        "timer_values":{"cntfrq":"0x05f5e100"}});
+    for module in modules {
+        cpu[format!("{module}_dscr")] = json!("0x01050213");
+        cpu[format!("{module}_dspsr")] = json!("0xa2000410");
+    }
+    *f.state.lock().unwrap() = json!({"current":"outside","targets":{"cpu0":cpu},"trace":[]});
+    let engine = session::spawn(f.project.clone());
+    ok(&engine, 1, "connect", json!({}));
+    let read = ok(
+        &engine,
+        2,
+        "registers_read",
+        json!({"ids":["sp_irq","fpexc","cntfrq","pmcr","icc_pmr"],"manual":true}),
+    );
+    for (index, proof) in ["banked", "vfp", "timer", "pmu", "gic"].iter().enumerate() {
+        let sample = &read["samples"][index];
+        assert_eq!(sample["state"], "valid", "{sample}");
+        assert_eq!(sample["owner"], "core:default");
+        let access = &sample["provenance"]["access"];
+        assert_eq!(access["route"]["target"], "cpu0");
+        assert_eq!(access[*proof]["dscr"]["hex"], "0x01050213");
+        assert_eq!(access[*proof]["dspsr"]["hex"], "0xa2000410");
+    }
+    for module in ["pmu", "gic"] {
+        f.state.lock().unwrap()["targets"]["cpu0"][format!("{module}_dscr")] = json!("0x01058213");
+    }
+    let refused = ok(
+        &engine,
+        3,
+        "registers_read",
+        json!({"ids":["pmcr","icc_pmr"],"manual":true}),
+    );
+    let status = ok(&engine, 4, "status", json!({}));
+    for (index, original) in [3, 4].into_iter().enumerate() {
+        let sample = &refused["samples"][index];
+        assert_eq!(sample["reason"], "access_restricted", "{sample}");
+        assert!(sample["value"].is_null());
+        let retained = status["register_samples"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["id"] == sample["id"])
+            .unwrap();
+        assert_eq!(retained["value"], read["samples"][original]["value"]);
+        assert_eq!(
+            retained["last_value_provenance"]["provenance"],
+            read["samples"][original]["provenance"]
+        );
+    }
+    let state = f.state.lock().unwrap().clone();
+    assert_eq!(state["current"], "outside");
+    assert_eq!(state["targets"]["cpu0"]["pmselr"], 3);
+    assert!(selector_writes(&state).is_empty());
+    assert!(!state["trace"].to_string().contains("mrc"));
+    assert_eq!(status["state"], "STOPPED");
+    ok(&engine, 5, "quit", json!({}));
+}
+
+#[test]
 fn real_tcl_selector_transactions_read_pairs_and_restore_each_selector_and_target() {
     for (kind, index, selector, old) in [
         ("mpu_el1", 23, "prselr", 1),

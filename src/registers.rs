@@ -36,6 +36,7 @@ pub mod mpu;
 pub mod pmu;
 pub mod policy;
 pub mod provenance;
+pub mod r52_debug;
 pub mod selector;
 pub mod stm;
 pub mod timer;

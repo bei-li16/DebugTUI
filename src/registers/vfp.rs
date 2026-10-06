@@ -110,11 +110,7 @@ impl Evidence {
             }
         }
         let dscr = self.dscr.integer()?;
-        if self.midr.integer()? & 0xff0ffff0 != 0x410fd130
-            || (dscr >> 8) & 3 != 2
-            || dscr & 0x1c0000c0 != 0
-            || dscr & (1 << 24) == 0
-            || dscr & ((1 << 12) | (1 << 16)) != 0
+        if super::r52_debug::current_el(self.midr.integer()?, dscr) != Some(2)
             || self.hcptr.integer()? & (1 << 10) != 0
         {
             return Err("VFP sample contradicts current Debug EL/identity/trap evidence".into());

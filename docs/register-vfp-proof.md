@@ -1,5 +1,7 @@
 # VFP 当前 Debug 状态与读取来源
 
+当前补充：[R52 EDSCR 修正](register-r52-debug-state.md) 使用 HDD[15] 并接受 RES1[16]；本文后续构建证据属于旧补丁，新候选仍待构建验证。
+
 2026-10-06。本轮纠正 REG-304 现有 Hyp 读取路径的权限依据，REG-304 仍待完成，EL1/Guest/User 的合法读取尚未适配。总进度保持26完成／45待完成；未执行上板。
 
 前序协议v1依据保存的 DSPSR.M 判断当前Hyp，再执行CPU MIDR和HCPTR读取。DSPSR描述停止前状态，外部调试指令或异常后不独立证明当前执行EL。现协议v2先经选中target的外部Debug AP读取 EDSCR和MIDR，每次外部访问核对 EDPRSR.HALT；当前EL2才读取HCPTR。EL0/EL1在CPU指令前明确受限，绝不借保存的Hyp状态授权。

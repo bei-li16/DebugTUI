@@ -92,7 +92,7 @@ static int execute(void *context, uint32_t opcode)
 static struct fixture fresh(unsigned int index)
 {
 	return (struct fixture){.gpr = 0x11223344, .midr = 0x411fd134,
-		.dscr = 0x01000200, .proof = {0xa2000410, 0x81234568, 0x10111011,
+		.dscr = 0x01050213, .proof = {0xa2000410, 0x81234568, 0x10111011,
 			15, 7, 0x403, 0x90180003, 0x38, 0x7c01, 0x1000},
 		.index = index, .value = 0xf1234500 + index};
 }
@@ -165,7 +165,7 @@ int main(void)
 		if (index >= 41) continue;
 		for (unsigned int el = 0; el < 2; el++)
 			for (unsigned int hdd = 0; hdd < 2; hdd++) {
-				f = fresh(index); f.dscr = (1u << 24) | (el << 8) | (hdd << 16); result = sentinel;
+				f = fresh(index); f.dscr = (1u << 24) | UINT32_C(0x00050013) | (el << 8) | (hdd << 15); result = sentinel;
 				assert(transfer(&f, &result, &uncertain) == DEBUGTUI_GIC_ACCESS_UNKNOWN && !uncertain);
 				assert(!f.injected && !f.data_reads && memcmp(&result, &sentinel, sizeof(result)) == 0); refused++;
 			}
@@ -187,7 +187,7 @@ int main(void)
 		if (variant == 0) f.midr = 0x411fd164;
 		else if (variant == 1) f.dscr = 0x01001200;
 		else if (variant == 2) f.dscr = 0x00000200;
-		else if (variant == 3) f.dscr = 0x01010200;
+		else if (variant == 3) f.dscr = 0x01008200;
 		else if (variant == 4) f.dscr = 0x01000240;
 		else if (variant == 5) f.proof[2] = 0;
 		else if (variant == 6) f.proof[3] = 7;

@@ -52,7 +52,7 @@ static struct armv8_debugtui_banked_io io_for(struct fixture *f)
 static struct fixture fixture(unsigned int mode)
 {
 	struct fixture f = {.dspsr = 0xa2000410, .dlr = 0x81234568, .cpsr = 0xa00f0200 | mode,
-		.midr = 0x411fd134, .dscr = 0x01000000 | ((mode == 0x10 ? 0 : mode == 0x1a ? 2 : 1) << 8), .bank_value = 0x88776655};
+		.midr = 0x411fd134, .dscr = 0x01050013 | ((mode == 0x10 ? 0 : mode == 0x1a ? 2 : 1) << 8), .bank_value = 0x88776655};
 	for (unsigned int i = 0; i < 16; i++) f.gpr[i] = 0x11223300 + i;
 	return f;
 }
@@ -110,12 +110,21 @@ int main(void)
 		struct armv8_debugtui_banked_io io = io_for(&f); struct armv8_debugtui_banked_result result = {.value = 99}; bool uncertain;
 		assert(armv8_debugtui_bank_transfer(&io, irq, &result, &uncertain) != 0 && uncertain && result.value == 99);
 	}
+	/* EL0 stays a legal bank state with either HDD value; changing HDD
+	 * inside the transaction must still invalidate its state proof. */
+	{
+		struct fixture f = fixture(0x10); f.change_dscr = 1u << 15;
+		struct armv8_debugtui_banked_io io = io_for(&f);
+		struct armv8_debugtui_banked_result result = {.value = 99}; bool uncertain;
+		assert(armv8_debugtui_bank_transfer(&io, armv8_debugtui_bank_find("r8_usr"),
+			&result, &uncertain) != 0 && uncertain && result.value == 99);
+	}
 	for (unsigned int mutation = 0; mutation < 7; mutation++) {
 		struct fixture f = fixture(0x1a);
 		if (mutation == 0) f.midr = 0x411fc153;
 		if (mutation == 1) f.midr = 0x511fd134;
 		if (mutation == 2) f.midr = 0x411ed134;
-		if (mutation == 3) f.dscr |= 1u << 16;
+		if (mutation == 3) f.dscr |= 1u << 15;
 		if (mutation == 4) f.dscr |= 1u << 12;
 		if (mutation == 5) f.dscr &= ~(1u << 24);
 		if (mutation == 6) f.dscr |= 1u << 6;

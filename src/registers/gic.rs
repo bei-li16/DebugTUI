@@ -111,12 +111,7 @@ impl Evidence {
         }
         let midr = self.midr.integer().ok()?;
         let dscr = self.dscr.integer().ok()?;
-        (midr >> 24 == 0x41
-            && (midr >> 16) & 15 == 15
-            && (midr >> 4) & 0xfff == 0xd13
-            && (dscr >> 8) & 3 == 2
-            && dscr & 0x1c0110c0 == 0
-            && dscr & (1 << 24) != 0
+        (super::r52_debug::current_el(midr, dscr) == Some(2)
             && self.id_pfr1.integer().ok()? >> 28 == 1
             && self.icc_hsre.integer().ok()? == 15
             && self.icc_sre.integer().ok()? == 7
@@ -287,7 +282,7 @@ mod tests {
         assert_eq!(e.list_count(), Some(4));
         for (old, new) in [
             ("0x01000200", "0x01000100"),
-            ("0x01000200", "0x01010200"),
+            ("0x01000200", "0x01008200"),
             ("0x01000200", "0x01000240"),
             ("0x411fd134", "0x411fd164"),
             ("0x10111011", "0x00111011"),

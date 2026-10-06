@@ -1,5 +1,11 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：R52 EDSCR 位定义与前置证明修正
+
+已有 Banked/VFP/Timer/PMU/GIC 的 host 与生产 C 证明将 bit16 当成 Hyp 调试限制，会拒绝真实 R-profile RES1 状态。现按 DDI0568A.c G2.1.8 改用 HDD[15]，统一 host 当前 Debug EL 解码，并补齐事务状态保存掩码。实际 worker 接受带 RES1 的 EDSCR，PMU/GIC 的 HDD 拒绝保留旧值及来源；较低 EL/Guest 的原支持边界保持。见 [状态修正](register-r52-debug-state.md)。
+
+本批完整单元 491 通过、2 既有 ignored；selector 集成 118 通过，写入回归 42 通过；七个实际生产 C 事务模型、8 个 Python 驱动测试及严格 Clippy/fmt/源补丁一致性检查通过。四项新增硬件 case 全部 SKIPPED，未上板。新 Windows/Linux OpenOCD 候选尚未构建，source.lock 的当前候选与 verified 已明确清空；旧候选属于历史证据。C03 前置子批次不增加 feature，普通 CP15/MPU/selector 的当前 Debug 生产链路及最终交付仍待完成；实时进度与证据只维护于 [账本](registers-readonly-goal.md) 迭代 13。
+
 ## 2026-10-06：R52 常用定义与独立 MPU 容量
 
 C01/C02 已完成描述、编码与容量模型验收：15 项常用身份/控制/MPU/MAIR 和 96 项已有 direct region 定义补齐字段、正常执行访问条件及手册来源；R52/R52+ 目录数量和读取路由保持。手册矛盾、未知复位值、EL2 零容量及 R52+ 未验证边界明确保留。目录写回省略默认空枚举列表，修复超过原 4 MiB 限制导致的用户覆盖及 Setup 加载回归。见 [定义说明](register-r52-core-model.md)，实时 feature 数及完整证据只维护于 [36 项账本](registers-readonly-goal.md) 的迭代 12。

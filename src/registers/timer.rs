@@ -179,15 +179,8 @@ impl Response {
         ]
         .contains(&name);
         let physical = ["cntpct", "cntp_tval", "cntp_ctl", "cntp_cval"].contains(&name);
-        if midr >> 24 != 0x41
-            || (midr >> 16) & 15 != 15
-            || (midr >> 4) & 0xfff != 0xd13
+        if super::r52_debug::current_el(midr, dscr) != Some(el as u8)
             || el == 0
-            || el > 2
-            || dscr & 0x1c0000c0 != 0
-            || dscr & (1 << 24) == 0
-            || dscr & (1 << (10 + el)) != 0
-            || (el == 2 && dscr & (1 << 16) != 0)
             || (el == 1 && (hyp || physical))
         {
             return Err("Timer sample contradicts current Debug state identity/permissions".into());
@@ -255,7 +248,7 @@ mod tests {
             text.replace("0xfedcba9876543210", "0x76543210"),
             text.replace("0x411fd134", "0x411fd143"),
             text.replace("0x01000200", "0x01000000"),
-            text.replace("0x01000200", "0x01010200"),
+            text.replace("0x01000200", "0x01008200"),
             text.replace("0x01000200", "0x01001200"),
             text.replace("0x01000200", "0x01000240"),
             format!("{text} extra"),
@@ -263,7 +256,7 @@ mod tests {
         ] {
             assert!(Response::parse(&bad, "cntpct", 64).is_err(), "{bad}");
         }
-        for dscr in ["0x01000100", "0x01010100"] {
+        for dscr in ["0x01000100", "0x01008100"] {
             let guest = text.replace("0x01000200", dscr);
             assert!(Response::parse(&guest, "cntvct", 64).is_ok());
             assert!(Response::parse(&guest, "cntpct", 64).is_err());

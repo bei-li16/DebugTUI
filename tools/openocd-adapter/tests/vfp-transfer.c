@@ -81,7 +81,7 @@ static int read_debug(void *context, uint32_t offset, uint32_t *value)
 static struct fixture fresh(void)
 {
 	struct fixture f = {.gpr = {0x11223344, 0x55667788}, .dspsr = 0xa200041a,
-		.midr = 0x411fd134, .dscr = 0x01000200, .dlr = 0x81234568, .mvfr0 = 0x10110222, .mvfr1 = 0x12111111, .fpexc = 0x40000700};
+		.midr = 0x411fd134, .dscr = 0x01050213, .dlr = 0x81234568, .mvfr0 = 0x10110222, .mvfr1 = 0x12111111, .fpexc = 0x40000700};
 	return f;
 }
 static int transfer(struct fixture *fixture, const char *name,
@@ -138,7 +138,7 @@ int main(void)
 		const char *name = "d16";
 		int expected = DEBUGTUI_VFP_RESTRICTED;
 		unsigned int steps = 2;
-		if (refused < 2) f.dscr = refused == 0 ? 0x01000000 : 0x01000100;
+		if (refused < 2) f.dscr = refused == 0 ? 0x01050013 : 0x01050113;
 		if (refused == 2) { f.hcptr = 1u << 10; steps = 17; }
 		if (refused == 3) { f.fpexc = 0x700; steps = 32; expected = DEBUGTUI_VFP_DISABLED; }
 		if (refused == 4 || refused == 5) {
@@ -168,9 +168,9 @@ int main(void)
 		struct armv8_debugtui_vfp_result result;
 		bool uncertain = true;
 		assert(transfer(&f, "d0", &result, &uncertain) == 0 && !uncertain);
-		assert(result.dspsr == f.dspsr && result.dscr == 0x01000200 && result.midr == f.midr && result.dlr == f.dlr);
+		assert(result.dspsr == f.dspsr && result.dscr == 0x01050213 && result.midr == f.midr && result.dlr == f.dlr);
 	}
-	const uint32_t invalid_states[] = {0x01001200, 0x00000200, 0x01000300, 0x01010200};
+	const uint32_t invalid_states[] = {0x01001200, 0x00000200, 0x01000300, 0x01008200};
 	for (unsigned int i = 0; i < 4; i++) {
 		struct fixture f = fresh(); f.dscr = invalid_states[i];
 		struct armv8_debugtui_vfp_result result = {.words = {11, 22}};

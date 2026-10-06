@@ -632,7 +632,7 @@ index 0000000..9e0dde2
 +#endif
 diff --git a/src/target/armv8_debugtui_banked.h b/src/target/armv8_debugtui_banked.h
 new file mode 100644
-index 0000000..26e328f
+index 0000000..482c564
 --- /dev/null
 +++ b/src/target/armv8_debugtui_banked.h
 @@ -0,0 +1,180 @@
@@ -650,7 +650,7 @@ index 0000000..26e328f
 +#define DEBUGTUI_READ_DSPSR ARMV4_5_MRC(15, 3, 0, 4, 5, 0)
 +#define DEBUGTUI_BANKED_DSCR UINT32_C(0x088)
 +#define DEBUGTUI_BANKED_MIDR UINT32_C(0xd00)
-+#define DEBUGTUI_BANKED_STATE_MASK UINT32_C(0x00053f00)
++#define DEBUGTUI_BANKED_STATE_MASK UINT32_C(0x0005bf00)
 +#define DEBUGTUI_BANKED_FAULT_MASK UINT32_C(0x1c0000c0)
 +#define DEBUGTUI_BANKED_READ_DLR ARMV4_5_MRC(15, 3, 0, 4, 5, 1)
 +#define DEBUGTUI_MRS_SPSR UINT32_C(0xf3ff8000)
@@ -727,7 +727,7 @@ index 0000000..26e328f
 +{
 +	unsigned int el = (dscr >> 8) & 3;
 +	return el <= 2 && !(dscr & DEBUGTUI_BANKED_FAULT_MASK) && (dscr & (1u << 24)) &&
-+		!(dscr & (1u << (10 + el))) && !(el == 2 && (dscr & (1u << 16)));
++		!(dscr & (1u << (10 + el))) && !(el == 2 && (dscr & (1u << 15)));
 +}
 +
 +static inline int armv8_debugtui_bank_transfer(const struct armv8_debugtui_banked_io *io,
@@ -818,7 +818,7 @@ index 0000000..26e328f
 +#endif
 diff --git a/src/target/armv8_debugtui_gic.h b/src/target/armv8_debugtui_gic.h
 new file mode 100644
-index 0000000..b4bec2a
+index 0000000..7250938
 --- /dev/null
 +++ b/src/target/armv8_debugtui_gic.h
 @@ -0,0 +1,188 @@
@@ -926,7 +926,7 @@ index 0000000..b4bec2a
 +			retval = -1;
 +			goto fault;
 +		}
-+		return ((sample.dscr >> 8) & 3) == 2 && (sample.dscr & (1u << 16)) ?
++		return ((sample.dscr >> 8) & 3) == 2 && (sample.dscr & (1u << 15)) ?
 +			DEBUGTUI_GIC_RESTRICTED : DEBUGTUI_GIC_UNSUPPORTED;
 +	}
 +	retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_MIDR, &sample.midr);
@@ -1012,7 +1012,7 @@ index 0000000..b4bec2a
 +#endif
 diff --git a/src/target/armv8_debugtui_pmu.h b/src/target/armv8_debugtui_pmu.h
 new file mode 100644
-index 0000000..1795f7c
+index 0000000..3438d53
 --- /dev/null
 +++ b/src/target/armv8_debugtui_pmu.h
 @@ -0,0 +1,152 @@
@@ -1082,7 +1082,7 @@ index 0000000..1795f7c
 +			retval = -1;
 +			goto fault;
 +		}
-+		return ((sample.dscr >> 8) & 3) == 2 && (sample.dscr & (1u << 16)) ?
++		return ((sample.dscr >> 8) & 3) == 2 && (sample.dscr & (1u << 15)) ?
 +			DEBUGTUI_PMU_RESTRICTED : DEBUGTUI_PMU_UNSUPPORTED;
 +	}
 +	retval = io->read_debug(io->core.context, DEBUGTUI_TIMER_MIDR, &sample.midr);
@@ -1170,7 +1170,7 @@ index 0000000..1795f7c
 +#endif
 diff --git a/src/target/armv8_debugtui_timer.h b/src/target/armv8_debugtui_timer.h
 new file mode 100644
-index 0000000..b9587b4
+index 0000000..c1f169b
 --- /dev/null
 +++ b/src/target/armv8_debugtui_timer.h
 @@ -0,0 +1,170 @@
@@ -1186,7 +1186,7 @@ index 0000000..b9587b4
 +#define DEBUGTUI_TIMER_ACCESS_UNKNOWN 3
 +#define DEBUGTUI_TIMER_DSCR UINT32_C(0x088)
 +#define DEBUGTUI_TIMER_MIDR UINT32_C(0xd00)
-+#define DEBUGTUI_TIMER_STATE_MASK UINT32_C(0x00053f00)
++#define DEBUGTUI_TIMER_STATE_MASK UINT32_C(0x0005bf00)
 +#define DEBUGTUI_TIMER_FAULT_MASK UINT32_C(0x1c0000c0)
 +#define DEBUGTUI_READ_DLR ARMV4_5_MRC(15, 3, 0, 4, 5, 1)
 +
@@ -1240,7 +1240,7 @@ index 0000000..b9587b4
 +{
 +	unsigned int el = (dscr >> 8) & 3;
 +	return el <= 2 && !(dscr & DEBUGTUI_TIMER_FAULT_MASK) && (dscr & (1u << 24)) &&
-+		!(dscr & (1u << (10 + el))) && !(el == 2 && (dscr & (1u << 16)));
++		!(dscr & (1u << (10 + el))) && !(el == 2 && (dscr & (1u << 15)));
 +}
 +
 +static inline int armv8_debugtui_timer_permission(const struct armv8_debugtui_timer_register *reg,
@@ -1734,7 +1734,7 @@ index 0000000..c833795
 +
 +#endif
 diff --git a/src/target/armv8_dpm.c b/src/target/armv8_dpm.c
-index 508ec97..ae2a114 100644
+index 508ec97..de38e31 100644
 --- a/src/target/armv8_dpm.c
 +++ b/src/target/armv8_dpm.c
 @@ -16,6 +16,13 @@
@@ -1806,7 +1806,7 @@ index 508ec97..ae2a114 100644
 +	/* Do not run the legacy exception recovery/mode switch for this access. */
 +	int retval = dpmv8_exec_opcode_checked(io->dpm, opcode, NULL, false);
 +	if (retval == ERROR_OK &&
-+		(io->dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD)) != io->execution_state)
++		(io->dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD | (1u << 15))) != io->execution_state)
 +		return ERROR_FAIL;
 +	return retval;
 +}
@@ -1854,7 +1854,7 @@ index 508ec97..ae2a114 100644
 +		return ERROR_FAIL;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD | (1u << 15)),
 +	};
 +	struct armv8_debugtui_io io = {
 +		.context = &context,
@@ -1878,7 +1878,7 @@ index 508ec97..ae2a114 100644
 +		return ERROR_FAIL;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD | (1u << 15)),
 +	};
 +	struct armv8_debugtui_io io = {
 +		.context = &context,
@@ -1907,7 +1907,7 @@ index 508ec97..ae2a114 100644
 +		return DEBUGTUI_BANKED_UNSUPPORTED;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD | (1u << 15)),
 +	};
 +	struct armv8_debugtui_banked_io io = {
 +		.core = {
@@ -1941,7 +1941,7 @@ index 508ec97..ae2a114 100644
 +		return DEBUGTUI_VFP_UNSUPPORTED;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD | (1u << 15)),
 +	};
 +	struct armv8_debugtui_banked_io io = {
 +		.core = {
@@ -1974,7 +1974,7 @@ index 508ec97..ae2a114 100644
 +		return DEBUGTUI_VFP_UNSUPPORTED;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD | (1u << 15)),
 +	};
 +	struct armv8_debugtui_banked_io io = {
 +		.core = {
@@ -2023,7 +2023,7 @@ index 508ec97..ae2a114 100644
 +	}
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD | (1u << 15)),
 +	};
 +	struct armv8_debugtui_timer_io io = {
 +		.core = {.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
@@ -2051,7 +2051,7 @@ index 508ec97..ae2a114 100644
 +	}
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD | (1u << 15)),
 +	};
 +	struct armv8_debugtui_timer_io io = {
 +		.core = {.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
@@ -2079,7 +2079,7 @@ index 508ec97..ae2a114 100644
 +	}
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD | (1u << 15)),
 +	};
 +	struct armv8_debugtui_timer_io io = {
 +		.core = {.context = &context, .read_gpr = dpmv8_debugtui_read_gpr,
@@ -2102,7 +2102,7 @@ index 508ec97..ae2a114 100644
 +		return retval;
 +	struct dpmv8_debugtui_context context = {
 +		.dpm = dpm,
-+		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD),
++		.execution_state = dpm->dscr & (DSCR_EL_STATUS_MASK | DSCR_CUR_EL | DSCR_NON_SECURE | DSCR_SDD | (1u << 15)),
 +	};
 +	uint32_t opcode = armv8_dpm_get_core_state(dpm) == ARM_STATE_AARCH64 ?
 +		ARMV8_ISB : ARMV8_ISB_SY_T1;

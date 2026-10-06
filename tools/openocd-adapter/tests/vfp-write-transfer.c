@@ -94,7 +94,7 @@ static int read_debug(void *context, uint32_t offset, uint32_t *value)
 static struct fixture fresh(void)
 {
 	struct fixture f = {.gpr = {0x11223344, 0x55667788}, .dspsr = 0xa200041a,
-		.midr = 0x411fd134, .dscr = 0x01000200, .dlr = 0x81234568, .mvfr0 = 0x10110222, .mvfr1 = 0x12111111, .fpexc = 0x40000700};
+		.midr = 0x411fd134, .dscr = 0x01050213, .dlr = 0x81234568, .mvfr0 = 0x10110222, .mvfr1 = 0x12111111, .fpexc = 0x40000700};
 	for (unsigned int i = 0; i < 32; i++)
 		f.d[i] = UINT64_C(0xfedcba9876543200) + i;
 	return f;
@@ -187,7 +187,7 @@ int main(void)
 	for (unsigned int refused = 0; refused < 8; refused++) {
 		struct fixture f = fresh(), before;
 		const char *name = "d16", *raw = "0x0123456789abcdef";
-		if (refused < 2) f.dscr = refused == 0 ? 0x01000000 : 0x01000100;
+		if (refused < 2) f.dscr = refused == 0 ? 0x01050013 : 0x01050113;
 		if (refused == 2) f.hcptr = 1u << 10;
 		if (refused == 3) f.fpexc &= ~(1u << 30);
 		if (refused == 4 || refused == 5) {

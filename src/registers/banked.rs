@@ -117,12 +117,7 @@ impl Response {
         let mode = evidence
             .current_mode()?
             .ok_or("Banked current Debug mode cannot be proven")?;
-        if midr & 0xff0ffff0 != 0x410fd130
-            || el > 2
-            || dscr & 0x1c0000c0 != 0
-            || dscr & (1 << 24) == 0
-            || dscr & (1 << (10 + el)) != 0
-            || (el == 2 && dscr & (1 << 16) != 0)
+        if super::r52_debug::current_el(midr, dscr) != Some(el as u8)
             || method(name, mode) != Some(evidence.read_method)
         {
             return Err(
@@ -179,7 +174,7 @@ mod tests {
             normal.replace("0x01000200", "0x01000100"),
             normal.replace("banked_mrs32", "mov32"),
             normal.replace("dlr", "dspsr"),
-            reply(0x01010200, "banked_mrs32"),
+            reply(0x01008200, "banked_mrs32"),
             reply(0x01001200, "banked_mrs32"),
             reply(0x01000240, "banked_mrs32"),
             reply(0x00000200, "banked_mrs32"),

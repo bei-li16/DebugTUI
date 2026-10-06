@@ -188,7 +188,7 @@ def evaluate(data):
             if re.fullmatch('(icc|ich)_ap[01]r[123]', reg): reason = 'not-implemented'
             dscr = cpu.get('gic_dscr', '0x01000200')
             if ((int(dscr,16) >> 8) & 3) != 2: reason = 'access-unknown'
-            elif int(dscr,16) & (1 << 16): reason = 'access-restricted'
+            elif int(dscr,16) & (1 << 15): reason = 'access-restricted'
             if reason:
                 return (1, 'debugtui-gic:' + reason, -300 if reason == 'reader-unsupported' else -308)
             view = 'hypervisor_ich' if reg.startswith('ich_') else 'physical_icc'
@@ -218,6 +218,8 @@ def evaluate(data):
             sel = int(cpu['pmselr'])
             if ((int(dscr, 16) >> 8) & 3) != 2:
                 return (1, 'debugtui-pmu:access-unknown', -308)
+            if int(dscr, 16) & (1 << 15):
+                return (1, 'debugtui-pmu:access-restricted', -308)
             if int(pmcr, 16) & 0xffffff80 != 0x41132000:
                 return (1, 'debugtui-pmu:reader-unsupported', -300)
             if (reg == 'pmxevcntr' and sel >= 4) or (reg == 'pmxevtyper' and sel >= 4 and sel != 31):

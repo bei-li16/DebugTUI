@@ -51,7 +51,7 @@ fn vfp_current_proof_rejects_legacy_missing_forged_and_faulted_evidence() {
         valid.replace("0x01000200", "0x01001200"),
         valid.replace("0x01000200", "0x00000200"),
         valid.replace("0x01000200", "0x01000300"),
-        valid.replace("0x01000200", "0x01010200"),
+        valid.replace("0x01000200", "0x01008200"),
         valid.replace("0x01000200", "0x01000240"),
         valid.replace("0x00008000", "0x00008400"),
         valid.replace("0x81234568", "0x1"),

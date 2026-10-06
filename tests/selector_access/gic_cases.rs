@@ -346,7 +346,7 @@ fn gic_lower_el_unknown_and_restricted_requests_preserve_old_value_proof() {
     let original = read["samples"][0]["provenance"]["access"].clone();
     for (i, dscr, reason) in [
         (3, "0x01010100", "unknown"),
-        (5, "0x01010200", "access_restricted"),
+        (5, "0x01008200", "access_restricted"),
     ] {
         f.state.lock().unwrap()["targets"]["cpu0"]["gic_dscr"] = json!(dscr);
         let read = ok(&engine, i, "registers_read", json!({"ids":["icc_ap0r0"]}));

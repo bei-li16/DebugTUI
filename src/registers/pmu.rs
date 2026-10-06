@@ -80,13 +80,7 @@ impl Evidence {
         let dfr = self.id_dfr0.integer().ok()?;
         let pmcr = self.pmcr.integer().ok()?;
         let selected = self.pmselr.integer().ok()?;
-        (midr >> 24 == 0x41
-            && (midr >> 16) & 15 == 15
-            && (midr >> 4) & 0xfff == 0xd13
-            && (dscr >> 8) & 3 == 2
-            && dscr & 0x1c011000 == 0
-            && dscr & 0xc0 == 0
-            && dscr & (1 << 24) != 0
+        (super::r52_debug::current_el(midr, dscr) == Some(2)
             && (dfr >> 24) & 15 == 3
             && pmcr & 0xffffff80 == 0x41132000
             && selected <= 31)
@@ -241,7 +235,7 @@ mod tests {
         );
         for (old, new) in [
             ("0x01000200", "0x01000100"),
-            ("0x01000200", "0x01010200"),
+            ("0x01000200", "0x01008200"),
             ("0x01000200", "0x00000200"),
             ("0x01000200", "0x01001200"),
             ("0x01000200", "0x01000240"),

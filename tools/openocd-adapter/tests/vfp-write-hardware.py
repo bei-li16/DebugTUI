@@ -65,14 +65,14 @@ class Tcl:
 
 
 PROOF_KEYS = {'midr', 'dscr', 'dspsr', 'dlr', 'hcptr'}
-STATE_MASK = 0x00053f00
+STATE_MASK = 0x0005bf00
 def checked_proof(result):
     for key in PROOF_KEYS:
         exact(result[key], 32)
     dscr = exact(result['dscr'], 32)
     assert exact(result['midr'], 32) & 0xff0ffff0 == 0x410fd130, 'R52 physical identity required'
     assert (dscr >> 8) & 3 == 2 and dscr & (1 << 24), 'Current Debug EL2 and ITE required'
-    assert not dscr & (0x1c0000c0 | (1 << 12) | (1 << 16)), 'Invalid Debug execution state or fault'
+    assert not dscr & (0x1c0000c0 | (1 << 12) | (1 << 15)), 'Invalid R52 Debug execution state, HDD or fault'
     assert not exact(result['hcptr'], 32) & (1 << 10), 'HCPTR.TCP10 restricts FP access'
 
 

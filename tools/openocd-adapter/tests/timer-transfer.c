@@ -83,7 +83,7 @@ static int execute(void *context, uint32_t opcode)
 static struct fixture fresh(unsigned int index, unsigned int el)
 {
 	return (struct fixture){.gpr = {0x11223344, 0x55667788},
-		.dscr = (1u << 24) | (el << 8), .midr = 0x411fd134,
+		.dscr = (1u << 24) | UINT32_C(0x00050013) | (el << 8), .midr = 0x411fd134,
 		.dspsr = 0xa200041a, .dlr = 0x81234568, .index = index};
 }
 static int transfer(struct fixture *f, struct armv8_debugtui_timer_result *result, bool *uncertain)
@@ -121,7 +121,7 @@ int main(void)
 		/* Permission decisions use actual Debug EL, not stopped DSPSR.M. */
 		for (unsigned int el = 0; el < 2; el++) {
 			for (unsigned int hdd = 0; hdd < 2; hdd++) {
-				f = fresh(index, el); f.dscr |= hdd << 16;
+				f = fresh(index, el); f.dscr |= hdd << 15;
 				int expected = el == 0 ? 3 : 0;
 				if (index == 1 && el == 0) expected = 2;
 				if (index == 2 || index == 3 || index == 9 || index == 11) expected = 3;
@@ -155,11 +155,18 @@ int main(void)
 		bool uncertain = false;
 		assert(transfer(&f, &result, &uncertain) != 0 && uncertain && result.value == 11);
 	}
+	/* An EL1 virtual-counter view allows both stable HDD values, but
+	 * their change is proof failure even though EL and ITE stay legal. */
+	{
+		struct fixture f = fresh(10, 1); f.dscr_change = 1u << 15;
+		struct armv8_debugtui_timer_result result = {.value = 11}; bool uncertain = false;
+		assert(transfer(&f, &result, &uncertain) != 0 && uncertain && result.value == 11);
+	}
 	for (unsigned int invalid_state = 0; invalid_state < 5; invalid_state++) {
 		struct fixture f = fresh(10, 2);
 		if (invalid_state == 0) f.midr = 0x411fd143;
 		if (invalid_state == 1) f.dscr |= 1u << 12;
-		if (invalid_state == 2) f.dscr |= 1u << 16;
+		if (invalid_state == 2) f.dscr |= 1u << 15;
 		if (invalid_state == 3) f.dscr |= 1u << 8;
 		if (invalid_state == 4) f.dscr |= 1u << 6;
 		struct armv8_debugtui_timer_result result = {.value = 11};

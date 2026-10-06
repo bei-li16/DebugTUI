@@ -82,7 +82,7 @@ static int execute(void *context, uint32_t opcode)
 static struct fixture fresh(unsigned int index)
 {
 	return (struct fixture){.gpr = {0x11223344, 0x55667788}, .midr = 0x411fd134,
-		.dscr = 0x01000200, .proof = {0xa2000410, 0x81234568, 0x03010066,
+		.dscr = 0x01050213, .proof = {0xa2000410, 0x81234568, 0x03010066,
 			0x41132048, 0x00400e02, 3}, .index = index,
 		.value = index == 22 ? UINT64_C(0xfedcba9876543210) : UINT64_C(0xf1234500) + index};
 }
@@ -114,7 +114,7 @@ int main(void)
 		assert(transfer(&f, &result, &uncertain) == 0 && !uncertain && f.data_reads == 1);
 		assert(result.value == (index == 0 ? f.proof[3] : index == 4 ? f.proof[5] : f.value));
 		assert(result.pmcr == f.proof[3] && result.hdcr == f.proof[4] && result.pmselr == f.proof[5]);
-		assert(result.dspsr == 0xa2000410 && result.dscr == 0x01000200);
+		assert(result.dspsr == 0xa2000410 && result.dscr == 0x01050213);
 		assert(f.gpr[0] == 0x11223344 && f.gpr[1] == 0x55667788);
 		unsigned int operations = f.operations;
 		for (unsigned int fail = 1; fail <= operations; fail++) {
@@ -125,7 +125,7 @@ int main(void)
 		}
 		for (unsigned int el = 0; el < 2; el++)
 			for (unsigned int hdd = 0; hdd < 2; hdd++) {
-				f = fresh(index); f.dscr = (1u << 24) | (el << 8) | (hdd << 16); result = sentinel;
+				f = fresh(index); f.dscr = (1u << 24) | UINT32_C(0x00050013) | (el << 8) | (hdd << 15); result = sentinel;
 				assert(transfer(&f, &result, &uncertain) == DEBUGTUI_PMU_ACCESS_UNKNOWN && !uncertain);
 				assert(f.injected == 0 && !f.data_reads && memcmp(&result, &sentinel, sizeof(result)) == 0);
 				refused++;
@@ -157,7 +157,7 @@ int main(void)
 		struct fixture f = fresh(22);
 		int expected = DEBUGTUI_PMU_UNSUPPORTED;
 		if (variant < 5) {
-			const uint32_t states[] = {0x01000300, 0x01001200, 0x00000200, 0x01010200, 0x01000240};
+			const uint32_t states[] = {0x01000300, 0x01001200, 0x00000200, 0x01008200, 0x01000240};
 			f.dscr = states[variant];
 			if (variant == 3) expected = DEBUGTUI_PMU_RESTRICTED;
 		} else if (variant == 5) f.midr = 0x411fd164;

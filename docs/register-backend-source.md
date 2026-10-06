@@ -1,5 +1,7 @@
 # 固定后端源码与构建可用性自检
 
+当前补充：[R52 EDSCR 修正](register-r52-debug-state.md) 已改变生产源补丁；本文后续构建证据适用于旧源码，新 Windows/Linux 候选与命令入口仍待验证，当前 source.lock 不声明它们已构建。
+
 2026-10-06。REG-006 的源码/构建可获得性已验证；实际工具安装与板级能力另由 REG-001/003/008/505 跟踪。
 
 上游为 [openocd-org/openocd](https://github.com/openocd-org/openocd)，固定提交 `d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e`。`tools/openocd-adapter/source.lock.json` 固定补丁、十一项 patched source SHA256、Jim Tcl 和七个独立协议；Windows USB/HID/J-Link依赖、许可与固定归档另在 `windows-dependencies.lock.json`。修改清单及协议行为在 [后端说明](../tools/openocd-adapter/README.md)，包含生产源码、独立事务/编码测试、构建与打包配方。
