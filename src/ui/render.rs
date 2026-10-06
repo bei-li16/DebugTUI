@@ -1721,11 +1721,23 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
             a.help_tab_hits.push((hit, shortcuts));
             x += hit.width + 1;
         }
+        if !a.help && x < parts[0].right() {
+            let filter = Rect::new(x + 2, parts[0].y, parts[0].right().saturating_sub(x + 2), 1);
+            f.render_widget(
+                if a.palette_query.is_empty() {
+                    Paragraph::new("Type to filter").style(Style::default().fg(theme::MUTED))
+                } else {
+                    Paragraph::new(format!("Filter: {}▏", a.palette_query))
+                        .style(Style::default().fg(theme::ACCENT))
+                },
+                filter,
+            );
+        }
         f.render_widget(
             Paragraph::new(if a.help {
                 " ↑ ↓ scroll · Tab commands · Esc close"
             } else {
-                " ↑ ↓ Enter · Tab shortcuts · Esc close"
+                " type to filter · ↑ ↓ Enter · Tab shortcuts · Esc close"
             })
             .style(Style::default().fg(theme::MUTED)),
             parts[2],
@@ -1739,12 +1751,22 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
                 inner,
             );
         } else {
-            let start = a
-                .palette_index
-                .saturating_sub(inner.height.saturating_sub(1) as usize);
-            for (row, (i, command)) in COMMANDS
+            let commands = a.palette_commands();
+            let selected = commands
                 .iter()
-                .enumerate()
+                .position(|&i| i == a.palette_index)
+                .unwrap_or(0);
+            let start = selected.saturating_sub(inner.height.saturating_sub(1) as usize);
+            if commands.is_empty() {
+                f.render_widget(
+                    Paragraph::new("  No command matches the filter")
+                        .style(Style::default().fg(theme::MUTED)),
+                    inner,
+                );
+            }
+            for (row, (i, command)) in commands
+                .iter()
+                .map(|&i| (i, COMMANDS[i]))
                 .skip(start)
                 .take(inner.height as usize)
                 .enumerate()

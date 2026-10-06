@@ -288,6 +288,8 @@ pub struct App {
     history_index: usize,
     palette: bool,
     palette_index: usize,
+    /// Typed filter for the command list; empty lists every command.
+    palette_query: String,
     help: bool,
     confirm: Option<Request>,
     next_id: u64,
@@ -373,6 +375,7 @@ impl App {
             history_index: 0,
             palette: false,
             palette_index: 0,
+            palette_query: String::new(),
             help: false,
             confirm: None,
             next_id: 1,
@@ -1060,12 +1063,25 @@ impl App {
             match key.code {
                 KeyCode::Esc => self.palette = false,
                 KeyCode::Tab | KeyCode::BackTab => self.open_help(true),
-                KeyCode::Down => self.palette_index = (self.palette_index + 1) % COMMANDS.len(),
-                KeyCode::Up => {
-                    self.palette_index = (self.palette_index + COMMANDS.len() - 1) % COMMANDS.len()
-                }
+                KeyCode::Down => self.move_palette(1),
+                KeyCode::Up => self.move_palette(-1),
                 KeyCode::Enter => {
-                    self.activate_palette(engine);
+                    if self.palette_commands().contains(&self.palette_index) {
+                        self.activate_palette(engine);
+                    }
+                }
+                KeyCode::Backspace => {
+                    self.palette_query.pop();
+                    self.palette_filtered();
+                }
+                KeyCode::Char(ch)
+                    if !key
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+                        && self.palette_query.chars().count() < 64 =>
+                {
+                    self.palette_query.push(ch);
+                    self.palette_filtered();
                 }
                 _ => {}
             }
@@ -1406,8 +1422,43 @@ impl App {
         false
     }
     fn open_help(&mut self, shortcuts: bool) {
+        if !shortcuts && !self.palette {
+            self.palette_query.clear();
+        }
         self.help = shortcuts;
         self.palette = !shortcuts;
+    }
+    /// COMMANDS indices matching the typed filter, best match first.
+    fn palette_commands(&self) -> Vec<usize> {
+        if self.palette_query.trim().is_empty() {
+            return (0..COMMANDS.len()).collect();
+        }
+        let mut matcher = crate::search::Matcher::new(&self.palette_query);
+        let mut found: Vec<_> = COMMANDS
+            .iter()
+            .enumerate()
+            .filter_map(|(i, command)| matcher.score(command).map(|score| (score, i)))
+            .collect();
+        found.sort_unstable();
+        found.into_iter().map(|(_, i)| i).collect()
+    }
+    /// After the filter changes, keep the selection if it still matches.
+    fn palette_filtered(&mut self) {
+        let commands = self.palette_commands();
+        if !commands.contains(&self.palette_index) {
+            self.palette_index = commands.first().copied().unwrap_or(0);
+        }
+    }
+    fn move_palette(&mut self, delta: isize) {
+        let commands = self.palette_commands();
+        if commands.is_empty() {
+            return;
+        }
+        let at = commands
+            .iter()
+            .position(|&i| i == self.palette_index)
+            .unwrap_or(0) as isize;
+        self.palette_index = commands[(at + delta).rem_euclid(commands.len() as isize) as usize];
     }
     fn activate_palette(&mut self, engine: Option<&EngineHandle>) {
         let command = COMMANDS[self.palette_index];
@@ -1724,10 +1775,18 @@ impl App {
         if self.palette {
             match mouse.kind {
                 MouseEventKind::ScrollDown => {
-                    self.palette_index = (self.palette_index + 1).min(COMMANDS.len() - 1)
+                    let commands = self.palette_commands();
+                    let at = commands.iter().position(|&i| i == self.palette_index);
+                    if let Some(&next) = at.and_then(|at| commands.get(at + 1)) {
+                        self.palette_index = next;
+                    }
                 }
                 MouseEventKind::ScrollUp => {
-                    self.palette_index = self.palette_index.saturating_sub(1)
+                    let commands = self.palette_commands();
+                    let at = commands.iter().position(|&i| i == self.palette_index);
+                    if let Some(&previous) = at.filter(|&at| at > 0).map(|at| &commands[at - 1]) {
+                        self.palette_index = previous;
+                    }
                 }
                 MouseEventKind::Down(event::MouseButton::Left) => {
                     if let Some((_, index)) = self
@@ -2442,6 +2501,42 @@ mod tests {
             },
             engine,
         );
+    }
+    #[test]
+    fn command_palette_filters_as_you_type_and_runs_the_selected_match() {
+        let (engine, requests) = session::test_channel();
+        let mut a = App::new(Project::default(), false);
+        a.snapshot.state = "STOPPED".into();
+        let key = |a: &mut App, code| a.key(KeyEvent::new(code, KeyModifiers::NONE), Some(&engine));
+        a.key(
+            KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
+            Some(&engine),
+        );
+        assert!(a.palette);
+        for ch in "fin".chars() {
+            key(&mut a, KeyCode::Char(ch));
+        }
+        let text = render(&mut a, 120, 36);
+        assert!(text.contains("Filter: fin"), "{text}");
+        assert!(text.contains("finish") && text.contains("find TEXT"));
+        assert!(!text.contains("download"));
+        assert_eq!(COMMANDS[a.palette_index], "finish");
+        key(&mut a, KeyCode::Down);
+        assert_eq!(COMMANDS[a.palette_index], "find TEXT");
+        key(&mut a, KeyCode::Up);
+        key(&mut a, KeyCode::Enter);
+        assert!(!a.palette);
+        assert_eq!(requests.try_recv().unwrap().method, "finish");
+        a.open_help(false);
+        assert!(a.palette_query.is_empty(), "reopening starts unfiltered");
+        for ch in "zzq".chars() {
+            key(&mut a, KeyCode::Char(ch));
+        }
+        assert!(render(&mut a, 120, 36).contains("No command matches"));
+        key(&mut a, KeyCode::Enter);
+        assert!(a.palette && requests.try_recv().is_err());
+        key(&mut a, KeyCode::Backspace);
+        assert_eq!(a.palette_query, "zz");
     }
     #[test]
     fn zoom_fills_the_body_with_the_focused_group_and_alt_keys_jump_to_views() {
