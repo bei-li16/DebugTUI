@@ -457,32 +457,40 @@ impl App {
     }
     fn sync_register_absence(&mut self) {
         let context = self.register_context();
+        // Idle ticks need only reconsider observed absences. Resolving the
+        // owner of every catalogue entry here clones the per-core routing
+        // configuration even when no register has ever been read.
+        let candidates: BTreeSet<_> = self
+            .register_view
+            .values
+            .values()
+            .filter(|sample| {
+                sample.implementation == Implementation::No
+                    || sample.reason == crate::registers::Reason::HardwareNotImplemented
+            })
+            .map(|sample| sample.id.as_str())
+            .collect();
         let absent = self
             .register_view
             .catalogue
             .as_ref()
+            .filter(|_| self.snapshot.state == "STOPPED")
             .map(|c| {
-                c.registers
-                    .iter()
-                    .enumerate()
-                    .filter(|(index, _)| {
-                        self.register_view
-                            .sample(&self.project, &context, *index)
-                            .is_some_and(|s| {
-                                self.snapshot.state == "STOPPED"
-                                    && s.applies_at(
-                                        &context,
-                                        self.register_view
-                                            .owner(&self.project, &context, *index)
-                                            .as_deref(),
-                                        &self.register_view.owner_generations,
-                                    )
-                                    && (s.implementation == Implementation::No
-                                        || s.reason
-                                            == crate::registers::Reason::HardwareNotImplemented)
-                            })
+                candidates
+                    .into_iter()
+                    .filter_map(|id| {
+                        let index = c.registers.iter().position(|r| r.id == id)?;
+                        let sample = self.register_view.sample(&self.project, &context, index)?;
+                        (sample.applies_at(
+                            &context,
+                            self.register_view
+                                .owner(&self.project, &context, index)
+                                .as_deref(),
+                            &self.register_view.owner_generations,
+                        ) && (sample.implementation == Implementation::No
+                            || sample.reason == crate::registers::Reason::HardwareNotImplemented))
+                            .then(|| id.to_owned())
                     })
-                    .map(|(_, r)| r.id.clone())
                     .collect()
             })
             .unwrap_or_default();

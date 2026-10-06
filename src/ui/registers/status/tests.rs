@@ -824,6 +824,55 @@ fn register_status_runtime_absence_is_context_scoped_and_all_view_does_not_auto_
 }
 
 #[test]
+fn runtime_absence_never_uses_a_peer_sample_or_an_id_outside_the_current_catalogue() {
+    let mut app = app();
+    put(&mut app, "r0", State::Valid, Reason::Unknown);
+    let mut peer = sample(&app, "r0", "0x80000001");
+    peer.state = State::Unsupported;
+    peer.reason = Reason::HardwareNotImplemented;
+    peer.context.core = "peer".into();
+    peer.owner = Some("core:peer".into());
+    app.register_view
+        .values
+        .insert(("core:peer".into(), "r0".into(), "peer".into()), peer);
+    let mut unknown = sample(&app, "r0", "0x80000001");
+    unknown.id = "removed-from-catalogue".into();
+    unknown.implementation = Implementation::No;
+    app.register_view.values.insert(
+        ("core:default".into(), unknown.id.clone(), "default".into()),
+        unknown,
+    );
+    let (engine, requests) = engine();
+    for has_current_sample in [true, false] {
+        if !has_current_sample {
+            app.register_view.values.remove(&(
+                "core:default".into(),
+                "r0".into(),
+                "default".into(),
+            ));
+        }
+        app.sync_register_absence();
+        assert!(app.register_view.runtime_absent.is_empty());
+    }
+    put(
+        &mut app,
+        "r0",
+        State::Unsupported,
+        Reason::HardwareNotImplemented,
+    );
+    app.sync_register_absence();
+    assert_eq!(
+        app.register_view.runtime_absent,
+        BTreeSet::from(["r0".into()])
+    );
+    app.snapshot.state = "RUNNING".into();
+    app.sync_register_absence();
+    assert!(app.register_view.runtime_absent.is_empty());
+    assert!(!app.ensure_registers(Some(&engine)));
+    assert!(requests.try_recv().is_err());
+}
+
+#[test]
 fn register_status_row_explains_reader_unsupported_and_retains_precise_old_value() {
     let mut app = app();
     app.register_view.query = "r0".into();

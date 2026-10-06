@@ -2,7 +2,7 @@
 
 2026-10-06。开发分支 `codex/register-debugging`，起点 `b493a7f`，源码基线 0.9.3。该清单落实新的 Goal，取代旧 TODO 全部 71 项作为本次完成条件；旧记录保留作追溯。36 项以完整软件验收为计数边界。硬件用例准备属于软件交付，执行上板不属于本目标。
 
-当前摘要（迭代 17）：**30 完成 / 6 未完成**。A01～A10、B01～B11、C01～C06、D01～D03 已通过软件验收；D04、E01～E05 待完成。寄存器界面、失败原因/原值来源及会话/核/帧/owner 生命周期已复验，selector 失败原因传递已修正。硬件未执行、安装工具未替换、最终 Release 未发布。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
+当前摘要（迭代 18）：**31 完成 / 5 未完成**。A01～A10、B01～B11、C01～C06、D01～D04 已通过软件验收；E01～E05 待完成。本轮修复空闲目录遍历开销，完成真实交互 TUI 的 CPU/内存/MI 计数对照；无启用行、缓存与纯展示操作均无额外目标请求。硬件未执行、安装工具未替换、最终 Release 未发布。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
 
 核心参考文档（保留绝对路径）：
 
@@ -56,7 +56,7 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | D01 | 既有寄存器界面与格式复验 | 分组/列/字段/枚举/说明/格式/变化 |
 | [x] | D02 | 状态、原因与旧值来源 | 各失败类别、灰显、失败非零、原来源保留 |
 | [x] | D03 | 全部生命周期边界 | 核/帧/运行/暂停/重连/共享 owner |
-| [ ] | D04 | 按需 I/O 与只读边界 | 未启用不读、不扫描、不持久写控制 |
+| [x] | D04 | 按需 I/O 与只读边界 | 未启用不读、不扫描、不持久写控制；真实 TUI 空闲资源/请求对照 |
 | [ ] | E01 | 软件入口及硬件用例准备 | MI/Tcl/实际 CLI、可执行用例、上板 SKIPPED |
 | [ ] | E02 | 配置示例、用户文档及后续清单 | 新字段/有效值/支持限制和三份绝对引用 |
 | [ ] | E03 | 发布前完整回归与静态检查 | cargo/仓库静态检查、必要功能套件全通过 |
@@ -292,3 +292,16 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 新增 [只读 UI/生命周期说明](register-readonly-ui-lifecycle.md)，给出 ADS 对照、具体失败修正、证据矩阵与范围限制；已有框架、状态/取消、缓存生命周期、shared owner、M 多核与 R52 selector case 继续可执行/可人工操作，全部 SKIPPED。三个核心参考文档的绝对路径完整保留；没有将长期 TODO 全部勾选。
 - 日志在 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-ui-selector-status-first-20261006.log`（首次编译失败保留）、`readonly-ui-registers-final-20261006.log`、`readonly-ui-formats-20261006.log`、`readonly-ui-lifecycle-integrations-20261006.log`、`readonly-ui-native-selector-final-20261006.log`、`readonly-ui-state-cancel-20261006.log`、`readonly-ui-selector-reason-boundary-20261006.log`、`readonly-ui-clippy-final-20261006.log`。16 组渲染在 `evidence/readonly-ui-20261006`；`readonly-ui-lifecycle-evidence-20261006.json` 记录源文件、测试/渲染摘要、ADS 参考及最终提交/远端核验。
 - 剩余 **D04、E01～E05** 共 6 项。下一轮先记录相同配置下空闲 CPU/内存与目标请求计数，闭合按需 I/O/只读边界，再统一本版硬件 case、配置及用户文档；随后完成最终回归、升版/构建/安装/升级和非主分支 prerelease。Goal 保持 active；本轮提交和推送结果在最终输出及 manifest 记录。
+
+## 迭代 18：按需读取与真实 TUI 空闲资源
+
+2026-10-06，完成 **D04**，累计 **31 完成 / 5 未完成**。开始时将迭代 17 的七个相关文件（含用户要求更新的执行目标）提交并推送为 `62daa93a03f12adee645b06db487dd751c772a7f`，`git ls-remote` 核验远端一致；迭代 17 的源摘要、95 项证据和外部 manifest 已核对，未重复全量回归。用户未跟踪的规格只读保留，没有混入提交。
+
+- 在真实 Windows PTY 中运行交互 DebugTUI，以 Node MI 软件夹具测量无目录基线、M7 折叠/缓存和 R52 折叠。测量发现 `sync_register_absence` 每约 20 ms 遍历整目录、为每项复制每核配置解析 owner；即使所有组折叠也持续发生。现在只从已有未实现样本收集候选，再核对当前目录/owner/上下文；没有候选时不遍历定义。保持当前有效样本、peer、目录外 ID、状态/世代和共享 owner 的隔离，不新增缓存世代、线程或目标轮询。
+- 七个约 15 秒的原始区间均 **新增 MI 0**；Private Bytes/Working Set 的区间增量为零或负值。修复前基线 CPU 0.72%、M7 折叠 4.21%、M7 缓存 1.33%；修复后基线 1.03%、M7 折叠 0.92%、M7 缓存 1.54%、R52 折叠 0.61%，百分比均相对于一个逻辑处理器。修复后 Working Set 分别 15.56/19.93/21.25/43.96 MiB，Private 2.22/4.75/5.09/27.06 MiB。它们是实际短区间观测，不宣称长期泄漏测试、通用加速比或所有终端组合验证。
+- M7 404 项/R52 1,999 项目录均实际加载，所有组折叠时无名称/值请求；展开 M7 Core 后仅读可见 R0～R4，随后缓存零重复读取。真实 TUI 搜索、Status 开关和 R0 格式菜单应用，MI 保持 31→31；原值仍为 `0x12345678`。初次经过 Asm/Files 的夹具拒绝在测量前已结束，无后台重试；初始化和退出命令与空闲区间分别记录。所有测量原文无目标数据写入、module enable、CP15 或 monitor 配置命令。
+- 新增回归 `runtime_absence_never_uses_a_peer_sample_or_an_id_outside_the_current_catalogue`；首次编译发现测试用了不存在的 `Reason::None`，改为已有 `Reason::Unknown`，保留失败日志，未修改产品枚举或降低校验。最终 `ui::registers` **56 通过**、36.29 秒；`register_access` **15 通过**、8.57 秒；`register_lifecycle` **4 通过**、28.75 秒；`register_shared` **6 通过**、3.85 秒。合计 **81 项所选软件测试通过**，未运行最终全 Cargo/发布回归。
+- 严格 `cargo clippy --locked --all-targets -- -D warnings` **通过**、23.93 秒；`cargo build --locked --bin debugtui`、fmt、diff 和 PowerShell 语法通过。新测量脚本 `scripts/measure-register-idle.ps1` 只观察已有进程/原文/配置，新增 MI、原文截断/修改、配置变更或进程退出均报错。初次摘要打印的 OrderedDictionary 空字段已改为 PSCustomObject；原始 JSON 数值有效，不用空输出作为测量结果。
+- 修复后实际 EXE SHA256 `f88783d8f58fb4ab3048c8cb3bd569db196ae91ff836a5e23cb69e9a2822c83e`。测量报告/每秒样本、配置、MI 原文及 UI 操作记录位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\evidence\register-idle-20261006`。日志为构建缓存中的 `readonly-idle-ui-first-20261006.log`、`readonly-idle-ui-final-20261006.log`、`readonly-idle-lifecycle-final-20261006.log`、`readonly-idle-binary-final-20261006.log`、`readonly-idle-clippy-final-20261006.log`；外部 `readonly-idle-evidence-20261006.json` 记录摘要、适用版本及本轮最终提交/推送结果。[按需与空闲验收说明](register-idle-readonly.md) 保存完整表格、测量边界和复测入口。
+- 本轮没有改 worker、M/R 目录、后端 C 事务、补丁、lock 或候选工具；相关 B/C/D01～D03 证据沿用，原有只读副作用/运行态/selector case 保持 SKIPPED。没有连接探针、执行 ARM 指令、升级硬件 verified 或替换本地工具；测量和 Node 夹具进程均已正常退出。三个核心绝对引用完整保留。
+- 剩余 **E01～E05** 共 5 项。下一批统一全部延后 case 与本版配置/用户文档，再以最终版本完成完整回归、实际历史包升级、非主分支 prerelease 及指定 tag 下载核验。Goal 继续 active，不以本轮专项或性能结果替代发布验收。
