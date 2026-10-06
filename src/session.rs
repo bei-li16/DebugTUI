@@ -178,6 +178,8 @@ pub struct Snapshot {
     pub register_probe: Option<crate::registers::capabilities::Probe>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub register_mpu: Option<crate::registers::mpu::m_profile::View>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub register_cache: Option<crate::registers::m_cache::View>,
     pub async_supported: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub core: Option<CoreStatus>,
@@ -215,6 +217,7 @@ impl Default for Snapshot {
             register_generation: None,
             register_probe: None,
             register_mpu: None,
+            register_cache: None,
             async_supported: false,
             core: None,
             cores: vec![],
@@ -264,7 +267,11 @@ impl Request {
     pub(crate) fn is_register_read(&self) -> bool {
         matches!(
             self.method.as_str(),
-            "registers_read" | "registers_probe" | "registers_select" | "registers_mpu"
+            "registers_read"
+                | "registers_probe"
+                | "registers_select"
+                | "registers_mpu"
+                | "registers_cache"
         )
     }
     pub(crate) fn is_cancellable_read(&self) -> bool {
@@ -1650,7 +1657,11 @@ impl Engine {
     fn execute(&mut self, method: &str, p: &Json) -> Result<Json, String> {
         if matches!(
             method,
-            "registers_read" | "registers_probe" | "registers_select" | "registers_mpu"
+            "registers_read"
+                | "registers_probe"
+                | "registers_select"
+                | "registers_mpu"
+                | "registers_cache"
         ) {
             self.check_register_read_cancelled()?;
         }
@@ -1718,6 +1729,7 @@ impl Engine {
             "registers_probe" => self.probe_register_capabilities(p),
             "registers_select" => self.read_selected_registers(p),
             "registers_mpu" => self.mpu_regions(p),
+            "registers_cache" => self.m_cache_view(p),
             "registers_read" => self.read_registers(p),
             "register_boundary" => {
                 self.invalidate_register_boundary();

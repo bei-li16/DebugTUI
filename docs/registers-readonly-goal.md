@@ -41,7 +41,7 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | B05 | M MPU 与 region 读取 | TYPE/CTRL/RNR/RBAR/RASR、容量及保存恢复 |
 | [x] | B06 | Debug、DWT/FPB 身份容量 | 不轮询 DHCSR、不自动使能、门控原因 |
 | [x] | B07 | M4 FPU 配置与身份 | CPACR/FPCCR/FPCAR/FPDSCR/MVFR、GDB regfile 复用 |
-| [ ] | B08 | M7 cache/TCM 配置 | TRM/CMSIS 有据定义、维护命令不执行 |
+| [x] | B08 | M7 cache/TCM 配置 | TRM/CMSIS 有据定义、维护命令不执行 |
 | [x] | B09 | M ID 探测与动态实例 | CPUID/ICTR/MPU_TYPE 等成功/缺失/非法结果 |
 | [ ] | B10 | CorePrivate 和异构双核隔离 | 同 PPB 地址经不同核路由、缓存与失败隔离 |
 | [ ] | B11 | 按 reader 运行态读取 | 安全 MMIO 正向、sysreg/GDB NeedHalt 拒绝 |
@@ -150,3 +150,17 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 严格 `cargo clippy --locked --all-targets -- -D warnings`、`cargo fmt --all --check`、六目录离线生成一致性、Node 语法和 `git diff --check` 通过。没有为未改动 OpenOCD 重建平台，没有声称本轮完成全仓回归；前序证据保持适用。初次新测试中暴露的 M7 source 页码缺失和 retained-origin 包装断言已按实际 schema 修正后通过。
 - [模块说明](register-cortex-m-modules.md)、[五项环境 case](../tests/cases/register-cortex-m-modules.md)、显式运行驱动和独立期望值模板完成。默认报告 `evidence/m-profile-modules-hardware-1791267355736-4dfa8b96/report.json` 为 0 passed / 0 failed / 5 skipped，目标零 I/O、`board_tests_executed=false`。没有上板或自动升级 verified。
 - 剩余 A04、B08/B10/B11、C01～C06、D01～D04、E01～E05，共 19 项。下一批优先 M7 cache/TCM 及 selector，再接通按通道的运行态和完整异构隔离；R52 当前 Debug 权限及最终发布仍待完成。提交 SHA 和推送核验结果在本轮最终输出报告，证据 manifest 保存最终提交。
+
+## 迭代 8：M7 cache/TCM 与 CSSELR 事务
+
+2026-10-06，完成 B08，累计 **18 完成 / 18 未完成**。开始时核对本地/远端开发分支均为 `8b7aa9060c13eb5fca0dfff8e6dcfded940552d4`。上一目标轮次重整 Goal 文本、同步已提交的 B06/B07 和 17/19 起点，属于目标文档状态变更；本轮复用已有未完成的 M7 cache 代码，补齐入口、生命周期、专项及交付文档。Goal 文本的 17/19 保留为重新生成时快照，本清单为实时计数。
+
+- M7 Probe 新增实际 CLIDR/CTR 观测，CPUID 型号核对、严格编码、完整同核来源及最新失败撤销沿用 M policy。CLIDR 的 I/D 实现位依据 DUI 0646B §4.5.1/Table 4-40 物理第 269 页补齐 CMSIS 缺项；CCSIDR、CTR、CSSELR 记录同手册的准确来源。容量只依据 Table 4-43 的适用编码显示，未知编码保留 raw，不编造 reset/verified。
+- `registers_cache` / `:cache` 总览复用现有 MPU 控制器、CorePrivate、服务 lease 和 MI/Tcl。单个显式 target 事务核对 CPUID/CLIDR/CTR 与 halt、保存 CSSELR、选择/回读已实现 I/D、读取 CCSIDR、恢复/回读并复核最终上下文。只临时写 CSSELR，不使能 cache/TCM，不执行维护命令，不切全局 target。普通 CCSIDR 复用该事务返回原选择的 cache；未实现 bank 明确拒绝；无 cache 不访问 selector/CCSIDR。仅 GDB memory 路线在数据 I/O 前拒绝。
+- `Snapshot.register_cache` 保存各 bank 的实际 owner/context/类型和完整请求来源。错误/取消/迟到上下文不发布部分值，旧值保留原时间/来源并 stale；恢复/响应不确定 FAULT/隔离，无盲目重试。新非法 CLIDR、运行、frame 与 session/generation 边界撤销 bank；双 M7 同 PPB 地址、不同 target/value/original selector 验证独立缓存。完整 M7＋M4 生命周期和运行态入口仍留给 B10/B11，未提前验收。
+- TCM/CACR/AHBP/AHBS 配置复用普通字段树及 CorePrivate；六项原始配置值实际读取通过。九个 WO 维护定义的 manual 请求同样零目标 I/O。打开、滚动、字段显示、关闭和缓存查询不产生目标读取；stale 不继续派生容量/字段，窄/宽窗口验证通过。
+- 模型/UI 专项 6 项通过；M profile/MPU 模型回归 11 项、MPU/cache UI 5 项通过，与专项重叠 3 项，合计 **19 项不同模型/UI 测试**。日志均在 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-m-cache-unit-20261006.log`、`readonly-m-cache-profile-regression-20261006.log`、`readonly-m-cache-ui-regression-20261006.log`。
+- 共用 Tcl fixture 扩展后完整 selector 套件 **103/103** 通过（含原有 92 项和新增 11 项），日志 `readonly-m-cache-selector-regression-20261006.log`，323.83 秒。随后去除普通 CorePrivate 请求重复解析内置目录的开销，增加 cache 运行/frame/session 边界用例；最终当前代码 cache 专项 **12/12** 通过，日志 `readonly-m-cache-cases-final-20261006.log`。未受该末尾改动影响的 R/M MPU 路径沿用完整套件证据；没有重复全量或宣称运行全仓所有测试。M 能力集成 **12/12** 通过，日志 `readonly-m-cache-capability-regression-20261006.log`；M7 新增两次 ID 读取的独立期望计数已同步。
+- 严格 Clippy 全 targets、fmt、diff、六目录离线生成一致性、5 项 Python 转换检查和 Node 语法通过。最终静态日志 `readonly-m-cache-clippy-final-20261006.log`。初次编译中命令数组长度/父模块私有字段及新 test 的 PathBuf 类型问题已修复；原失败日志保留为 `readonly-m-cache-first-20261006.log`、`readonly-m-cache-cases-first-20261006.log`。没有修改/重建 OpenOCD，没有降低断言。
+- [M7 说明](register-cortex-m7-cache.md)、用户指南、[四阶段硬件 case](../tests/cases/register-cortex-m7-cache.md)、默认零 I/O 驱动及独立期望值模板完成。默认报告 `evidence/m7-cache-hardware-1791269363829-0b1b21d0/report.json` 为 0 passed / 0 failed / 4 skipped。当前实际 EXE 软件驱动 `evidence/m7-cache-hardware-1791269867794-32fcbf31/report.json` 为 5 passed；故意错误容量基线 `evidence/m7-cache-hardware-1791269870215-6cb0cab1/report.json` 正确为 3 passed / 1 expected failure / 1 skipped。所有报告 `board_tests_executed=false`，未执行上板或升级 verified；三份核心绝对引用保留。
+- 剩余 **A04；B10/B11；C01～C06；D01～D04；E01～E05**，18 项。下一轮优先按实际 reader/通道接通安全运行态，再补完整异构隔离；R52 当前 Debug 权限、最终回归/打包和非主分支 Release 仍待完成。本轮提交/推送 SHA 由最终输出及 `readonly-m-cache-evidence-20261006.json` 记录。

@@ -2,6 +2,116 @@ use super::*;
 use crate::registers::{RawValue, Reason, capabilities::Probe};
 use std::sync::{Arc, atomic::AtomicBool, mpsc};
 #[test]
+fn m7_cache_popup_open_scroll_render_and_close_are_zero_io_and_read_is_explicit() {
+    let mut project = Project::default();
+    project.registers.cpu = "cortex-m7".into();
+    let mut app = App::new(project, false);
+    app.snapshot.state = "STOPPED".into();
+    app.snapshot.register_session = 1;
+    app.snapshot.generation = 2;
+    let mut proof = super::tests::app().snapshot.register_probe.unwrap();
+    proof.identity.as_mut().unwrap().model = Some("Cortex-M7".into());
+    for (id, value) in [("mcache.clidr", 0x09000003), ("mcache.ctr", 0x8303c003)] {
+        let mut fact = proof.facts["mpu.el1.regions"].clone();
+        fact.value = value;
+        proof.facts.insert(id.into(), fact);
+    }
+    app.snapshot.register_probe = Some(proof);
+    let mut view = crate::registers::m_cache::View {
+        context: app.register_context(),
+        owner: "core:default".into(),
+        state: State::Valid,
+        identity: sample(&app, "scb.cpuid", "0x411fc271"),
+        clidr: sample(&app, "scb.clidr", "0x09000003"),
+        ctr: sample(&app, "scb.ctr", "0x8303c003"),
+        original_selector: Some(RawValue::parse("0x1", 32).unwrap()),
+        restored_selector: Some(RawValue::parse("0x1", 32).unwrap()),
+        caches: vec![
+            crate::registers::m_cache::Cache {
+                selector: 0,
+                kind: "data".into(),
+                size_id: sample(&app, "scb.ccsidr", "0xf00fe019"),
+            },
+            crate::registers::m_cache::Cache {
+                selector: 1,
+                kind: "instruction".into(),
+                size_id: sample(&app, "scb.ccsidr", "0xf007e009"),
+            },
+        ],
+    };
+    assert_eq!(view.caches[0].size_bytes(), Some(16384));
+    view.caches[0].size_id.stale();
+    assert_eq!(view.caches[0].size_bytes(), None);
+    view.caches[0].size_id.state = State::Valid;
+    app.snapshot.register_cache = Some(view);
+    let (engine, requests) = engine();
+    app.open_cache_view("");
+    assert!(app.register_view.mpu_popup.as_ref().unwrap().cache);
+    let text = render(&mut app, 112, 30);
+    assert!(text.contains("16 KiB"));
+    assert!(text.contains("4 KiB"));
+    assert!(text.contains("ICache="));
+    for (w, h) in [(35, 12), (80, 24)] {
+        render(&mut app, w, h);
+        app.key(
+            KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE),
+            Some(&engine),
+        );
+    }
+    assert!(requests.try_recv().is_err());
+    app.key(
+        KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE),
+        Some(&engine),
+    );
+    let req = requests.try_recv().unwrap();
+    assert_eq!(req.method, "registers_cache");
+    assert!(req.params.get("bank").is_none());
+    app.register_response(req.id, &json!({}), None);
+    app.snapshot.state = "RUNNING".into();
+    app.register_view.mpu_popup.as_mut().unwrap().scroll = 0;
+    let text = render(&mut app, 112, 30);
+    assert!(text.contains("Stale"));
+    assert!(!text.contains("KiB"));
+    assert!(!text.contains("ICache="));
+    assert!(text.contains("0xf00fe019"));
+    app.key(
+        KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE),
+        Some(&engine),
+    );
+    app.key(
+        KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+        Some(&engine),
+    );
+    assert!(requests.try_recv().is_err());
+}
+
+#[test]
+fn m7_cache_popup_refuses_other_cpus_and_unknown_identity_without_requests() {
+    let mut app = app();
+    app.open_cache_view("");
+    assert!(app.register_view.mpu_popup.is_none());
+    let mut project = Project::default();
+    project.registers.cpu = "cortex-m7".into();
+    let mut app = App::new(project, false);
+    app.snapshot.state = "STOPPED".into();
+    let (engine, requests) = engine();
+    app.open_cache_view("");
+    app.key(
+        KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE),
+        Some(&engine),
+    );
+    assert!(requests.try_recv().is_err());
+    assert!(
+        app.register_view
+            .mpu_popup
+            .as_ref()
+            .unwrap()
+            .error
+            .is_some()
+    );
+}
+
+#[test]
 fn m_mpu_overview_uses_explicit_read_and_shows_stale_raw_without_field_derivation() {
     let mut project = Project::default();
     project.registers.cpu = "cortex-m3".into();

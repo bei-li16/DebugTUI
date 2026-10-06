@@ -107,6 +107,8 @@ fn values(cpuid: u32, ictr: u32, mpu: u32, trace: bool) -> Value {
         (0xe000ef40, 0x10110021),
         (0xe000ef44, 0x11000011),
         (0xe000ef48, 0),
+        (0xe000ed78, 0x09000003),
+        (0xe000ed7c, 0x8303c003),
         (0xe000e100, 0x12345678),
     ] {
         result.insert(
@@ -197,7 +199,16 @@ fn shipped_m_models_probe_actual_ids_and_bound_nvic_reads_without_writes() {
             assert!(result["facts"]["dwt.comparators"].is_null());
             assert!(result["facts"]["vfp.present"].is_null());
         }
-        assert_eq!(reads(&mi).len(), if trace { 9 } else { 5 });
+        assert_eq!(
+            reads(&mi).len(),
+            if cpu == "cortex-m7" {
+                11
+            } else if trace {
+                9
+            } else {
+                5
+            }
+        );
         for sample in result["probe"]["samples"]
             .as_array()
             .unwrap()
@@ -289,7 +300,7 @@ fn heterogeneous_scope_all_probe_is_owned_and_keeps_svd_priority_source() {
     let mut reports = vec![];
     for (selection, name, endpoint, regions, priority, expected_reads) in [
         (0, "core0", "localhost:4910", 8, 4, 8),
-        (1, "core2", "localhost:4912", 16, 5, 9),
+        (1, "core2", "localhost:4912", 16, 5, 11),
     ] {
         call(
             &engine,

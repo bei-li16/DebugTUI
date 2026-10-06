@@ -860,6 +860,8 @@ Cortex-M3/M4/M7 使用 `:mpu`／`:mpu m`，Headless 使用 `bank="m"`。先在�
 
 M 核 Debug/DWT/FPB 目录区分实现、容量和使能状态：DHCSR 仅手动单次读，DWT 未有 DEMCR.TRCENA 的有效证明时显示 NeedEnable/Unknown，不自动使能。M4/M7 的 CPACR 可展开 CP10/CP11 权限字段，显示保留编码及手册来源；其指令权限不替代外部调试授权。有效 MVFR0 证明后，FPU 配置与 GDB D/S/FPSCR 读取分别核对实际通道；同批 D/S 复用父样本，缺名或失败不显示零。模块支持边界、来源与默认 SKIPPED 的环境驱动见 [M Debug/FPU 说明](docs/register-cortex-m-modules.md)。
 
+M7 使用 `:cache` 或 **M7 cache** 查看 I/D cache ID。先暂停在 physical frame 0 并 Probe，再显式 Read；单个受保护事务只选择已实现的 cache，并恢复/回读 CSSELR。普通 CCSIDR 同样复用此事务，返回原 selector 对应的值。CLIDR 表示实现，容量不代表使能；未知编码保留原值，过期值不继续派生容量。TCM/CACR 等配置仍在字段树读取；WO 维护命令不能读取或执行。没有独立 Tcl/AP 通道时此 bank 读取不支持。打开/滚动零 I/O，硬件驱动默认 SKIPPED；见 [M7 cache/TCM 说明](docs/register-cortex-m7-cache.md)。
+
 ### 编辑 Core 寄存器（开发分支）
 
 开发分支新增的 Core 寄存器编辑尚未进入 v0.9.3 release。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。

@@ -75,6 +75,37 @@ fn probe(catalogue: &Catalogue, cpuid: u64) -> Probe {
 }
 
 #[test]
+fn m7_cache_facts_require_adapted_clidr_ctr_and_matching_physical_identity() {
+    let c = Catalogue::builtin("cortex-m7").unwrap();
+    for (clidr, ctr, valid) in [
+        (0, 0x8303c003, true),
+        (0x09000001, 0x8303c003, true),
+        (0x09000002, 0x8303c003, true),
+        (0x09000003, 0x8303c003, true),
+        (3, 0x8303c003, false),
+        (0x09000004, 0x8303c003, false),
+    ] {
+        let mut p = probe(&c, 0x411fc271);
+        p.samples
+            .extend([sample(&c, "scb.clidr", clidr), sample(&c, "scb.ctr", ctr)]);
+        decode(&mut p, &c);
+        assert_eq!(p.facts.contains_key("mcache.clidr"), valid);
+        assert_eq!(p.facts["mcache.ctr"].value, ctr);
+    }
+    let mut p = probe(&c, 0x410fc241);
+    p.samples.extend([
+        sample(&c, "scb.clidr", 0x09000003),
+        sample(&c, "scb.ctr", 0x8303c003),
+    ]);
+    decode(&mut p, &c);
+    assert!(p.facts.is_empty());
+    let mut p = probe(&c, 0x411fc271);
+    p.samples.push(sample(&c, "scb.ctr", 0));
+    decode(&mut p, &c);
+    assert!(!p.facts.contains_key("mcache.ctr"));
+}
+
+#[test]
 fn m_cpacr_permission_fields_preserve_reserved_values_and_have_exact_manual_sources() {
     for (cpu, page) in [("cortex-m4", 264), ("cortex-m7", 287)] {
         let c = Catalogue::builtin(cpu).unwrap();

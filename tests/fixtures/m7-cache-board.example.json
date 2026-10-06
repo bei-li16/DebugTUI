@@ -1,0 +1,28 @@
+{
+  "software_example": true,
+  "cpu": "cortex-m7",
+  "revision": "r0p1 software fixture; replace for board",
+  "probe": "software TCP fixture; replace with hardware probe ID",
+  "openocd_version": "Python Tcl 8.6 software fixture; replace for board",
+  "gdb_version": "tests/mock-gdb.cjs software fixture; replace for board",
+  "frame_function": "main",
+  "evidence_source": "Independent software fixture constants; replace with reviewed board TRM/configuration",
+  "target": "cpu0",
+  "ap": 0,
+  "cpuid": "0x410fc271",
+  "clidr": "0x09000003",
+  "ctr": "0x8303c003",
+  "csselr": "0x00000001",
+  "caches": [
+    {"selector": 0, "ccsidr": "0xf00fe019"},
+    {"selector": 1, "ccsidr": "0xf007e009"}
+  ],
+  "configuration": {
+    "scb.ccr": "0x00030000",
+    "scb.cacr": "0x00000005",
+    "scb.itcmcr": "0x00000033",
+    "scb.dtcmcr": "0x00000043",
+    "scb.ahbpcr": "0x00000001",
+    "scb.ahbscr": "0x00ab1001"
+  }
+}

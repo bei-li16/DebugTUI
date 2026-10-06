@@ -84,6 +84,39 @@ impl Engine {
     }
 
     pub(super) fn invalidate_mpu_view(&mut self) {
+        if let Some(view) = self
+            .snapshot
+            .register_cache
+            .as_ref()
+            .filter(|v| v.state == State::Valid)
+        {
+            let facts = self.effective_register_facts();
+            let valid = self.snapshot.state == "STOPPED"
+                && view.valid_for(&self.register_context())
+                && self
+                    .register_catalogue
+                    .as_ref()
+                    .ok()
+                    .and_then(|c| c.as_ref())
+                    .is_some_and(|(c, _)| c.cpu == "cortex-m7")
+                && facts.get("mcache.clidr").copied()
+                    == view
+                        .clidr
+                        .value
+                        .as_ref()
+                        .and_then(|v| v.integer().ok())
+                        .and_then(|v| u64::try_from(v).ok())
+                && facts.get("mcache.ctr").copied()
+                    == view
+                        .ctr
+                        .value
+                        .as_ref()
+                        .and_then(|v| v.integer().ok())
+                        .and_then(|v| u64::try_from(v).ok());
+            if !valid {
+                self.snapshot.register_cache.as_mut().unwrap().stale();
+            }
+        }
         let Some(view) = self
             .snapshot
             .register_mpu
@@ -551,6 +584,15 @@ impl Engine {
                 Reader::Banked { name } => self.read_banked_register(name)?,
                 Reader::Vfp { name } => self.read_vfp_register(name, values)?,
                 Reader::CorePrivate { address } => {
+                    // Any definition/alias at the indexed CCSIDR address uses the
+                    // same protected transaction; never expose an unlabeled bank.
+                    if catalogue.cpu == "cortex-m7"
+                        && catalogue
+                            .register("scb.ccsidr")
+                            .is_some_and(|r| r.reader == register.reader)
+                    {
+                        return self.m_cache_selected_value();
+                    }
                     let binding = crate::registers::core_private::binding(
                         &self.project.registers,
                         &self.project.memory_access,

@@ -4,6 +4,7 @@ use crate::registers::{
     Catalogue, Context, Implementation, Sample, State,
     mpu::{Bank, View},
 };
+mod m_cache;
 mod m_profile;
 
 #[derive(Deserialize)]
@@ -244,7 +245,7 @@ impl Engine {
         }
         result
     }
-    fn mpu_physical_context(&mut self) -> Result<String, String> {
+    pub(super) fn mpu_physical_context(&mut self) -> Result<String, String> {
         let thread = self.write_thread()?;
         if self
             .mi("-stack-info-frame")?

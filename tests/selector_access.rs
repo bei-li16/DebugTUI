@@ -25,6 +25,8 @@ mod banked_cases;
 mod cancel_cases;
 #[path = "selector_access/gic_cases.rs"]
 mod gic_cases;
+#[path = "selector_access/m_cache_cases.rs"]
+mod m_cache_cases;
 #[path = "selector_access/m_profile_mpu_cases.rs"]
 mod m_profile_mpu_cases;
 #[path = "selector_access/matrix_cases.rs"]
@@ -192,7 +194,7 @@ fn fixture(fault: &'static str) -> Fixture {
                     .as_ref()
                     .is_some_and(|request| match request.method.as_str() {
                         "registers_select" => script.contains("arm mcr"),
-                        "registers_mpu" => {
+                        "registers_mpu" | "registers_cache" => {
                             script.contains("arm mrc") || script.contains("write_memory")
                         }
                         "registers_read" => {
@@ -214,14 +216,18 @@ fn fixture(fault: &'static str) -> Fixture {
             tcl_output.read_line(&mut response).unwrap();
             let result: Value = serde_json::from_str(&response).unwrap();
             *captured.lock().unwrap() = result["state"].clone();
-            if active_fault == "m_disconnect_reply" && script.contains("write_memory") {
+            if matches!(active_fault, "m_disconnect_reply" | "c_disconnect_reply")
+                && script.contains("write_memory")
+            {
                 connections.remove(index);
                 continue;
             }
             let code = if result["ok"] == true { 0 } else { 1 };
             let response = format!(
                 "__DEBUGTUI_RPC__{code}:{}",
-                if active_fault == "m_incomplete_reply" && script.contains("write_memory") {
+                if matches!(active_fault, "m_incomplete_reply" | "c_incomplete_reply")
+                    && script.contains("write_memory")
+                {
                     "410fc231 00000800"
                 } else {
                     result["value"].as_str().unwrap()

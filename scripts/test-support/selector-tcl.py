@@ -22,6 +22,9 @@ def evaluate(data):
         for key, value in {'prselr': 1, 'hprselr': 2, 'pmselr': 31, 'el1_count': 24,
                            'el2_count': 20, 'pmu_count': 4, 'sync': 32, 'status': 'halted'}.items():
             cpu.setdefault(key, value)
+        cpu.setdefault('c_sel', 1)
+        if 'set __dtc_target' in data['script']:
+            cpu.update(c_reads=0,c_writes=0,c_failed=False,c_restoring=False)
     original = {name: {key: cpu[key] for key in ('prselr', 'hprselr', 'pmselr')}
                 for name, cpu in state['targets'].items()}
     changed = False
@@ -40,6 +43,21 @@ def evaluate(data):
         cpu.setdefault('m_original', cpu['m_rnr'])
         count = cpu.get('m_count', 8)
         if op == 'write_memory':
+            if int(args[0], 0) == 0xe000ed84:
+                assert len(args) == 3 and args[1] == '32'
+                value = int(args[2],0)
+                assert value in (0,1)
+                cache_count = (cpu.get('c_clidr',0x09000003)&3).bit_count()
+                restoring_cache = cpu.get('c_failed',False) or cpu.get('c_reads',0) >= cache_count
+                if fault == 'c_restore_write' and restoring_cache:
+                    return (1,'fixture refuses CSSELR restoration')
+                cpu['c_sel'] = value
+                cpu['c_restoring'] = restoring_cache
+                cpu['c_writes'] = cpu.get('c_writes',0)+1
+                if fault == 'c_select_after_write' and not restoring_cache:
+                    cpu['c_failed'] = True
+                    return (1,'fixture cache write applied before error')
+                return (0,'')
             assert len(args) == 3 and int(args[0], 0) == 0xe000ed98 and args[1] == '32'
             value = int(args[2], 0)
             assert 0 <= value < count
@@ -59,7 +77,29 @@ def evaluate(data):
         values = {0xe000ed00: model, 0xe000e004: 2, 0xe000ed90: count << 8,
                   0xe000ed94: 5, 0xe000ed98: cpu['m_rnr'], 0xe000edfc: 0,
                   0xe0002000: 0x10000060, 0xe0001000: 0x40000000,
-                  0xe000ef40: 0x10110021, 0xe000ef44: 0x11000011, 0xe000ef48: 0}
+                  0xe000ef40: 0x10110021, 0xe000ef44: 0x11000011, 0xe000ef48: 0,
+                  0xe000ed78: cpu.get('c_clidr',0x09000003), 0xe000ed7c: cpu.get('c_ctr',0x8303c003),
+                  0xe000ed84: cpu['c_sel'],0xe000ed14:0x30000,
+                  0xe000ef90:0x33,0xe000ef94:0x43,0xe000ef98:1,0xe000ef9c:5,0xe000efa0:0xab1001}
+        if address == 0xe000ed80:
+            if fault == 'c_data_read' and cpu['c_sel'] == 1:
+                cpu['c_failed'] = True
+                return (1,'fixture CCSIDR read refused')
+            values[address] = cpu.get('c_data' if cpu['c_sel']==0 else 'c_instruction',0xf00fe019 if cpu['c_sel']==0 else 0xf007e009)
+            cpu['c_reads'] = cpu.get('c_reads',0)+1
+            if fault == 'c_context_change':
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}',encoding='utf-8')
+        if address == 0xe000ed84 and fault == 'c_select_readback' and cpu.get('c_writes') and not cpu.get('c_failed'):
+            cpu['c_failed'] = True
+            values[address] ^= 1
+        if address == 0xe000ed84 and fault == 'c_restore_readback' and cpu.get('c_restoring'):
+            values[address] ^= 1
+        if address == 0xe000ed84 and fault == 'c_invalid_original' and not cpu.get('c_writes'):
+            values[address] = 2
+        if address == 0xe000ed00 and fault == 'c_final_identity' and cpu.get('c_reads',0)>=2:
+            values[address] ^= 0x10
+        if address == 0xe000ed78 and fault == 'c_config_change':
+            values[address] ^= 3
         if address == 0xe000ed9c:
             if fault == 'm_base_read' and cpu['m_rnr'] == 2:
                 cpu['m_failed'] = True

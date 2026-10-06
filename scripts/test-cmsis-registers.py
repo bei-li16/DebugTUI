@@ -53,6 +53,23 @@ class Conversion(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"Pinned CMSIS input changed"):
             Header("core_cm3.h",lock)
 
+    def test_m7_cache_identity_fields_and_maintenance_are_separate(self):
+        lock=json.loads((INPUT/"source-lock.json").read_text())
+        definitions={r['id']:r for r in deltas(Header('core_cm7.h',lock),common(self.header))}
+        clidr=definitions['scb.clidr']
+        self.assertEqual(clidr['reader'],dict(kind='core_private',address=0xe000ed78))
+        self.assertEqual([(f['name'],f['segments']) for f in clidr['fields']][:2],
+                         [('ICache',[dict(offset=0,width=1)]),('DCache',[dict(offset=1,width=1)])])
+        for name in ('clidR','ctr','ccsidr','csselr'):
+            item=definitions['scb.'+name.lower()]
+            self.assertEqual(item['source']['number'],'DUI 0646B')
+            self.assertNotIn('reset',item)
+            self.assertNotIn('writer',item)
+        for name in ('iciallu','icimvau','dcimvac','dcisw','dccmvau','dccmvac','dccsw','dccimvac','dccisw'):
+            self.assertEqual(definitions['scb.'+name]['access'],'wo')
+        m4={r['id']:r for r in deltas(Header('core_cm4.h',lock),common(self.header))}
+        self.assertNotIn('scb.clidr',m4)
+
 
 if __name__ == "__main__":
     unittest.main()

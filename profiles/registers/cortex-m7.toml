@@ -175,12 +175,12 @@ group = "m_cache"
 bits = 32
 access = "ro"
 scope = "core"
-description = "SCB CLIDR; reset and implementation-specific values are not assumed."
+description = "SCB CLIDR; reset and implementation-specific values are not assumed. ICache/DCache describe implementation, independently of CCR enable bits."
 reader = { kind = "core_private", address = 3758157176 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CLIDR and field masks", line = 490, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L490" }
+source = { document = "Cortex-M7 Devices Generic User Guide", version = "B", number = "DUI 0646B", section = "4.5.1, Table 4-40, printed pages 4-37/4-38", page = 269, url = "https://documentation-service.arm.com/static/61efd6602dd99944d051417b" }
 confidence = "high"
-fields = [{ name = "LOC", segments = [{ offset = 24, width = 3 }] }, { name = "LOUU", segments = [{ offset = 27, width = 3 }] }]
+fields = [{ name = "ICache", segments = [{ offset = 0, width = 1 }] }, { name = "DCache", segments = [{ offset = 1, width = 1 }] }, { name = "LoC", segments = [{ offset = 24, width = 3 }] }, { name = "LoU", segments = [{ offset = 27, width = 3 }] }]
 
 [[registers]]
 id = "scb.ctr"
@@ -192,7 +192,7 @@ scope = "core"
 description = "SCB CTR; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157180 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CTR and field masks", line = 491, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L491" }
+source = { document = "Cortex-M7 Devices Generic User Guide", version = "B", number = "DUI 0646B", section = "4.5.2, Table 4-41, printed page 4-38", page = 269, url = "https://documentation-service.arm.com/static/61efd6602dd99944d051417b" }
 confidence = "high"
 fields = [{ name = "IMINLINE", segments = [{ offset = 0, width = 4 }] }, { name = "DMINLINE", segments = [{ offset = 16, width = 4 }] }, { name = "ERG", segments = [{ offset = 20, width = 4 }] }, { name = "CWG", segments = [{ offset = 24, width = 4 }] }, { name = "FORMAT", segments = [{ offset = 29, width = 3 }] }]
 
@@ -203,10 +203,10 @@ group = "m_cache"
 bits = 32
 access = "ro"
 scope = "core"
-description = "SCB CCSIDR; reset and implementation-specific values are not assumed."
+description = "SCB CCSIDR; reset and implementation-specific values are not assumed. Indexed by CSSELR. DebugTUI reads implemented I/D banks in one protected save/select/read/restore transaction. See :cache."
 reader = { kind = "core_private", address = 3758157184 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CCSIDR and field masks", line = 492, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L492" }
+source = { document = "Cortex-M7 Devices Generic User Guide", version = "B", number = "DUI 0646B", section = "4.5.3, Tables 4-42/4-43, printed pages 4-39/4-40", page = 270, url = "https://documentation-service.arm.com/static/61efd6602dd99944d051417b" }
 confidence = "high"
 fields = [{ name = "LINESIZE", segments = [{ offset = 0, width = 3 }] }, { name = "ASSOCIATIVITY", segments = [{ offset = 3, width = 10 }] }, { name = "NUMSETS", segments = [{ offset = 13, width = 15 }] }, { name = "WA", segments = [{ offset = 28, width = 1 }] }, { name = "RA", segments = [{ offset = 29, width = 1 }] }, { name = "WB", segments = [{ offset = 30, width = 1 }] }, { name = "WT", segments = [{ offset = 31, width = 1 }] }]
 
@@ -220,7 +220,7 @@ scope = "core"
 description = "SCB CSSELR; reset and implementation-specific values are not assumed."
 reader = { kind = "core_private", address = 3758157188 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CSSELR and field masks", line = 493, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L493" }
+source = { document = "Cortex-M7 Devices Generic User Guide", version = "B", number = "DUI 0646B", section = "4.5.4, Table 4-44, printed page 4-40", page = 271, url = "https://documentation-service.arm.com/static/61efd6602dd99944d051417b" }
 confidence = "high"
 fields = [{ name = "IND", segments = [{ offset = 0, width = 1 }] }, { name = "LEVEL", segments = [{ offset = 1, width = 3 }] }]
 

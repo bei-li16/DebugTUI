@@ -1,7 +1,7 @@
 use super::*;
 use debugtui::{config::MemoryAccess, registers::Component};
 
-fn m_fixture(cpu: &str, count: u8) -> Fixture {
+pub(super) fn m_fixture(cpu: &str, count: u8) -> Fixture {
     let mut f = fixture("");
     f.project.registers.cpu = cpu.into();
     f.project.registers.cp15_command.clear();

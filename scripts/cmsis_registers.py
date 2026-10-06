@@ -220,7 +220,22 @@ def deltas(header, baseline):
         result.append(item)
     if header.name == "core_cm7.h":
         for name in ["CLIDR", "CTR", "CCSIDR", "CSSELR", "CACR", "ITCMCR", "DTCMCR", "AHBPCR", "AHBSCR"]:
-            result.append(ppb(header, "SCB_Type", "SCB", name, "m_cache"))
+            item = ppb(header, "SCB_Type", "SCB", name, "m_cache")
+            if name in ["CLIDR", "CTR", "CCSIDR", "CSSELR"]:
+                section, page = {"CLIDR":("4.5.1, Table 4-40, printed pages 4-37/4-38",269),
+                                 "CTR":("4.5.2, Table 4-41, printed page 4-38",269),
+                                 "CCSIDR":("4.5.3, Tables 4-42/4-43, printed pages 4-39/4-40",270),
+                                 "CSSELR":("4.5.4, Table 4-44, printed page 4-40",271)}[name]
+                item["source"] = dict(document="Cortex-M7 Devices Generic User Guide", version="B", number="DUI 0646B",
+                                      section=section,page=page,url="https://documentation-service.arm.com/static/61efd6602dd99944d051417b")
+            if name == "CLIDR":
+                # CMSIS omits the M7-specific I/D implementation bits.
+                item["fields"] = [dict(name=name,segments=[dict(offset=offset,width=width)]) for name,offset,width in
+                                  [("ICache",0,1),("DCache",1,1),("LoC",24,3),("LoU",27,3)]]
+                item["description"] += " ICache/DCache describe implementation, independently of CCR enable bits."
+            if name == "CCSIDR":
+                item["description"] += " Indexed by CSSELR. DebugTUI reads implemented I/D banks in one protected save/select/read/restore transaction. See :cache."
+            result.append(item)
         for name in ["ICIALLU", "ICIMVAU", "DCIMVAC", "DCISW", "DCCMVAU", "DCCMVAC", "DCCSW", "DCCIMVAC", "DCCISW"]:
             result.append(ppb(header, "SCB_Type", "SCB", name, "m_cache",
                               access="wo", description="Cache maintenance command definition only. This read-only feature never issues it."))

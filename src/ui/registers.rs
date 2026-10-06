@@ -23,6 +23,7 @@ pub(super) const ACTIONS: &[(&str, &str)] = &[
     ("Probe caps", "register-probe"),
     ("Read bank", "register-bank-read"),
     ("MPU regions", "mpu"),
+    ("M7 cache", "cache"),
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -86,6 +87,11 @@ pub(super) struct RegisterView {
     vfp_write_targets: BTreeSet<String>,
 }
 impl RegisterView {
+    pub(super) fn cache_view_available(&self) -> bool {
+        self.catalogue
+            .as_ref()
+            .is_some_and(|c| c.cpu == "cortex-m7")
+    }
     pub(super) fn edit_candidate(
         &self,
         row: usize,

@@ -75,7 +75,7 @@ use theme::section;
 const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
 const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
 const VARIABLE_PANES: [usize; 2] = [1, 9];
-const COMMANDS: [&str; 52] = [
+const COMMANDS: [&str; 53] = [
     "edit-value",
     "cores",
     "core NAME_OR_INDEX",
@@ -124,6 +124,7 @@ const COMMANDS: [&str; 52] = [
     "register-status",
     "register-bank-read",
     "mpu",
+    "cache",
     "peripheral-refresh",
     "build",
     "help",
@@ -783,6 +784,7 @@ impl App {
             "register-status" => self.open_register_status(),
             "register-bank-read" => self.read_register_bank(engine),
             "mpu" => self.open_mpu_view(arg),
+            "cache" => self.open_cache_view(arg),
             "scope" => self.submit(engine, "control_scope", json!({"scope":arg})),
             "scope-toggle" => self.submit(engine, "control_scope", json!({"scope":if self.group_control() { "core" } else { "all" }})),
             "appearance" => self.open_appearance(),
@@ -1420,6 +1422,7 @@ impl App {
                 self.register_view.enabled()
             }
             "mpu" => self.register_view.enabled(),
+            "cache" => self.register_view.cache_view_available(),
             "register-refresh" => {
                 self.register_view.enabled()
                     && self.snapshot.state == "STOPPED"

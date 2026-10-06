@@ -16,6 +16,8 @@ pub const PROBE_IDS: &[&str] = &[
     "fpu.mvfr0",
     "fpu.mvfr1",
     "fpu.mvfr2",
+    "scb.clidr",
+    "scb.ctr",
 ];
 pub const FACT_KEYS: &[&str] = &[
     "nvic.banks",
@@ -31,6 +33,8 @@ pub const FACT_KEYS: &[&str] = &[
     "vfp.d_registers",
     "vfp.single",
     "vfp.double",
+    "mcache.clidr",
+    "mcache.ctr",
 ];
 
 pub(super) fn current_facts(
@@ -216,6 +220,8 @@ pub(super) fn field_allowed(
             raw(catalogue, samples, context, "dcb.demcr").is_some_and(|n| n & (1 << 24) != 0)
         }
         "fpb.ctrl" => n >> 28 <= 1,
+        "scb.clidr" => catalogue.cpu == "cortex-m7" && super::m_cache::valid_clidr(n),
+        "scb.ctr" => catalogue.cpu == "cortex-m7" && n == 0x8303c003,
         // The non-FPU response is not established by a zero value or an access error.
         "fpu.mvfr0" => {
             catalogue.cpu != "cortex-m3"
@@ -379,6 +385,18 @@ pub fn decode(probe: &mut Probe, catalogue: &Catalogue) {
                     "MVFR0.FPDP",
                 );
             }
+            "scb.clidr" => insert(
+                "mcache.clidr",
+                n,
+                id,
+                "DUI 0646B CLIDR: observed M7 L1 I/D implementation, not enable state",
+            ),
+            "scb.ctr" => insert(
+                "mcache.ctr",
+                n,
+                id,
+                "DUI 0646B CTR: observed adapted M7 cache architecture encoding",
+            ),
             _ => {}
         }
     }

@@ -19,6 +19,7 @@ pub mod banked;
 pub mod capabilities;
 mod catalogue_loader;
 mod core_config;
+pub mod m_cache;
 pub mod m_profile;
 pub use core_config::CoreConfig;
 pub mod core_private;

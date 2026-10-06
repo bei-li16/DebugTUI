@@ -5,6 +5,7 @@ use crate::registers::mpu::{Bank, View};
 pub(super) struct Popup {
     bank: Bank,
     m_profile: bool,
+    cache: bool,
     count: Option<(Context, u8)>,
     scroll: usize,
     max_scroll: usize,
@@ -59,6 +60,7 @@ impl App {
         self.register_view.mpu_popup = Some(Popup {
             bank,
             m_profile,
+            cache: false,
             count: None,
             scroll: 0,
             max_scroll: 0,
@@ -67,6 +69,20 @@ impl App {
             pending: None,
             error: None,
         });
+    }
+    pub(in crate::ui) fn open_cache_view(&mut self, arg: &str) {
+        if !arg.trim().is_empty()
+            || self
+                .register_view
+                .catalogue
+                .as_ref()
+                .is_none_or(|c| c.cpu != "cortex-m7")
+        {
+            self.notice = "Use :cache with the Cortex-M7 catalogue".into();
+            return;
+        }
+        self.open_mpu_view("");
+        self.register_view.mpu_popup.as_mut().unwrap().cache = true;
     }
     fn request_mpu_regions(&mut self, engine: Option<&EngineHandle>) {
         if self.demo
@@ -82,6 +98,7 @@ impl App {
         };
         let bank = popup.bank;
         let m_profile = popup.m_profile;
+        let cache = popup.cache;
         let context = self.register_context();
         if context.frame != 0
             || self.snapshot.register_probe.as_ref().is_none_or(|p| {
@@ -98,7 +115,9 @@ impl App {
                             i.model.as_deref() != Some("Cortex-R52")
                         }
                     })
-                    || !p.facts.contains_key(if m_profile {
+                    || !p.facts.contains_key(if cache {
+                        "mcache.clidr"
+                    } else if m_profile {
                         "mpu.regions"
                     } else {
                         bank.count_fact()
@@ -106,7 +125,7 @@ impl App {
             })
         {
             self.register_view.mpu_popup.as_mut().unwrap().error =
-                Some("Probe this physical core at frame 0 before reading regions".into());
+                Some("Probe this physical core at frame 0 before reading banks".into());
             return;
         }
         let id = self.next_id;
@@ -116,8 +135,8 @@ impl App {
         popup.error = None;
         self.submit(
             engine,
-            "registers_mpu",
-            json!({"context":context,"bank":if m_profile {json!("m")} else {json!(bank)},"read":true}),
+            if cache { "registers_cache" } else { "registers_mpu" },
+            if cache { json!({"context":context,"read":true}) } else { json!({"context":context,"bank":if m_profile {json!("m")} else {json!(bank)},"read":true}) },
         );
         if !self.pending_commands.contains(&id) {
             self.register_view.pending = None;
@@ -373,6 +392,88 @@ fn m_content(
     lines.push("Configuration samples; region fields use the selected core catalogue. No effective-address permission claim.".into());
     lines
 }
+fn cache_content(
+    view: &crate::registers::m_cache::View,
+    catalogue: &Catalogue,
+    current: bool,
+) -> Vec<String> {
+    let mut lines = vec![
+        format!(
+            "{} Cortex-M7 · {:?}",
+            view.owner,
+            if current { State::Valid } else { State::Stale }
+        ),
+        format!(
+            "CSSELR saved={} restored={}",
+            view.original_selector
+                .as_ref()
+                .map(|v| v.hex.as_str())
+                .unwrap_or("not read"),
+            view.restored_selector
+                .as_ref()
+                .map(|v| v.hex.as_str())
+                .unwrap_or("not read")
+        ),
+    ];
+    let mut samples = vec![
+        ("CPUID".to_string(), &view.identity),
+        ("CLIDR".into(), &view.clidr),
+        ("CTR".into(), &view.ctr),
+    ];
+    for cache in &view.caches {
+        samples.push((
+            format!(
+                "L1 {} CCSIDR · size={}",
+                cache.kind,
+                if current {
+                    cache
+                        .size_bytes()
+                        .map(|n| format!("{} KiB", n / 1024))
+                        .unwrap_or("unknown encoding".into())
+                } else {
+                    "stale".into()
+                }
+            ),
+            &cache.size_id,
+        ));
+    }
+    for (label, sample) in samples {
+        let mut sample = sample.clone();
+        if !current {
+            sample.stale();
+        }
+        lines.push(format!(
+            "{label}: {}",
+            evidence(Some(&sample), &view.context)
+        ));
+        if current
+            && let Some(raw) = &sample.value
+            && let Some(register) = catalogue.register(&sample.id)
+        {
+            let fields: Vec<_> = register
+                .fields
+                .iter()
+                .filter_map(|f| {
+                    let value = f.extract(raw).ok()?;
+                    Some(format!(
+                        "{}={}{}",
+                        f.name,
+                        value.hex,
+                        f.enum_name(&value)
+                            .map(|n| format!(" ({n})"))
+                            .unwrap_or_default()
+                    ))
+                })
+                .collect();
+            lines.push(format!("  {}", fields.join(" · ")));
+        }
+    }
+    if view.caches.is_empty() {
+        lines.push("No implemented cache observed; CSSELR/CCSIDR were not accessed".into());
+    }
+    lines.push("Cache capacity is separate from enable state. No cache maintenance or configuration writes.".into());
+    lines
+}
 pub(super) fn wrap(lines: Vec<String>, width: usize) -> Vec<Line<'static>> {
     use unicode_width::UnicodeWidthChar;
     let mut result = vec![];
@@ -399,6 +500,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
     };
     let bank = popup.bank;
     let m_profile = popup.m_profile;
+    let cache = popup.cache;
     let fresh = app
         .snapshot
         .register_probe
@@ -420,14 +522,19 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
                 })
         })
         .and_then(|p| {
-            p.facts.get(if m_profile {
+            p.facts.get(if cache {
+                "mcache.clidr"
+            } else if m_profile {
                 "mpu.regions"
             } else {
                 bank.count_fact()
             })
         })
         .and_then(|f| {
-            if m_profile {
+            if cache {
+                crate::registers::m_cache::valid_clidr(f.value)
+                    .then(|| (f.value & 3).count_ones() as u8)
+            } else if m_profile {
                 u8::try_from(f.value)
                     .ok()
                     .filter(|n| matches!(n, 0 | 8 | 16))
@@ -438,6 +545,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
     if let Some(n) = fresh {
         app.register_view.mpu_popup.as_mut().unwrap().count = Some((context.clone(), n));
     } else if m_profile
+        && !cache
         && let Some(view) = &app.snapshot.register_mpu
         && view.context.core == context.core
         && app
@@ -451,7 +559,27 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
     }
     let popup = app.register_view.mpu_popup.as_ref().unwrap();
     let mut lines = vec![];
-    if let Some((observed, count)) = &popup.count {
+    if cache {
+        if let Some(view) = &app.snapshot.register_cache
+            && view.context.core == context.core
+            && let Some(catalogue) = &app.register_view.catalogue
+        {
+            let current = fresh.is_some()
+                && view.valid_for(&context)
+                && app.snapshot.register_probe.as_ref().is_some_and(|p| {
+                    p.facts.get("mcache.clidr").map(|f| u128::from(f.value))
+                        == view.clidr.value.as_ref().and_then(|v| v.integer().ok())
+                        && p.facts.get("mcache.ctr").map(|f| u128::from(f.value))
+                            == view.ctr.value.as_ref().and_then(|v| v.integer().ok())
+                });
+            lines.extend(cache_content(view, catalogue, current));
+        } else {
+            lines.push(
+                "Probe this physical M7 core, then Read I/D cache IDs and restore CSSELR".into(),
+            );
+            lines.push("Opening this view reads nothing. TCM/configuration fields are in the register tree.".into());
+        }
+    } else if let Some((observed, count)) = &popup.count {
         if *observed != context || fresh.is_none() {
             lines.push("Region count is last-known; probe current stop before reading".into());
         }
@@ -499,7 +627,15 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         );
     }
     if popup.pending.is_some() {
-        lines.insert(0, "Reading current-core MPU registers…".into());
+        lines.insert(
+            0,
+            if cache {
+                "Reading current-core cache IDs…"
+            } else {
+                "Reading current-core MPU registers…"
+            }
+            .into(),
+        );
     }
     if let Some(error) = &popup.error {
         lines.insert(0, format!("Error: {error}"));
@@ -514,7 +650,14 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         h,
     );
     theme::overlay(f, rect);
-    let card = theme::card(" MPU regions · ↑↓ scroll · Tab actions · Esc close ", true);
+    let card = theme::card(
+        if cache {
+            " M7 cache · ↑↓ scroll · Tab actions · Esc close "
+        } else {
+            " MPU regions · ↑↓ scroll · Tab actions · Esc close "
+        },
+        true,
+    );
     let inner = card.inner(rect);
     f.render_widget(card, rect);
     if inner.width == 0 || inner.height == 0 {
@@ -537,7 +680,9 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         Rect::new(inner.x, inner.y, inner.width, visible),
     );
     let labels = [
-        if m_profile {
+        if cache {
+            "L1 I / D"
+        } else if m_profile {
             "M regions"
         } else if bank == Bank::El1 {
             "EL1 / EL2"
