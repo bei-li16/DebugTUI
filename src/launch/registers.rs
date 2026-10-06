@@ -16,14 +16,30 @@ fn target_key(project: &Project) -> serde_json::Value {
     // actual access route must never lend the old target's identity to it.
     access.cpu.clear();
     access.catalogue.clear();
+    let mut cores = project.cores.clone();
+    for core in &mut cores {
+        if let Some(registers) = &mut core.registers {
+            registers.cpu = None;
+            registers.catalogue = None;
+            if serde_json::to_value(&*registers)
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .is_empty()
+            {
+                core.registers = None;
+            }
+        }
+    }
     serde_json::json!({
         "debug": project.debug,
-        "cores": project.cores,
+        "cores": cores,
         "target": project.target,
         "service": project.service,
         "gdb": project.gdb,
         "register_access": access,
         "live_watch": project.live_watch,
+        "memory_access": project.memory_access,
     })
 }
 
@@ -168,7 +184,7 @@ pub(super) fn preview(
             .map(|core| core.name.as_str())
             .collect()
     };
-    for core in cores {
+    for &core in &cores {
         let config = project.registers_for_core(core);
         // The caller may be previewing an unsaved root CPU/catalogue choice.
         // Reuse that authoritative preview unless this core explicitly selects one.
@@ -198,6 +214,12 @@ pub(super) fn preview(
             Err(error) => lines.push(format!(
                 "Effective CPU [{core}]: configuration error: {error}"
             )),
+        }
+        if let Some(warning) = effective_cpu
+            .and_then(|cpu| mismatch(&format!("configured CPU [{core}]"), &config.cpu, cpu))
+        {
+            lines.push(warning);
+            lines.push(format!("Catalogue selection [{core}] takes precedence over the CPU preset; review its declaration."));
         }
         lines.push(format!(
             "Register route [{core}]: endpoint {}; target {}; MRC {}",
@@ -281,6 +303,13 @@ pub(super) fn preview(
     lines.push(
         "Esc / Close returns to the draft. Save config or Start persists the selection.".into(),
     );
+    lines.push(
+        "Setup configuration sources describe the current project draft; Save config persists it."
+            .into(),
+    );
+    for core in cores {
+        lines.extend(project.register_configuration_lines(core));
+    }
     lines
 }
 

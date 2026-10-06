@@ -1,5 +1,8 @@
 #![cfg(windows)]
 //! Real engine/MI pipe integration against a strict local fixture; no board.
+#[path = "support/artifacts.rs"]
+mod test_artifacts;
+
 use debugtui::{
     config::Project,
     session::{self, Event, Request},
@@ -43,7 +46,7 @@ fn scalar_memory_and_peripheral_reads_validate_context_address_and_record_the_ac
     ] {
         for method in ["memory_read", "peripheral_read"] {
             let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-            let output = root.join("artifacts").join(format!(
+            let output = test_artifacts::root().join(format!(
                 "scalar memory {} {method} {scenario}",
                 std::process::id()
             ));
@@ -157,9 +160,8 @@ fn scalar_memory_and_peripheral_reads_validate_context_address_and_record_the_ac
 fn memory_dumps_use_complete_scoped_mi_responses_and_reject_running_results() {
     for running in [false, true] {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let output = root
-            .join("artifacts")
-            .join(format!("memory dump {} {running}", std::process::id()));
+        let output =
+            test_artifacts::root().join(format!("memory dump {} {running}", std::process::id()));
         fs::create_dir_all(&output).unwrap();
         let transcript = output.join("commands.txt");
         fs::write(&transcript, "").unwrap();
@@ -270,9 +272,7 @@ fn response(engine: &session::EngineHandle, id: u64, method: &str, params: Value
 #[test]
 fn all_core_control_scope_keeps_memory_reads_on_the_selected_core_and_rejects_old_contexts() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let output = root
-        .join("artifacts")
-        .join(format!("memory multicore {}", std::process::id()));
+    let output = test_artifacts::root().join(format!("memory multicore {}", std::process::id()));
     fs::create_dir_all(&output).unwrap();
     let transcript = output.join("commands.txt");
     fs::write(&transcript, "").unwrap();
@@ -361,9 +361,7 @@ fn all_core_control_scope_keeps_memory_reads_on_the_selected_core_and_rejects_ol
 #[test]
 fn catalogue_refresh_is_on_demand_and_snapshots_retain_precise_stale_values() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let output = root
-        .join("artifacts")
-        .join(format!("register access {}", std::process::id()));
+    let output = test_artifacts::root().join(format!("register access {}", std::process::id()));
     fs::create_dir_all(&output).unwrap();
     let transcript = output.join("commands.txt");
     fs::write(&transcript, "").unwrap();
@@ -493,9 +491,8 @@ fn catalogue_refresh_is_on_demand_and_snapshots_retain_precise_stale_values() {
 #[test]
 fn gdb_reader_returns_128_bits_and_derives_aliases_from_one_parent_sample() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let output = root
-        .join("artifacts")
-        .join(format!("register raw aliases {}", std::process::id()));
+    let output =
+        test_artifacts::root().join(format!("register raw aliases {}", std::process::id()));
     fs::create_dir_all(&output).unwrap();
     let transcript = output.join("commands.txt");
     fs::write(&transcript, "").unwrap();
@@ -649,9 +646,7 @@ reader = { kind = "alias", source = "d1", offset = 32 }
 #[test]
 fn running_notification_during_a_read_discards_the_result_and_stops_the_batch() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let output = root
-        .join("artifacts")
-        .join(format!("register run race {}", std::process::id()));
+    let output = test_artifacts::root().join(format!("register run race {}", std::process::id()));
     fs::create_dir_all(&output).unwrap();
     let transcript = output.join("commands.txt");
     fs::write(&transcript, "").unwrap();

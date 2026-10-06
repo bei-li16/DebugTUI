@@ -27,7 +27,7 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | A01 | 每核 CPU 选择与旧默认兼容 | 配置、实际 worker 与切核界面测试 |
 | [x] | A02 | 每核目录选择、空值及声明文件路径 | 路径/优先级/损坏文件/CLI 测试 |
 | [x] | A03 | 每核访问参数继承、覆盖及严格校验 | 路由分离、未知字段/错误参数零 I/O 拒绝 |
-| [ ] | A04 | 配置层及有效来源可见 | Setup/Status 各核有效值与来源测试 |
+| [x] | A04 | 配置层及有效来源可见 | Setup/Status 各核有效值与来源测试 |
 | [x] | A05 | 公共定义继承和循环/深度检查 | 有效继承、缺父定义、循环/超深拒绝 |
 | [x] | A06 | 显式 override 及继承来源 | 重名拒绝、显式覆盖、父文件来源 |
 | [x] | A07 | reset/source/confidence 元数据 | 合法/缺失/冲突、未知复位值和可信度校验 |
@@ -177,3 +177,16 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 初次夹具 Alias 字段/整数类型/私有弹窗字段编译错误已修正；错核 case 补齐合法核声明，错误旧值断言核对真正保留它的状态快照；故障通知在清理前撤销，避免夹具再次强制 RUNNING。旧停止态全请求拒绝断言更新为逐项 NeedHalt、零 access/value，断连仍拒绝；没有降低数据拒绝/来源/取消断言。初次失败记录 `readonly-running-first-cases-20261006.log`、`readonly-running-cases-20261006.log`、`readonly-running-register-regression-20261006.log` 保留。
 - [说明](register-running.md)、用户指南、[七项硬件 case](../tests/cases/register-running.md)、四阶段可执行驱动和独立期望模板完成。默认报告 `evidence/register-running-hardware-1791272135129-da5eb158/report.json` 为 0 passed/0 failed/4 skipped；实际 EXE 软件报告 `evidence/register-running-hardware-1791271984566-ec79cb51/report.json` 为 5 passed，故意错误 CPUID 报告 `evidence/register-running-hardware-1791271986230-d9bbf7b5/report.json` 为 3 passed/1 expected failure/2 skipped，测试正确拒绝该基线。所有 `board_tests_executed=false`；未上板、未升级 verified。核心三个绝对路径保留。
 - 剩余 **A04；B10；C01～C06；D01～D04；E01～E05**，17 项。下一批完成异构 CorePrivate/生命周期及有效配置来源，再统一 R52 当前 Debug 权限与事务；最终完整回归、升版/打包和非主分支 Release 仍未完成。最终提交/远端核验见本轮输出及 `readonly-running-evidence-20261006.json`，Goal 保持 active。
+
+
+## 迭代 10：每核有效配置、覆盖来源与冲突解释
+
+2026-10-06，完成 A04，累计 **20 完成 / 16 未完成**。本轮起点本地/远端为 `125fa09f245d34f2d39e7750233b095129199aaa`；前一目标轮次已推送新 Goal 文本。本轮沿用未提交的 A04 草稿，完成自检、回归及验收，不重做已完成 feature。
+
+- 新增只保存在内存的声明来源模型，跟随现有 profile 根、backend、项目与每核解析。CPU 芯片关联单独标默认，不冒充项目或观测；相对目录按声明文件解析；逐个 map key 保留值及覆盖来源，全局空表递归合并、每核 map 整表替换/清除可解释。运行时值与声明不一致时标明 origin unavailable，不借用旧声明授予权限，不持久化来源字段。
+- Setup F1、System Regs Status 和实际 `registers_list.configuration` 展示各核配置。配置 CPU 与实际目录 CPU 冲突有明确优先规则；草稿尚未保存可见；每核 CPU/目录编辑保留当前目标观测以解释冲突，memory_access 路由变化撤销旧身份。查看、切核和滚动均零目标 I/O，客户项目/profile 字节不变。原说明与重要诊断位置保留，来源可完整滚动。
+- 新增六项模型、两项 Setup、一项 Status Rust 测试，以及四项实际 EXE 用例；配置内层套件由 12 扩至 **16/16**。覆盖 root/backend/project/per-core、空表/清除、非连续核编号、芯片默认、显式 environment、未知来源、错误配置连接前拒绝、窄宽窗口及来回切核。CONFIG-H12/H13 已准备、SKIPPED，没有上板、自动 Probe 或升级硬件 verified。说明见 [配置来源](register-config-sources.md)。
+- 完整 `cargo test --locked` **483 单元＋234 集成＝717 通过、2 ignored**，退出码 0；含 selector 112 项、writer 42 项及生产分发 14 内层 case。末尾新增一项环境拒绝测试和相应 EXE 用例，生产来源实现恢复至该完整回归的规则；最终完整单元 **484/484**、配置集成 **2/2**（EXE **16/16**及实际双 TCP 路由）通过。最终树软件证据分批覆盖 **484 单元＋234 集成**，不是单次 718 项执行；此前分发包是软件替换夹具，不是历史正式版升级或最终 Release 的验收。最终发布前 E03 仍须完整回归。
+- 严格 `cargo clippy --locked --all-targets -- -D warnings` 通过，18.10 秒；`cargo fmt --all --check`、Node 语法和 `git diff --check` 通过。日志、最终源文件 SHA256、实际 EXE report/产物 SHA256及提交核验存于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\readonly-config-sources-evidence-20261006.json`。主要日志同目录：`readonly-config-sources-cargo-complete-20261006.log`、`readonly-config-sources-unit-complete-20261006.log`、`readonly-config-sources-configuration-complete-20261006.log`、`readonly-config-sources-clippy-20261006.log`。
+- 自检修正来源详情挤走原说明/诊断和旧固定 128 行扫描的断言；改为完整滚动核对，未移除原断言。G 盘空间不足使旧夹具写入失败，测试统一支持 `DEBUGTUI_TEST_ARTIFACT_ROOT` 后在 C 盘回归，不删除用户文件或旧缓存。并发 capability 套件一次超时，增加请求名诊断后独立及 4 并发完整回归通过，未放宽 10 秒约束。后续来源审计曾误认为环境允许 cores；实际加载器明确拒绝 root/backend cores，撤回无用来源扩展，新增严格拒绝用例，保持原配置约束。原始 StorageFull、UI 失败、超时及错误假设测试日志全部保留。
+- 剩余 **B10、C01～C06、D01～D04、E01～E05**，共 16 项。下一轮复用 M MPU/cache fixture，补齐真正 M7＋M4 同 PPB 地址的身份、目录、数值、错误和生命周期隔离。R52 当前 Debug 权限统一、最终回归、打包/升级及非主分支 Release 尚未完成；Goal 继续 active。本轮提交与远端 SHA 在最终输出及证据 manifest 记录。

@@ -1,4 +1,5 @@
 //! Real coordinator/MI/Tcl dispatch; the strict local servers do not model ARM execution.
+use super::test_artifacts;
 use debugtui::{
     config::{Core, Project},
     coordinator,
@@ -40,7 +41,7 @@ fn call(engine: &EngineHandle, id: u64, method: &str, params: Value) -> Value {
 #[test]
 fn per_core_register_routes_reach_distinct_actual_tcp_targets_and_receipts() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let out = root.join("artifacts").join(format!(
+    let out = test_artifacts::root().join(format!(
         "per-core-routes-{}-{:x}",
         std::process::id(),
         SystemTime::now()

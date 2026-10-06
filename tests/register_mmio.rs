@@ -1,6 +1,10 @@
 #![cfg(windows)]
 //! Production catalogues and real workers against independent MI/TCP fixtures.
+#[path = "support/artifacts.rs"]
+mod test_artifacts;
+
 mod mmio_owners {
+    use super::test_artifacts;
     use debugtui::{
         config::{Core, MemoryAccess, Project},
         coordinator,
@@ -20,7 +24,7 @@ mod mmio_owners {
 
     fn fixture(name: &str) -> (Project, PathBuf) {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let out = root.join("artifacts").join(format!(
+        let out = test_artifacts::root().join(format!(
             "mmio owners {name} {} {:x}",
             std::process::id(),
             SystemTime::now()

@@ -45,6 +45,7 @@ struct Target {
 pub struct Plan {
     selection: Selection,
     targets: BTreeMap<String, Target>,
+    pub(crate) register_layers: Vec<crate::config::register_sources::Layer>,
 }
 
 pub fn catalogue_path() -> Result<PathBuf, String> {
@@ -321,6 +322,15 @@ pub fn resolve(
     raw: &mut toml::Value,
     catalogue: Option<&Catalogue>,
 ) -> Result<Option<Plan>, String> {
+    let mut register_layers = environment
+        .get("registers")
+        .cloned()
+        .into_iter()
+        .map(|values| crate::config::register_sources::Layer {
+            section: "registers".into(),
+            values,
+        })
+        .collect::<Vec<_>>();
     let selection: Selection = raw
         .get("debug")
         .cloned()
@@ -360,6 +370,7 @@ pub fn resolve(
         }
         return Ok(None);
     }
+    let supplied_catalogue = catalogue.is_some();
     let owned;
     let catalogue = if let Some(c) = catalogue {
         c
@@ -369,9 +380,10 @@ pub fn resolve(
     };
     catalogue.selection(&selection)?;
     let device = &catalogue.devices[&selection.chip];
-    let cpu = catalogue
-        .cpu_association(&selection.chip)?
-        .map(|(cpu, _)| cpu)
+    let association = catalogue.cpu_association(&selection.chip)?;
+    let cpu = association
+        .as_ref()
+        .map(|(cpu, _)| cpu.clone())
         .unwrap_or_default();
     let group = backends
         .as_ref()
@@ -413,6 +425,12 @@ pub fn resolve(
         .transpose()
         .map_err(|e| format!("core_targets: {e}"))?
         .unwrap_or_default();
+    if let Some(values) = group.get("registers") {
+        register_layers.push(crate::config::register_sources::Layer {
+            section: format!("backends.{}.registers", device.backend),
+            values: values.clone(),
+        });
+    }
     crate::config::merge(environment, group);
     // Chip associations are defaults. Respect explicit project and selected
     // profile/backend selectors (including empty strings) before adding one.
@@ -426,6 +444,23 @@ pub fn resolve(
         }
     }
     if !cpu.is_empty() && !selected_registers {
+        let association_source: String = if association
+            .as_ref()
+            .is_some_and(|(_, source)| *source == "builtin")
+        {
+            "builtin:profiles/devices.toml".into()
+        } else if !supplied_catalogue {
+            format!("user:{}", portable_path(&catalogue_path()?))
+        } else {
+            "supplied device catalogue".into()
+        };
+        register_layers.push(crate::config::register_sources::Layer {
+            section: format!("chip association:{} ({association_source})", selection.chip),
+            values: toml::Value::Table(toml::Table::from_iter([(
+                "cpu".into(),
+                toml::Value::String(cpu.clone()),
+            )])),
+        });
         raw.as_table_mut()
             .ok_or("Project must be a table")?
             .entry("registers")
@@ -436,7 +471,11 @@ pub fn resolve(
     }
     expand_selection(environment, &selection, device);
     expand_selection(raw, &selection, device);
-    Ok(Some(Plan { selection, targets }))
+    Ok(Some(Plan {
+        selection,
+        targets,
+        register_layers,
+    }))
 }
 
 impl Plan {

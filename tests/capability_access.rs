@@ -1,5 +1,8 @@
 #![cfg(windows)]
 //! Current-target evidence through the real worker/MI pipe. No board is used.
+#[path = "support/artifacts.rs"]
+mod test_artifacts;
+
 use debugtui::{
     config::{Core, Project},
     session::{self, Event, Request},
@@ -21,8 +24,7 @@ fn fixture(flags: &[(&str, &str)]) -> (Project, PathBuf) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
     let output =
-        root.join("artifacts")
-            .join(format!("capabilities-{}-{}", std::process::id(), sequence));
+        test_artifacts::root().join(format!("capabilities-{}-{}", std::process::id(), sequence));
     fs::create_dir_all(&output).unwrap();
     let transcript = output.join("commands.txt");
     fs::write(&transcript, "").unwrap();
@@ -80,7 +82,7 @@ fn request(
         } = engine
             .events
             .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .unwrap()
+            .unwrap_or_else(|error| panic!("Request {id} ({method}) did not respond: {error}"))
             && found == id
         {
             return if ok {

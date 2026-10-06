@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 mod core_register_tests;
+pub(crate) mod register_sources;
 use std::{
     collections::BTreeMap,
     env, fs,
@@ -210,6 +211,8 @@ pub struct Project {
     #[serde(skip)]
     pub memory_access_source: String,
     pub registers: crate::registers::Config,
+    #[serde(skip)]
+    pub register_sources: register_sources::Sources,
     pub writes: crate::writes::Config,
     #[serde(skip)]
     pub path: Option<PathBuf>,
@@ -746,13 +749,71 @@ impl Project {
             }
             selected_path = Some(p);
         }
+        let root_registers = environment.get("registers").cloned();
         let plan = crate::devices::resolve(&mut environment, &mut raw, catalogue)?;
+        let mut register_sources = register_sources::Sources::default();
+        let layers = plan
+            .as_ref()
+            .map(|plan| plan.register_layers.clone())
+            .unwrap_or_else(|| {
+                root_registers
+                    .into_iter()
+                    .map(|values| register_sources::Layer {
+                        section: "registers".into(),
+                        values,
+                    })
+                    .collect()
+            });
+        for layer in &layers {
+            let chip_default = layer.section.starts_with("chip association:");
+            let source = if chip_default {
+                layer.section.clone()
+            } else {
+                format!(
+                    "profile:{} [{}]",
+                    selected_path
+                        .as_deref()
+                        .map(portable_path)
+                        .unwrap_or_else(|| "inline".into()),
+                    layer.section
+                )
+            };
+            let mut declaration = toml::Value::Table(toml::Table::from_iter([(
+                "registers".into(),
+                layer.values.clone(),
+            )]));
+            if let Some(profile) = &selected_path {
+                let directory = profile.parent().unwrap();
+                expand(&mut declaration, &portable_path(directory));
+                resolve_launch_paths(&mut declaration, directory);
+            }
+            register_sources.overlay(&declaration["registers"], source);
+        }
         if let Some(p) = &selected_path {
             let directory = p.parent().unwrap();
             expand(&mut environment, &portable_path(directory));
             resolve_launch_paths(&mut environment, directory);
         }
         resolve_launch_paths(&mut raw, &base);
+        if let Some(mut values) = raw.get("registers").cloned() {
+            // A chip default is inserted into raw by devices::resolve, but its
+            // declaration is not a project override.
+            if layers
+                .iter()
+                .any(|layer| layer.section.starts_with("chip association:"))
+            {
+                values.as_table_mut().unwrap().remove("cpu");
+            }
+            register_sources.overlay(
+                &values,
+                format!(
+                    "project:{} [registers]",
+                    path.as_deref()
+                        .map(portable_path)
+                        .unwrap_or_else(|| "inline".into())
+                ),
+            );
+        }
         merge(&mut environment, raw);
         let mut p: Self = environment
             .try_into()
@@ -766,6 +827,16 @@ impl Project {
         if let Some(plan) = plan {
             plan.apply(&mut p)?;
         }
+        register_sources.capture_cores(
+            &p,
+            format!(
+                "project:{}",
+                path.as_deref()
+                    .map(portable_path)
+                    .unwrap_or_else(|| "inline".into())
+            ),
+        );
+        p.register_sources = register_sources;
         p.memory_access_source = if project_channels {
             format!(
                 "project:{}",
@@ -1168,11 +1239,14 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn artifact_root() -> PathBuf {
+        env::var_os("DEBUGTUI_TEST_ARTIFACT_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("artifacts"))
+    }
     #[test]
     fn scoped_register_preferences_merge_concurrent_clients_and_preserve_root_ui() {
-        let base = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("artifacts")
-            .join(format!("register-preferences-{}", std::process::id()));
+        let base = artifact_root().join(format!("register-preferences-{}", std::process::id()));
         fs::create_dir_all(&base).unwrap();
         let path = base.join("project.toml");
         fs::write(&path, "version=1\n[target]\nmode='local'\n[ui]\nanimations='full'\n[ui.formats]\n'watch:counter'='binary'\n").unwrap();
@@ -1338,16 +1412,14 @@ mod tests {
     }
     #[test]
     fn register_configuration_paths_cover_tools_root_explicit_environment_and_project_overrides() {
-        let base = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("artifacts")
-            .join(format!(
-                "register config paths {} {:x}",
-                std::process::id(),
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap()
-                    .as_nanos()
-            ));
+        let base = artifact_root().join(format!(
+            "register config paths {} {:x}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
         fs::create_dir_all(base.join("tools 目录")).unwrap();
         fs::create_dir(base.join("project 目录")).unwrap();
         let local = base.join("project 目录/customer.toml");

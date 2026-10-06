@@ -1,5 +1,8 @@
 #![cfg(windows)]
 //! The actual CLI resolves isolated user profiles without starting GDB.
+#[path = "support/artifacts.rs"]
+mod test_artifacts;
+
 use std::{path::Path, process::Command};
 
 #[path = "register_configuration/per_core_routes.rs"]
@@ -20,6 +23,6 @@ fn actual_binary_register_configuration_priority_errors_and_multicore_identity_a
     assert!(
         String::from_utf8(output.stdout)
             .unwrap()
-            .contains("\"passed\":12,\"failed\":0,\"skipped\":0")
+            .contains("\"passed\":16,\"failed\":0,\"skipped\":0")
     );
 }

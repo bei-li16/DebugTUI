@@ -1,4 +1,7 @@
 #![cfg(windows)]
+#[path = "support/artifacts.rs"]
+mod test_artifacts;
+
 use debugtui::{
     config::Project,
     session::{self, Event, Request},
@@ -6,7 +9,6 @@ use debugtui::{
 use serde_json::json;
 use std::{
     fs,
-    path::PathBuf,
     time::{Duration, Instant},
 };
 
@@ -38,9 +40,7 @@ fn response(engine: &session::EngineHandle, id: u64) -> (bool, Vec<String>) {
 
 #[test]
 fn shell_tasks_use_source_root_stream_both_pipes_and_report_failure_timeout_and_cancel() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("artifacts")
-        .join(format!("task test 工程 {}", std::process::id()));
+    let root = test_artifacts::root().join(format!("task test 工程 {}", std::process::id()));
     fs::create_dir_all(root.join("scripts with spaces")).unwrap();
     fs::write(root.join("expected.flag"), "").unwrap();
     fs::write(root.join("scripts with spaces/run task.cmd"), "@echo off\r\nif not exist expected.flag exit /b 23\r\necho stdout-marker\r\necho stderr-marker 1>&2\r\necho %1>argument.txt\r\necho done>built.flag\r\n").unwrap();

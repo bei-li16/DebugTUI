@@ -1,5 +1,11 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：只读 Goal 的配置层与有效来源
+
+A04 已完成：Setup/Status 和 `registers_list.configuration` 展示每核有效配置、实际文件/section、逐层覆盖和每核整表替换；CPU/目录冲突、草稿和运行时未知来源分别解释，配置不冒充硬件或访问能力。详见 [配置来源](register-config-sources.md)。实时 feature 数和完整证据仅维护于 [36 项账本](registers-readonly-goal.md) 的迭代 10。
+
+最终单元 484 项通过、2 项既有 ignored；全仓 234 项集成通过，末尾新增拒绝测试后复验完整单元及配置集成 2 项（实际 EXE 内层 16 case）。严格 Clippy、格式、Node 语法及 diff 检查通过。未执行上板，CONFIG-H12/H13 为 SKIPPED；B10、R52 当前 Debug 权限、最终发布回归和非主分支 Release 仍按账本推进。
+
 ## 2026-10-06：只读 Goal 的运行态 AP 寄存器读取
 
 B11 已接通实际 worker/MI/Tcl、手动 Read 和共享 UI 按需调度；安全项由完整元数据条件、核归属和实际运行态通道共同决定。GDB/借核/保护 selector 继续 NeedHalt，副作用只手动一次，迟到/取消/状态边界不发布新值。见 [运行态说明](register-running.md)，实时 feature 数、专项/回归证据与提交状态只在 [36 项账本](registers-readonly-goal.md) 的迭代 9 维护。

@@ -1,5 +1,8 @@
 #![cfg(windows)]
 //! Real session/coordinator and MI pipes; physical hardware is never contacted.
+#[path = "support/artifacts.rs"]
+mod test_artifacts;
+
 use debugtui::{
     config::{Core, Project},
     coordinator,
@@ -14,9 +17,8 @@ use std::{
 
 fn fixture(name: &str) -> (Project, PathBuf) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let out = root
-        .join("artifacts")
-        .join(format!("register lifecycle {name} {}", std::process::id()));
+    let out =
+        test_artifacts::root().join(format!("register lifecycle {name} {}", std::process::id()));
     fs::create_dir_all(&out).unwrap();
     fs::write(out.join("commands.txt"), "").unwrap();
     let mut project = Project::default();

@@ -511,13 +511,16 @@ mod tests {
                 key(&mut app, KeyCode::Char('t'), &engine);
                 let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
                 let mut evidence = String::new();
-                for _ in 0..128 {
+                loop {
                     terminal.draw(|f| draw_status(f, &mut app)).unwrap();
                     let buffer = terminal.backend().buffer();
                     for y in 0..height {
                         for x in 0..width {
                             evidence.push_str(buffer[(x, y)].symbol());
                         }
+                    }
+                    if app.register_view.status_popup.as_ref().unwrap().at_end() {
+                        break;
                     }
                     key(&mut app, KeyCode::Down, &engine);
                 }

@@ -1,5 +1,8 @@
 #![cfg(windows)]
 //! End-to-end writes through the actual worker/MI pipes, without a board.
+#[path = "support/artifacts.rs"]
+mod test_artifacts;
+
 use debugtui::{
     config::{ControlScope, Core, Project},
     coordinator,
@@ -18,9 +21,7 @@ mod wide_cases;
 
 fn fixture(label: &str, flags: &[(&str, &str)]) -> (Project, PathBuf) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let directory = root
-        .join("artifacts")
-        .join(format!("write {label} {}", std::process::id()));
+    let directory = test_artifacts::root().join(format!("write {label} {}", std::process::id()));
     fs::create_dir_all(&directory).unwrap();
     let transcript = directory.join("commands.txt");
     fs::write(&transcript, "").unwrap();

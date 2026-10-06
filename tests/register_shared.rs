@@ -1,5 +1,8 @@
 #![cfg(windows)]
 //! Actual four-worker MI pipes; register ownership is independently checked against board bytes.
+#[path = "support/artifacts.rs"]
+mod test_artifacts;
+
 use debugtui::{
     config::{Core, Project},
     coordinator,
@@ -14,9 +17,7 @@ use std::{
 
 fn fixture(name: &str, chip: bool) -> (Project, PathBuf) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let out = root
-        .join("artifacts")
-        .join(format!("register shared {name} {}", std::process::id()));
+    let out = test_artifacts::root().join(format!("register shared {name} {}", std::process::id()));
     fs::create_dir_all(&out).unwrap();
     fs::write(out.join("commands.txt"), "").unwrap();
     fs::write(out.join("memory.json"),json!({

@@ -718,6 +718,8 @@ Setup 的 CPU registers 可选 M4、R52、R52+、用户 preset、Automatic 或 G
 
 System Regs 的 Total／Shown／Valid 分别计目录定义、展开筛选后的寄存器行及当前暂停上下文的有效值。Status 按钮、`t` 或 `:register-status` 打开分类计数和目录来源；窄窗口可用方向键／滚轮，Esc 或 Close 关闭。失败可保留旧值，但显示当前原因，不计成功。
 
+Setup 的寄存器详情和 Status 还显示当前核各项配置的最终值、实际声明文件/section 和被覆盖的旧声明；headless 对应 `registers_list.configuration`。环境/项目 map 递归合并，每核显式 map 整表替换，清空及被移除的 key 可查。配置来源、目录实际 CPU 和目标观测分别呈现；配置声明不证明访问权限。Setup 显示未保存草稿，运行时值若已变更且没有可追溯声明则标来源不可用。详见 [每核配置与来源](docs/register-config-sources.md)。
+
 开发分支的R52专用VFP后端要求源码锁中的v2读写协议。详情分别显示外部EDSCR证明的当前Debug EL和停止前DSPSR/DLR；停止前Hyp不能单独授权读取。当前EL2且权限/使能有效时才读取FP控制和数据，S/D/Q保留同次完整pair及MVFR/FPEXC来源；EL1/Guest/User合法读取仍待适配，不自动使能FPU或切换模式。失败旧值保留原证明和时间，旧协议不回退。范围见[VFP证明](docs/register-vfp-proof.md)；当前发行0.9.3尚未包含此开发功能。
 
 Status 的条件详情分别保存当前判定、最新尝试和保留原值当时的依据，显示 min/max、配置声明与当前观察、目录来源、物理核和停止代次。成功读取不会丢失条件；失败后不会把新依据当成旧值依据，旧生产者没有记录时显示 Unknown。别名继承父链的条件及 WO；Unknown 可选项不自动读取，WO 即使手动也不发送读取。PMCR.N 在 Guest/SVC 下可能受 HPMN 限制，不能据此认定物理计数器不存在。当前 R52 物理数量只接受 Hyp N=4，物理 ICC 优先级只接受五位，其他原始值保留但适配容量未知。查看详情不触发读取；规则及限制见 [条件依据自检](docs/register-eligibility.md)。

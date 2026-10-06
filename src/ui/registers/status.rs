@@ -139,6 +139,12 @@ pub(super) struct Popup {
     max_scroll: usize,
     close: Rect,
 }
+#[cfg(test)]
+impl Popup {
+    pub(super) fn at_end(&self) -> bool {
+        self.scroll >= self.max_scroll
+    }
+}
 impl App {
     pub(in crate::ui) fn open_register_status(&mut self) {
         if self.register_view.enabled() {
@@ -426,6 +432,17 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         } else {
             text.push(register.description.clone());
         }
+    }
+    text.extend(app.project.register_configuration_lines(&context.core));
+    if let Some(catalogue) = &app.register_view.catalogue
+        && let Some(warning) = crate::launch::registers::mismatch(
+            "configured CPU",
+            &app.active_register_config().cpu,
+            &catalogue.cpu,
+        )
+    {
+        text.push(warning);
+        text.push("The selected catalogue definition takes precedence over the CPU preset.".into());
     }
     text.push(format!("Catalogue: {}", app.register_view.source));
     if let Some(catalogue) = &app.register_view.catalogue {

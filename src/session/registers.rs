@@ -257,12 +257,18 @@ impl Engine {
         if topology.chip.is_empty() {
             topology.chip = self.project.debug.chip.clone();
         }
-        Ok(match configured {
+        let mut listing = match configured {
             Some((catalogue, source)) => {
                 json!({"catalogue":catalogue,"definition_origins":catalogue.definition_origins(),"source":source,"context":self.register_context(),"topology":topology,"topology_source":"configuration","facts":self.effective_register_facts(),"probe":self.snapshot.register_probe,"fact_source":if self.snapshot.register_probe.is_some(){"configuration_and_current_target_observation"}else{"configuration"}})
             }
             None => json!({"catalogue":null,"source":"gdb","context":self.register_context()}),
-        })
+        };
+        listing["configuration"] = serde_json::to_value(
+            self.project
+                .register_configuration(&self.register_context().core),
+        )
+        .unwrap();
+        Ok(listing)
     }
     pub(super) fn read_registers(&mut self, params: &Json) -> Result<Json, String> {
         self.drain_memory_notices();

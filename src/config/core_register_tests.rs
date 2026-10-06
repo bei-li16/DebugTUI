@@ -1,7 +1,7 @@
 use super::*;
 use crate::registers::CoreConfig;
 
-fn fixture() -> PathBuf {
+pub(super) fn fixture() -> PathBuf {
     static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let path = env::temp_dir().join(format!(
         "debugtui-core-register-{}-{}-{}",

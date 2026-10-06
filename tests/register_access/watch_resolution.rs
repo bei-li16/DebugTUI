@@ -2,9 +2,8 @@ use super::*;
 
 fn fixture_project(name: &str, extra: &[(&str, &str)], watches: Vec<String>) -> (Project, PathBuf) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let output = root
-        .join("artifacts")
-        .join(format!("watch resolution {} {name}", std::process::id()));
+    let output =
+        test_artifacts::root().join(format!("watch resolution {} {name}", std::process::id()));
     fs::create_dir_all(&output).unwrap();
     let transcript = output.join("commands.txt");
     let context = output.join("context.json");
@@ -659,13 +658,10 @@ fn malformed_memory_channel_never_silently_selects_gdb() {
 
 #[test]
 fn retained_watch_and_memory_request_cancellation_reaches_the_actual_worker() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let ready = root
-        .join("artifacts")
-        .join(format!("watch cancel ready {}.txt", std::process::id()));
-    let release = root
-        .join("artifacts")
-        .join(format!("watch cancel release {}.txt", std::process::id()));
+    let ready =
+        test_artifacts::root().join(format!("watch cancel ready {}.txt", std::process::id()));
+    let release =
+        test_artifacts::root().join(format!("watch cancel release {}.txt", std::process::id()));
     let ready_text = ready.to_string_lossy().into_owned();
     let release_text = release.to_string_lossy().into_owned();
     let (engine, transcript) = fixture(

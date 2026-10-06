@@ -36,6 +36,117 @@ fn per_core_register_setup_preview_reports_effective_models_and_routes_without_p
     assert!(lines.contains("No hardware access is performed"));
 }
 
+#[test]
+fn register_configuration_setup_sources_explain_per_core_drafts_and_cpu_conflicts_without_io() {
+    let fixture = Fixture::new();
+    let profile = "[registers]\ncpu='cortex-m4'\ntcl_endpoint='localhost:6666'\n[registers.facts]\ninherited=4\n";
+    fs::write(fixture.0.join("tools/debug-env.toml"), profile).unwrap();
+    fs::write(
+        fixture.0.join("m4.toml"),
+        include_str!("../../../profiles/registers/cortex-m4.toml"),
+    )
+    .unwrap();
+    let original = "version=2\n[tools]\nprofile='tools/debug-env.toml'\n[registers]\ncpu='cortex-m3'\n[[cores]]\nname='m7'\nendpoint='localhost:3333'\n[cores.registers]\ncpu='cortex-m7'\ncatalogue='m4.toml'\n[cores.registers.facts]\nselected=7\n[[cores]]\nname='m4'\nendpoint='localhost:3334'\n";
+    let path = fixture.0.join("debug.toml");
+    fs::write(&path, original).unwrap();
+    let mut setup = Setup::new(Document::open(&path).unwrap());
+    let lines = setup.catalogue_preview().unwrap().join("\n");
+    for expected in [
+        "Register configuration [m7]",
+        "cores.registers for m7",
+        "whole-map replacement",
+        "removed keys facts[\"inherited\"]",
+        "Warning: configured CPU [m7] cortex-m7 differs",
+        "Register configuration [m4]",
+        "debug-env.toml [registers]",
+        "current project draft",
+    ] {
+        assert!(lines.contains(expected), "{expected}: {lines}");
+    }
+    setup.document.set("registers", "cpu", "cortex-m4".into());
+    let lines = setup.catalogue_preview().unwrap().join("\n");
+    assert!(lines.contains("cpu = \"cortex-m4\"; source project:"));
+    for (width, height) in [(35, 12), (80, 24)] {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        setup.selected = CATALOGUE;
+        setup.key(key(KeyCode::F(1)));
+        let mut seen = String::new();
+        loop {
+            terminal.draw(|frame| setup.draw(frame)).unwrap();
+            seen.push_str(&text(&terminal));
+            let details = setup.register_details.as_ref().unwrap();
+            if details.scroll == details.max_scroll {
+                break;
+            }
+            setup.key(key(KeyCode::Down));
+        }
+        let compact: String = seen
+            .chars()
+            .filter(|character| !character.is_whitespace() && *character != '│')
+            .collect();
+        for expected in [
+            "Registerconfiguration[m7]",
+            "cores.registersform7",
+            "Registerconfiguration[m4]",
+            "whole-mapreplacement",
+            "debug-env.toml[registers]",
+        ] {
+            assert!(compact.contains(expected), "{width}x{height}: {expected}");
+        }
+        setup.key(key(KeyCode::Esc));
+    }
+    assert_eq!(fs::read_to_string(&path).unwrap(), original);
+    assert_eq!(
+        fs::read_to_string(fixture.0.join("tools/debug-env.toml")).unwrap(),
+        profile
+    );
+    assert!(!setup.pending);
+    assert!(!setup.workspace_requested && !setup.quit_requested);
+}
+
+#[test]
+fn register_configuration_memory_route_changes_revoke_setup_identity_without_probe_io() {
+    let mut project = Project::default();
+    project.registers.cpu = "cortex-r52".into();
+    project.cores = vec![crate::config::Core {
+        name: "default".into(),
+        endpoint: "localhost:3333".into(),
+        ..Default::default()
+    }];
+    let context = Context {
+        core: "default".into(),
+        session: 1,
+        generation: 2,
+        frame: 0,
+    };
+    let observed = Observation::current(
+        &project,
+        Some(&probe(&context, "0x410fd133")),
+        &context,
+        true,
+    )
+    .unwrap();
+    let loaded = project.registers.load().unwrap();
+    assert!(
+        preview(&project, loaded.as_ref(), None, Some(&observed))
+            .join("\n")
+            .contains("Observed CPU [default]: Cortex-R52")
+    );
+    project.cores[0].registers = Some(crate::registers::CoreConfig {
+        cpu: Some("cortex-m4".into()),
+        ..Default::default()
+    });
+    let lines = preview(&project, loaded.as_ref(), None, Some(&observed)).join("\n");
+    assert!(lines.contains("Observed CPU [default]: Cortex-R52"));
+    assert!(lines.contains(
+        "Warning: observed CPU [default] Cortex-R52 differs from catalogue CPU cortex-m4"
+    ));
+    project.memory_access = toml::from_str::<Project>("[[memory_access]]\nid='other'\ntarget='soc.other'\ntcl_endpoint='localhost:6667'\ncores=['default']\nwhile_running=true\n").unwrap().memory_access;
+    let lines = preview(&project, loaded.as_ref(), None, Some(&observed)).join("\n");
+    assert!(lines.contains("Observed CPU [default]: Unknown"));
+    assert!(lines.contains("Configured memory channel:") && lines.contains("soc.other"));
+}
+
 fn text(terminal: &Terminal<TestBackend>) -> String {
     let buffer = terminal.backend().buffer();
     let mut text = String::new();

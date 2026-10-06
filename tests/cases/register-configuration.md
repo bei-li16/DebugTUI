@@ -1,6 +1,6 @@
 # REG-102 配置环境验收 case
 
-以下环境用例均 **SKIPPED**。自动化 `scripts/test-register-configuration.cjs --binary <开发 EXE>` 使用独立配置目录，不连接探针；其十二项实际 EXE 检查已纳入 Cargo 集成。继承入口另由 `scripts/test-register-inheritance.cjs` 验证。以下 case 在真实客户环境/终端中逐项记录，不把软件夹具或目录选择当成板上能力证明。
+以下环境用例均 **SKIPPED**。自动化 `scripts/test-register-configuration.cjs --binary <开发 EXE>` 使用独立配置目录，不连接探针；其十六项实际 EXE 检查已纳入 Cargo 集成。继承入口另由 `scripts/test-register-inheritance.cjs` 验证。以下 case 在真实客户环境/终端中逐项记录，不把软件夹具或目录选择当成板上能力证明。
 
 准备客户配置副本，保留项目、Tools/profile、用户 devices.toml 与用户 register TOML 的 SHA256；记录 DebugTUI 版本/提交、目录来源、CPU 配置与实际目录 CPU。启动 `debugtui --project <副本.toml> --headless --stdio` 后仅发送 `registers_list`、`status`、`select_core`、`quit`；不发送 connect、read/probe、控制或写入。TUI 用 Setup 查看 CPU/目录草稿；Start 会进入真实调试会话，只核对配置时使用取消。
 
@@ -17,5 +17,7 @@
 | CONFIG-H09 | M7＋M4 各核配置不同 CPU/目录；首次验证使用人工复核的 M7 目录；两核分别运行 registers_list、查看界面和 Setup，然后切回 | 定义、配置 facts、CPU 和目录来源分别对应当前核；切换不出现另一目录的缓存值；相同 PPB 地址的实际访问另由 CorePrivate 用例验证 | SKIPPED |
 | CONFIG-H10 | 两核设置不同 tcl_endpoint/targets 与配套命令；省略一核覆盖，再显式清空 CPU/catalogue；向一核加入非法命令或缺失文件 | 继承和显式空值保持文档语义；各核配置隔离；错误在连接前报告核心名；不调用错误路径，不回退全局目录 | SKIPPED |
 | CONFIG-H11 | 在专用配置副本中加载五项继承样例，查看 JSONL/Setup/Status，核对各条声明文件与手册页；修改公共 MIDR 描述后重开，再去掉子层 override 或制造循环 | 两子目录同时继承公共修改；明确覆盖有父文件凭据；未知 reset 不变成 0，medium/字段不全可见；错误在连接前拒绝，不启动 GDB；原文件哈希保持 | SKIPPED |
+| CONFIG-H12 | 在同型双核或 M7＋M4 配置副本中，分别于环境根、选定 backend、项目和各核声明不同 CPU/访问参数；给 facts 设置逐层覆盖、每核部分 map 和每核空 map。未连接时执行两个核的 registers_list，Setup F1/Status 在窄宽终端逐页核对 configuration | 每项给出最终值、真实文件/section 和旧值覆盖链；全局空表递归合并，每核 map 整表替换并列出移除 key；非连续核编号及来回切核不串来源；配置查询无 MI/Tcl 目标请求；客户文件 SHA256 不变 | SKIPPED |
+| CONFIG-H13 | 显式 --environment 指向不同环境，原 Tools/profile 指向缺失文件；在 Setup 修改但不保存 CPU/目录，再设置目录 CPU 与选择不一致。若已有手动 Probe，修改 memory_access target/endpoint 后只看预览 | 来源是实际选定的环境；未保存草稿有标识且原文件不变；冲突同时给出配置 CPU、目录 CPU 及文件优先规则；改路由后的旧型号为 Unknown，查看来源不自动 Probe/读取；退出并恢复专用副本，保留 JSONL/终端截图和请求计数 | SKIPPED |
 
 涉及不可读文件/链接时仅操作专用测试目录，执行人员选择适合其系统的权限/链接方式。结束核对客户原配置 SHA256 与进程/日志，保留 stderr、目录 list JSON 和 Setup 截图；上板执行不在本任务范围内。

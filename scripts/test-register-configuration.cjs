@@ -11,7 +11,7 @@ const suite = new Cases(out,{layer:'actual executable, isolated project/profile/
 const m4 = fs.readFileSync(path.join(root,'profiles/registers/cortex-m4.toml'),'utf8');
 const r52 = fs.readFileSync(path.join(root,'profiles/registers/cortex-r52.toml'),'utf8');
 let sequence=0;
-function run(project, profile='', userPreset) {
+function run(project, profile='', userPreset, explicitEnvironment) {
   const dir = path.join(out,`case-${++sequence}`), tools=path.join(dir,'tools'), config=path.join(dir,'config');
   fs.mkdirSync(tools,{recursive:true}); fs.mkdirSync(path.join(config,'profiles/registers'),{recursive:true});
   fs.writeFileSync(path.join(dir,'debug.toml'),project);
@@ -26,6 +26,12 @@ function run(project, profile='', userPreset) {
     if(userPreset === 'directory') fs.mkdirSync(file); else fs.writeFileSync(file,userPreset);
   }
   const files=[path.join(dir,'debug.toml'),path.join(tools,'debug-env.toml'),devices,path.join(tools,'profile.toml'),path.join(dir,'customer.toml'),path.join(dir,'m7.toml')];
+  const environmentArgs=[];
+  if (explicitEnvironment !== undefined) {
+    const selected=path.join(tools,'explicit-environment.toml');
+    fs.writeFileSync(selected,explicitEnvironment); files.push(selected);
+    environmentArgs.push('--environment',selected);
+  }
   const before=files.map(hash);
   const requests=project.includes("chip='matrix'") ? [
     ['select_core',{index:0}],['registers_list',{}],['select_core',{index:1}],['registers_list',{}],['status',{}],['quit',{}]
@@ -34,7 +40,7 @@ function run(project, profile='', userPreset) {
   // Two validated catalogues (up to 4 MiB each) include JSON schema/default
   // fields in the response. Keep this finite bound aligned with distribution
   // tests; Node's 1 MiB default truncates otherwise valid register listings.
-  const result=spawnSync(binary,['--project',path.join(dir,'debug.toml'),'--headless','--stdio'],{
+  const result=spawnSync(binary,['--project',path.join(dir,'debug.toml'),...environmentArgs,'--headless','--stdio'],{
     input,encoding:'utf8',windowsHide:true,timeout:15000,maxBuffer:32*1024*1024,env:{...process.env,DEBUGTUI_CONFIG_DIR:config}
   });
   fs.writeFileSync(path.join(dir,'stdout.jsonl'),result.stdout);
@@ -53,6 +59,12 @@ function lists(run) {
   assert.equal(responses.length,run.requests.length,'every request must complete');
   for(const response of responses) assert.equal(response.ok,true,JSON.stringify(response));
   return responses.filter(e=>run.requests[e.id-1]?.[0]==='registers_list').map(e=>e.result);
+}
+function setting(list, ...segments) {
+  assert.equal(list.configuration.core,list.context.core);
+  const entry=list.configuration.settings.find(entry=>JSON.stringify(entry.path)===JSON.stringify(segments));
+  assert(entry,`missing configuration setting ${segments.join('.')}`);
+  return entry;
 }
 (async()=>{
   try {
@@ -85,6 +97,59 @@ function lists(run) {
       assert(entries.every(x=>x.catalogue.cpu==='customer-model' && x.source.startsWith('user:')));
       assert.equal(fs.readFileSync(path.join(result.dir,'config/profiles/registers/cortex-r52+.toml'),'utf8'),custom);
       return {sources:entries.map(x=>x.source)};
+    });
+    await suite.test('REG-CONFIG-SOURCES','Actual workers report profile/backend/project origins and core map replacement without debugger I/O',async()=>{
+      const profile=envBase+"[registers]\ncpu='cortex-r52'\ntcl_endpoint='localhost:6666'\n[registers.facts]\ninherited=4\ncapacity=1\n[backends.generic.registers]\ncpu='cortex-m4'\n[backends.generic.registers.facts]\ncapacity=2\n";
+      const project=base+"[registers.facts]\ncapacity=3\n[[cores]]\nname='core.0'\n[cores.registers]\ncpu='cortex-m7'\ncatalogue='m7.toml'\n[cores.registers.facts]\nselected=7\n[[cores]]\nname='core.2'\n[cores.registers.facts]\n";
+      const result=run(project,profile), entries=lists(result);
+      assert.equal(setting(entries[0],'cpu').value,'cortex-m7');
+      assert(setting(entries[0],'cpu').source.endsWith('[cores.registers for core.0]'));
+      assert.deepEqual(setting(entries[0],'cpu').overrides.map(entry=>entry.value),['','cortex-r52','cortex-m4']);
+      assert(setting(entries[0],'cpu').overrides[2].source.endsWith('[backends.generic.registers]'));
+      assert.equal(setting(entries[0],'facts','selected').value,7);
+      assert.deepEqual(setting(entries[1],'facts').value,{});
+      for(const entry of entries) {
+        assert(!entry.configuration.settings.some(setting=>setting.path[0]==='facts' && setting.path[1]==='inherited'));
+        assert(entry.configuration.replacements.find(replacement=>replacement.field==='facts').removed_paths.some(path=>JSON.stringify(path)==='["facts","inherited"]'));
+        assert(!entry.configuration.settings.some(setting=>setting.source.includes('origin unavailable')));
+      }
+      const inherited=lists(run(base+"[registers.facts]\ncapacity=3\n",profile));
+      assert.equal(setting(inherited[0],'facts','capacity').value,3);
+      assert.deepEqual(setting(inherited[0],'facts','capacity').overrides.map(entry=>entry.value),[1,2]);
+      assert(setting(inherited[0],'facts','inherited').source.endsWith('debug-env.toml [registers]'));
+      return {configurations:entries.map(entry=>entry.configuration),project:result.dir};
+    });
+    await suite.test('REG-CONFIG-CORE-ARRAY-SOURCE','Unsupported environment core arrays are rejected before IO rather than attributed to the project',async()=>{
+      const errors=[];
+      for(const [section,expected] of [['cores','Unsupported environment section: cores'],['backends.generic.cores','Unsupported backend section: cores']]) {
+        const result=run(base,envBase+`[[${section}]]\nname='core.0'\n[${section}.registers]\ncpu='cortex-m7'\n`);
+        assert.notEqual(result.result.status,0);
+        assert(result.result.stderr.includes(expected),result.result.stderr);
+        errors.push(result.result.stderr.trim());
+      }
+      return {errors};
+    });
+    await suite.test('REG-CONFIG-DEFAULT-SOURCE','Chip association and explicit core clears retain their real declaration sources',async()=>{
+      const associated=lists(run(base,envBase));
+      assert.equal(setting(associated[0],'cpu').value,'cortex-r52+');
+      assert(setting(associated[0],'cpu').source.startsWith('chip association:matrix (user:'));
+      const cleared=lists(run(base+"[registers]\ncpu='cortex-m4'\n[[cores]]\nname='core.0'\n[cores.registers]\ncpu=''\ncatalogue=''\n",envBase));
+      assert.equal(cleared[0].catalogue,null);
+      assert.equal(setting(cleared[0],'cpu').value,'');
+      assert(setting(cleared[0],'cpu').source.endsWith('[cores.registers for core.0]'));
+      assert.equal(setting(cleared[1],'cpu').value,'cortex-m4');
+      assert(!setting(cleared[1],'cpu').source.includes('core.0'));
+      return {association:setting(associated[0],'cpu'),cleared:cleared.map(entry=>entry.configuration)};
+    });
+    await suite.test('REG-CONFIG-ENVIRONMENT-SOURCE','Explicit CLI environment supplies origin instead of the unselected missing profile',async()=>{
+      const result=run(base.replace("profile='tools/debug-env.toml'","profile='missing-profile.toml'"),envBase,undefined,envBase+"[registers]\ncpu='cortex-m4'\ntcl_endpoint='localhost:6670'\n");
+      const entries=lists(result);
+      for(const entry of entries) {
+        assert.equal(setting(entry,'tcl_endpoint').value,'localhost:6670');
+        assert(setting(entry,'tcl_endpoint').source.endsWith('explicit-environment.toml [registers]'));
+        assert(!JSON.stringify(entry.configuration).includes('missing-profile.toml'));
+      }
+      return {configurations:entries.map(entry=>entry.configuration)};
     });
     await suite.test('REG-CONFIG-ERRORS','Selected malformed paths and unknown settings fail before debugger startup',async()=>{
       const errors=[];

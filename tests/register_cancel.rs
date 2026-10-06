@@ -1,5 +1,8 @@
 #![cfg(windows)]
 //! Request cancellation across actual worker/MI pipes, without target control.
+#[path = "support/artifacts.rs"]
+mod test_artifacts;
+
 use debugtui::{
     config::Project,
     session::{self, EngineHandle, Event, Request},
@@ -13,9 +16,8 @@ use std::{
 
 fn fixture(name: &str, registers: Value, values: Value) -> (EngineHandle, PathBuf) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let directory = root
-        .join("artifacts")
-        .join(format!("register-cancel-{name}-{}", std::process::id()));
+    let directory =
+        test_artifacts::root().join(format!("register-cancel-{name}-{}", std::process::id()));
     fs::create_dir_all(&directory).unwrap();
     let transcript = directory.join("commands.txt");
     fs::write(&transcript, "").unwrap();

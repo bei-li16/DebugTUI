@@ -1,5 +1,8 @@
 #![cfg(windows)]
 //! Actual MI pipes and a strict independent TCP bus fixture; no hardware.
+#[path = "support/artifacts.rs"]
+mod test_artifacts;
+
 use debugtui::{
     config::{MemoryAccess, Project},
     registers::Component,
@@ -39,7 +42,7 @@ fn call(engine: &session::EngineHandle, id: u64, method: &str, params: Value) ->
 #[test]
 fn mmio_channel_metadata_matches_exact_bus_requests_and_preserves_old_origin_on_failed_refresh() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let out = root.join("artifacts").join(format!(
+    let out = test_artifacts::root().join(format!(
         "register provenance {} {:x}",
         std::process::id(),
         SystemTime::now()

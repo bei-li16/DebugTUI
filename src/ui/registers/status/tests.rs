@@ -43,6 +43,99 @@ fn text(terminal: &Terminal<TestBackend>) -> String {
 }
 
 #[test]
+fn register_configuration_status_switches_declaration_sources_and_cleared_maps_without_io() {
+    use std::fs;
+    let root = std::env::temp_dir().join(format!(
+        "debugtui-status-register-sources-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir_all(root.join("tools")).unwrap();
+    fs::copy(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("profiles/registers/cortex-m7.toml"),
+        root.join("m7.toml"),
+    )
+    .unwrap();
+    let profile = "[registers]\ncpu='cortex-m4'\n[registers.facts]\ninherited=4\n";
+    fs::write(root.join("tools/debug-env.toml"), profile).unwrap();
+    let original = "version=2\n[tools]\nprofile='tools/debug-env.toml'\n[[cores]]\nname='core.0'\nendpoint='localhost:3333'\n[cores.registers]\ncpu='cortex-m7'\n[cores.registers.facts]\nselected=7\n[[cores]]\nname='core.2'\nendpoint='localhost:3334'\n[cores.registers]\ncatalogue='m7.toml'\n[cores.registers.facts]\n";
+    fs::write(root.join("debug.toml"), original).unwrap();
+    let project = Project::load(&root.join("debug.toml")).unwrap();
+    let mut app = App::new(project, false);
+    let (engine, requests) = engine();
+    for (index, core, cpu) in [
+        (0, "core.0", "cortex-m7"),
+        (1, "core.2", "cortex-m7"),
+        (0, "core.0", "cortex-m7"),
+    ] {
+        let mut snapshot = app.snapshot.clone();
+        snapshot.core = Some(crate::session::CoreStatus {
+            index,
+            name: core.into(),
+            endpoint: format!("localhost:{}", 3333 + index),
+            state: "STOPPED".into(),
+        });
+        app.update(Event::Snapshot {
+            snapshot: Box::new(snapshot),
+        });
+        for (width, height) in [(35, 12), (80, 24)] {
+            app.open_register_status();
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            let mut seen = String::new();
+            loop {
+                terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+                seen.push_str(&text(&terminal));
+                let popup = app.register_view.status_popup.as_ref().unwrap();
+                if popup.scroll == popup.max_scroll {
+                    break;
+                }
+                app.register_status_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+            }
+            let compact: String = seen
+                .chars()
+                .filter(|character| !character.is_whitespace() && *character != '│')
+                .collect();
+            for expected in [
+                format!("Registerconfiguration[{core}]"),
+                format!("cores.registersfor{core}"),
+                format!("CatalogueCPU:{cpu}"),
+                "whole-mapreplacement".into(),
+            ] {
+                assert!(
+                    compact.contains(&expected),
+                    "{core} {width}x{height}: {expected}"
+                );
+            }
+            if index == 1 {
+                assert!(compact.contains("facts={}"));
+                assert!(
+                    compact
+                        .contains("Warning:configuredCPUcortex-m4differsfromcatalogueCPUcortex-m7")
+                );
+                assert!(
+                    !compact.contains("cores.registersforcore.0")
+                        && !compact.contains("facts[\"selected\"]")
+                );
+            }
+            assert!(!app.ensure_registers(Some(&engine)));
+            assert!(requests.try_recv().is_err());
+            app.register_status_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        }
+    }
+    assert_eq!(
+        fs::read_to_string(root.join("debug.toml")).unwrap(),
+        original
+    );
+    assert_eq!(
+        fs::read_to_string(root.join("tools/debug-env.toml")).unwrap(),
+        profile
+    );
+}
+
+#[test]
 fn register_status_reports_manual_sources_inheritance_and_unknown_reset_without_io() {
     let mut app = app();
     app.register_view.catalogue = Some(
@@ -601,9 +694,19 @@ fn register_status_popup_scrolls_in_narrow_layout_and_closes_by_keyboard_and_mou
         if width == 35 {
             assert!(max > 0);
         }
+        let mut rendered = String::new();
+        loop {
+            terminal.draw(|f| draw(f, &mut app)).unwrap();
+            rendered.push_str(&text(&terminal));
+            if app.register_view.status_popup.as_ref().unwrap().at_end() {
+                break;
+            }
+            app.register_status_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        }
+        app.register_status_key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE));
         app.register_status_key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
         terminal.draw(|f| draw(f, &mut app)).unwrap();
-        let rendered = text(&terminal);
+        assert!(app.register_view.status_popup.as_ref().unwrap().at_end());
         let chinese: String = rendered
             .chars()
             .filter(|c| ('\u{4e00}'..='\u{9fff}').contains(c))

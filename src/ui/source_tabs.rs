@@ -648,8 +648,9 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("artifacts")
+        let root = std::env::var_os("DEBUGTUI_TEST_ARTIFACT_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("artifacts"))
             .join(format!("source-tabs-{}-{id}", std::process::id()));
         fs::create_dir_all(root.join("one")).unwrap();
         fs::create_dir_all(root.join("two")).unwrap();
