@@ -479,7 +479,7 @@ impl App {
                 let close = Rect::new(hit.right(), hit.y, close_width, 1);
                 let show = row % 2 == 0 || row == start;
                 let enabled = self.watch.pending_remove.is_none() && self.pending_task.is_none();
-                let hover = self.pointer.is_some_and(|p| close.contains(p));
+                let hover = self.pointer_over(close);
                 f.render_widget(
                     Paragraph::new(if !show {
                         "   "

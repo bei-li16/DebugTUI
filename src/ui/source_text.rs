@@ -497,7 +497,7 @@ pub(super) fn buttons(f: &mut UiFrame, a: &mut App, rect: Rect) {
             theme::control(
                 active,
                 false,
-                a.pointer.is_some_and(|p| hit.contains(p)),
+                a.pointer_over(hit),
                 theme::TEXT,
             ),
         );

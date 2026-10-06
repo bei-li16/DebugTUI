@@ -26,6 +26,7 @@ use ratatui::{
 };
 use serde_json::{Value, json};
 use std::{
+    cell::RefCell,
     collections::{HashSet, VecDeque},
     fs,
     io::{self, IsTerminal},
@@ -293,6 +294,9 @@ pub struct App {
     pending_task: Option<u64>,
     help_scroll: u16,
     pointer: Option<ratatui::layout::Position>,
+    /// Areas whose drawing depended on the pointer in the last frame. A mouse
+    /// move that changes none of them cannot change what is on screen.
+    hover_probes: RefCell<Vec<Rect>>,
     fx: effects::Effects,
     formats: formats::Formats,
     core_info: Option<(String, usize, usize)>,
@@ -372,6 +376,7 @@ impl App {
             pending_task: None,
             help_scroll: 0,
             pointer: None,
+            hover_probes: RefCell::default(),
             fx: effects::Effects::default(),
             formats: formats::Formats::default(),
             core_info: None,
@@ -1245,6 +1250,21 @@ impl App {
             self.selections[pane]
         }
     }
+    /// Hover test for drawing; records the area so pointer moves that cross no
+    /// recorded edge can skip redrawing.
+    fn pointer_over(&self, rect: Rect) -> bool {
+        self.hover_probes.borrow_mut().push(rect);
+        self.pointer.is_some_and(|p| rect.contains(p))
+    }
+    /// True when moving the pointer from `before` changed no hover state drawn
+    /// in the last frame.
+    fn hover_unchanged(&self, before: Option<ratatui::layout::Position>) -> bool {
+        let inside = |p: Option<ratatui::layout::Position>, r: &Rect| p.is_some_and(|p| r.contains(p));
+        self.hover_probes
+            .borrow()
+            .iter()
+            .all(|r| inside(before, r) == inside(self.pointer, r))
+    }
     fn cycle_pane(&mut self, delta: isize) {
         let panes = [0, 5, 7, 8, 3, 10, 2, 4, 6, 1, 9];
         let index = panes.iter().position(|&p| p == self.pane).unwrap_or(0);
@@ -1878,6 +1898,7 @@ pub fn run(
     let mut dirty = true;
     let mut last_draw = Instant::now() - Duration::from_secs(1);
     let mut last_task_clock = Instant::now();
+    let mut settle_at: Option<Instant> = None;
     loop {
         if app.demo && app.quitting {
             return Ok(());
@@ -2040,11 +2061,17 @@ pub fn run(
             last_task_clock = Instant::now();
             dirty = true;
         }
+        // One frame after pointer motion settles: a safety net for any state a
+        // move changed outside the hover areas recorded while drawing.
+        if settle_at.is_some_and(|at| Instant::now() >= at) {
+            dirty = true;
+        }
         if dirty && last_draw.elapsed() >= Duration::from_millis(25) {
             terminal
                 .draw(|f| draw(f, &mut app))
                 .map_err(|e| e.to_string())?;
             dirty = false;
+            settle_at = None;
             last_draw = Instant::now();
         }
         if event::poll(Duration::from_millis(20)).map_err(|e| e.to_string())? {
@@ -2091,8 +2118,19 @@ pub fn run(
                     }
                 }
                 Input::Mouse(mouse) => {
+                    let pointer = app.pointer;
+                    let hover = app.fx.hover.map(|(r, _)| r);
                     app.mouse(mouse, engine.as_ref());
-                    dirty = true;
+                    // Moving across text or within one control changes nothing
+                    // drawn: skip the frame instead of redrawing at up to 40 FPS.
+                    if mouse.kind == MouseEventKind::Moved
+                        && hover == app.fx.hover.map(|(r, _)| r)
+                        && app.hover_unchanged(pointer)
+                    {
+                        settle_at = Some(Instant::now() + Duration::from_millis(150));
+                    } else {
+                        dirty = true;
+                    }
                 }
             }
         }
@@ -2283,6 +2321,31 @@ mod tests {
             },
             engine,
         );
+    }
+    #[test]
+    fn pointer_moves_redraw_only_when_a_drawn_hover_state_changes() {
+        let mut a = App::new(Project::default(), true);
+        a.snapshot.state = "STOPPED".into();
+        render(&mut a, 120, 36);
+        let text = a.source_rect;
+        let (x, y) = (text.x + text.width / 2, text.y + 2);
+        mouse_at(&mut a, MouseEventKind::Moved, x, y, None);
+        render(&mut a, 120, 36);
+        let before = a.pointer;
+        mouse_at(&mut a, MouseEventKind::Moved, x + 3, y + 1, None);
+        assert!(a.hover_unchanged(before), "moving over source text draws nothing new");
+        let button = a
+            .action_hits
+            .iter()
+            .find(|(_, command)| *command == "continue")
+            .unwrap()
+            .0;
+        mouse_at(&mut a, MouseEventKind::Moved, button.x, button.y, None);
+        assert!(!a.hover_unchanged(before), "entering a button changes its style");
+        render(&mut a, 120, 36);
+        let on_button = a.pointer;
+        mouse_at(&mut a, MouseEventKind::Moved, button.x + 1, button.y, None);
+        assert!(a.hover_unchanged(on_button), "moving within one button is invisible");
     }
     #[test]
     fn inspector_tabs_keep_source_visible_without_duplicate_stack() {

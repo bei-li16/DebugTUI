@@ -481,7 +481,7 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
         let text = format!("{}{name}", if current { "▶" } else { " " });
         let hit = Rect::new(x, rect.y, tab_width, 1);
         let selected = a.sources.active == Some(index);
-        let hover = a.pointer.is_some_and(|p| hit.contains(p));
+        let hover = a.pointer_over(hit);
         let style = theme::chip(selected, hover);
         // Preserve the final spacer between tabs and keep the close hit unchanged.
         theme::button(
@@ -501,7 +501,7 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
         );
         let close = Rect::new(hit.right().saturating_sub(3), rect.y, 1, 1);
         f.render_widget(
-            Paragraph::new("×").style(style.fg(if a.pointer.is_some_and(|p| close.contains(p)) {
+            Paragraph::new("×").style(style.fg(if a.pointer_over(close) {
                 theme::RED
             } else {
                 style.fg.unwrap_or(theme::TEXT)
@@ -535,7 +535,7 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
                 theme::control(
                     enabled,
                     false,
-                    a.pointer.is_some_and(|p| hit.contains(p)),
+                    a.pointer_over(hit),
                     theme::TEXT,
                 ),
             );

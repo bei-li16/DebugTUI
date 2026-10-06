@@ -67,7 +67,7 @@ fn wrapped_height(labels: &[&str], width: u16, row_height: u16) -> u16 {
 }
 
 fn hovered(a: &App, rect: Rect) -> bool {
-    a.pointer.is_some_and(|p| rect.contains(p))
+    a.pointer_over(rect)
 }
 
 fn pane_label(pane: usize, width: u16) -> &'static str {
@@ -1430,6 +1430,7 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
 }
 
 pub fn draw(f: &mut UiFrame, a: &mut App) {
+    a.hover_probes.get_mut().clear();
     a.file_search.area = Rect::default();
     a.symbol_search.bar = Rect::default();
     source_tabs::reset_hits(a);

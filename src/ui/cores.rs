@@ -63,7 +63,7 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App, rect: Rect) {
         f,
         previous,
         "‹",
-        theme::chip(false, a.pointer.is_some_and(|p| previous.contains(p))),
+        theme::chip(false, a.pointer_over(previous)),
     );
     a.core_hits.push((previous, (active + count - 1) % count));
     let slots = ((rect.width.saturating_sub(14)) / 18).max(1) as usize;
@@ -75,7 +75,7 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App, rect: Rect) {
         f,
         next,
         "›",
-        theme::chip(false, a.pointer.is_some_and(|p| next.contains(p))),
+        theme::chip(false, a.pointer_over(next)),
     );
     a.core_hits.push((next, (active + 1) % count));
     let start = active
@@ -99,7 +99,7 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App, rect: Rect) {
         let mut style = theme::control(
             true,
             selected,
-            a.pointer.is_some_and(|p| hit.contains(p)),
+            a.pointer_over(hit),
             color(core.index),
         );
         if selected {
