@@ -42,6 +42,8 @@ Config、Topology 与 Component 的未知字段/错误类型由严格 schema 拒
 
 ## 软件证据
 
+目录定义可以继承公共文件，并携带严格校验的手册来源、复位值和可信度；格式与五项样例见 [继承与描述来源](register-catalogue-inheritance.md)。它们不改变有效配置选择优先级，也不证明实际硬件身份或权限。
+
 | 要求 | 证据 |
 | --- | --- |
 | 旧配置与完整新配置 | `register_configuration_schema_rejects_unknown_nested_fields_and_wrong_types`：无新字段时 GDB 回退；完整 reader/writer opt-in、事实、target、component、topology 往返；15 种错误 schema 输入 |

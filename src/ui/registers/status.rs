@@ -203,6 +203,9 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             .map(|c| format!("{}: {}", c.label(), counts.get(*c))),
     );
     text.push("Shown excludes collapsed groups and fields. Valid requires the current owner and stop context.".into());
+    if let Some(catalogue) = &app.register_view.catalogue {
+        text.push(catalogue.confidence_summary());
+    }
     text.push(format!(
         "Core {} / frame {} / stop {} / session {}",
         context.core, context.frame, context.generation, context.session
@@ -230,6 +233,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             register.scope
         ));
         let catalogue = app.register_view.catalogue.as_ref().unwrap();
+        text.extend(register.definition_details());
         text.extend(
             catalogue
                 .eligibility(

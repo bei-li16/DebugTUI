@@ -43,6 +43,61 @@ fn text(terminal: &Terminal<TestBackend>) -> String {
 }
 
 #[test]
+fn register_status_reports_manual_sources_inheritance_and_unknown_reset_without_io() {
+    let mut app = app();
+    app.register_view.catalogue = Some(
+        crate::registers::Catalogue::load(
+            &std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("profiles/registers/examples/r52-source-sample.toml"),
+        )
+        .unwrap(),
+    );
+    let selected = index(&app, "edprsr");
+    app.register_view.rows = vec![Row::Register(selected, 0)];
+    app.selections[3] = 0;
+    let before = serde_json::to_value(&app.register_view.catalogue).unwrap();
+    let (engine, requests) = engine();
+    for (width, height) in [(45, 12), (80, 24), (120, 36)] {
+        app.open_register_status();
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        let mut rendered = String::new();
+        loop {
+            terminal.draw(|f| draw(f, &mut app)).unwrap();
+            rendered.push_str(&text(&terminal));
+            let popup = app.register_view.status_popup.as_ref().unwrap();
+            if popup.scroll >= popup.max_scroll {
+                break;
+            }
+            app.register_status_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        }
+        let compact: String = rendered
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '│')
+            .collect();
+        for required in [
+            "Definitionconfidence:medium",
+            "Reset:Unknown",
+            "Definitionfile:file:",
+            "Inheritance:",
+            "r52-source-common.toml",
+            "DDI0487",
+            "M.b",
+            "PDFpage:15261",
+            "Fields:incomplete",
+        ] {
+            assert!(compact.contains(required), "{width}x{height}: {required}");
+        }
+        assert!(!app.ensure_registers(Some(&engine)));
+        assert!(requests.try_recv().is_err());
+        app.register_status_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+    }
+    assert_eq!(
+        serde_json::to_value(&app.register_view.catalogue).unwrap(),
+        before
+    );
+}
+
+#[test]
 fn register_status_preserves_current_latest_and_retained_condition_sources_without_io() {
     let mut app = app();
     let selected = index(&app, "r0");

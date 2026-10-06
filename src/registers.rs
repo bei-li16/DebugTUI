@@ -17,12 +17,14 @@ pub const OPENOCD_ADAPTER_PROTOCOL: &str =
     "debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault";
 pub mod banked;
 pub mod capabilities;
+mod catalogue_loader;
 mod core_config;
 pub use core_config::CoreConfig;
 pub mod display;
 pub mod eligibility;
 pub mod gic;
 pub mod matrix;
+pub mod metadata;
 pub mod mmio_probe;
 #[cfg(test)]
 mod mmio_tests;
@@ -248,11 +250,18 @@ pub struct Catalogue {
     pub architecture: String,
     #[serde(default)]
     pub description: String,
+    /// Input-only declarations; a loaded catalogue contains the resolved definitions.
+    #[serde(default, skip_serializing)]
+    pub extends: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<metadata::Document>,
+    #[serde(default)]
     pub groups: Vec<Group>,
+    #[serde(default)]
     pub registers: Vec<Register>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Group {
     pub id: String,
@@ -355,6 +364,22 @@ pub struct Register {
     pub bits: u16,
     pub access: Access,
     pub reader: Reader,
+    /// Full replacement of an inherited definition, never an implicit field merge.
+    #[serde(default, rename = "override", skip_serializing)]
+    pub override_definition: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<metadata::ManualSource>,
+    #[serde(default, skip_serializing_if = "metadata::Confidence::is_unknown")]
+    pub confidence: metadata::Confidence,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<metadata::HardwareVerification>,
+    #[serde(default, skip_serializing_if = "false_flag")]
+    pub fields_missing: bool,
+    /// Assigned by the loader; supplied provenance is never accepted as evidence.
+    #[serde(skip)]
+    pub definition_origin: Option<metadata::DefinitionOrigin>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub writer: Option<Writer>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -669,18 +694,15 @@ impl Catalogue {
                 ));
             }
         };
-        cache.get_or_init(|| Self::parse(text)).clone()
+        cache
+            .get_or_init(|| catalogue_loader::builtin(cpu, text))
+            .clone()
     }
     pub fn load(path: &Path) -> Result<Self, String> {
-        let metadata = fs::metadata(path)
-            .map_err(|e| format!("Register catalogue {}: {e}", path.display()))?;
-        if metadata.len() > MAX_CATALOGUE_BYTES {
-            return Err("Register catalogue exceeds 4 MiB".into());
-        }
-        let file = fs::File::open(path)
-            .map_err(|e| format!("Register catalogue {}: {e}", path.display()))?;
-        Self::read(file).map_err(|e| format!("Register catalogue {}: {e}", path.display()))
+        catalogue_loader::file(path)
+            .map_err(|error| format!("Register catalogue {}: {error}", path.display()))
     }
+    #[cfg(test)]
     fn read(reader: impl Read) -> Result<Self, String> {
         // Recheck while reading: the file can grow after metadata was sampled.
         let mut bytes = Vec::new();
@@ -696,20 +718,20 @@ impl Catalogue {
         Self::parse(&text)
     }
     pub fn parse(text: &str) -> Result<Self, String> {
-        if text.len() as u64 > MAX_CATALOGUE_BYTES {
-            return Err("Register catalogue exceeds 4 MiB".into());
-        }
-        let catalogue: Self =
-            toml::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| e.to_string())?;
-        catalogue.validate()?;
-        Ok(catalogue)
+        catalogue_loader::inline(text)
     }
     pub fn register(&self, id: &str) -> Option<&Register> {
         self.registers.iter().find(|r| r.id == id)
     }
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 1 {
+        if !matches!(self.version, 1 | 2) {
             return Err("Unsupported register catalogue version".into());
+        }
+        if !self.extends.is_empty() {
+            return Err("Unresolved catalogue inheritance; use Catalogue::load or parse".into());
+        }
+        if let Some(meta) = &self.meta {
+            meta.validate()?;
         }
         if !identifier(&self.cpu) || !identifier(&self.architecture) {
             return Err("Invalid CPU or architecture identifier".into());
@@ -740,6 +762,7 @@ impl Catalogue {
         }
         let mut ids = BTreeSet::new();
         for register in &self.registers {
+            register.validate_metadata(self.version)?;
             if !identifier(&register.id)
                 || register.name.trim().is_empty()
                 || !ids.insert(&register.id)

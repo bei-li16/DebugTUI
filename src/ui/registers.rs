@@ -1481,7 +1481,17 @@ impl App {
                     } else {
                         "·"
                     };
-                    let name = format!("{}{marker} {name}", "  ".repeat(*depth));
+                    let confidence = if field.is_none()
+                        && matches!(
+                            register.confidence,
+                            crate::registers::metadata::Confidence::Low
+                                | crate::registers::metadata::Confidence::Medium
+                        ) {
+                        format!(" [{}]", register.confidence.label())
+                    } else {
+                        String::new()
+                    };
+                    let name = format!("{}{marker} {name}{confidence}", "  ".repeat(*depth));
                     let shown_name_width = if wide {
                         name_width
                     } else {

@@ -1,0 +1,107 @@
+# Small schema review sample; no hardware verification or new probe is implied.
+version = 2
+cpu = "r52-source-common"
+architecture = "armv8-r-aarch32"
+[meta]
+document = "Arm Cortex-R52 Processor Technical Reference Manual"
+number = "100026_0104_01_en"
+version = "Issue 01"
+
+[[groups]]
+id = "system"
+name = "System"
+
+[[registers]]
+id = "midr"
+name = "MIDR"
+group = "system"
+bits = 32
+access = "ro"
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 0, crm = 0, op2 = 0 }
+description = "Processor identity; variant and revision depend on the actual core."
+access_condition = "Current Debug EL1/EL2 and authorization must be proven; EL1 can trap through HSTR.T0."
+source = { section = "4.3.69; Table 4-160 and MRC encoding on PDF page 170", page = 169 }
+confidence = "high"
+[[registers.fields]]
+name = "Implementer"
+segments = [{ offset = 24, width = 8 }]
+[[registers.fields]]
+name = "Variant"
+segments = [{ offset = 20, width = 4 }]
+[[registers.fields]]
+name = "Architecture"
+segments = [{ offset = 16, width = 4 }]
+[[registers.fields]]
+name = "PartNum"
+segments = [{ offset = 4, width = 12 }]
+[[registers.fields]]
+name = "Revision"
+segments = [{ offset = 0, width = 4 }]
+
+[[registers]]
+id = "mpuir"
+name = "MPUIR"
+group = "system"
+bits = 32
+access = "ro"
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 0, crm = 0, op2 = 4 }
+description = "EL1 MPU capacity; region count is implementation dependent, so no reset is asserted."
+access_condition = "Current Debug permission; EL1 read may trap through HCR.TID1."
+source = { section = "4.3.77; encoding on PDF page 182", page = 181 }
+confidence = "high"
+[[registers.fields]]
+name = "DREGION"
+segments = [{ offset = 8, width = 8 }]
+[[registers.fields]]
+name = "nU"
+segments = [{ offset = 0, width = 1 }]
+
+[[registers]]
+id = "prbar0"
+name = "PRBAR0"
+group = "system"
+bits = 32
+access = "rw"
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 6, crm = 8, op2 = 0 }
+description = "Direct EL1 MPU region zero base; the manual specifies UNKNOWN reset."
+access_condition = "Current Debug EL2, or proven EL1 with VSCTLR.MSA clear; no selector writes required."
+source = { section = "4.3.85; Table 4-195 and direct encoding on PDF page 193", page = 192 }
+confidence = "high"
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 1
+max = 24
+[[registers.fields]]
+name = "BASE"
+segments = [{ offset = 6, width = 26 }]
+[[registers.fields]]
+name = "SH"
+segments = [{ offset = 3, width = 2 }]
+[[registers.fields]]
+name = "AP"
+segments = [{ offset = 1, width = 2 }]
+[[registers.fields]]
+name = "XN"
+segments = [{ offset = 0, width = 1 }]
+
+[[registers]]
+id = "edprsr"
+name = "EDPRSR"
+group = "system"
+bits = 32
+access = "ro"
+scope = "core"
+reader = { kind = "mmio", component = "debug_external", offset = 0x314, require_owner_mapping = true }
+description = "Manual-only processor status read: SR can clear when powered and out of reset. Offset comes from R52 TRM 12.5, PDF page 394."
+access_condition = "Explicit route for this core; power, reset, authorization and locks affect access."
+read_side_effect = true
+fields_missing = true
+source = { document = "Arm Architecture Reference Manual for A-profile architecture", number = "DDI 0487", version = "M.b", section = "H9.2.43 EDPRSR, SR bit and read behavior", page = 15261 }
+confidence = "medium"
+[[registers.conditions]]
+fact = "debug_external.present"
+min = 1
+max = 1
+[[registers.fields]]
+name = "SR"
+segments = [{ offset = 3, width = 1 }]

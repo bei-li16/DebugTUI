@@ -121,8 +121,10 @@ pub(super) fn preview(
     let mut lines = vec![];
     let cpu = loaded.map(|(catalogue, _)| catalogue.cpu.as_str());
     if let Some((catalogue, source)) = loaded {
-        lines.push(format!("Source: {source}; CPU: {}", catalogue.cpu));
+        lines.push(format!("Source: {source}"));
+        lines.push(format!("CPU: {}", catalogue.cpu));
         lines.push(format!("Architecture: {}", catalogue.architecture));
+        lines.push(catalogue.confidence_summary());
         lines.push(format!(
             "Configured CPU: {}",
             if project.registers.cpu.is_empty() {

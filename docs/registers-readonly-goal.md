@@ -28,12 +28,12 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | A02 | 每核目录选择、空值及声明文件路径 | 路径/优先级/损坏文件/CLI 测试 |
 | [x] | A03 | 每核访问参数继承、覆盖及严格校验 | 路由分离、未知字段/错误参数零 I/O 拒绝 |
 | [ ] | A04 | 配置层及有效来源可见 | Setup/Status 各核有效值与来源测试 |
-| [ ] | A05 | 公共定义继承和循环/深度检查 | 有效继承、缺父定义、循环/超深拒绝 |
-| [ ] | A06 | 显式 override 及继承来源 | 重名拒绝、显式覆盖、父文件来源 |
-| [ ] | A07 | reset/source/confidence 元数据 | 合法/缺失/冲突、未知复位值和可信度校验 |
+| [x] | A05 | 公共定义继承和循环/深度检查 | 有效继承、缺父定义、循环/超深拒绝 |
+| [x] | A06 | 显式 override 及继承来源 | 重名拒绝、显式覆盖、父文件来源 |
+| [x] | A07 | reset/source/confidence 元数据 | 合法/缺失/冲突、未知复位值和可信度校验 |
 | [ ] | A08 | 结构化实现/访问条件 | 存在性、NeedHalt/Enable/权限与副作用检查 |
 | [ ] | A09 | 归属未知及既有 reader/alias 复用 | core/cluster/chip/unknown 与别名隔离 |
-| [ ] | A10 | 3～5 个代表性定义样例 | schema/字段/来源/条件/副作用专项 |
+| [x] | A10 | 3～5 个代表性定义样例 | schema/字段/来源/条件/副作用专项 |
 | [ ] | B01 | M3/M4/M7 公共加增量目录 | 内置加载、继承与型号差异 |
 | [ ] | B02 | SCB 与故障字段 | 常用状态/控制及 CFSR/HFSR/MMFAR/BFAR 定义 |
 | [ ] | B03 | NVIC 与优先级来源 | 动态 bank/优先级位、无依据 Unknown、不写探测 |
@@ -73,6 +73,18 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 新增实际 Coordinator/MI/Tcl 双 TCP 端点测试，检查两个非连续核心的 endpoint、target、返回值与 owner/provenance。夹具日志和传输转义断言修正后通过；记录：`artifacts/readonly-core-routing-20261006.log`，详细凭据在 `artifacts/per-core-routes-*/evidence.json`。本地服务器只验证协议和路由，不模拟 ARM 指令执行。
 - 严格 Clippy 全 target 检查通过：`artifacts/readonly-core-clippy-20261006.log`。新增硬件用例 CONFIG-H09/H10，状态 SKIPPED；没有上板测试，也未重建未改动的 OpenOCD。
 - A04 仅新增各核有效 CPU/目录来源/路由预览，完整配置层来源尚待实现，未计入。下一轮先完成公共描述继承、明确覆盖和 3～5 个代表定义，再迁移目录。提交 SHA 与推送结果由本轮最终输出报告。
+- 提交 `7a628e2c1f3f9bf4fa3b50fa62a32798471d5bc6` 已推送，远端 SHA 一致。
+
+## 迭代 2：公共描述继承与来源
+
+2026-10-06，完成 A05/A06/A07/A10，累计 **7 完成 / 29 未完成**。
+
+- 实现名字/相对路径父目录、三层及输入资源限制、循环/歧义拒绝、完整显式覆盖。新增 version 2 来源校验、复位值、可信度和声明的硬件验证元数据；version 1 缺失项仍是 Unknown。来源诊断保存在运行态及 `registers_list.definition_origins`，不写入持久化 TOML。
+- 五个定义样例 MIDR/MPUIR/PRBAR0/EDPRSR/Alias 验证字段、MPU 容量条件、副作用与父文件来源。已核对 R52 TRM 指定页和架构正文；没有批量扩大正式目录。说明见 [继承与描述来源](register-catalogue-inheritance.md)。
+- 完整单元回归 **439 通过、0 失败、2 ignored**；最终路径及元数据专项 **7 通过**。新增 Status 小/中/大窗口来源滚动与零 I/O 测试通过。实际配置集成 **2 测试通过**（12 CLI case 及双 TCP 路由），继承实际入口 **1 测试通过**（3 case，含八类连接前拒绝）。
+- 回归中修复：来源诊断膨胀持久化目录并破坏快照往返、CPU 帮助行遗漏、窄屏 CPU 文本可见性、Windows 并发 fixture 重名，以及原有文件错误前缀兼容。保留原测试断言，没有提高 4 MiB 单文件限制。
+- G 盘空间不足后，改用 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly` 构建，并将 Node 测试证据放到其 `evidence` 子目录；原 target 未删除。日志：`readonly-catalogue-full-final-20261006.log`、`readonly-catalogue-unit-final-20261006.log`、`readonly-catalogue-integration-final-20261006.log`、`readonly-catalogue-path-final-20261006.log`、`readonly-catalogue-clippy-20261006.log`。完整回归后的最终改动仅为文件错误前缀和显式 `.toml` 父文件识别，各自已专项/实际入口复验；Clippy 调整仅合并等价条件。
+- 新增 CONFIG-H11，环境验收保持 SKIPPED，没有执行上板测试或重建 OpenOCD。A04/A08/A09、M 公共目录/动态探测/CorePrivate/运行态、R52 权限统一及发布仍待完成；下一轮推进结构化条件与 M 公共目录。提交 SHA 与推送结果由本轮最终输出报告。
 
 ## 迭代和发布约束
 

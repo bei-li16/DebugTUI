@@ -1333,6 +1333,7 @@ impl Setup {
                         .iter()
                         .filter(|line| {
                             line.starts_with("Source:")
+                                || line.starts_with("CPU:")
                                 || line.starts_with("Warning:")
                                 || line.starts_with("Architecture:")
                         })

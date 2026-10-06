@@ -1,0 +1,52 @@
+# Five resolved definitions. Parent register replacement must be explicit and complete.
+version = 2
+cpu = "cortex-r52"
+architecture = "armv8-r-aarch32"
+extends = ["r52-source-common"]
+[meta]
+document = "Arm Cortex-R52 Processor Technical Reference Manual"
+number = "100026_0104_01_en"
+version = "Issue 01"
+
+[[registers]]
+id = "prbar0"
+override = true
+name = "PRBAR0"
+group = "system"
+bits = 32
+access = "rw"
+reader = { kind = "cp15", cp = 15, op1 = 0, crn = 6, crm = 8, op2 = 0 }
+description = "Explicit replacement sample: direct EL1 MPU region zero, without changing access or enabling the MPU. Reset is UNKNOWN."
+access_condition = "Current Debug EL2, or proven EL1 with VSCTLR.MSA clear; no selector writes required."
+source = { section = "4.3.85; Table 4-195 and direct encoding on PDF page 193", page = 192 }
+confidence = "high"
+[[registers.conditions]]
+fact = "mpu.el1.regions"
+min = 1
+max = 24
+[[registers.fields]]
+name = "BASE"
+segments = [{ offset = 6, width = 26 }]
+[[registers.fields]]
+name = "SH"
+segments = [{ offset = 3, width = 2 }]
+[[registers.fields]]
+name = "AP"
+segments = [{ offset = 1, width = 2 }]
+[[registers.fields]]
+name = "XN"
+segments = [{ offset = 0, width = 1 }]
+
+[[registers]]
+id = "midr_partnum"
+name = "MIDR PartNum"
+group = "system"
+bits = 16
+access = "ro"
+reader = { kind = "alias", source = "midr", offset = 4 }
+description = "Illustrates reuse of an existing reader. Low 12 bits are the PartNum; high four bits are MIDR.Architecture."
+source = { section = "4.3.69; Table 4-160 continuation", page = 170 }
+confidence = "high"
+[[registers.fields]]
+name = "PartNum"
+segments = [{ offset = 0, width = 12 }]

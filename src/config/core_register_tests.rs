@@ -2,13 +2,15 @@ use super::*;
 use crate::registers::CoreConfig;
 
 fn fixture() -> PathBuf {
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let path = env::temp_dir().join(format!(
-        "debugtui-core-register-{}-{}",
+        "debugtui-core-register-{}-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     fs::create_dir(&path).unwrap();
     fs::create_dir(path.join("tools")).unwrap();
