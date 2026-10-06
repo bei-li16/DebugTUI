@@ -782,13 +782,30 @@ impl App {
     }
     pub(super) fn sync_register_capabilities(&mut self) {
         let config = self.active_register_config();
-        let facts = self
-            .snapshot
-            .register_probe
-            .as_ref()
-            .filter(|p| p.context == self.register_context() && self.snapshot.state == "STOPPED")
-            .map(|p| p.effective(&config.facts))
-            .unwrap_or_else(|| config.facts.clone());
+        let mut topology = config.topology.clone();
+        if topology.chip.is_empty() {
+            topology.chip = self.project.debug.chip.clone();
+        }
+        let facts = if self.snapshot.state == "STOPPED"
+            && let Some(catalogue) = &self.register_view.catalogue
+        {
+            catalogue.observation_facts_for_owners(
+                &config.facts,
+                self.snapshot.register_probe.as_ref(),
+                &self.snapshot.register_samples,
+                &self.register_context(),
+                &topology,
+            )
+        } else {
+            self.snapshot
+                .register_probe
+                .as_ref()
+                .filter(|p| {
+                    p.context == self.register_context() && self.snapshot.state == "STOPPED"
+                })
+                .map(|p| p.effective(&config.facts))
+                .unwrap_or_else(|| config.facts.clone())
+        };
         if facts != self.register_view.facts {
             self.register_view.facts = facts;
             for sample in self.register_view.values.values_mut() {
@@ -1126,6 +1143,14 @@ impl App {
             };
             let register = &catalogue.registers[index];
             if catalogue.automatic_read(register, &self.register_view.facts)
+                && catalogue
+                    .access_denial(
+                        register,
+                        &self.register_view.facts,
+                        self.snapshot.state == "STOPPED",
+                        None,
+                    )
+                    .is_none()
                 && self.register_view.category(
                     &self.project,
                     &context,

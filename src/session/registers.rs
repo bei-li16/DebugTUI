@@ -32,6 +32,13 @@ pub(super) fn new_session() -> u64 {
 }
 
 impl Engine {
+    pub(super) fn register_topology(&self) -> crate::registers::Topology {
+        let mut topology = self.project.registers.topology.clone();
+        if topology.chip.is_empty() {
+            topology.chip = self.project.debug.chip.clone();
+        }
+        topology
+    }
     // Check only between complete operations. The MI/Tcl transport keeps using
     // the session's exit flag so cancellation cannot skip selector restoration.
     pub(super) fn check_register_read_cancelled(&self) -> Result<(), String> {
@@ -247,11 +254,13 @@ impl Engine {
             self.check_register_read_cancelled()?;
             let register = catalogue.register(id).unwrap();
             let evidence = catalogue
-                .eligibility(
+                .eligibility_with_owners(
                     register,
                     &self.project.registers.facts,
                     self.snapshot.register_probe.as_ref(),
+                    &self.snapshot.register_samples,
                     &context,
+                    &self.register_topology(),
                 )
                 .with_catalogue_source(&catalogue_source);
             let implementation = evidence.implementation;
@@ -262,6 +271,12 @@ impl Engine {
             }
             let owner = topology.owner(register.scope, &context.core);
             let (view, source, gdb_name) = self.register_sample_origin(register, &catalogue);
+            let access_denial = catalogue.access_denial(
+                register,
+                &self.effective_register_facts(),
+                self.snapshot.state == "STOPPED",
+                None,
+            );
             let mut sample = Sample {
                 id: id.into(),
                 state: State::NotRead,
@@ -289,6 +304,15 @@ impl Engine {
             } else if sample.owner.is_none() {
                 sample.state = State::Unavailable;
                 sample.detail = "Register owner is unknown; configure chip/cluster topology".into();
+            } else if let Some((reason, detail)) = access_denial {
+                sample.state = State::Unavailable;
+                sample.reason = reason;
+                sample.detail = detail;
+            } else if implementation == Implementation::Unknown
+                && catalogue.has_presence_rule(register)
+            {
+                sample.state = State::Unavailable;
+                sample.detail = "Register presence is unknown; read the defining field or probe capabilities first".into();
             } else if side_effect && !manual {
                 sample.detail = "Reading has side effects; explicit manual read required".into();
             } else if implementation == Implementation::Unknown
@@ -436,6 +460,21 @@ impl Engine {
     ) -> Result<RawValue, (Reason, String)> {
         self.check_register_read_cancelled()
             .map_err(|error| (Reason::Unknown, error))?;
+        self.register_value_access = None;
+        let facts = self.effective_register_facts();
+        if let Some(denial) =
+            catalogue.access_denial(register, &facts, self.snapshot.state == "STOPPED", None)
+        {
+            return Err(denial);
+        }
+        if catalogue.has_presence_rule(register)
+            && catalogue.implementation(register, &facts).0 != Implementation::Yes
+        {
+            return Err((
+                Reason::Unknown,
+                "Register presence has not been proven; no read sent".into(),
+            ));
+        }
         if let Some(value) = values.get(&register.id) {
             self.register_value_access = values
                 .provenance
@@ -443,7 +482,6 @@ impl Engine {
                 .and_then(|p| p.access.clone());
             return Ok(value.clone());
         }
-        self.register_value_access = None;
         let result = (|| {
             if !self.project.registers.gic_command.is_empty()
                 && let Some((name, bits)) = crate::registers::gic::route(&register.reader)
@@ -482,6 +520,40 @@ impl Engine {
                 Reader::Gdb { name } => self.gdb_register_value(name, register.bits)?,
                 Reader::Banked { name } => self.read_banked_register(name)?,
                 Reader::Vfp { name } => self.read_vfp_register(name, values)?,
+                Reader::CorePrivate { address } => {
+                    let binding = crate::registers::core_private::binding(
+                        &self.project.registers,
+                        &self.project.memory_access,
+                        &self.register_context().core,
+                    )
+                    .map_err(|error| (Reason::ReaderUnsupported, error))?
+                    .clone();
+                    if binding.channel.is_empty() {
+                        let cores = self
+                            .project
+                            .cores
+                            .iter()
+                            .map(|c| (c.name.clone(), c.endpoint.clone()))
+                            .collect();
+                        crate::registers::core_private::gdb_endpoint(
+                            &self.project.target.endpoint,
+                            self.connected_gdb_endpoint.as_deref(),
+                            &cores,
+                            &self.register_context().core,
+                        )
+                        .map_err(|error| (Reason::ReaderUnsupported, error))?;
+                    }
+                    let result = self.read_memory_channel(&json!({"channel":binding.channel,"address":address,"bits":register.bits,"little_endian":binding.little_endian}))
+                        .map_err(|error| (Reason::TransportError, error))?;
+                    let value = result.get("value").and_then(Json::as_u64).ok_or_else(|| {
+                        (
+                            Reason::TransportError,
+                            "CorePrivate response lacks exact value".into(),
+                        )
+                    })?;
+                    RawValue::from_integer(u128::from(value), register.bits)
+                        .map_err(|error| (Reason::TransportError, error))?
+                }
                 Reader::Alias { source, offset } => {
                     let parent = catalogue.register(source).ok_or_else(|| {
                         (
@@ -855,6 +927,7 @@ pub(super) fn route_name(register: &Register) -> String {
         Reader::Gdb { name } => format!("gdb:{name}"),
         Reader::Alias { source, .. } => format!("alias:{source}"),
         Reader::Mmio { component, .. } => format!("mmio:{component}"),
+        Reader::CorePrivate { .. } => "mmio:ppb".into(),
         Reader::Backend { name } => format!("openocd:{name}"),
         Reader::Banked { name } => format!("openocd:aarch64 banked:{name}"),
         Reader::Vfp { name } => format!("openocd:aarch64 vfp:{name}"),

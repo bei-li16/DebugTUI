@@ -60,6 +60,7 @@ fn report(cpu: &str) -> Report {
             selected_core: Some("core1".into()),
             gdb_endpoint: "localhost:3331".into(),
             observed_gdb_endpoint: None,
+            gdb_core_endpoints: BTreeMap::new(),
             channels: vec![],
             channels_source: "configuration".into(),
             target_state: "STOPPED".into(),

@@ -10,6 +10,8 @@ pub struct Environment {
     pub selected_core: Option<String>,
     pub gdb_endpoint: String,
     pub observed_gdb_endpoint: Option<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub gdb_core_endpoints: BTreeMap<String, String>,
     pub channels: Vec<MemoryAccess>,
     pub channels_source: String,
     pub target_state: String,
@@ -154,10 +156,22 @@ impl Report {
             "configuration"
         }
         .into();
-        self.effective_facts = facts.clone();
         let Some(catalogue) = &self.catalogue else {
+            self.effective_facts = facts;
             return;
         };
+        let facts = catalogue.observation_facts_for_owners(
+            &config.facts,
+            probe,
+            if self.environment.target_state == "STOPPED" {
+                &self.observations
+            } else {
+                &[]
+            },
+            &self.context,
+            &config.topology,
+        );
+        self.effective_facts = facts.clone();
         for register in &catalogue.registers {
             let dependencies = catalogue
                 .read_dependencies(register)
@@ -250,6 +264,28 @@ impl Report {
                     .filter(|r| !r.access_condition.is_empty())
                     .map(|r| format!("{}: {}", r.id, r.access_condition)),
             );
+            for dependency in &dependencies {
+                if let Some(condition) = &dependency.present_if {
+                    state_conditions.push(format!(
+                        "{} present_if: {}",
+                        dependency.id,
+                        condition.description()
+                    ));
+                }
+                if let Some(condition) = &dependency.access_rule.need_enable {
+                    state_conditions.push(format!(
+                        "{} NeedEnable: {}",
+                        dependency.id,
+                        condition.description()
+                    ));
+                }
+                if let Some(el) = dependency.access_rule.min_el {
+                    state_conditions.push(format!(
+                        "{}: current Debug EL >= {el}; saved CPSR cannot authorize",
+                        dependency.id
+                    ));
+                }
+            }
             self.rows.push(Row {
                 id: register.id.clone(),
                 category,
@@ -261,7 +297,15 @@ impl Report {
                 plan,
                 readable,
                 manual_only,
-                automatic_eligible: catalogue.automatic_read(register, &facts),
+                automatic_eligible: catalogue.automatic_read(register, &facts)
+                    && catalogue
+                        .access_denial(
+                            register,
+                            &facts,
+                            self.environment.target_state == "STOPPED",
+                            None,
+                        )
+                        .is_none(),
                 implementation,
                 implementation_detail,
                 support,
@@ -440,6 +484,35 @@ fn plan(
             }
         }
         Reader::Alias { .. } => Plan::missing("Alias root is unresolved"),
+        Reader::CorePrivate { address } => {
+            let binding = match core_private::binding(config, &environment.channels, &context.core)
+            {
+                Ok(binding) => binding,
+                Err(error) => return Plan::missing(&error),
+            };
+            if binding.channel.is_empty()
+                && let Err(error) = core_private::gdb_endpoint(
+                    &environment.gdb_endpoint,
+                    environment.observed_gdb_endpoint.as_deref(),
+                    &environment.gdb_core_endpoints,
+                    &context.core,
+                )
+            {
+                return Plan::missing(&error);
+            }
+            let mut memory = register.clone();
+            memory.reader = Reader::Mmio {
+                component: "ppb".into(),
+                offset: *address,
+                require_owner_mapping: true,
+            };
+            let mut result = plan(&memory, environment, context, owner);
+            if result.available {
+                result.detail =
+                    "CorePrivate PPB through this core's explicit route; no shared fallback".into();
+            }
+            result
+        }
         Reader::Mmio {
             component,
             offset,

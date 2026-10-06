@@ -233,17 +233,27 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             register.scope
         ));
         let catalogue = app.register_view.catalogue.as_ref().unwrap();
+        let mut topology = app.active_register_config().topology.clone();
+        if topology.chip.is_empty() {
+            topology.chip = app.project.debug.chip.clone();
+        }
         text.extend(register.definition_details());
         text.extend(
             catalogue
-                .eligibility(
+                .eligibility_with_owners(
                     register,
                     &app.active_register_config().facts,
                     app.snapshot
                         .register_probe
                         .as_ref()
                         .filter(|_| app.snapshot.state == "STOPPED"),
+                    if app.snapshot.state == "STOPPED" {
+                        &app.snapshot.register_samples
+                    } else {
+                        &[]
+                    },
                     &context,
+                    &topology,
                 )
                 .with_catalogue_source(&app.register_view.source)
                 .lines("Current condition evaluation"),

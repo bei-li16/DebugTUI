@@ -19,6 +19,7 @@ impl Engine {
             environment: Environment {
                 registers, selected_core: self.project.preference_core.clone(), gdb_endpoint: self.project.target.endpoint.clone(),
                 observed_gdb_endpoint: self.connected_gdb_endpoint.clone(),
+                gdb_core_endpoints: self.project.cores.iter().map(|c| (c.name.clone(), c.endpoint.clone())).collect(),
                 channels: self.project.memory_access.clone(),
                 channels_source: self.project.memory_access_source.clone(),
                 target_state: self.snapshot.state.clone(), access_fault: self.register_access_fault.clone(),

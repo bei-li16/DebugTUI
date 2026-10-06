@@ -20,6 +20,7 @@ pub mod capabilities;
 mod catalogue_loader;
 mod core_config;
 pub use core_config::CoreConfig;
+pub mod core_private;
 pub mod display;
 pub mod eligibility;
 pub mod gic;
@@ -30,6 +31,7 @@ pub mod mmio_probe;
 mod mmio_tests;
 pub mod mpu;
 pub mod pmu;
+pub mod policy;
 pub mod provenance;
 pub mod selector;
 pub mod stm;
@@ -223,7 +225,10 @@ impl Config {
             || self.targets.iter().any(|(core, target)| {
                 !identifier(core) || target.is_empty() || target.chars().any(char::is_control)
             })
-            || self.facts.keys().any(|name| !identifier(name))
+            || self
+                .facts
+                .keys()
+                .any(|name| !identifier(name) || name.starts_with(policy::FIELD_FACT_PREFIX))
             || self.components.iter().any(|(name, component)| {
                 !identifier(name)
                     || (!component.channel.is_empty() && !identifier(&component.channel))
@@ -303,6 +308,7 @@ pub enum Scope {
     Core,
     Cluster,
     Chip,
+    Unknown,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -338,6 +344,10 @@ pub enum Reader {
         /// Architecture templates must never reuse a different owner's default base.
         #[serde(default, skip_serializing_if = "false_flag")]
         require_owner_mapping: bool,
+    },
+    /// Cortex-M PPB: absolute address through this physical core's own route.
+    CorePrivate {
+        address: u64,
     },
     Alias {
         source: String,
@@ -396,6 +406,10 @@ pub struct Register {
     pub fields: Vec<Field>,
     #[serde(default)]
     pub conditions: Vec<Condition>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub present_if: Option<policy::FieldCondition>,
+    #[serde(default, skip_serializing_if = "policy::AccessRule::is_empty")]
+    pub access_rule: policy::AccessRule,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -630,6 +644,23 @@ impl Field {
 
 impl Register {
     pub fn implementation(&self, facts: &BTreeMap<String, u64>) -> (Implementation, String) {
+        if let Some(condition) = &self.present_if {
+            match condition.evaluate(facts) {
+                Some(false) => {
+                    return (
+                        Implementation::No,
+                        format!("{} excludes this register", condition.description()),
+                    );
+                }
+                None => {
+                    return (
+                        Implementation::Unknown,
+                        format!("Unknown presence: {}", condition.description()),
+                    );
+                }
+                Some(true) => {}
+            }
+        }
         let mut missing = Vec::new();
         for condition in &self.conditions {
             match facts.get(&condition.fact) {
@@ -650,7 +681,7 @@ impl Register {
                 Implementation::Unknown,
                 format!("Unknown capability: {}", missing.join(", ")),
             )
-        } else if self.conditions.is_empty() {
+        } else if self.conditions.is_empty() && self.present_if.is_none() {
             (
                 Implementation::Unknown,
                 "Target identity not yet verified".into(),
@@ -896,6 +927,17 @@ impl Catalogue {
                 {
                     return Err(format!("Invalid MMIO route for {}", register.id));
                 }
+                Reader::CorePrivate { address }
+                    if register.scope != Scope::Core
+                        || !matches!(register.bits, 8 | 16 | 32)
+                        || !address.is_multiple_of(u64::from(register.bits / 8))
+                        || *address < core_private::START
+                        || address
+                            .checked_add(u64::from(register.bits / 8))
+                            .is_none_or(|end| end > core_private::END) =>
+                {
+                    return Err(format!("Invalid CorePrivate route for {}", register.id));
+                }
                 _ => {}
             }
             let mut fields = BTreeSet::new();
@@ -936,6 +978,7 @@ impl Catalogue {
                 current = parent;
             }
         }
+        self.validate_policy()?;
         Ok(())
     }
 }
@@ -986,6 +1029,7 @@ impl Topology {
                 .filter(|s| !s.trim().is_empty())
                 .map(|cluster| format!("cluster:{cluster}")),
             Scope::Chip => (!self.chip.trim().is_empty()).then(|| format!("chip:{}", self.chip)),
+            Scope::Unknown => None,
         }
     }
 }

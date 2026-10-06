@@ -20,6 +20,15 @@ pub struct ConditionEvidence {
     pub observation: Option<capabilities::Fact>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FieldConditionEvidence {
+    pub register: String,
+    pub kind: String,
+    pub condition: policy::FieldCondition,
+    pub value: Option<u64>,
+    pub source: Source,
+    pub observation: Option<Observation>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Observation {
     pub id: String,
     pub state: State,
@@ -53,6 +62,8 @@ pub struct Evidence {
     pub catalogue_source: Option<String>,
     pub dependencies: Vec<String>,
     pub conditions: Vec<ConditionEvidence>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub field_conditions: Vec<FieldConditionEvidence>,
     pub detail: String,
     pub probe: Option<ProbeBasis>,
 }
@@ -98,6 +109,25 @@ impl Catalogue {
         let mut missing = BTreeSet::new();
         let mut conditional = false;
         for dependency in dependencies {
+            if let Some(condition) = &dependency.present_if {
+                conditional = true;
+                match condition.evaluate(facts) {
+                    Some(false) => {
+                        return (
+                            Implementation::No,
+                            format!(
+                                "{}: {} excludes this register",
+                                dependency.id,
+                                condition.description()
+                            ),
+                        );
+                    }
+                    Some(true) => {}
+                    None => {
+                        missing.insert(condition.description());
+                    }
+                }
+            }
             for condition in &dependency.conditions {
                 conditional = true;
                 match facts.get(&condition.fact) {
@@ -115,7 +145,7 @@ impl Catalogue {
                     }
                     Some(_) => {}
                     None => {
-                        missing.insert(condition.fact.as_str());
+                        missing.insert(condition.fact.clone());
                     }
                 }
             }
@@ -158,7 +188,9 @@ impl Catalogue {
             && (implementation == Implementation::Yes
                 || (implementation == Implementation::Unknown
                     && self.read_dependencies(register).is_ok_and(|dependencies| {
-                        dependencies.iter().all(|r| r.conditions.is_empty())
+                        dependencies
+                            .iter()
+                            .all(|r| r.conditions.is_empty() && r.present_if.is_none())
                     })))
     }
     pub fn eligibility(
@@ -168,12 +200,83 @@ impl Catalogue {
         probe: Option<&capabilities::Probe>,
         context: &Context,
     ) -> Evidence {
+        self.eligibility_with_samples(register, declared, probe, &[], context)
+    }
+    pub fn eligibility_with_samples(
+        &self,
+        register: &Register,
+        declared: &BTreeMap<String, u64>,
+        probe: Option<&capabilities::Probe>,
+        samples: &[Sample],
+        context: &Context,
+    ) -> Evidence {
+        self.eligibility_with_owners(
+            register,
+            declared,
+            probe,
+            samples,
+            context,
+            &Topology::default(),
+        )
+    }
+    pub fn eligibility_with_owners(
+        &self,
+        register: &Register,
+        declared: &BTreeMap<String, u64>,
+        probe: Option<&capabilities::Probe>,
+        samples: &[Sample],
+        context: &Context,
+        topology: &Topology,
+    ) -> Evidence {
         let probe = probe.filter(|p| p.context == *context && context.frame == 0);
-        let facts = probe
-            .map(|p| p.effective(declared))
-            .unwrap_or_else(|| declared.clone());
+        let facts = self.observation_facts_for_owners(declared, probe, samples, context, topology);
+        let field_observations = self.field_observations(probe, samples, context, topology);
         let (implementation, detail) = self.implementation(register, &facts);
         let dependencies = self.read_dependencies(register).unwrap_or_default();
+        let field_conditions: Vec<_> = dependencies
+            .iter()
+            .flat_map(|register| {
+                register
+                    .present_if
+                    .iter()
+                    .map(|c| ("present_if", c))
+                    .chain(
+                        register
+                            .access_rule
+                            .need_enable
+                            .iter()
+                            .map(|c| ("need_enable", c)),
+                    )
+                    .map(|(kind, condition)| {
+                        let value = facts.get(&condition.key()).copied();
+                        FieldConditionEvidence {
+                            register: register.id.clone(),
+                            kind: kind.into(),
+                            condition: condition.clone(),
+                            value,
+                            source: if value.is_some() {
+                                Source::Observation
+                            } else {
+                                Source::Unknown
+                            },
+                            observation: field_observations.get(&condition.key()).map(
+                                |(_, sample)| Observation {
+                                    id: sample.id.clone(),
+                                    state: sample.state,
+                                    reason: sample.reason,
+                                    detail: sample.detail.clone(),
+                                    raw: sample.value.clone(),
+                                    source: sample.source.clone(),
+                                    timestamp_ms: sample.timestamp_ms,
+                                    owner: sample.owner.clone(),
+                                    owner_generation: sample.owner_generation,
+                                    provenance: sample.provenance.clone(),
+                                },
+                            ),
+                        }
+                    })
+            })
+            .collect();
         let conditions: Vec<_> = dependencies
             .iter()
             .flat_map(|r| {
@@ -201,7 +304,7 @@ impl Catalogue {
             })
             .collect();
         let probe = probe
-            .filter(|_| !conditions.is_empty())
+            .filter(|_| !conditions.is_empty() || !field_conditions.is_empty())
             .map(|p| ProbeBasis {
                 context: p.context.clone(),
                 thread: p.thread.clone(),
@@ -247,6 +350,7 @@ impl Catalogue {
             catalogue_source: None,
             dependencies: dependencies.iter().map(|r| r.id.clone()).collect(),
             conditions,
+            field_conditions,
             detail,
             probe,
         }
@@ -305,6 +409,41 @@ impl Evidence {
                     "Observed {} via {}: {}",
                     observation.register, observation.source, observation.detail
                 ));
+            }
+        }
+        for field in &self.field_conditions {
+            lines.push(format!(
+                "{} {}: {} · actual={} · {:?}",
+                field.register,
+                field.kind,
+                field.condition.description(),
+                field
+                    .value
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "Unknown".into()),
+                field.source
+            ));
+            if let Some(observation) = &field.observation {
+                lines.push(format!(
+                    "Field observed via {} at {} ms · owner={}",
+                    observation.source,
+                    observation.timestamp_ms,
+                    observation.owner.as_deref().unwrap_or("Unknown")
+                ));
+                if let Some(access) = observation
+                    .provenance
+                    .as_ref()
+                    .and_then(|p| p.access.as_ref())
+                {
+                    lines.push(format!(
+                        "Field request: {:?} · {} · core={} stop={} session={}",
+                        access.route,
+                        access.command,
+                        access.context.core,
+                        access.context.generation,
+                        access.context.session
+                    ));
+                }
             }
         }
         if let Some(probe) = &self.probe {

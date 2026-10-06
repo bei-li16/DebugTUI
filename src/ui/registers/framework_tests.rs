@@ -3,6 +3,67 @@ use super::*;
 use ratatui::{Terminal, backend::TestBackend};
 
 #[test]
+fn structured_conditions_and_unknown_owner_do_not_queue_automatic_ui_reads() {
+    use crate::registers::{
+        Field, SampleView, Scope, Segment,
+        policy::{Compare, FieldCondition},
+    };
+    let mut app = app();
+    let (engine, requests) = engine();
+    let positions: Vec<_> = ["r0", "r1", "r2", "r3", "r4"]
+        .iter()
+        .map(|id| index(&app, id))
+        .collect();
+    let c = app.register_view.catalogue.as_mut().unwrap();
+    c.registers[positions[0]].fields = vec![Field {
+        name: "FLAG".into(),
+        description: "Enable flag".into(),
+        segments: vec![Segment {
+            offset: 7,
+            width: 1,
+        }],
+        access: None,
+        enums: vec![],
+    }];
+    let condition = FieldCondition {
+        reg: "r0".into(),
+        field: "FLAG".into(),
+        op: Compare::Eq,
+        value: 1,
+    };
+    c.registers[positions[1]].present_if = Some(condition.clone());
+    c.registers[positions[2]].access_rule.need_enable = Some(condition);
+    c.registers[positions[3]].scope = Scope::Unknown;
+    c.registers[positions[3]].writer = None;
+    c.registers[positions[3]].write = None;
+    c.registers[positions[4]].access_rule.min_el = Some(2);
+    c.validate().unwrap();
+    app.project.registers.facts.insert("cpu.debug_el".into(), 2);
+    app.sync_register_capabilities();
+    app.register_view.rows = positions[1..]
+        .iter()
+        .map(|i| Row::Register(*i, 1))
+        .collect();
+    assert!(!app.ensure_registers(Some(&engine)));
+    assert!(requests.try_recv().is_err());
+    let mut observed = sample(&app, "r0", "0x80");
+    observed.view = SampleView::PhysicalCore;
+    observed.provenance=Some(serde_json::from_value(json!({"acquisition":"catalogue","catalogue_reader":{"kind":"gdb","name":"r0"},
+        "access":{"route":{"kind":"gdb_register","endpoint":"localhost:3333","configured_endpoint":"localhost:3333","name":"r0","index":0},
+            "phase":"responded","command":"-data-list-register-values r 0","context":observed.context,"timestamp_ms":20,"completed_ms":22}})).unwrap());
+    app.snapshot.register_samples = vec![observed];
+    app.sync_register_capabilities();
+    app.register_view.rows = positions[1..]
+        .iter()
+        .map(|i| Row::Register(*i, 1))
+        .collect();
+    assert!(app.ensure_registers(Some(&engine)));
+    let request = requests.try_recv().unwrap();
+    assert_eq!(request.params["ids"], json!(["r1", "r2"]));
+    assert!(requests.try_recv().is_err());
+}
+
+#[test]
 fn per_core_register_ui_switches_catalogue_facts_and_drops_other_model_values() {
     let mut project = Project::default();
     project.registers.cpu = "cortex-m4".into();

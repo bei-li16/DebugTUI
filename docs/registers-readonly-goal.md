@@ -31,8 +31,8 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | A05 | 公共定义继承和循环/深度检查 | 有效继承、缺父定义、循环/超深拒绝 |
 | [x] | A06 | 显式 override 及继承来源 | 重名拒绝、显式覆盖、父文件来源 |
 | [x] | A07 | reset/source/confidence 元数据 | 合法/缺失/冲突、未知复位值和可信度校验 |
-| [ ] | A08 | 结构化实现/访问条件 | 存在性、NeedHalt/Enable/权限与副作用检查 |
-| [ ] | A09 | 归属未知及既有 reader/alias 复用 | core/cluster/chip/unknown 与别名隔离 |
+| [x] | A08 | 结构化实现/访问条件 | 存在性、NeedHalt/Enable/权限与副作用检查 |
+| [x] | A09 | 归属未知及既有 reader/alias 复用 | core/cluster/chip/unknown 与别名隔离 |
 | [x] | A10 | 3～5 个代表性定义样例 | schema/字段/来源/条件/副作用专项 |
 | [ ] | B01 | M3/M4/M7 公共加增量目录 | 内置加载、继承与型号差异 |
 | [ ] | B02 | SCB 与故障字段 | 常用状态/控制及 CFSR/HFSR/MMFAR/BFAR 定义 |
@@ -85,6 +85,17 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 回归中修复：来源诊断膨胀持久化目录并破坏快照往返、CPU 帮助行遗漏、窄屏 CPU 文本可见性、Windows 并发 fixture 重名，以及原有文件错误前缀兼容。保留原测试断言，没有提高 4 MiB 单文件限制。
 - G 盘空间不足后，改用 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly` 构建，并将 Node 测试证据放到其 `evidence` 子目录；原 target 未删除。日志：`readonly-catalogue-full-final-20261006.log`、`readonly-catalogue-unit-final-20261006.log`、`readonly-catalogue-integration-final-20261006.log`、`readonly-catalogue-path-final-20261006.log`、`readonly-catalogue-clippy-20261006.log`。完整回归后的最终改动仅为文件错误前缀和显式 `.toml` 父文件识别，各自已专项/实际入口复验；Clippy 调整仅合并等价条件。
 - 新增 CONFIG-H11，环境验收保持 SKIPPED，没有执行上板测试或重建 OpenOCD。A04/A08/A09、M 公共目录/动态探测/CorePrivate/运行态、R52 权限统一及发布仍待完成；下一轮推进结构化条件与 M 公共目录。提交 SHA 与推送结果由本轮最终输出报告。
+
+## 迭代 3：结构化条件与私有核路线
+
+2026-10-06，完成 A08/A09，累计 **9 完成 / 27 未完成**。
+
+- `present_if` 使用有限的寄存器字段比较；`access_rule` 分离 NeedHalt、NeedEnable 和当前 Debug min_el。配置不能伪造观测字段，未知存在性/使能/权限和 unknown scope 在数据访问前拒绝，手动与 Alias 均不能绕过。样本需当前物理 owner/context、完整值和已响应的实际请求；最新失败不复活旧 probe，早于当前证明的迟到样本不覆盖新依据。条件保留原源样本/路线/时间和共享 owner。
+- 增加 CorePrivate 绝对 PPB reader，复用现有内存通道；显式每核 ppb binding、零 base、专属核心通道、匹配 target，并拒绝另一核复用同 endpoint/target。显式 GDB memory 使用已知且独立的 worker endpoint，不透明连接变更或多个核心共享该 endpoint 时拒绝。API、只读矩阵与界面使用同一策略；没有重写 DCRSR/DCRDR。
+- 新增 8 项模型/图/路线/观测单元测试和 1 项 UI 自动队列测试。最终完整单元 **448 通过、0 失败、2 ignored**；本批选择的 12 个相关集成套件共 **64 项最终通过**，包含八类 reader/来源、取消、配置/继承实际 EXE、共享/生命周期及 MMIO。新 policy 集成 3 项覆盖两个 TCP target、真实 MI memory 和实际 EXE；其中 EXE 检查一项有效配置及五种连接前拒绝。日志位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-policy-regression-20261006.log` 和 `readonly-policy-final-20261006.log`。前者新 GDB 夹具因缺 target.endpoint 失败，补齐后在后者 3/3 通过；后者还补齐首次失败后未运行的来源/共享套件。不声称未选择的集成套件已运行。
+- 自检修正缓存父节点绕过图深度限制，增加 64/66 层边界，并在门禁前清空上一次实际 access，避免拒绝后沿用别项请求。`cargo fmt --all --check` 与严格 Clippy 全 target 检查通过，Clippy 记录在 `readonly-policy-clippy-20261006.log`；首次仅遇到测试引用切片的 Clippy 提示，等价改为 from_ref 后复验通过。
+- 新增 [策略与来源说明](register-structured-policy.md) 及七项 [环境用例](../tests/cases/register-structured-policy.md)，全部 SKIPPED。用户请求的新 [Goal 文本](registers-goal-objective.md) 一并保存，三个核心绝对引用保持。
+- 这里完成公共策略模型，不等于 B11 运行态入口或 C03 R52 生产证明已完成。当前通用 min_el 因缺后端证明仍为 Unknown；NeedHalt=false 不降低现有请求/通道限制。B10 虽有实际双 TCP/GDB 路线证据，正式 M 目录、ID 驱动及完整异构缓存验收尚未完成，继续不勾选。下一轮完成 M 公共/增量目录与 ID 接入，再验证 B10/B11。提交 SHA 与推送结果在本轮最终输出报告。
 
 ## 迭代和发布约束
 

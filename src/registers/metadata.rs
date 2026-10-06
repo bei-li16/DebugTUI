@@ -198,6 +198,28 @@ impl Register {
                     .unwrap_or_else(|| "Unknown; no verified reset definition".into())
             ),
         ];
+        if let Some(condition) = &self.present_if {
+            lines.push(format!(
+                "Present if: {} (observed physical field)",
+                condition.description()
+            ));
+        }
+        if let Some(condition) = &self.access_rule.need_enable {
+            lines.push(format!(
+                "NeedEnable: {} (no automatic enable)",
+                condition.description()
+            ));
+        }
+        if let Some(el) = self.access_rule.min_el {
+            lines.push(format!(
+                "NeedEl({el}): current Debug state proof required; saved CPSR is insufficient"
+            ));
+        }
+        if let Some(halt) = self.access_rule.need_halt {
+            lines.push(format!(
+                "NeedHalt: {halt}; actual backend/channel restrictions still apply"
+            ));
+        }
         if let Some(origin) = &self.definition_origin {
             lines.push(format!("Definition file: {}", origin.declared_in));
             if origin.inheritance.len() > 1 {

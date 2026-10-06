@@ -7,6 +7,17 @@ use crate::registers::{
 use std::collections::BTreeMap;
 impl Engine {
     pub(super) fn effective_register_facts(&self) -> BTreeMap<String, u64> {
+        if self.snapshot.state == "STOPPED"
+            && let Ok(Some((catalogue, _))) = &self.register_catalogue
+        {
+            return catalogue.observation_facts_for_owners(
+                &self.project.registers.facts,
+                self.snapshot.register_probe.as_ref(),
+                &self.snapshot.register_samples,
+                &self.register_context(),
+                &self.register_topology(),
+            );
+        }
         self.snapshot
             .register_probe
             .as_ref()
