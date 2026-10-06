@@ -4,6 +4,29 @@
 
 ## 优先级与来源
 
+多核工程可在每个 `[[cores]]` 的 `[cores.registers]` 中覆盖 CPU、目录、能力配置和访问参数。例如：
+
+```toml
+[registers]
+cpu = "cortex-r52"
+
+[[cores]]
+name = "core.0"
+endpoint = "localhost:3333"
+[cores.registers]
+cpu = "cortex-m4"
+catalogue = ""              # 显式清除可能继承的文件选择
+cp15_command = ""
+
+[[cores]]
+name = "core.2"
+endpoint = "localhost:3334" # 省略 registers，沿用项目寄存器默认值
+```
+
+省略字段继承项目有效默认；显式空 CPU/目录可回到动态 GDB。非空目录仍优先于 CPU 名，路径相对声明它的项目文件解析。提供的 facts/targets/components/component_owners 映射整体替换该 worker 的对应默认映射，组件路由必须完整；不猜测未给出的 AP。芯片 topology 保持全局，不能在 per-core 表覆盖。
+
+项目加载时校验各核的最终配置；损坏目录或非法命令包含核心名并报错，不能回退到别核或全局目录。worker 使用该核的有效配置，界面在不同目录间切换时更换定义并清除旧目录缓存，Setup 和 Status 显示当前核实际选择的目录。此配置能力本身不证明 M7 目录内容或任何硬件身份；本版 M3/M7 内置系统目录仍由新 Goal 的 B01 跟踪。
+
 1. 显式 `--environment` 优先于项目 `tools.profile`，后者优先于 `tools.root/debug-env.toml`。
 2. Tools/profile 的根配置先与选定 backend 的配置合并，再由项目同名字段覆盖。组件映射可逐字段覆盖，未覆盖的 base/channel/字节序继续继承；最终必需字段与类型仍严格校验。
 3. 芯片 CPU 关联只作为默认值。项目或选定 profile/backend 已存在 `registers.cpu` 或 `registers.catalogue`（包括空字符串）时不注入芯片默认 CPU。没有显式选择时使用用户芯片关联；用户芯片未声明 CPU 时沿用内置芯片关联。
@@ -27,7 +50,9 @@ Config、Topology 与 Component 的未知字段/错误类型由严格 schema 拒
 | 路径与字段继承 | `register_configuration_paths_cover_tools_root_explicit_environment_and_project_overrides`：tools.root、显式环境覆盖缺失 tools.profile、profile_dir、中文/空格路径、project 文件及组件局部覆盖；既有 `register_catalogue_paths_follow_the_declaring_profile_or_project` 保留保存后 profile 原字节断言 |
 | 错误不能被芯片默认掩盖 | `register_configuration_errors_survive_selected_backend_and_chip_defaults`：项目/profile/选定 backend 未知字段、标量 register table 及未知 CPU |
 | 用户/内置/文件优先级 | `a_user_cpu_preset_overrides_builtins_and_invalid_overrides_do_not_fall_back`：客户内容、损坏文件、同名目录与真正不存在；`explicit_catalogue_precedes_cpu_and_missing_file_is_an_error`：显式文件优先及错误不得回退 |
-| 实际 EXE/JSONL 与多核 | `actual_binary_register_configuration_priority_errors_and_multicore_identity_are_isolated` 执行 `scripts/test-register-configuration.cjs` 十项独立 case：旧项目、chip/profile/backend/project/file/empty/user 来源与错误矩阵；各 core.0/core.2 返回独立 session；客户文件 hash 保持，未执行 connect/MI/probe |
+| 每核选择与继承 | `per_core_register_*` 配置测试、worker 投影测试与切核界面测试：每核 CPU/目录、声明路径、显式空值、映射替换、非法路由与客户文件保留 |
+| 实际 EXE/JSONL 与多核 | `actual_binary_register_configuration_priority_errors_and_multicore_identity_are_isolated` 执行 `scripts/test-register-configuration.cjs` 十二项独立 case：旧项目、chip/profile/backend/project/file/empty/user 来源与错误矩阵，加上每核不同目录/能力与连接前错误；各 core.0/core.2 返回独立 session；客户文件 hash 保持，脚本未执行 connect/MI/probe |
+| 实际 worker/MI/Tcl 路由 | `per_core_register_routes_reach_distinct_actual_tcp_targets_and_receipts`：连接两核 mock GDB，再向两个真实本地 TCP 端点发送寄存器请求，核对不同 target、返回值、owner 与路由凭据；服务器不模拟 ARM 指令执行 |
 
 本批修复芯片默认覆盖 profile 显式 CPU 的优先级错误。有效选择先于芯片关联，使实际 `registers_list` 与 Setup Automatic 的“继承 profile/chip”语义一致。选择 R52+ 目录不等于已证明实际 R52+ 身份；未识别硬件仍遵守既有 Unknown/禁止扩展探测规则。
 

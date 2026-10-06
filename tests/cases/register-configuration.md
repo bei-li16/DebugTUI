@@ -14,5 +14,7 @@
 | CONFIG-H06 | 用户同名 override 为有效客户文件、损坏文件、目录、不可读或断开的链接，再真正移除该路径 | 有效客户内容优先；损坏/目录/不可读取时必须报错；只有不存在时可选内置；客户文件 SHA256 保持 | SKIPPED |
 | CONFIG-H07 | 项目/profile/选定 backend 添加未知 register 设置；nested topology/component 加未知字段或错误类型；组件只覆盖 channel | 错误包含字段/类型信息且在目标操作前报告；有效局部覆盖继承 base/byte order，未知字段不被静默接受 | SKIPPED |
 | CONFIG-H08 | 选择非连续核心，如 core.0/core.2；逐核列表，再查看 Setup CPU/GDB/Automatic 草稿、取消与保存 | 每核 context/source 对应真正选择的 worker 与目录；不按列表索引猜系统寄存器 target；只查看/取消无文件和硬件动作，保存仅改项目副本；完整目录与目标提示另见 [REG-108 环境 case](register-setup-catalogues.md) | SKIPPED |
+| CONFIG-H09 | M7＋M4 各核配置不同 CPU/目录；首次验证使用人工复核的 M7 目录；两核分别运行 registers_list、查看界面和 Setup，然后切回 | 定义、配置 facts、CPU 和目录来源分别对应当前核；切换不出现另一目录的缓存值；相同 PPB 地址的实际访问另由 CorePrivate 用例验证 | SKIPPED |
+| CONFIG-H10 | 两核设置不同 tcl_endpoint/targets 与配套命令；省略一核覆盖，再显式清空 CPU/catalogue；向一核加入非法命令或缺失文件 | 继承和显式空值保持文档语义；各核配置隔离；错误在连接前报告核心名；不调用错误路径，不回退全局目录 | SKIPPED |
 
 涉及不可读文件/链接时仅操作专用测试目录，执行人员选择适合其系统的权限/链接方式。结束核对客户原配置 SHA256 与进程/日志，保留 stderr、目录 list JSON 和 Setup 截图；上板执行不在本任务范围内。

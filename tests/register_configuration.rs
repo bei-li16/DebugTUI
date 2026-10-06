@@ -1,6 +1,9 @@
 #![cfg(windows)]
 //! The actual CLI resolves isolated user profiles without starting GDB.
 use std::{path::Path, process::Command};
+
+#[path = "register_configuration/per_core_routes.rs"]
+mod per_core_routes;
 #[test]
 fn actual_binary_register_configuration_priority_errors_and_multicore_identity_are_isolated() {
     let output = Command::new("node")
@@ -17,6 +20,6 @@ fn actual_binary_register_configuration_priority_errors_and_multicore_identity_a
     assert!(
         String::from_utf8(output.stdout)
             .unwrap()
-            .contains("\"passed\":10,\"failed\":0,\"skipped\":0")
+            .contains("\"passed\":12,\"failed\":0,\"skipped\":0")
     );
 }

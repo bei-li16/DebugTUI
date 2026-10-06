@@ -549,6 +549,7 @@ impl App {
                     self.hide_source();
                 }
                 self.snapshot = *snapshot;
+                self.sync_register_configuration();
                 self.sync_register_sample_validity();
                 self.sync_register_preferences();
                 self.sync_register_capabilities();

@@ -17,6 +17,8 @@ pub const OPENOCD_ADAPTER_PROTOCOL: &str =
     "debugtui-armv8-1 mrrc isb scratch-readback stop-on-fault";
 pub mod banked;
 pub mod capabilities;
+mod core_config;
+pub use core_config::CoreConfig;
 pub mod display;
 pub mod eligibility;
 pub mod gic;

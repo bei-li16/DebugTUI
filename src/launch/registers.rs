@@ -167,13 +167,61 @@ pub(super) fn preview(
             .collect()
     };
     for core in cores {
+        let config = project.registers_for_core(core);
+        // The caller may be previewing an unsaved root CPU/catalogue choice.
+        // Reuse that authoritative preview unless this core explicitly selects one.
+        let has_selection = project
+            .cores
+            .iter()
+            .find(|entry| entry.name == core)
+            .and_then(|entry| entry.registers.as_ref())
+            .is_some_and(|entry| entry.cpu.is_some() || entry.catalogue.is_some());
+        let override_loaded = has_selection.then(|| config.load());
+        let effective = match &override_loaded {
+            Some(Ok(loaded)) => Ok(loaded.as_ref()),
+            Some(Err(error)) => Err(error.as_str()),
+            None => Ok(loaded),
+        };
+        let effective_cpu = effective
+            .as_ref()
+            .ok()
+            .and_then(|loaded| loaded.as_ref())
+            .map(|(catalogue, _)| catalogue.cpu.as_str());
+        match &effective {
+            Ok(Some((catalogue, source))) => lines.push(format!(
+                "Effective CPU [{core}]: {}; Source: {source}",
+                catalogue.cpu
+            )),
+            Ok(None) => lines.push(format!("Effective CPU [{core}]: GDB target description")),
+            Err(error) => lines.push(format!(
+                "Effective CPU [{core}]: configuration error: {error}"
+            )),
+        }
+        lines.push(format!(
+            "Register route [{core}]: endpoint {}; target {}; MRC {}",
+            if config.tcl_endpoint.is_empty() {
+                "unspecified"
+            } else {
+                &config.tcl_endpoint
+            },
+            config
+                .targets
+                .get(core)
+                .map(String::as_str)
+                .unwrap_or("unspecified"),
+            if config.cp15_command.is_empty() {
+                "disabled"
+            } else {
+                &config.cp15_command
+            }
+        ));
         let evidence = observation.filter(|observation| observation.context.core == core);
         let model = evidence.and_then(|observation| observation.model.as_deref());
         lines.push(format!(
             "Observed CPU [{core}]: {}",
             model.unwrap_or("Unknown; no current adapted identity evidence")
         ));
-        if let Some(warning) = cpu.and_then(|cpu| {
+        if let Some(warning) = effective_cpu.and_then(|cpu| {
             model.and_then(|model| mismatch(&format!("observed CPU [{core}]"), model, cpu))
         }) {
             lines.push(warning);

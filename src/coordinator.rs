@@ -1096,6 +1096,7 @@ impl Drop for Coordinator {
 }
 fn derive_project(base: &Project, core: &Core, index: usize) -> Project {
     let mut p = base.clone();
+    p.registers = base.registers_for_core(&core.name);
     p.target.endpoint = core.endpoint.clone();
     if !core.after_connect.is_empty() {
         p.target.after_connect = core.after_connect.clone();
@@ -1116,4 +1117,34 @@ fn derive_project(base: &Project, core: &Core, index: usize) -> Project {
     }
     p.service = None;
     p
+}
+
+#[cfg(test)]
+mod core_register_tests {
+    use super::*;
+    #[test]
+    fn per_core_register_worker_derivation_keeps_independent_effective_routes() {
+        let mut project = Project::default();
+        project.registers.cpu = "cortex-r52".into();
+        project.registers.tcl_endpoint = "localhost:6666".into();
+        project.cores = vec![Core {
+            name: "core.0".into(), endpoint: "localhost:3333".into(),
+            registers: Some(toml::from_str("cpu='cortex-m4'\ntcl_endpoint='localhost:6667'\n[targets]\n'core.0'='soc.m4'\n").unwrap()),
+            ..Default::default()
+        }, Core {
+            name: "core.2".into(), endpoint: "localhost:3334".into(),
+            ..Default::default()
+        }];
+        let first = derive_project(&project, &project.cores[0], 0);
+        let second = derive_project(&project, &project.cores[1], 1);
+        assert_eq!(first.registers.cpu, "cortex-m4");
+        assert_eq!(second.registers.cpu, "cortex-r52");
+        assert_eq!(first.registers.tcl_endpoint, "localhost:6667");
+        assert_eq!(second.registers.tcl_endpoint, "localhost:6666");
+        assert_eq!(first.registers.targets["core.0"], "soc.m4");
+        assert!(second.registers.targets.is_empty());
+        assert_eq!(first.preference_core.as_deref(), Some("core.0"));
+        assert_eq!(second.preference_core.as_deref(), Some("core.2"));
+        assert_eq!(project.registers.cpu, "cortex-r52");
+    }
 }

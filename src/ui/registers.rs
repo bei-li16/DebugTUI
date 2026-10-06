@@ -56,6 +56,7 @@ fn column(text: &str, width: usize) -> String {
 }
 
 pub(super) struct RegisterView {
+    configuration: (String, PathBuf),
     catalogue: Option<Catalogue>,
     source: String,
     error: Option<String>,
@@ -157,12 +158,21 @@ impl RegisterView {
         })
     }
     pub(super) fn load(project: &Project) -> Self {
-        let (catalogue, source, error) = match project.registers.load() {
+        let core = project
+            .preference_core
+            .as_deref()
+            .or_else(|| project.cores.first().map(|core| core.name.as_str()))
+            .unwrap_or("default");
+        Self::load_config(&project.registers_for_core(core))
+    }
+    fn load_config(config: &crate::registers::Config) -> Self {
+        let (catalogue, source, error) = match config.load() {
             Ok(Some((catalogue, source))) => (Some(catalogue), source, None),
             Ok(None) => (None, String::new(), None),
             Err(error) => (None, String::new(), Some(error)),
         };
         let mut view = Self {
+            configuration: (config.cpu.clone(), config.catalogue.clone()),
             catalogue,
             source,
             error,
@@ -183,16 +193,16 @@ impl RegisterView {
             searching: false,
             filter: 0,
             all_definitions: false,
-            facts: project.registers.facts.clone(),
+            facts: config.facts.clone(),
             runtime_absent: BTreeSet::new(),
             preference_scope: String::new(),
             display_formats: BTreeMap::new(),
             mpu_popup: None,
-            vfp_write_targets: if project.registers.vfp_write_command == "aarch64 vfp_write"
-                && project.registers.vfp_command == "aarch64 vfp"
-                && !project.registers.tcl_endpoint.is_empty()
+            vfp_write_targets: if config.vfp_write_command == "aarch64 vfp_write"
+                && config.vfp_command == "aarch64 vfp"
+                && !config.tcl_endpoint.is_empty()
             {
-                project.registers.targets.keys().cloned().collect()
+                config.targets.keys().cloned().collect()
             } else {
                 BTreeSet::new()
             },
@@ -318,7 +328,7 @@ impl RegisterView {
         }
     }
     fn owner(&self, project: &Project, context: &Context, index: usize) -> Option<String> {
-        let mut topology = project.registers.topology.clone();
+        let mut topology = project.registers_for_core(&context.core).topology;
         if topology.chip.is_empty() {
             topology.chip = project.debug.chip.clone();
         }
@@ -339,6 +349,39 @@ impl RegisterView {
 }
 
 impl App {
+    fn active_register_config(&self) -> crate::registers::Config {
+        let core = self
+            .snapshot
+            .core
+            .as_ref()
+            .map(|core| core.name.as_str())
+            .or(self.project.preference_core.as_deref())
+            .or_else(|| self.project.cores.first().map(|core| core.name.as_str()))
+            .unwrap_or("default");
+        self.project.registers_for_core(core)
+    }
+    pub(super) fn sync_register_configuration(&mut self) {
+        let config = self.active_register_config();
+        let key = (config.cpu.clone(), config.catalogue.clone());
+        if self.register_view.configuration != key {
+            if let Some(request) = &self.register_view.read_request {
+                request.cancel_read();
+            }
+            self.register_view = RegisterView::load_config(&config);
+            self.selections[3] = 0;
+            if self.pane == 3 {
+                self.selection = 0;
+            }
+        }
+        self.register_view.vfp_write_targets = if config.vfp_write_command == "aarch64 vfp_write"
+            && config.vfp_command == "aarch64 vfp"
+            && !config.tcl_endpoint.is_empty()
+        {
+            config.targets.keys().cloned().collect()
+        } else {
+            BTreeSet::new()
+        };
+    }
     pub(super) fn sync_register_sample_validity(&mut self) {
         let context = self.register_context();
         let generations = &self.snapshot.register_owner_generations;
@@ -351,7 +394,7 @@ impl App {
             .cloned()
             .collect();
         if !changed.is_empty() {
-            let mut topology = self.project.registers.topology.clone();
+            let mut topology = self.active_register_config().topology;
             if topology.chip.is_empty() {
                 topology.chip = self.project.debug.chip.clone();
             }
@@ -718,7 +761,7 @@ impl App {
                 "Probe this physical core at frame 0 before reading a selector bank.".into();
             return;
         }
-        if self.project.registers.selector_command.is_empty() {
+        if self.active_register_config().selector_command.is_empty() {
             self.notice =
                 "A verified selector MCR command must be declared; direct Read remains available."
                     .into();
@@ -738,13 +781,14 @@ impl App {
         }
     }
     pub(super) fn sync_register_capabilities(&mut self) {
+        let config = self.active_register_config();
         let facts = self
             .snapshot
             .register_probe
             .as_ref()
             .filter(|p| p.context == self.register_context() && self.snapshot.state == "STOPPED")
-            .map(|p| p.effective(&self.project.registers.facts))
-            .unwrap_or_else(|| self.project.registers.facts.clone());
+            .map(|p| p.effective(&config.facts))
+            .unwrap_or_else(|| config.facts.clone());
         if facts != self.register_view.facts {
             self.register_view.facts = facts;
             for sample in self.register_view.values.values_mut() {

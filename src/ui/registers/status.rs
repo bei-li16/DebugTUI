@@ -234,7 +234,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             catalogue
                 .eligibility(
                     register,
-                    &app.project.registers.facts,
+                    &app.active_register_config().facts,
                     app.snapshot
                         .register_probe
                         .as_ref()
@@ -377,12 +377,13 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             "Catalogue CPU: {} / architecture {}",
             catalogue.cpu, catalogue.architecture
         ));
+        let configured_cpu = app.active_register_config().cpu;
         text.push(format!(
             "Configured CPU choice: {}",
-            if app.project.registers.cpu.is_empty() {
+            if configured_cpu.is_empty() {
                 "unspecified; catalogue file or GDB defaults"
             } else {
-                &app.project.registers.cpu
+                &configured_cpu
             }
         ));
         let observed = app

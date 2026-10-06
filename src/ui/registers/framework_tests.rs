@@ -2,6 +2,85 @@ use super::tests::{app, engine, sample};
 use super::*;
 use ratatui::{Terminal, backend::TestBackend};
 
+#[test]
+fn per_core_register_ui_switches_catalogue_facts_and_drops_other_model_values() {
+    let mut project = Project::default();
+    project.registers.cpu = "cortex-m4".into();
+    project.cores = vec![
+        crate::config::Core {
+            name: "m4".into(),
+            endpoint: "localhost:3333".into(),
+            ..Default::default()
+        },
+        crate::config::Core {
+            name: "r52".into(),
+            endpoint: "localhost:3334".into(),
+            registers: Some(
+                toml::from_str("cpu='cortex-r52'\n[facts]\n'customer.capacity'=3\n").unwrap(),
+            ),
+            ..Default::default()
+        },
+    ];
+    let mut app = App::new(project, false);
+    assert_eq!(
+        app.register_view.catalogue.as_ref().unwrap().cpu,
+        "cortex-m4"
+    );
+    app.register_view.query = "xpsr".into();
+    let old_sample = sample(&app, "r0", "0x1234");
+    app.register_view
+        .values
+        .insert(("core:m4".into(), "r0".into(), "m4".into()), old_sample);
+    let mut snapshot = app.snapshot.clone();
+    snapshot.core = Some(crate::session::CoreStatus {
+        index: 1,
+        name: "r52".into(),
+        endpoint: "localhost:3334".into(),
+        state: "STOPPED".into(),
+    });
+    app.update(Event::Snapshot {
+        snapshot: Box::new(snapshot.clone()),
+    });
+    assert_eq!(
+        app.register_view.catalogue.as_ref().unwrap().cpu,
+        "cortex-r52"
+    );
+    assert!(
+        app.register_view
+            .catalogue
+            .as_ref()
+            .unwrap()
+            .register("cpsr")
+            .is_some()
+    );
+    assert!(
+        app.register_view
+            .catalogue
+            .as_ref()
+            .unwrap()
+            .register("xpsr")
+            .is_none()
+    );
+    assert!(app.register_view.query.is_empty() && app.register_view.values.is_empty());
+    assert_eq!(app.register_view.facts["customer.capacity"], 3);
+    let r52_scope = app.register_view.preference_scope.clone();
+    snapshot.core = Some(crate::session::CoreStatus {
+        index: 0,
+        name: "m4".into(),
+        endpoint: "localhost:3333".into(),
+        state: "STOPPED".into(),
+    });
+    app.update(Event::Snapshot {
+        snapshot: Box::new(snapshot),
+    });
+    assert_eq!(
+        app.register_view.catalogue.as_ref().unwrap().cpu,
+        "cortex-m4"
+    );
+    assert!(!app.register_view.facts.contains_key("customer.capacity"));
+    assert_ne!(app.register_view.preference_scope, r52_scope);
+}
+
 fn index(app: &App, id: &str) -> usize {
     app.register_view
         .catalogue

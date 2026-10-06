@@ -3,6 +3,39 @@ use crate::launch::tests::{Fixture, key};
 use crate::registers::{RawValue, Sample, SampleView, State};
 use ratatui::{Terminal, backend::TestBackend};
 
+#[test]
+fn per_core_register_setup_preview_reports_effective_models_and_routes_without_probe() {
+    let mut project = Project::default();
+    project.registers.cpu = "cortex-r52".into();
+    project.registers.tcl_endpoint = "localhost:6666".into();
+    project.cores = vec![
+        crate::config::Core {
+            name: "m4".into(),
+            endpoint: "localhost:3333".into(),
+            registers: Some(
+                toml::from_str(
+                    "cpu='cortex-m4'\ntcl_endpoint='localhost:6667'\n[targets]\nm4='soc.m4'\n",
+                )
+                .unwrap(),
+            ),
+            ..Default::default()
+        },
+        crate::config::Core {
+            name: "r52".into(),
+            endpoint: "localhost:3334".into(),
+            ..Default::default()
+        },
+    ];
+    let loaded = project.registers.load().unwrap().unwrap();
+    let lines = preview(&project, Some(&loaded), None, None).join("\n");
+    assert!(lines.contains("Effective CPU [m4]: cortex-m4; Source: builtin:cortex-m4"));
+    assert!(lines.contains("Effective CPU [r52]: cortex-r52; Source: builtin:cortex-r52"));
+    assert!(lines.contains("Register route [m4]: endpoint localhost:6667; target soc.m4"));
+    assert!(lines.contains("Register route [r52]: endpoint localhost:6666; target unspecified"));
+    assert!(lines.contains("Observed CPU [m4]: Unknown"));
+    assert!(lines.contains("No hardware access is performed"));
+}
+
 fn text(terminal: &Terminal<TestBackend>) -> String {
     let buffer = terminal.backend().buffer();
     let mut text = String::new();

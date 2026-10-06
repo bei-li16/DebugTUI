@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+#[cfg(test)]
+mod core_register_tests;
 use std::{
     collections::BTreeMap,
     env, fs,
@@ -506,6 +508,9 @@ pub struct Core {
     pub startup_order: i32,
     pub watch: Option<Vec<String>>,
     pub breakpoints: Option<Vec<BreakpointSpec>>,
+    /// Omitted fields inherit the project register defaults; empty values are explicit.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registers: Option<crate::registers::CoreConfig>,
 }
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -593,6 +598,17 @@ fn resolve_launch_paths(value: &mut toml::Value, base: &Path) {
     {
         *path = portable_path(&absolute(base, Path::new(path)));
     }
+    if let Some(cores) = value.get_mut("cores").and_then(toml::Value::as_array_mut) {
+        for core in cores {
+            if let Some(toml::Value::String(path)) = core
+                .get_mut("registers")
+                .and_then(|registers| registers.get_mut("catalogue"))
+                && !path.is_empty()
+            {
+                *path = portable_path(&absolute(base, Path::new(path)));
+            }
+        }
+    }
     for (section, executable) in [("gdb", "executable"), ("service", "command")] {
         if let Some(table) = value.get_mut(section).and_then(toml::Value::as_table_mut) {
             for key in [executable, "cwd"] {
@@ -607,6 +623,14 @@ fn resolve_launch_paths(value: &mut toml::Value, base: &Path) {
     }
 }
 impl Project {
+    pub fn registers_for_core(&self, name: &str) -> crate::registers::Config {
+        self.cores
+            .iter()
+            .find(|core| core.name == name)
+            .and_then(|core| core.registers.as_ref())
+            .map(|overrides| overrides.apply(&self.registers))
+            .unwrap_or_else(|| self.registers.clone())
+    }
     /// Canonical chip/core item, root fallback, legacy core item/root, then
     /// unscoped item/root. Absence means the built-in manual GDB policy.
     pub fn refresh_policy(
@@ -858,6 +882,9 @@ impl Project {
         let mut names = std::collections::HashSet::new();
         let mut endpoints = std::collections::HashSet::new();
         for core in &self.cores {
+            self.registers_for_core(&core.name)
+                .validate()
+                .map_err(|error| format!("Core {} registers: {error}", core.name))?;
             if core.name.trim().is_empty() || core.name.chars().any(char::is_control) {
                 return Err("Each core requires a nonempty name without control characters".into());
             }

@@ -18,13 +18,14 @@ function run(project, profile='', userPreset) {
   fs.writeFileSync(path.join(tools,'debug-env.toml'),profile);
   fs.writeFileSync(path.join(tools,'profile.toml'),m4);
   fs.writeFileSync(path.join(dir,'customer.toml'),r52);
+  fs.writeFileSync(path.join(dir,'m7.toml'),m4.replace('cpu = "cortex-m4"','cpu = "cortex-m7"'));
   const devices=path.join(config,'profiles/devices.toml');
   fs.writeFileSync(devices,"version=1\n[devices.matrix]\ncores=[0,2]\nbackend='generic'\ncpu='cortex-r52+'\n");
   if(userPreset !== undefined) {
     const file=path.join(config,'profiles/registers/cortex-r52+.toml');
     if(userPreset === 'directory') fs.mkdirSync(file); else fs.writeFileSync(file,userPreset);
   }
-  const files=[path.join(dir,'debug.toml'),path.join(tools,'debug-env.toml'),devices,path.join(tools,'profile.toml'),path.join(dir,'customer.toml')];
+  const files=[path.join(dir,'debug.toml'),path.join(tools,'debug-env.toml'),devices,path.join(tools,'profile.toml'),path.join(dir,'customer.toml'),path.join(dir,'m7.toml')];
   const before=files.map(hash);
   const requests=project.includes("chip='matrix'") ? [
     ['select_core',{index:0}],['registers_list',{}],['select_core',{index:1}],['registers_list',{}],['status',{}],['quit',{}]
@@ -96,6 +97,30 @@ function lists(run) {
         ['','','directory','catalogue']
       ]) {
         const result=run(base+project,envBase+profile,preset);
+        assert.notEqual(result.result.status,0); assert(result.result.stderr.toLowerCase().includes(expected.toLowerCase()),result.result.stderr);
+        errors.push(result.result.stderr.trim());
+      }
+      return {errors};
+    });
+    await suite.test('REG-CONFIG-PER-CORE','Each actual worker selects its own catalogue, facts and explicit empty fallback',async()=>{
+      const overrides="[registers]\ncpu='cortex-m4'\n[[cores]]\nname='core.0'\n[cores.registers]\ncpu='cortex-m7'\ncatalogue='m7.toml'\n[cores.registers.facts]\nroute_capacity=7\n[[cores]]\nname='core.2'\n[cores.registers.facts]\nroute_capacity=4\n";
+      const result=run(base+overrides,envBase); assert.equal(result.result.status,0,result.result.stderr);
+      const entries=lists(result); assert.equal(entries.length,2);
+      assert.deepEqual(entries.map(x=>x.catalogue.cpu),['cortex-m7','cortex-m4']);
+      assert.deepEqual(entries.map(x=>x.facts.route_capacity),[7,4]);
+      assert(entries[0].source.replaceAll('\\','/').endsWith('/m7.toml'));
+      assert.equal(entries[1].source,'builtin:cortex-m4');
+      assert.notEqual(entries[0].context.session,entries[1].context.session);
+      const empty=run(base+"[registers]\ncpu='cortex-m4'\n[[cores]]\nname='core.0'\n[cores.registers]\ncpu=''\ncatalogue=''\n",envBase);
+      assert.equal(empty.result.status,0,empty.result.stderr);
+      assert.equal(lists(empty)[0].catalogue,null); assert.equal(lists(empty)[0].source,'gdb');
+      assert.equal(lists(empty)[1].catalogue.cpu,'cortex-m4');
+      return {cores:entries.map(x=>x.context.core),models:entries.map(x=>x.catalogue.cpu),sources:entries.map(x=>x.source),empty_source:lists(empty)[0].source};
+    });
+    await suite.test('REG-CONFIG-PER-CORE-ERRORS','Per-core selection errors cannot fall back to the project preset',async()=>{
+      const errors=[];
+      for(const [override,expected] of [["catalogue='missing.toml'",'missing.toml'],["unknown_setting=true",'unknown field'],["cp15_command='unsafe mrc'",'core.0 registers']]) {
+        const result=run(base+"[[cores]]\nname='core.0'\n[cores.registers]\n"+override+'\n',envBase);
         assert.notEqual(result.result.status,0); assert(result.result.stderr.toLowerCase().includes(expected.toLowerCase()),result.result.stderr);
         errors.push(result.result.stderr.trim());
       }
