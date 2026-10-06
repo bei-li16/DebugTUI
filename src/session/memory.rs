@@ -25,7 +25,7 @@ fn integer(text: &str) -> Result<u64, String> {
 }
 
 impl Engine {
-    fn drain_memory_notices(&mut self) {
+    pub(super) fn drain_memory_notices(&mut self) {
         // Do not send MI queries here: AP reads may legitimately run while GDB
         // cannot service a stopped-context query. Consume already queued notices.
         while let Some(gdb) = &self.gdb {

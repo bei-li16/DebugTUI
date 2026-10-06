@@ -1277,6 +1277,7 @@ impl App {
             || self.symbol_search.busy()
             || !self.pending_commands.is_empty()
             || (self.snapshot.state != "STOPPED"
+                && !(self.snapshot.state == "RUNNING" && self.side_pane == 3)
                 && !(self.snapshot.state == "READY" && self.main_pane == 7))
         {
             return false;
@@ -1284,7 +1285,9 @@ impl App {
         if self.snapshot.state == "STOPPED" && self.ensure_peripherals(engine) {
             return true;
         }
-        if self.snapshot.state == "STOPPED" && self.ensure_registers(engine) {
+        if matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
+            && self.ensure_registers(engine)
+        {
             return true;
         }
         let mut panes = vec![];
@@ -1425,7 +1428,7 @@ impl App {
             "cache" => self.register_view.cache_view_available(),
             "register-refresh" => {
                 self.register_view.enabled()
-                    && self.snapshot.state == "STOPPED"
+                    && matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
                     && self.pending_commands.is_empty()
             }
             "peripheral-refresh" => {

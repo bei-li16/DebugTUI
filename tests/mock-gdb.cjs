@@ -37,6 +37,8 @@ if (process.env.DEBUGTUI_TEST_NOTIFY_FILE) setInterval(() => {
   try { desired = JSON.parse(fs.readFileSync(process.env.DEBUGTUI_TEST_NOTIFY_FILE, 'utf8'))[activeEndpoint]; }
   catch { return; }
   if (desired === 'stop-again' && lastNotice !== desired) { state = 'stopped'; send(`*stopped,reason="signal-received",${frame()}`); }
+  if (desired === 'thread-selected' && lastNotice !== desired) send('=thread-selected,id="2"');
+  if (desired === 'disconnect') process.exit(0);
   lastNotice = desired;
   if (desired === 'running' && state !== 'running') { state = 'running'; send('*running,thread-id="all"'); }
   if (desired === 'stopped' && state !== 'stopped') { state = 'stopped'; send(`*stopped,reason="signal-received",${frame()}`); }

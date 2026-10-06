@@ -7,6 +7,8 @@ mod framework_tests;
 mod mpu;
 mod provenance;
 #[cfg(test)]
+mod running_tests;
+#[cfg(test)]
 mod shared_tests;
 mod status;
 pub(super) use mpu::draw as draw_mpu;
@@ -69,6 +71,7 @@ pub(super) struct RegisterView {
     previous: BTreeMap<(String, String, String), Sample>,
     owner_generations: BTreeMap<String, u64>,
     attempts: BTreeSet<(u64, u64, String, u32, String)>,
+    runtime_state: String,
     pending: Option<(u64, Context)>,
     bank_pending: Option<[String; 2]>,
     probe_pending: Option<(u64, Context)>,
@@ -189,6 +192,7 @@ impl RegisterView {
             owner_generations: BTreeMap::new(),
             previous: BTreeMap::new(),
             attempts: BTreeSet::new(),
+            runtime_state: String::new(),
             pending: None,
             bank_pending: None,
             probe_pending: None,
@@ -389,6 +393,11 @@ impl App {
         };
     }
     pub(super) fn sync_register_sample_validity(&mut self) {
+        if self.register_view.runtime_state != self.snapshot.state {
+            // A stopped attempt cannot suppress the first safe AP read after run.
+            self.register_view.attempts.clear();
+            self.register_view.runtime_state = self.snapshot.state.clone();
+        }
         let context = self.register_context();
         let generations = &self.snapshot.register_owner_generations;
         let changed: BTreeSet<_> = generations
@@ -434,7 +443,8 @@ impl App {
                     && item.context == sample.context
                     && item.state == State::Stale
             });
-            if self.snapshot.state != "STOPPED"
+            if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
+                || !sample.runtime_matches(self.snapshot.state == "STOPPED")
                 || engine_invalidated
                 || !sample.applies_at(&context, sample.owner.as_deref(), generations)
             {
@@ -1086,7 +1096,7 @@ impl App {
         if ids.is_empty()
             || engine.is_none()
             || self.demo
-            || self.snapshot.state != "STOPPED"
+            || !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
             || self.register_view.pending.is_some()
             || self.register_view.probe_pending.is_some()
         {
@@ -1143,12 +1153,26 @@ impl App {
         };
         let context = self.register_context();
         let mut ids = BTreeSet::new();
+        let runtime_config = self.active_register_config();
         for row in self.view_tops[3]..self.view_tops[3] + usize::from(self.view_rects[3].height) {
             let Some(index) = self.register_view.register_index(row) else {
                 continue;
             };
             let register = &catalogue.registers[index];
             if catalogue.automatic_read(register, &self.register_view.facts)
+                && (self.snapshot.state == "STOPPED"
+                    || self.snapshot.state == "RUNNING"
+                        && crate::registers::running::denial(
+                            catalogue,
+                            register,
+                            &runtime_config,
+                            &self.project.memory_access,
+                            &context.core,
+                            self.register_view
+                                .owner(&self.project, &context, index)
+                                .as_deref(),
+                        )
+                        .is_none())
                 && catalogue
                     .access_denial(
                         register,
@@ -1291,11 +1315,13 @@ impl App {
                     continue;
                 }
                 if sample.state == State::Valid
-                    && !sample.applies_at(
-                        &context,
-                        expected_owner.as_deref(),
-                        &self.register_view.owner_generations,
-                    )
+                    && (!matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
+                        || !sample.runtime_matches(self.snapshot.state == "STOPPED")
+                        || !sample.applies_at(
+                            &context,
+                            expected_owner.as_deref(),
+                            &self.register_view.owner_generations,
+                        ))
                 {
                     continue;
                 }

@@ -21,6 +21,7 @@ mod catalogue_loader;
 mod core_config;
 pub mod m_cache;
 pub mod m_profile;
+pub mod running;
 pub use core_config::CoreConfig;
 pub mod core_private;
 pub mod display;
@@ -1062,6 +1063,8 @@ pub enum SampleView {
     #[default]
     SelectedFrame,
     PhysicalCore,
+    /// Explicit AP memory read acquired while this worker was running.
+    RunningMemory,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1095,6 +1098,22 @@ pub struct Sample {
     pub last_value_eligibility: Option<eligibility::Retained>,
 }
 impl Sample {
+    pub fn runtime_matches(&self, stopped: bool) -> bool {
+        if stopped {
+            return self.view != SampleView::RunningMemory;
+        }
+        self.view == SampleView::RunningMemory
+            && self
+                .provenance
+                .as_ref()
+                .and_then(|p| p.access.as_ref())
+                .is_some_and(|a| {
+                    a.phase == provenance::Phase::Responded
+                        && a.completed_ms.is_some_and(|end| end >= a.timestamp_ms)
+                        && a.context == self.context
+                        && matches!(a.route, provenance::Route::TclMemory { .. })
+                })
+    }
     pub fn value_provenance(&self) -> Option<&provenance::Provenance> {
         match &self.last_value_provenance {
             Some(provenance::RetainedOrigin::Known(source)) => Some(source),
@@ -1156,8 +1175,10 @@ impl Sample {
                 .as_deref()
                 .is_some_and(|s| !s.starts_with("core:"))
                 || self.context.core == context.core)
-            && (matches!(self.view, SampleView::PhysicalCore)
-                || (self.context.frame == context.frame && self.context.core == context.core))
+            && (matches!(
+                self.view,
+                SampleView::PhysicalCore | SampleView::RunningMemory
+            ) || (self.context.frame == context.frame && self.context.core == context.core))
     }
 }
 

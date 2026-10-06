@@ -44,7 +44,7 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | B08 | M7 cache/TCM 配置 | TRM/CMSIS 有据定义、维护命令不执行 |
 | [x] | B09 | M ID 探测与动态实例 | CPUID/ICTR/MPU_TYPE 等成功/缺失/非法结果 |
 | [ ] | B10 | CorePrivate 和异构双核隔离 | 同 PPB 地址经不同核路由、缓存与失败隔离 |
-| [ ] | B11 | 按 reader 运行态读取 | 安全 MMIO 正向、sysreg/GDB NeedHalt 拒绝 |
+| [x] | B11 | 按 reader 运行态读取 | 安全 MMIO 正向、sysreg/GDB NeedHalt 拒绝 |
 | [ ] | C01 | R52 常用身份/控制完整描述 | 规定寄存器编码、位宽、主要字段及页码 |
 | [ ] | C02 | R52 MPU 完整描述/容量 | EL1/EL2、MAIR 与有效 region 范围 |
 | [ ] | C03 | 当前 Debug 权限一致性 | 普通 CP15/MPU/selector 新鲜 EL、trap、成功与拒绝 |
@@ -164,3 +164,16 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 严格 Clippy 全 targets、fmt、diff、六目录离线生成一致性、5 项 Python 转换检查和 Node 语法通过。最终静态日志 `readonly-m-cache-clippy-final-20261006.log`。初次编译中命令数组长度/父模块私有字段及新 test 的 PathBuf 类型问题已修复；原失败日志保留为 `readonly-m-cache-first-20261006.log`、`readonly-m-cache-cases-first-20261006.log`。没有修改/重建 OpenOCD，没有降低断言。
 - [M7 说明](register-cortex-m7-cache.md)、用户指南、[四阶段硬件 case](../tests/cases/register-cortex-m7-cache.md)、默认零 I/O 驱动及独立期望值模板完成。默认报告 `evidence/m7-cache-hardware-1791269363829-0b1b21d0/report.json` 为 0 passed / 0 failed / 4 skipped。当前实际 EXE 软件驱动 `evidence/m7-cache-hardware-1791269867794-32fcbf31/report.json` 为 5 passed；故意错误容量基线 `evidence/m7-cache-hardware-1791269870215-6cb0cab1/report.json` 正确为 3 passed / 1 expected failure / 1 skipped。所有报告 `board_tests_executed=false`，未执行上板或升级 verified；三份核心绝对引用保留。
 - 剩余 **A04；B10/B11；C01～C06；D01～D04；E01～E05**，18 项。下一轮优先按实际 reader/通道接通安全运行态，再补完整异构隔离；R52 当前 Debug 权限、最终回归/打包和非主分支 Release 仍待完成。本轮提交/推送 SHA 由最终输出及 `readonly-m-cache-evidence-20261006.json` 记录。
+
+## 迭代 9：按实际 reader/通道的运行态寄存器读取
+
+2026-10-06，完成 B11，累计 **19 完成 / 17 未完成**。开始时开发分支本地/远端均为 `ce3b1cc8ac65a0f7d15dea53cd770be5d7d1ddb8`；上一轮已提交 Goal 修订，本轮复用原工作区未完成的运行态代码并完成入口及验收。
+
+- Registers 的实际共享 UI 调度、手动 Read 和生产 `registers_read` 接通 RUNNING；寄存器/全部 Alias 父项与实际通道都须允许运行态，CorePrivate 沿用核独占路线校验。GDB memory/regfile、借核 reader、需要 stopped proof 的 MMIO/STM、M7 CCSIDR 保护事务仍明确 NeedHalt/路线拒绝，零数据 I/O；Probe/MPU/cache bank 仍停止态。不自动 halt、使能或换后端。
+- 新 `running_memory` 样本只接受响应完成、同 context 的实际 AP 区间；停核旧值进入运行态失效，运行值暂停后 stale。读前后复用内存通知/epoch 边界，同批停止/再运行、线程选择、GDB 断线或取消不发布迟到值、不继续后续数据读。失败响应为本次错误，快照/UI 保留原 raw 与 retained-origin。运行 raw 不升级停止态能力/selector 证明，依赖者仍 Unknown/受限。
+- UI 进入新运行状态清除上一状态尝试记录，仅可见安全项取样一次；无固定 tick，无启用项不轮询，纯状态弹窗零 I/O。新 1 项样本模型＋4 项 UI 验证真实共享调度、旧状态响应拒绝、NeedHalt 分类与 35×12/80×24 的 AP 来源/区间展示。最终寄存器相关 **204 通过**、UI **186 通过/1 既有 ignored**，交集去重后 **339 项不同通过测试**；`running_` 专项 14 项均包含于该回归，不能额外累加。
+- 实际 worker/MI/TCP/Tcl 新 8 项运行态集成及原 M7 运行/frame 边界专项，最终 **9/9**。覆盖 M3/M4/M7 真正数据路径、64 位非原子 MMIO/Alias 共用一请求、错核/停止/GDB-only 通道、手动副作用/WO、错误保留、取消及 stop/run/thread/close 竞争。共享入口相关八套 MI/EXE 回归 **59/59**；共用 Tcl fixture 的 M MPU 回归 **11/11**。未重复全仓/全部 selector，也未重建未改动 OpenOCD。
+- 最终日志位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-running-unit-final-20261006.log`、`readonly-running-cases-final-20261006.log`、`readonly-running-register-regression-final-20261006.log`、`readonly-running-ui-regression-20261006.log`、`readonly-running-integration-regression-20261006.log`、`readonly-running-mpu-regression-20261006.log`、`readonly-running-clippy-20261006.log`。严格 Clippy 全 targets、fmt/diff、六目录离线一致性、5 项 CMSIS Python 和 Node/Python 语法通过。
+- 初次夹具 Alias 字段/整数类型/私有弹窗字段编译错误已修正；错核 case 补齐合法核声明，错误旧值断言核对真正保留它的状态快照；故障通知在清理前撤销，避免夹具再次强制 RUNNING。旧停止态全请求拒绝断言更新为逐项 NeedHalt、零 access/value，断连仍拒绝；没有降低数据拒绝/来源/取消断言。初次失败记录 `readonly-running-first-cases-20261006.log`、`readonly-running-cases-20261006.log`、`readonly-running-register-regression-20261006.log` 保留。
+- [说明](register-running.md)、用户指南、[七项硬件 case](../tests/cases/register-running.md)、四阶段可执行驱动和独立期望模板完成。默认报告 `evidence/register-running-hardware-1791272135129-da5eb158/report.json` 为 0 passed/0 failed/4 skipped；实际 EXE 软件报告 `evidence/register-running-hardware-1791271984566-ec79cb51/report.json` 为 5 passed，故意错误 CPUID 报告 `evidence/register-running-hardware-1791271986230-d9bbf7b5/report.json` 为 3 passed/1 expected failure/2 skipped，测试正确拒绝该基线。所有 `board_tests_executed=false`；未上板、未升级 verified。核心三个绝对路径保留。
+- 剩余 **A04；B10；C01～C06；D01～D04；E01～E05**，17 项。下一批完成异构 CorePrivate/生命周期及有效配置来源，再统一 R52 当前 Debug 权限与事务；最终完整回归、升版/打包和非主分支 Release 仍未完成。最终提交/远端核验见本轮输出及 `readonly-running-evidence-20261006.json`，Goal 保持 active。

@@ -67,7 +67,8 @@ impl Engine {
             self.snapshot.register_probe = None;
         }
         for sample in &mut self.snapshot.register_samples {
-            if self.snapshot.state != "STOPPED"
+            if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
+                || !sample.runtime_matches(self.snapshot.state == "STOPPED")
                 || !sample.applies(&context, sample.owner.as_deref())
             {
                 sample.stale();
@@ -264,7 +265,12 @@ impl Engine {
         })
     }
     pub(super) fn read_registers(&mut self, params: &Json) -> Result<Json, String> {
-        self.stopped()?;
+        self.drain_memory_notices();
+        if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING") {
+            return Err("Register reads require a connected stopped or running target".into());
+        }
+        let read_state = self.snapshot.state.clone();
+        let read_epoch = self.memory_context_epoch;
         let context = self.register_context();
         if let Some(expected) = params.get("context") {
             let expected: Context = serde_json::from_value(expected.clone())
@@ -311,6 +317,13 @@ impl Engine {
         let mut frame_proof = None;
         for id in ids {
             self.check_register_read_cancelled()?;
+            self.drain_memory_notices();
+            if self.register_context() != context
+                || self.snapshot.state != read_state
+                || (read_state == "RUNNING" && self.memory_context_epoch != read_epoch)
+            {
+                break;
+            }
             let register = catalogue.register(id).unwrap();
             let evidence = catalogue
                 .eligibility_with_owners(
@@ -330,12 +343,27 @@ impl Engine {
             }
             let owner = topology.owner(register.scope, &context.core);
             let (view, source, gdb_name) = self.register_sample_origin(register, &catalogue);
-            let access_denial = catalogue.access_denial(
-                register,
-                &self.effective_register_facts(),
-                self.snapshot.state == "STOPPED",
-                None,
-            );
+            let access_denial = catalogue
+                .access_denial(
+                    register,
+                    &self.effective_register_facts(),
+                    self.snapshot.state == "STOPPED",
+                    None,
+                )
+                .or_else(|| {
+                    if read_state == "RUNNING" {
+                        crate::registers::running::denial(
+                            &catalogue,
+                            register,
+                            &self.project.registers,
+                            &self.project.memory_access,
+                            &context.core,
+                            owner.as_deref(),
+                        )
+                    } else {
+                        None
+                    }
+                });
             let mut sample = Sample {
                 id: id.into(),
                 state: State::NotRead,
@@ -384,6 +412,9 @@ impl Engine {
                 sample.detail =
                     "Capability is unknown; verify it or request an explicit manual read".into();
             } else {
+                if read_state == "RUNNING" {
+                    sample.view = SampleView::RunningMemory;
+                }
                 // Missing target-description entries remain isolated Reader unsupported results.
                 // Only an actual GDB value read requires a selected-frame proof.
                 let available = gdb_name
@@ -424,7 +455,7 @@ impl Engine {
                 match result {
                     Ok(value)
                         if self.register_context() == context
-                            && self.snapshot.state == "STOPPED" =>
+                            && self.snapshot.state == read_state =>
                     {
                         sample.value = Some(value);
                         sample.state = State::Valid;
@@ -453,11 +484,24 @@ impl Engine {
                 }
             }
             samples.push(sample);
-            if self.register_context() != context || self.snapshot.state != "STOPPED" {
+            if self.register_context() != context
+                || self.snapshot.state != read_state
+                || (read_state == "RUNNING" && self.memory_context_epoch != read_epoch)
+            {
                 break;
             }
         }
         self.check_register_read_cancelled()?;
+        self.drain_memory_notices();
+        for sample in &mut samples {
+            if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
+                || (read_state == "RUNNING" && self.memory_context_epoch != read_epoch)
+                || !sample.runtime_matches(self.snapshot.state == "STOPPED")
+                || !sample.applies(&self.register_context(), sample.owner.as_deref())
+            {
+                sample.stale();
+            }
+        }
         self.store_register_samples(&samples, &catalogue);
         self.publish();
         Ok(json!({"context":context,"samples":samples}))
@@ -521,6 +565,20 @@ impl Engine {
         self.check_register_read_cancelled()
             .map_err(|error| (Reason::Unknown, error))?;
         self.register_value_access = None;
+        if self.snapshot.state == "RUNNING"
+            && let Some(denial) = crate::registers::running::denial(
+                catalogue,
+                register,
+                &self.project.registers,
+                &self.project.memory_access,
+                &self.register_context().core,
+                self.register_topology()
+                    .owner(register.scope, &self.register_context().core)
+                    .as_deref(),
+            )
+        {
+            return Err(denial);
+        }
         let facts = values
             .facts
             .clone()
@@ -1061,6 +1119,20 @@ mod tests {
                 .is_err()
         );
         engine.snapshot.state = "RUNNING".into();
+        let result = engine.read_registers(&json!({"ids":["sctlr"]})).unwrap();
+        assert_eq!(result["samples"][0]["state"], "unavailable");
+        assert_eq!(result["samples"][0]["reason"], "access_restricted");
+        assert!(
+            result["samples"][0]["detail"]
+                .as_str()
+                .unwrap()
+                .contains("NeedHalt")
+        );
+        assert!(result["samples"][0]["value"].is_null());
+        assert!(result["samples"][0]["provenance"]["access"].is_null());
+        assert!(engine.register_value_access.is_none());
+        assert_eq!(engine.snapshot.state, "RUNNING");
+        engine.snapshot.state = "DISCONNECTED".into();
         assert!(engine.read_registers(&json!({"ids":["sctlr"]})).is_err());
     }
     #[test]

@@ -9,6 +9,7 @@ import json
 import sys
 import tkinter
 import re
+import time
 from pathlib import Path
 
 def evaluate(data):
@@ -37,8 +38,22 @@ def evaluate(data):
         if op == 'curstate':
             return (0, cpu['status'])
         state['trace'].append([name, op, *args])
-        if cpu['status'] != 'halted':
+        if cpu['status'] != 'halted' and not (op == 'read_memory' and state.get('allow_running_memory')):
             return (1, 'physical M target is not halted')
+        if op == 'read_memory' and state.get('allow_running_memory'):
+            if state.get('memory_notices'):
+                for notice in state.pop('memory_notices'):
+                    Path(state['notify_file']).write_text(json.dumps({state['gdb_endpoint']:notice}),encoding='utf-8')
+                    time.sleep(0.075)
+            if fault == 'running_memory_error':
+                return (1, 'fixture AP data read refused')
+            if fault == 'running_memory_incomplete':
+                return (0, '')
+            words = state.get('memory_words', {})
+            if str(int(args[0],0)) in words:
+                assert args[1] == '32'
+                address = int(args[0],0)
+                return (0,tuple(f'0x{words[str(address+i*4)]:08x}' for i in range(int(args[2]))))
         cpu.setdefault('m_rnr', 3)
         cpu.setdefault('m_original', cpu['m_rnr'])
         count = cpu.get('m_count', 8)
@@ -80,6 +95,7 @@ def evaluate(data):
                   0xe000ef40: 0x10110021, 0xe000ef44: 0x11000011, 0xe000ef48: 0,
                   0xe000ed78: cpu.get('c_clidr',0x09000003), 0xe000ed7c: cpu.get('c_ctr',0x8303c003),
                   0xe000ed84: cpu['c_sel'],0xe000ed14:0x30000,
+                  0xe000edf0:0x01010001,0xe000e010:0x10005,
                   0xe000ef90:0x33,0xe000ef94:0x43,0xe000ef98:1,0xe000ef9c:5,0xe000efa0:0xab1001}
         if address == 0xe000ed80:
             if fault == 'c_data_read' and cpu['c_sel'] == 1:

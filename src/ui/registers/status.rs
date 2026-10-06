@@ -81,7 +81,7 @@ impl RegisterView {
         let Some(sample) = self.sample(project, context, index) else {
             return Category::NotRead;
         };
-        if !stopped
+        if (sample.state == State::Valid && !sample.runtime_matches(stopped))
             || !sample.applies_at(
                 context,
                 self.owner(project, context, index).as_deref(),
@@ -283,6 +283,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
                 crate::registers::SampleView::PhysicalCore => {
                     "Sampling view: physical core state".into()
                 }
+                crate::registers::SampleView::RunningMemory => "Sampling view: running AP memory; value belongs to its recorded request interval".into(),
             });
             text.push("Raw (current / last-known):".into());
             text.push(

@@ -1,5 +1,11 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：只读 Goal 的运行态 AP 寄存器读取
+
+B11 已接通实际 worker/MI/Tcl、手动 Read 和共享 UI 按需调度；安全项由完整元数据条件、核归属和实际运行态通道共同决定。GDB/借核/保护 selector 继续 NeedHalt，副作用只手动一次，迟到/取消/状态边界不发布新值。见 [运行态说明](register-running.md)，实时 feature 数、专项/回归证据与提交状态只在 [36 项账本](registers-readonly-goal.md) 的迭代 9 维护。
+
+硬件 case 与默认零连接驱动已准备，上板未执行；软件成功不升级硬件 verified。完整异构隔离、R52 当前 Debug 权限、最终验收和非主分支 Release 继续按账本推进；旧 71 项 TODO 不因本子批次而全部勾选。
+
 ## 2026-10-06：只读 Goal 的 M ID 与 NVIC 来源
 
 本次完成边界以 [冻结的 36 项清单](registers-readonly-goal.md) 为准，旧 71 项记录仅作追溯。本批完成 B03/B09，当前 **14 完成 / 22 未完成**。M3/M4/M7 复用生产 worker 的 CorePrivate/MI/Tcl 通道，CPUID 核对后才探测可选 ID；非法、缺失或未使能不伪造容量。NVIC bank 来自有效 ICTR，上限与真实 SVD IRQ 声明分开，优先级使用有来源的 SVD/显式配置，Status 显示来源、冲突及 IRQ 名称，没有写入式探测。见 [M 探测说明](register-cortex-m-probe.md)。

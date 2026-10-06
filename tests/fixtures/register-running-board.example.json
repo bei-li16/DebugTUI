@@ -1,0 +1,14 @@
+{
+  "software_example": true,
+  "cpu": "cortex-m4",
+  "revision": "software fixture only; replace with board revision",
+  "probe": "software TCP only; replace with real probe and transport",
+  "openocd_version": "software Tcl fixture",
+  "gdb_version": "software MI fixture",
+  "evidence_source": "independent fixture constants; replace with board firmware/manual baseline",
+  "ap": 0,
+  "target": "cpu0",
+  "channel": "ppb0",
+  "endpoint": "127.0.0.1:REPLACE",
+  "values": {"scb.cpuid": "0x410fc241", "scb.ccr": "0x00030000"}
+}
