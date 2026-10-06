@@ -1,6 +1,6 @@
 # 0.10.0-readonly.1 只读系统寄存器交付
 
-来自 `codex/register-debugging`，发布类型为 prerelease。正式 `latest` 继续指向正式版本。发布及公网验收状态以[冻结验收清单](registers-readonly-goal.md)的最新迭代为准；本页记录构建、安装和附件边界。
+来自 `codex/register-debugging`，已发布为 [v0.10.0-readonly.1 prerelease](https://github.com/bei-li16/DebugTUI/releases/tag/v0.10.0-readonly.1)，tag 指向 `6ad796246bc94b833cf0565d5833dc193669d22d`。正式 `latest` 仍为 v0.9.3。[冻结验收清单](registers-readonly-goal.md)已完成 36/0；本页记录构建、安装和附件边界，后续完成记录不改变已发布 tag。
 
 ## 软件验收
 
@@ -14,12 +14,14 @@
 
 TUI 的 EXE、便携 ZIP、版本化 npm tgz 和固定名称 `debugtui-cli.tgz` 使用同一优化 EXE。ZIP/npm 附带六份目录、只读多核/R52 模板、用户文档和硬件 case 文档，不带环境工具。
 
-发布后可显式安装本预发布：
+可显式安装本预发布：
 
 ```powershell
 npm.cmd install -g --prefer-online "https://github.com/bei-li16/DebugTUI/releases/download/v0.10.0-readonly.1/debugtui-cli.tgz"
 debugtui --version
 ```
+
+2026-10-07 已按指定 tag 完成公网验收：八个附件均下载，摘要与本地及 GitHub digest 一致；`test-release.ps1 -ReleaseTag v0.10.0-readonly.1 -PreviousVersion 0.9.3` 的旧版升级、重复安装、CMD/PowerShell 入口、配置保留、渲染和卸载通过。该公网脚本跳过安装 lifecycle，实际 postinstall 的客户目录/错误处理已由前述真实旧版 14 项生产分发测试证明，二者包摘要一致。公网报告位于 `G:\Data\GitFiles\DebugTUI\artifacts\public-release-20261007-002020\result.json`，全附件报告位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\public-release-assets-20261007\report.json`。
 
 修改后的 OpenOCD 作为独立 `openocd-windows-x64-candidate.zip` 附件，必须同时提供 `corresponding-source.zip`。其 PROVENANCE 的对应源码摘要为 `67a14bcc54fbd89337073246bd3cf0e1ffcd5ddcd378bb84c424925676e614e8`；运行 EXE 摘要为 `0820f197803c55ecf756d7b7ef33f6c82ef97821b2764561ad71d32455e779a0`。对应源码内含固定上游、Jim Tcl、依赖源码、补丁、构建配方、测试和许可。当前配方/补丁逐项摘要匹配，独立解包源码的九项 C 事务模型及真实后端命令通过，Windows 本机 DLL/包检查 11 项通过。
 

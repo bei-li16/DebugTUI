@@ -2,7 +2,7 @@
 
 2026-10-06。开发分支 `codex/register-debugging`，起点 `b493a7f`，源码基线 0.9.3。该清单落实新的 Goal，取代旧 TODO 全部 71 项作为本次完成条件；旧记录保留作追溯。36 项以完整软件验收为计数边界。硬件用例准备属于软件交付，执行上板不属于本目标。
 
-当前摘要（迭代 21）：**35 完成 / 1 未完成**。A01～A10、B01～B11、C01～C06、D01～D04、E01～E04 已通过软件验收；仅 E05 的 tag、非主分支 prerelease 和公网下载验收待完成。版本为 `0.10.0-readonly.1`，完整 24 功能套件、761 项 Cargo 测试及严格 Clippy 通过；最终优化 EXE 的真实 v0.9.3 升级、安装/卸载/重装和生产 EXE/ZIP/npm 打包 14 项全部通过。独立 OpenOCD Windows 候选与 GPL 对应源码一致。硬件默认 32 项 SKIPPED，本地正式版及工具未替换。最新证据见文末，旧轮次记录按各自源码范围保留。
+当前摘要（迭代 22）：**36 完成 / 0 未完成**。冻结 A01～E05 全部通过软件及交付验收。`v0.10.0-readonly.1` 已从 `codex/register-debugging` 发布为 [prerelease](https://github.com/bei-li16/DebugTUI/releases/tag/v0.10.0-readonly.1)，tag 指向已验证提交 `6ad796246bc94b833cf0565d5833dc193669d22d`。完整 24 功能套件、761 项 Cargo 测试及严格 Clippy 通过；真实历史包升级和生产分发 14 项、PowerShell 分发 7 项通过；八个公网附件、指定 tag 的旧版升级/重复安装/双入口/渲染/卸载通过。硬件默认 32 项 SKIPPED，本地全局正式版及工具未替换，正式 latest 仍为 v0.9.3。最终文档提交不改变 tag 对应生产代码和附件；最新证据见文末，目标到此结束。
 
 核心参考文档（保留绝对路径）：
 
@@ -61,7 +61,7 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | E02 | 配置示例、用户文档及后续清单 | 新字段/有效值/支持限制和三份绝对引用 |
 | [x] | E03 | 发布前完整回归与静态检查 | cargo/仓库静态检查、必要功能套件全通过 |
 | [x] | E04 | 升版、构建、打包及一致性 | 隔离安装/版本/附件/对应源码核对 |
-| [ ] | E05 | 非主分支提交、tag、Release | 最终 SHA、tag 目标、已发布附件校验 |
+| [x] | E05 | 非主分支提交、tag、Release | 最终 SHA、tag 目标、已发布附件校验 |
 
 状态起点 **0 完成 / 36 未完成**；已有成果会在本清单对应测试复验后计入。不得仅因旧记录或部分实现勾选。后续每轮在此记软件证据、完成数和提交推送结果；不以等待上板延长 Goal。
 
@@ -337,4 +337,41 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 以发布摘要核对的真实 v0.9.3 tgz 为升级基线，运行 `test-register-distribution.cjs` 的实际生产打包、EXE、ZIP、npm 入口，**14 通过 / 0 失败 / 0 skipped**。npm postinstall 实际执行；升级/重复安装/卸载/重装保留有效、损坏、嵌套和目录形式客户内容，五个 CPU 目录解析一致，初始化失败使安装失败。报告 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\evidence\distribution\register-distribution-1791302156623-b2f8a61e\report.json`，子进程原文和包保留。
 - 当前 Windows OpenOCD 候选、对应源码 ZIP 和配方摘要逐项核对一致。独立解包源码的内层报告九项 C 模型与真实命令均为 true、board false；前轮 11 项 DLL/包验收仍适用。保留外层旧七项摘要与内层九项的区别，不更改未变化的平台或宣称实板通过。本次分发 Windows 候选及对应源码，Linux 软件构建证据保留。
 - [交付说明](registers-readonly-release.md) 记录版本、构建/历史包/候选/对应源码摘要、隔离安装边界、安装地址、限制、后续事项和三份核心绝对引用。生产打包包含文档和 case 文档，环境工具不混入。
-- 剩余仅 **E05**：将本轮提交推送，tag 指向已验证开发分支，上传附件及校验和，发布 prerelease，按指定 tag 下载并验证公网升级/安装和对应源码。当前远端正式 latest 仍为 v0.9.3；未发布的 v0.10.0-readonly.1 不标为完成。本轮提交、最终包清单和远端核对记录于外部 `readonly-final-distribution-evidence-20261006.json`。Goal 保持 active，用户规格只读保留，上板全部未执行。- 根工程首次打包门禁发现 npm 自动收录父级 `tests/README.md`，隔离复制只带 case 目录而未暴露它。将该 README 显式列为随包文档并纳入真实 fixture/必需 payload，门禁只豁免这一个 README 和一级 case Markdown；`.cjs` 测试泄漏仍被独立拒绝。修正旧 PowerShell fixture 的目录复制以保留源布局，避免 nested 文件扁平化覆盖。修复后重新执行真实历史包 14 项全部通过，PowerShell 分发 7 项全部通过，改动脚本语法及 diff 检查通过。后者报告 `G:\Data\GitFiles\DebugTUI\artifacts\distribution-20261006-235600-e71a8b96\report.json`。生产 Rust/backend 无变更，不再次运行无关全 Cargo。根目录生产打包成功，ZIP 每个 payload 与当前源文件及 npm 清单逐项摘要一致。
+- 剩余仅 **E05**：将本轮提交推送，tag 指向已验证开发分支，上传附件及校验和，发布 prerelease，按指定 tag 下载并验证公网升级/安装和对应源码。当前远端正式 latest 仍为 v0.9.3；未发布的 v0.10.0-readonly.1 不标为完成。本轮提交、最终包清单和远端核对记录于外部 `readonly-final-distribution-evidence-20261006.json`。Goal 保持 active，用户规格只读保留，上板全部未执行。
+- 根工程首次打包门禁发现 npm 自动收录父级 `tests/README.md`，隔离复制只带 case 目录而未暴露它。将该 README 显式列为随包文档并纳入真实 fixture/必需 payload，门禁只豁免这一个 README 和一级 case Markdown；`.cjs` 测试泄漏仍被独立拒绝。修正旧 PowerShell fixture 的目录复制以保留源布局，避免 nested 文件扁平化覆盖。修复后重新执行真实历史包 14 项全部通过，PowerShell 分发 7 项全部通过，改动脚本语法及 diff 检查通过。后者报告 `G:\Data\GitFiles\DebugTUI\artifacts\distribution-20261006-235600-e71a8b96\report.json`。生产 Rust/backend 无变更，不再次运行无关全 Cargo。根目录生产打包成功，ZIP 每个 payload 与当前源文件及 npm 清单逐项摘要一致。
+
+## 迭代 22：非主分支 prerelease、公网验收和完成审计
+
+2026-10-07，完成 **E05**，累计 **36 完成 / 0 未完成**。上一轮 E04 已提交推送 `6ad796246bc94b833cf0565d5833dc193669d22d`，远端一致。本轮只修改最终交付记录；不重编译、不重复无变化的软件回归，不移动已发布 tag。
+
+- annotated tag `v0.10.0-readonly.1` 已推送，解引用为 `6ad796246bc94b833cf0565d5833dc193669d22d`，对应 `codex/register-debugging` 的验收提交。相对完整回归提交 `5ec0f32`，没有 Rust、目录或 OpenOCD 生产源码变化；打包门禁/夹具改动已由最终 14＋7 专项通过证明。
+- 草稿 8 个附件的名称、大小、上传状态和 GitHub SHA256 digest 与本地逐项核对，再发布为 prerelease。Release ID `404910540`，UTC 发布时间 `2026-10-06T16:19:55Z`（本地 2026-10-07 00:19:55）。链接：https://github.com/bei-li16/DebugTUI/releases/tag/v0.10.0-readonly.1 。draft=false、prerelease=true、targetCommitish 为上述 SHA，正式 latest 仍为 v0.9.3。
+- 使用未带认证的公开 URL 下载全部八个附件，摘要与 GitHub digest/本地一致。完整报告 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\public-release-assets-20261007\report.json`。发布前独立审计 139 个 npm 文件均与 tag 源文件逐字节相同，OpenOCD 候选 1,142 个 manifest 文件及六项对应源码配方摘要全部一致；报告 `readonly-final-assets-audit-20261007.json` 位于同一构建缓存。
+- `scripts/test-release.ps1 -ReleaseTag v0.10.0-readonly.1 -PreviousVersion 0.9.3` 公网下载/旧版升级/重复安装、CMD 与 PowerShell 入口、配置保留、优化 EXE 摘要、渲染、工具分离及卸载全部通过。结果 `G:\Data\GitFiles\DebugTUI\artifacts\public-release-20261007-002020\result.json`。公网脚本使用 --ignore-scripts；真实 postinstall/客户目录保留和失败处理由 E04 的真实旧包 14 项证明，同一最终 EXE、配方和 payload，发布包 139 个源文件一致，不把公网脚本误称为 hook 验收。
+
+### 完成审计
+
+逐项以本页冻结表为边界，原 TODO 71 项和长期规格不扩大本版。审计重新读取目标附件、当前源码/测试、最终日志和公网状态；测试汇总与人工状态不是唯一依据。
+
+| 冻结 feature | 当前证明 |
+| --- | --- |
+| A01/A02/A03 | per_core 配置/worker/source/route 单元与 `register_configuration` 实际 EXE/TCP；未知键和坏目录零 I/O 拒绝 |
+| A04 | Setup/Status 有效 CPU/目录/访问来源测试；不依赖实际目标探测 |
+| A05/A06 | catalogue_loader 的缺父/循环/深度/冲突/显式覆盖测试及 `register_inheritance` 实际 EXE |
+| A07/A08/A09/A10 | metadata/structured policy/eligibility/owner/alias、代表性 schema 测试；未知和读副作用策略保留 |
+| B01/B02/B04 | 六目录加载/离线生成、M 公共/增量及故障字段测试；SysTick 自动零读与手动边界 |
+| B03/B09 | `m_capability_access` 的实际 CPUID/ICTR/容量、身份变更、SVD/显式优先级来源和无写探测 |
+| B05 | `selector_access/m_profile_mpu_cases` 的真实 Tcl、动态 region、RNR 恢复/取消/错误；现有事务复用 |
+| B06/B07 | `m_capability_access/m_modules_cases` 的 DWT/FPB/FPU ID、使能/容量 Unknown、DHCSR 不轮询；GDB regfile 复用 |
+| B08 | `selector_access/m_cache_cases` 的 M7 cache/TCM 容量与 selector 保存恢复、错误/取消、WO 不执行 |
+| B10/B11 | `m_multicore_cases`、`register_policy`、`running_cases` 的 M7＋M4 同 PPB 地址独立 AP/target/cache、运行态 MMIO 成功及拒绝 |
+| C01/C02 | R52 catalogue/source 元数据与手册编码/字段测试；普通常用身份/控制、MPU MAIR 与容量范围 |
+| C03/C04/C05/C06 | `r52_core_cases`/`r52_mpu_cases`/`r52_selector_cases` 真实 worker/MI/TCP/Tcl/EXE，当前 EL2/保存 User 分离的成功路径、低 EL/HDD/未知身份拒绝、容量变化/取消/隔离无 fallback；生产 C scratch/selector 回读及 native 命令证明 |
+| D01/D02/D03 | Ratatui/display/status/provenance 和 `register_access`/`register_cancel`/`register_lifecycle`/`register_shared`；树、列、字段、枚举、格式、旧值、核/帧/运行/重连/共享 owner |
+| D04 | `runtime_absence_never_uses_a_peer_sample_or_an_id_outside_the_current_catalogue`、按需读取集成与真实 Windows PTY 七区间资源/零新增 MI 记录；相关生产代码此后未改 |
+| E01/E02 | readiness 10 通过、八驱动默认 32 SKIPPED/零 child/TCP；两模板、指南/case、独立基线/恢复步骤及三绝对引用 |
+| E03 | 最终完整日志逐项测试均 ok：500 单元＋261 集成，0 failed、2 既有 ignored；24 功能套件和全部静态/严格 Clippy |
+| E04 | 最终优化 EXE、14 真实历史包/生产打包＋7 PowerShell 分发、139 个 payload、独立候选/DLL/对应源码及版本摘要 |
+| E05 | 当前非主分支远端、annotated tag/target、已发布 prerelease、八公开下载与指定 tag 安装/升级验收 |
+
+三个核心文件摘要与原记录一致，引用在目标、指南、用例和 Release notes 中保留。用户未跟踪规格未改、未提交；本轮最终提交为完成记录，不改变 Release tag 或已发布源码/附件。外部 `readonly-final-completion-audit-20261007.json` 记录最终 SHA、远端、36 feature 和全部发布证据。硬件未执行且 board verified=false；后续 Banked 低 EL、VFP 写入、Bao/Guest、完整 Timer/PMU/GIC/STM、Trace、异常帧恢复及各类写入不属于本次未完成项。软件交付全部完成后结束 Goal，不继续扩展。
