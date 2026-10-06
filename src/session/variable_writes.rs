@@ -109,7 +109,7 @@ impl Engine {
         self.with_exact_float_literal(metadata, &raw, |_, _| Ok(()))?;
         Ok((raw, Assignment::ExactFloatBits))
     }
-    fn without_target_calls<T>(
+    pub(super) fn without_target_calls<T>(
         &mut self,
         body: impl FnOnce(&mut Self) -> Result<T, String>,
     ) -> Result<T, String> {

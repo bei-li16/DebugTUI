@@ -57,7 +57,7 @@ flowchart LR
 
 - `ui/cores.rs`：稳定核序号选色、核心状态按钮和溢出切换；Source/Asm 与右侧检查区加同色底色和边线。核心变化令按需视图缓存、外设值及实时采样失效，停止快照与运行采样不会混写。
 - `ui/monitor.rs`：策略按核心 + 数据项保存到 `Ui.refresh`；Watch 树根策略可继承，子项可覆盖。采样只针对可见标量/展开成员，单个请求在途、候选公平轮转，用户动作和补全优先。响应携带本地核心身份与 generation 校验，切核/重连后迟到结果丢弃。错误至少 1 秒退避，频率非硬实时保证。
-- `session/memory.rs`：`watch_resolve` 创建短寿命 GDB 变量对象取成员路径、地址、类型信息并释放，读取目标 ELF/PE 字节序。`memory_read` 默认复用停止时 GDB 内存读取；命名通道使用显式目标 TCL 读取并校验当前核、运行能力、宽度、对齐、响应和超时。每通道按需复用一个 TCP，故障/断开关闭。64 位采用两次 32 位读取；不保证原子性。
+- `session/memory.rs`：`memory/watch.rs` 在有界只读表达式和 may-call-functions 保护下创建短寿命变量对象，取得成员路径、地址、类型及 ELF/PE 字节序，严格清理并复核线程/帧/PC；见 [Watch 地址解析](docs/watch-address-resolution.md)。`memory_read` 默认复用停止时 GDB 内存读取；命名通道使用显式目标 TCL 读取并校验当前核、运行能力、宽度、对齐、响应和超时。每通道按需复用一个 TCP，故障/断开关闭。64 位采用两次 32 位读取；不保证原子性。Session/Coordinator 传递局部读取取消，清理/恢复不会被中断。
 - `memory_access` 和 `sync` 可放环境文件；工程优先覆盖。AP 号/CTI 映射仅存在于板级脚本，TUI 不配置隐式硬件触发或推断缓存一致性。运行态直读不发任何 GDB 指令，不改变全局 OpenOCD selected target，不隐式 halt/resume。
 - 单核只配置 `memory_access` 时仍直接走原 Session，不增加协调线程。配置 `live_watch` 时，独立 TCL 采样器发送结构化 LiveWatchSample，Coordinator 绑定核和停止代次，UI 接入独立的实时显示缓存；普通未配置面板仍默认关闭轮询。
 

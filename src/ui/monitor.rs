@@ -386,6 +386,7 @@ impl App {
         let generation = self.snapshot.generation;
         let session = self.snapshot.register_session;
         let frame = self.snapshot.frame.level;
+        let request_context = self.register_context();
         let sample = self
             .monitor
             .samples
@@ -422,9 +423,7 @@ impl App {
         let (method, params, resolve) = if let Some(binding) = &sample.binding {
             (
                 "memory_read",
-                json!({"address":binding.address,"bits":binding.bits,"little_endian":binding.little_endian,"channel":policy.channel,"context":{
-                    "session":session,"generation":generation,"frame":frame,
-                    "core":self.snapshot.core.as_ref().map(|core|core.name.as_str()).unwrap_or("default")}}),
+                json!({"address":binding.address,"bits":binding.bits,"little_endian":binding.little_endian,"channel":policy.channel,"context":request_context}),
                 false,
             )
         } else if self.snapshot.state == "STOPPED"
@@ -432,7 +431,7 @@ impl App {
         {
             (
                 "watch_resolve",
-                json!({"expression":expression,"path":path}),
+                json!({"expression":expression,"path":path,"context":request_context}),
                 true,
             )
         } else {
@@ -478,12 +477,35 @@ impl App {
         {
             return true;
         }
+        let expected = self.register_context();
         let Some(sample) = self.monitor.samples.get_mut(&pending.key) else {
             return true;
         };
         let mut error = error.map(str::to_owned);
         if pending.resolve && error.is_none() {
-            match serde_json::from_value::<Binding>(result.clone()) {
+            let resolved_context =
+                serde_json::from_value::<crate::registers::Context>(result["context"].clone());
+            let binding = serde_json::from_value::<Binding>(result.clone()).and_then(|binding| {
+                if resolved_context.as_ref().is_ok_and(|c| *c == expected)
+                    && self.snapshot.state == "STOPPED"
+                    && result["source"] == "gdb_typed_address"
+                    && result["state"] == "STOPPED"
+                    && result["thread"].as_str().is_some_and(|t| !t.is_empty())
+                    && result["frame_address"]
+                        .as_str()
+                        .is_some_and(|pc| !pc.is_empty())
+                    && result["little_endian"].is_boolean()
+                    && matches!(binding.bits, 8 | 16 | 32 | 64)
+                    && binding.address.is_multiple_of(u64::from(binding.bits / 8))
+                {
+                    Ok(binding)
+                } else {
+                    Err(<serde_json::Error as serde::de::Error>::custom(
+                        "Watch resolution has no current typed thread/frame proof",
+                    ))
+                }
+            });
+            match binding {
                 Ok(binding) => sample.binding = Some(binding),
                 Err(e) => error = Some(e.to_string()),
             };
@@ -786,7 +808,65 @@ mod tests {
         a
     }
     fn resolved(a: &mut App, id: u64) {
-        assert!(a.monitor_response(id,&json!({"address":536870912,"bits":32,"little_endian":true,"signed":false,"float":false}),None));
+        let result = json!({"address":536870912,"bits":32,"little_endian":true,"signed":false,"float":false,
+            "context":a.register_context(),"thread":"1","frame_address":"0x100000008","source":"gdb_typed_address","state":"STOPPED"});
+        assert!(a.monitor_response(id, &result, None));
+    }
+    #[test]
+    fn watch_resolution_requires_current_typed_proof_before_scheduling_a_bus_read() {
+        for scenario in [
+            "missing-context",
+            "old-context",
+            "no-thread",
+            "running",
+            "bad-width",
+        ] {
+            let (mut a, (engine, requests)) = (app(), session::test_channel());
+            assert!(a.ensure_monitors(Some(&engine)));
+            let request = requests.try_recv().unwrap();
+            assert_eq!(request.method, "watch_resolve");
+            assert_eq!(request.params["context"], json!(a.register_context()));
+            let mut result = json!({"address":536870912,"bits":32,"little_endian":true,
+                "context":a.register_context(),"thread":"1","frame_address":"0x100000008",
+                "source":"gdb_typed_address","state":"STOPPED"});
+            match scenario {
+                "missing-context" => {
+                    result.as_object_mut().unwrap().remove("context");
+                }
+                "old-context" => {
+                    result["context"]["session"] = json!(a.snapshot.register_session + 1)
+                }
+                "no-thread" => result["thread"] = json!(""),
+                "running" => a.snapshot.state = "RUNNING".into(),
+                "bad-width" => result["bits"] = json!(0),
+                _ => unreachable!(),
+            }
+            assert!(a.monitor_response(request.id, &result, None));
+            assert!(a.monitor.next_read.is_none(), "{scenario}");
+            let sample = a.monitor.samples.values().next().unwrap();
+            assert!(
+                sample.binding.is_none() && sample.error.is_some(),
+                "{scenario}"
+            );
+            assert!(!a.ensure_monitors(Some(&engine)));
+            assert!(requests.try_recv().is_err());
+        }
+    }
+    #[test]
+    fn watch_monitor_requests_use_the_worker_stop_generation_instead_of_the_coordinator_revision() {
+        let (mut a, (engine, requests)) = (app(), session::test_channel());
+        a.snapshot.generation = 900;
+        a.snapshot.register_generation = Some(7);
+        assert!(a.ensure_monitors(Some(&engine)));
+        let request = requests.try_recv().unwrap();
+        assert_eq!(request.method, "watch_resolve");
+        assert_eq!(request.params["context"]["generation"], 7);
+        resolved(&mut a, request.id);
+        assert!(a.ensure_monitors(Some(&engine)));
+        let request = requests.try_recv().unwrap();
+        assert_eq!(request.method, "memory_read");
+        assert_eq!(request.params["context"]["generation"], 7);
+        assert_eq!(request.params["context"], json!(a.register_context()));
     }
     #[test]
     fn visible_access_entry_shows_target_endpoint_and_source_without_issuing_a_read() {

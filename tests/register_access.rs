@@ -10,6 +10,8 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
+#[path = "register_access/watch_resolution.rs"]
+mod watch_resolution;
 
 #[test]
 fn scalar_memory_and_peripheral_reads_validate_context_address_and_record_the_actual_mi_route() {

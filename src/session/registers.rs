@@ -154,7 +154,7 @@ impl Engine {
         (view, aliases.join(" <- "), gdb_name)
     }
 
-    fn selected_register_frame(&mut self) -> Result<(String, u32, String), String> {
+    pub(super) fn selected_register_frame(&mut self) -> Result<(String, u32, String), String> {
         let thread = self.write_thread()?;
         let record = self.mi("-stack-info-frame")?;
         let frame = record

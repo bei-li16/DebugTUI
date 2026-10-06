@@ -247,7 +247,8 @@ impl Request {
             read_cancel: Arc::new(AtomicBool::new(false)),
         }
     }
-    /// Cancel a register read/probe/selector/MPU request through a retained clone.
+    /// Cancel a scoped register, Watch address, scalar or range memory request
+    /// through a retained clone.
     /// The current transaction completes before results are discarded. This
     /// does not cancel writes, other requests, or the debugging session.
     pub fn cancel_read(&self) {
@@ -258,6 +259,13 @@ impl Request {
             self.method.as_str(),
             "registers_read" | "registers_probe" | "registers_select" | "registers_mpu"
         )
+    }
+    pub(crate) fn is_cancellable_read(&self) -> bool {
+        self.is_register_read()
+            || matches!(
+                self.method.as_str(),
+                "watch_resolve" | "memory_read" | "memory_dump" | "peripheral_read"
+            )
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -696,7 +704,7 @@ impl Engine {
             }
             match requests.recv_timeout(Duration::from_millis(20)) {
                 Ok(request) => {
-                    self.read_cancel = if request.is_register_read() {
+                    self.read_cancel = if request.is_cancellable_read() {
                         request.read_cancel.clone()
                     } else {
                         Arc::new(AtomicBool::new(false))

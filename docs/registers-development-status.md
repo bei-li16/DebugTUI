@@ -1,5 +1,15 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：Watch 地址解析证明与实际请求取消
+
+Watch 根表达式和 GDB 返回路径先通过有界只读语法校验，再在 may-call-functions 保护下取得原类型地址；解析前后证明选中线程、停止状态、帧级别和 PC。关键步骤检查 Context/通知代次/取消；对象清理及策略恢复必须完成，失败拒绝绑定并进入 FAULT。成功结果提供 GDB 类型地址来源和线程/帧 Context，UI 校验后才安排总线读取。普通内存请求的局部取消原先未接入 worker，本轮修复 Session/Coordinator 转发，并改用实际 worker 的停止代次构造监测请求，避免把多核协调器 revision 当作 Context。显式错误 channel 类型不回退 GDB。见 [Watch 地址解析](watch-address-resolution.md)。
+
+新增三项表达式、两项 UI 单元和七项真实 MI 管道集成；四核 Scope All、同帧线程/PC 变化、原 on/off 策略、清理/恢复失败、实际 Request 中途取消与后续恢复均有证据。最终 **单次 cargo test --locked 完整通过：417 单元＋183 集成＝600 通过，2 ignored**；Doc-tests 0 项，退出码 0，本次没有整体超时。严格 Clippy 通过，原生 Memory **8699 ms**、SVD **1832 ms** 通过。F24 **156/156**、F25 **24/24** 为完整 Cargo 日志的匹配模式数，不能当作 case 或完整 feature 数。其他 **20 个外层功能套件未选择**；原生 runner 报告另有 unit 未选择，该组由独立完整 Cargo 已验证，不修改 runner 的原记录。
+
+完整 Cargo、Clippy、专项 MI 和原生日志在 `artifacts/watch-resolution-*-final.log` / `artifacts/watch-resolution-clippy.log`。首次新测试的模块路径、夹具初始化和策略查询方式错误已修正，原始编译/夹具失败日志保留。原生报告 [functional-1791250341910-d72e9a25](../artifacts/functional-1791250341910-d72e9a25/report.json) 从 C 盘逐字节镜像；完整包/原始子报告保留在 JSON 引用的 C 盘或 G 盘位置，不伪造镜像子目录；镜像 Markdown 的相对子链接保持原文，必要时使用原 C 盘报告或 JSON 的绝对路径。核对 `artifacts/watch-resolution-report-mirror.json` 和 `artifacts/watch-resolution-final-evidence.json`。
+
+不增加整项勾选，**28 完成／43 未完成**。解析完成后的绑定生命周期、配置指纹失效、各面板成功 receipt/旧值来源、chip-scoped 外设策略统一、完整 BUS 驱动及 Issue #1 验收仍待完成；低 EL、writer、终端视觉、最终整套验收和非主分支 Release 也未完成。目标 active；[三项环境 case](../tests/cases/watch-resolution.md) 全部 SKIPPED，未上板。版本仍为 0.9.3，本轮在 `codex/register-debugging` 提交推送，未替换全局安装或发布 Release。
+
 ## 2026-10-06：BUS 读取响应边界与显式恢复
 
 GDB/AP 标量、范围与旧 GDB 外设路径共用 Context/状态/通知代次/取消边界，处理 Tcl 阻塞期间积压的 MI 通知；同帧线程切换也拒绝迟到结果。GDB 核对完整连续响应及精确地址，AP 坏响应丢弃连接。成功结果记录实际命令/路线/时间 Access，Watch/Peripherals 请求携带 Context；GDB 已确认 endpoint 与配置提示分开。只读请求断线后仅下一次显式读取重连，选择器/写入恢复失败与既有服务故障继续隔离。见 [BUS 读取边界](bus-read-boundary.md)。

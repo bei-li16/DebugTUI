@@ -835,7 +835,7 @@ impl Coordinator {
                             .max(30_000)
                     };
                     let mut worker_request = Request::new(id, &method, params);
-                    if worker_request.is_register_read() && method == b.request.method {
+                    if worker_request.is_cancellable_read() && method == b.request.method {
                         worker_request.read_cancel = b.request.read_cancel.clone();
                     }
                     if matches!(method.as_str(), "write_preview" | "write_apply") {

@@ -516,6 +516,8 @@ Memory 可选择地址范围、字节数及实际通道；运行中默认保留�
 
 Headless 的 `memory_channels` 返回通道、核心适用性与配置来源；`memory_dump` 接受 `address`（字符串）、`count`、`channel` 和可选 `context`。context 与 `registers_list` 返回的当前上下文一致。结果返回地址字符串、按地址排列的字节数组、target／endpoint／source、上下文和 `atomic = false`。`memory_read` 接受同样的可选 context。两者成功响应的 `access` 记录实际发送的命令、路线与请求时间；GDB 的 `access.route.endpoint` 若未知则为 null，顶层 endpoint 和 configured_endpoint 仍只是配置提示。读取途中已接收的状态、线程或停止代次变化会使响应被拒绝。未知通道、超出范围、地址溢出、不完整或错误地址响应均报错；不隐式暂停、重试或回退。旧 `memory` 接口继续保留。详见 [读取边界与证据限制](docs/bus-read-boundary.md)。
 
+Watch 总线监测的地址仅在停止时由 GDB 按原类型解析；支持成员、数组和普通指针转换，调用、赋值、自增等表达式拒绝用于地址解析。解析中线程、帧或 PC 改变会报错；清理或调用策略恢复失败时需显式重连。`watch_resolve` 可携带同一 context，成功响应包含选中线程、帧地址和类型来源证明。channel 若显式提供须为字符串，错误类型不会回退 GDB。详见 [Watch 地址解析](docs/watch-address-resolution.md)。
+
 当前分支的能力与未完成项见 [开发进度](docs/registers-development-status.md)。这些说明及软件夹具验证不代表新接口已通过上板验收。
 
 ## 运行时刷新

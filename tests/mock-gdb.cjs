@@ -20,12 +20,15 @@ let registerReadCount = 0;
 let registerPermissionQueries = 0;
 let memoryWritten = false;
 let memoryWriterProbed = false;
-const variables = process.env.DEBUGTUI_TEST_BITFIELD_VARIABLE ? require('./mock-bitfield-variable-gdb.cjs') : process.env.DEBUGTUI_TEST_WIDE_VARIABLE ? require('./mock-wide-variable-gdb.cjs') : process.env.DEBUGTUI_TEST_FLOAT_VARIABLE ? require('./mock-float-variable-gdb.cjs') : process.env.DEBUGTUI_TEST_VARIABLES ? require('./mock-variable-gdb.cjs') : null;
+const variables = process.env.DEBUGTUI_TEST_WATCH_RESOLVE ? require('./mock-watch-gdb.cjs') : process.env.DEBUGTUI_TEST_BITFIELD_VARIABLE ? require('./mock-bitfield-variable-gdb.cjs') : process.env.DEBUGTUI_TEST_WIDE_VARIABLE ? require('./mock-wide-variable-gdb.cjs') : process.env.DEBUGTUI_TEST_FLOAT_VARIABLE ? require('./mock-float-variable-gdb.cjs') : process.env.DEBUGTUI_TEST_VARIABLES ? require('./mock-variable-gdb.cjs') : null;
 const memory = new Map();
 const memoryBase = BigInt(process.env.DEBUGTUI_TEST_RAM_BASE || '0x20000000');
 for (let i = 0; i < 4098; i++) memory.set(memoryBase + BigInt(i), 0xaa);
 variables?.initialize(memory);
-const frame = () => `frame={level="${frameLevel}",addr="0x100000008",func="main",file="sample.c",line="${line}"}`;
+const frame = () => {
+  const pc = process.env.DEBUGTUI_TEST_WATCH_RESOLVE && process.env.DEBUGTUI_TEST_CONTEXT_FILE ? JSON.parse(fs.readFileSync(process.env.DEBUGTUI_TEST_CONTEXT_FILE, 'utf8')).pc || '0x100000008' : '0x100000008';
+  return `frame={level="${frameLevel}",addr="${pc}",func="main",file="sample.c",line="${line}"}`;
+};
 const send = value => process.stdout.write(value + '\n');
 let lastNotice;
 if (process.env.DEBUGTUI_TEST_NOTIFY_FILE) setInterval(() => {

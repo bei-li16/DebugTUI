@@ -59,7 +59,9 @@ int main(void) { for (;;) { counter++; } }
     if(!hardware){await cmd('break',{location:'main'});await cmd('run');await cmd('wait_stopped');}
     const variable=hardware?'xTickCount':'counter';
     await cmd('watch',{expression:variable});
-    const binding=await cmd('watch_resolve',{expression:variable});assert.equal(binding.bits,32);assert.equal(binding.little_endian,true);
+    const beforeResolve=await cmd('registers_list');
+    const binding=await cmd('watch_resolve',{expression:variable,context:beforeResolve.context});assert.equal(binding.bits,32);assert.equal(binding.little_endian,true);
+    assert.deepEqual(binding.context,beforeResolve.context);assert.equal(binding.source,'gdb_typed_address');assert.equal(binding.state,'STOPPED');assert(binding.thread);assert(binding.frame_address);
     assert.equal(binding.signed,false);assert.equal(binding.float,false);
     const stopped=await cmd('status');assert.equal(stopped.state,'STOPPED');assert(!stopped.core,'Single-core stays on direct Session path');
     const gdbValue=(await cmd('evaluate',{expression:variable})).value;

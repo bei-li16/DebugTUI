@@ -5,6 +5,8 @@ use crate::registers::{
     Context,
     provenance::{ByteOrder, Route},
 };
+mod expression;
+mod watch;
 
 struct ReadBoundary {
     context: Context,
@@ -109,7 +111,7 @@ impl Engine {
         if let Ok(base) = literal_address(address) {
             base.checked_add(count).ok_or("Memory address overflow")?;
         }
-        let channel = p["channel"].as_str().unwrap_or("");
+        let channel = memory_channel(p)?;
         let (base, bytes, target, endpoint, source) = if channel.is_empty() {
             self.stopped()?;
             let command = format!("-data-read-memory-bytes {} {count}", mi::quote(address));
@@ -220,7 +222,7 @@ impl Engine {
     }
     pub(super) fn read_memory_channel(&mut self, p: &Json) -> Result<Json, String> {
         let boundary = self.begin_memory_read(p)?;
-        let channel = p["channel"].as_str().unwrap_or("");
+        let channel = memory_channel(p)?;
         if channel.is_empty() {
             return self.read_memory_gdb_scalar(p, &boundary);
         }
@@ -369,97 +371,14 @@ impl Engine {
             "atomic":false,"context":boundary.context,"access":self.register_value_access}),
         )
     }
+}
 
-    pub(super) fn resolve_watch(&mut self, p: &Json) -> Result<Json, String> {
-        self.stopped()?;
-        let expression = p["expression"]
+fn memory_channel(p: &Json) -> Result<&str, String> {
+    match p.get("channel") {
+        None => Ok(""),
+        Some(channel) => channel
             .as_str()
-            .ok_or("Watch expression is required")?;
-        if !self.watch_names.iter().any(|name| name == expression) {
-            return Err("Watch no longer exists".into());
-        }
-        let path: Vec<usize> = serde_json::from_value(p.get("path").cloned().unwrap_or(json!([])))
-            .map_err(|_| "Invalid child path")?;
-        if path.len() > 8 {
-            return Err("Watch path is too deep".into());
-        }
-        let created = self.mi(&format!("-var-create - * {}", mi::quote(expression)))?;
-        let root = created.data.string("name");
-        let result = (|| {
-            let mut node = created.data.clone();
-            for index in path {
-                let end = index.checked_add(1).ok_or("Child index overflow")?;
-                let record = self.mi(&format!(
-                    "-var-list-children --no-values {} {index} {end}",
-                    mi::quote(&node.string("name"))
-                ))?;
-                node = record
-                    .data
-                    .field("children")
-                    .and_then(|c| c.items().first())
-                    .map(|c| c.field("child").unwrap_or(c).clone())
-                    .ok_or("Watch child is unavailable")?;
-            }
-            if node.string("numchild").parse::<usize>().unwrap_or(0) > 0
-                && !node.string("type").contains('*')
-            {
-                return Err("Expand the aggregate to read its visible scalar members".into());
-            }
-            let record = self.mi(&format!(
-                "-var-info-path-expression {}",
-                mi::quote(&node.string("name"))
-            ))?;
-            let expression = record.data.string("path_expr");
-            let address = self.mi(&format!(
-                "-data-evaluate-expression {}",
-                mi::quote(&format!("(unsigned long long)&({expression})"))
-            ))?;
-            let address = integer(&address.data.string("value")).map_err(
-                |_| "Expression has no stable memory address (register, bitfield or temporary)",
-            )?;
-            let size = self.mi(&format!(
-                "-data-evaluate-expression {}",
-                mi::quote(&format!("sizeof({expression})"))
-            ))?;
-            let bits = integer(&size.data.string("value"))?
-                .checked_mul(8)
-                .ok_or("Size overflow")?;
-            if !matches!(bits, 8 | 16 | 32 | 64) {
-                return Err("Live reads support scalar 8/16/32/64-bit values".into());
-            }
-            let cast = self.mi(&format!(
-                "-data-evaluate-expression {}",
-                mi::quote(&format!("(__typeof__({expression}))1.5"))
-            ));
-            let float = cast.as_ref().is_ok_and(|r| r.data.string("value") == "1.5");
-            let negative = self.mi(&format!(
-                "-data-evaluate-expression {}",
-                mi::quote(&format!("(__typeof__({expression}))-1"))
-            ));
-            let signed = negative
-                .as_ref()
-                .is_ok_and(|r| r.data.string("value").starts_with('-'));
-            let mut header = [0u8; 6];
-            std::fs::File::open(&self.project.program.elf)
-                .and_then(|mut f| f.read_exact(&mut header))
-                .map_err(|e| e.to_string())?;
-            let little = if &header[..4] == b"\x7fELF" {
-                match header[5] {
-                    1 => true,
-                    2 => false,
-                    _ => return Err("Unknown ELF byte order".into()),
-                }
-            } else if &header[..2] == b"MZ" {
-                true
-            } else {
-                return Err("Cannot determine program byte order".into());
-            };
-            Ok(
-                json!({"address":address,"bits":bits,"float":float,"signed":signed,"little_endian":little,"type":node.string("type"),"expression":expression}),
-            )
-        })();
-        let _ = self.mi(&format!("-var-delete {}", mi::quote(&root)));
-        result
+            .ok_or_else(|| "Memory channel must be a string; no implicit GDB fallback".into()),
     }
 }
 
