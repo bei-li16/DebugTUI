@@ -1271,11 +1271,27 @@ impl App {
                     if let Some(old) = &previous {
                         sample.inherit_value_origin(old);
                     }
-                    sample.reason = if error.contains("synchronization unsupported") {
-                        crate::registers::Reason::ReaderUnsupported
-                    } else {
-                        crate::registers::Reason::Unknown
+                    sample.reason = match error
+                        .strip_prefix("Selector read ")
+                        .and_then(|text| text.split_once(": "))
+                        .map(|(reason, _)| reason)
+                    {
+                        Some("HardwareNotImplemented") => {
+                            crate::registers::Reason::HardwareNotImplemented
+                        }
+                        Some("ReaderUnsupported") => crate::registers::Reason::ReaderUnsupported,
+                        Some("AccessRestricted") => crate::registers::Reason::AccessRestricted,
+                        Some("FeatureDisabled") => crate::registers::Reason::FeatureDisabled,
+                        Some("TransportError") => crate::registers::Reason::TransportError,
+                        Some("WriteOnly") => crate::registers::Reason::WriteOnly,
+                        _ if error.contains("synchronization unsupported") => {
+                            crate::registers::Reason::ReaderUnsupported
+                        }
+                        _ => crate::registers::Reason::Unknown,
                     };
+                    if sample.reason == crate::registers::Reason::TransportError {
+                        sample.state = State::Error;
+                    }
                     sample.detail = match previous {
                         Some(old) if old.value.is_some() => {
                             format!("{error}; last sample at {} ms", old.timestamp_ms)

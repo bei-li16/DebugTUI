@@ -130,7 +130,7 @@ impl Engine {
                     catalogue.checked_el2_backend_denial(actual, &facts, true)
                 {
                     return Err(format!(
-                        "Selector action {id}: {reason:?}: {detail}; no read sent"
+                        "Selector read {reason:?}: selector action {id}: {detail}; no read sent"
                     ));
                 }
                 if catalogue.has_presence_rule(actual)

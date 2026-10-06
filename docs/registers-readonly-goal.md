@@ -2,7 +2,7 @@
 
 2026-10-06。开发分支 `codex/register-debugging`，起点 `b493a7f`，源码基线 0.9.3。该清单落实新的 Goal，取代旧 TODO 全部 71 项作为本次完成条件；旧记录保留作追溯。36 项以完整软件验收为计数边界。硬件用例准备属于软件交付，执行上板不属于本目标。
 
-当前摘要（迭代 16）：**27 完成 / 9 未完成**。A01～A10、B01～B11、C01～C06 已通过软件验收；D01～D04、E01～E05 待完成。普通 CP15、MPU 总览与 selector 已接通当前 Debug 证据，Windows/Linux 新后端候选完整构建和实际命令入口已验收。硬件未执行、安装工具未替换、最终 Release 未发布。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
+当前摘要（迭代 17）：**30 完成 / 6 未完成**。A01～A10、B01～B11、C01～C06、D01～D03 已通过软件验收；D04、E01～E05 待完成。寄存器界面、失败原因/原值来源及会话/核/帧/owner 生命周期已复验，selector 失败原因传递已修正。硬件未执行、安装工具未替换、最终 Release 未发布。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
 
 核心参考文档（保留绝对路径）：
 
@@ -53,9 +53,9 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | C04 | 后端保存恢复和故障隔离 | scratch 回读、取消/错误、无盲目重试 |
 | [x] | C05 | selector 单事务 | 保存选择读取恢复、失败不发布部分值 |
 | [x] | C06 | 低 EL 与 R52+ 支持边界 | Unknown/Restricted/Unsupported 及正常成功路径 |
-| [ ] | D01 | 既有寄存器界面与格式复验 | 分组/列/字段/枚举/说明/格式/变化 |
-| [ ] | D02 | 状态、原因与旧值来源 | 各失败类别、灰显、失败非零、原来源保留 |
-| [ ] | D03 | 全部生命周期边界 | 核/帧/运行/暂停/重连/共享 owner |
+| [x] | D01 | 既有寄存器界面与格式复验 | 分组/列/字段/枚举/说明/格式/变化 |
+| [x] | D02 | 状态、原因与旧值来源 | 各失败类别、灰显、失败非零、原来源保留 |
+| [x] | D03 | 全部生命周期边界 | 核/帧/运行/暂停/重连/共享 owner |
 | [ ] | D04 | 按需 I/O 与只读边界 | 未启用不读、不扫描、不持久写控制 |
 | [ ] | E01 | 软件入口及硬件用例准备 | MI/Tcl/实际 CLI、可执行用例、上板 SKIPPED |
 | [ ] | E02 | 配置示例、用户文档及后续清单 | 新字段/有效值/支持限制和三份绝对引用 |
@@ -278,3 +278,17 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 延后 [四项 native selector 硬件 case](../tests/cases/register-r52-selector-read.md)、独立基线模板及既有驱动已准备。默认 **4 SKIPPED、零 I/O**；实际 DebugTUI EXE/软件夹具正向 **5 通过**，错误独立 pair 基线流程 **3 通过/1 预期失败/1 跳过**，由集成测试验收为成功。新增 case 与已有普通读取/MPU case 全部未上板，所有报告 `board_tests_executed=false`，不升级 hardware verified；AP/探针声明不代替观测。三个核心文档的绝对路径完整保留在目标、说明与 case。
 - 本轮证据位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-r52-selector-unit-final-20261006.log`、`readonly-r52-selector-full-verified-20261006.log`、`readonly-r52-selector-clippy-verified-20261006.log`、`readonly-r52-selector-linux-build-20261006.log`、`readonly-r52-selector-linux-report-20261006.json`、`readonly-r52-selector-linux-drivers-20261006.log`、`readonly-r52-selector-windows-build-20261006.log`、`readonly-r52-selector-windows-package-final-20261006.log`、`readonly-r52-selector-windows-package-verify-final-20261006.log`。manifest `readonly-r52-selector-evidence-20261006.json` 保存最终源文件、日志、驱动报告、平台报告/包的摘要和提交/远端核验。
 - 剩余 **D01～D04、E01～E05** 共 9 项。下一轮复验既有 ADS 参考界面、状态/旧值来源、生命周期及按需 I/O，补齐本版用户文档和全部延后 case 的统一入口；然后执行最终完整回归、升版/安装/升级及非主分支预发布。Goal 保持 active，最终 Release 尚未发布。本轮提交 SHA 和实际推送核验由最终输出及 manifest 记录。
+
+## 迭代 17：界面、失败原因与生命周期复验
+
+2026-10-06，完成 **D01/D02/D03**，累计 **30 完成 / 6 未完成**。上一轮实质完成并推送 C03～C06，分类为 progress；本轮起点本地/远端均为 `14dbbb4865166ee4e780a51d5d17d69953d4169e`。沿用仍适用的 M/R worker、运行态和后端证据，没有重写已完成模块或目标文件。
+
+- 逐张读取并对照 `docs/images/registers/` 的五张用户 ADS 截图。生产 Ratatui 测试复验树/分类/搜索、键鼠和滚动、Name/Value/Size/Access、CPSR/枚举/字段覆盖、说明、Q/D/S 与进制/浮点/向量、变化高亮和宽窄中文。只参照信息与交互，不复制截图数量，不依赖 ADS 安装。12 个 32/64/128 位、35/50/80/120 列布局及 4 个 native 失败宽窄布局导出实际 cell JSON/文本；由 cell 的坐标、颜色、符号生成 PNG 并目视核对，宽列/完整 128 位、窄窗元数据及灰显旧值可见。软件渲染不是实际终端/实板截图。
+- 修复真实 UI 缺陷：selector 整批错误以前将后端 AccessRestricted/HardwareNotImplemented/ReaderUnsupported 等统一变成 Unknown。现在保留 `Selector read REASON: ...` 的明确原因，TransportError 为 Error；native 目录 min_el 的执行前拒绝也使用同一原因前缀。未分类的旧错误仍 Unknown，不从任意引用文本推断原因。分类仅影响展示，不授予读取能力或改变后端注入。失败旧值灰显、不计 Valid，原值/时间/owner/context/source/native Debug 证明仍保留为原来源，最新值证明保持缺失，不自动重试。
+- 新增 1 项 UI 行为测试，覆盖七种消息（权限、未实现、协议、未知、传输、未使能及非前缀引用）与完整原 native 来源/未受影响 Core 值；同时检验实际 bank action、状态分类、灰色渲染和零重试。首次编译仅因 Sample/Provenance 没有 PartialEq，改为比较完整序列化 JSON；没有修改产品结构或减少证明字段，失败日志保留。
+- 最终 `cargo test --locked --lib ui::registers` **55 通过、0 失败**，35.07 秒；格式模型 **4 通过**。实际集成 **36 通过**：display 1、lifecycle 4、provenance 1、shared 6、native selector 6、register_access 15、register_cancel 3。合计 **95 项本批所选测试通过**；第一次 UI 55/55 不重复计数。覆盖实际 worker/Coordinator/MI/TCP/Tcl/EXE、运行竞争、取消、复位成功/部分失败、符号/ELF/重连、嵌套 Alias、选中核与 shared owner。未运行最终全 Cargo/发布回归，不升级上板标记。
+- **D03** 的 route/配置变更按现有 Setup、断开重连或重启 workspace 流程验收；新 session 和旧 context 数据前拒绝、各核有效路由/来源的 A03/A04 证据沿用。M7/M4 同 PPB 和 RunningMemory 已在迭代 16 的完整 selector 集成复验，本轮多核/运行态策略未改，沿用其双端点、实际 AP、暂停后失效和迟到结果证据；本批 UI/shared/lifecycle 又复验相应当前样本规则，不拿只有 UI 模型的结果证明物理 AP 集成。
+- 严格 `cargo clippy --locked --all-targets -- -D warnings` **通过**；初次 19.48 秒，补充 worker 原因前缀断言后的最终检查 3.95 秒。该 worker 专项 1/1 再通过、5.06 秒，已包含在上述六项 native 测试中，不重复加数。fmt、diff、用户规格未变及保留三份核心绝对引用检查通过。后端 C 事务、补丁、lock、Windows/Linux 二进制未改，沿用迭代 16 软件构建和真实命令入口证据，没有重复构建或修改安装。
+- 新增 [只读 UI/生命周期说明](register-readonly-ui-lifecycle.md)，给出 ADS 对照、具体失败修正、证据矩阵与范围限制；已有框架、状态/取消、缓存生命周期、shared owner、M 多核与 R52 selector case 继续可执行/可人工操作，全部 SKIPPED。三个核心参考文档的绝对路径完整保留；没有将长期 TODO 全部勾选。
+- 日志在 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-ui-selector-status-first-20261006.log`（首次编译失败保留）、`readonly-ui-registers-final-20261006.log`、`readonly-ui-formats-20261006.log`、`readonly-ui-lifecycle-integrations-20261006.log`、`readonly-ui-native-selector-final-20261006.log`、`readonly-ui-state-cancel-20261006.log`、`readonly-ui-selector-reason-boundary-20261006.log`、`readonly-ui-clippy-final-20261006.log`。16 组渲染在 `evidence/readonly-ui-20261006`；`readonly-ui-lifecycle-evidence-20261006.json` 记录源文件、测试/渲染摘要、ADS 参考及最终提交/远端核验。
+- 剩余 **D04、E01～E05** 共 6 项。下一轮先记录相同配置下空闲 CPU/内存与目标请求计数，闭合按需 I/O/只读边界，再统一本版硬件 case、配置及用户文档；随后完成最终回归、升版/构建/安装/升级和非主分支 prerelease。Goal 保持 active；本轮提交和推送结果在最终输出及 manifest 记录。

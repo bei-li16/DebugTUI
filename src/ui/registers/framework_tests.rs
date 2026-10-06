@@ -252,6 +252,177 @@ fn text(terminal: &Terminal<TestBackend>) -> String {
         .map(|y| row_text(terminal, y))
         .collect()
 }
+
+fn save_render(name: &str, terminal: &Terminal<TestBackend>) {
+    let Some(root) = std::env::var_os("DEBUGTUI_UI_ARTIFACT_ROOT") else {
+        return;
+    };
+    let root = std::path::PathBuf::from(root);
+    std::fs::create_dir_all(&root).unwrap();
+    let buffer = terminal.backend().buffer();
+    let cells: Vec<_> = (0..buffer.area.height)
+        .flat_map(|y| (0..buffer.area.width).map(move |x| (x, y)))
+        .map(|(x, y)| {
+            let cell = &buffer[(x, y)];
+            json!({"x":x,"y":y,"symbol":cell.symbol(),"fg":format!("{:?}",cell.fg),
+                "bg":format!("{:?}",cell.bg),"modifiers":format!("{:?}",cell.modifier)})
+        })
+        .collect();
+    std::fs::write(root.join(format!("{name}.json")), serde_json::to_vec_pretty(&json!({
+        "renderer":"production Ratatui draw_registers with TestBackend; no terminal or hardware claim",
+        "width":buffer.area.width,"height":buffer.area.height,"cells":cells
+    })).unwrap()).unwrap();
+    std::fs::write(
+        root.join(format!("{name}.txt")),
+        (0..buffer.area.height)
+            .map(|y| row_text(terminal, y))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    )
+    .unwrap();
+}
+
+#[test]
+fn native_selector_failures_keep_distinct_reasons_and_the_original_debug_proof() {
+    use crate::registers::{Reason, provenance::Provenance, r52_core};
+    for (message, reason, category) in [
+        (
+            "Selector read AccessRestricted: debugtui-r52:access-restricted",
+            Reason::AccessRestricted,
+            status::Category::Unavailable,
+        ),
+        (
+            "Selector read HardwareNotImplemented: debugtui-r52:not-implemented",
+            Reason::HardwareNotImplemented,
+            status::Category::NotImplemented,
+        ),
+        (
+            "Selector read ReaderUnsupported: R52 selector adapter protocol unsupported",
+            Reason::ReaderUnsupported,
+            status::Category::ReaderUnsupported,
+        ),
+        (
+            "Selector read Unknown: debugtui-r52:selector-invalid",
+            Reason::Unknown,
+            status::Category::Unavailable,
+        ),
+        (
+            "Selector read TransportError: target response failed",
+            Reason::TransportError,
+            status::Category::Error,
+        ),
+        (
+            "Selector read FeatureDisabled: module disabled",
+            Reason::FeatureDisabled,
+            status::Category::Unavailable,
+        ),
+        (
+            "unclassified failure quoting Selector read AccessRestricted: no result",
+            Reason::Unknown,
+            status::Category::Unavailable,
+        ),
+    ] {
+        let mut app = app();
+        let (engine, requests) = engine();
+        app.project.registers.cp15_command = r52_core::COMMAND.into();
+        app.project.registers.selector_command = crate::registers::selector::NATIVE_COMMAND.into();
+        let context = app.register_context();
+        app.snapshot.register_probe = Some(crate::registers::capabilities::Probe {
+            context: context.clone(),
+            thread: "1".into(),
+            identity: None,
+            facts: BTreeMap::new(),
+            samples: vec![],
+            nvic: None,
+            gdb_names: vec![],
+            notes: vec![],
+        });
+        let mut originals = Vec::new();
+        for (id, raw) in [("prbar1", "0x2001001b"), ("prlar1", "0x2001ffc1")] {
+            let reader = app
+                .register_view
+                .catalogue
+                .as_ref()
+                .unwrap()
+                .register(id)
+                .unwrap()
+                .reader
+                .clone();
+            let request = r52_core::Request::from_reader(&reader).unwrap();
+            let proof = r52_core::Response::parse(&format!(
+                "midr 0x411fd134 dscr 0x01050213 dspsr 0xa2000410 dlr 0x81234568 bank el1 capacity 0x00001800 value {raw}"), &request).unwrap().evidence;
+            let mut origin = Provenance::declared(&reader);
+            origin.access = Some(serde_json::from_value(json!({
+                "r52_core":proof,"phase":"responded","context":context,"timestamp_ms":23,"completed_ms":24,
+                "route":{"kind":"tcl_register","endpoint":"localhost:6666","target":"soc.r52.0","operation":"aarch64 r52_select"},
+                "command":"original successful selector transaction"
+            })).unwrap());
+            let mut original = sample(&app, id, raw);
+            original.view = crate::registers::SampleView::PhysicalCore;
+            original.source = "openocd:selector:soc.r52.0:prselr:1".into();
+            original.provenance = Some(origin);
+            app.register_view.values.insert(
+                ("core:default".into(), id.into(), "default".into()),
+                original.clone(),
+            );
+            originals.push(original);
+        }
+        let peer = sample(&app, "r0", "0xabcdef01");
+        app.register_view.values.insert(
+            ("core:default".into(), "r0".into(), "default".into()),
+            peer.clone(),
+        );
+        let bar = index(&app, "prbar1");
+        app.register_view.rows = vec![Row::Register(bar, 1)];
+        app.selection = 0;
+        app.command(Some(&engine), ":register-bank-read");
+        let request = requests.try_recv().unwrap();
+        assert_eq!(request.method, "registers_select");
+        app.register_response(request.id, &json!({}), Some(message));
+        for original in originals {
+            let failed = &app.register_view.values
+                [&("core:default".into(), original.id.clone(), "default".into())];
+            assert_eq!(failed.reason, reason, "{message}");
+            assert_eq!(failed.value, original.value);
+            assert_eq!(failed.timestamp_ms, original.timestamp_ms);
+            assert_eq!(failed.source, original.source);
+            assert_eq!(failed.context, original.context);
+            assert_eq!(json!(failed.value_provenance()), json!(original.provenance));
+            assert!(failed.provenance.is_none());
+            assert_ne!(failed.state, State::Valid);
+        }
+        assert_eq!(
+            json!(
+                app.register_view.values[&("core:default".into(), "r0".into(), "default".into())]
+            ),
+            json!(peer)
+        );
+        assert_eq!(
+            app.register_view
+                .category(&app.project, &context, bar, true),
+            category
+        );
+        if matches!(reason, Reason::AccessRestricted | Reason::ReaderUnsupported) {
+            for width in [35, 100] {
+                let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
+                terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
+                let hit = app.formats.hits.last().unwrap();
+                assert_eq!(
+                    terminal.backend().buffer()[(hit.rect.x, hit.rect.y)].fg,
+                    theme::MUTED
+                );
+                if width == 100 {
+                    assert!(row_text(&terminal, app.view_rects[3].y).contains("0x2001001b"));
+                }
+                save_render(&format!("native-selector-{reason:?}-{width}"), &terminal);
+            }
+        }
+        assert!(
+            requests.try_recv().is_err(),
+            "Failure must not queue a retry"
+        );
+    }
+}
 pub(super) fn key(app: &mut App, code: KeyCode, engine: &EngineHandle) {
     app.key(KeyEvent::new(code, KeyModifiers::NONE), Some(engine));
 }
@@ -277,6 +448,7 @@ fn register_columns_keep_size_access_and_value_hits_visible_for_long_names_and_1
                 .insert(("core:default".into(), id.into(), "default".into()), value);
             let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
             terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
+            save_render(&format!("register-columns-{bits}-{width}"), &terminal);
             let y = app.view_rects[3].y;
             let rendered = row_text(&terminal, y);
             assert!(rendered.contains("客户"), "{rendered}");

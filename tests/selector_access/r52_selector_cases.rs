@@ -301,6 +301,12 @@ fn r52_native_selector_custom_catalogue_and_unadapted_kind_have_zero_target_io()
             }),
             "{error}"
         );
+        if strict {
+            assert!(
+                error.starts_with("Selector read AccessRestricted: "),
+                "{error}"
+            );
+        }
         assert_eq!(fs::read(&f.transcript).unwrap(), transcript);
         assert!(
             f.state.lock().unwrap()["trace"]
