@@ -2,7 +2,7 @@
 
 2026-10-06。开发分支 `codex/register-debugging`，起点 `b493a7f`，源码基线 0.9.3。该清单落实新的 Goal，取代旧 TODO 全部 71 项作为本次完成条件；旧记录保留作追溯。36 项以完整软件验收为计数边界。硬件用例准备属于软件交付，执行上板不属于本目标。
 
-当前摘要（迭代 15）：**23 完成 / 13 未完成**。A01～A10、B01～B11、C01/C02 已验收；C03～C06、D01～D04、E01～E05 待完成。普通 CP15 生产事务与 MPU 总览已接通当前 Debug 证据；selector 和完整新后端候选仍待接入及验收，未提前勾选 C03。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
+当前摘要（迭代 16）：**27 完成 / 9 未完成**。A01～A10、B01～B11、C01～C06 已通过软件验收；D01～D04、E01～E05 待完成。普通 CP15、MPU 总览与 selector 已接通当前 Debug 证据，Windows/Linux 新后端候选完整构建和实际命令入口已验收。硬件未执行、安装工具未替换、最终 Release 未发布。最新证据与下一步见文末，旧轮次记录按各自源码范围保留。
 
 核心参考文档（保留绝对路径）：
 
@@ -49,10 +49,10 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | B11 | 按 reader 运行态读取 | 安全 MMIO 正向、sysreg/GDB NeedHalt 拒绝 |
 | [x] | C01 | R52 常用身份/控制完整描述 | 规定寄存器编码、位宽、主要字段及页码 |
 | [x] | C02 | R52 MPU 完整描述/容量 | EL1/EL2、MAIR 与有效 region 范围 |
-| [ ] | C03 | 当前 Debug 权限一致性 | 普通 CP15/MPU/selector 新鲜 EL、trap、成功与拒绝 |
-| [ ] | C04 | 后端保存恢复和故障隔离 | scratch 回读、取消/错误、无盲目重试 |
-| [ ] | C05 | selector 单事务 | 保存选择读取恢复、失败不发布部分值 |
-| [ ] | C06 | 低 EL 与 R52+ 支持边界 | Unknown/Restricted/Unsupported 及正常成功路径 |
+| [x] | C03 | 当前 Debug 权限一致性 | 普通 CP15/MPU/selector 新鲜 EL、trap、成功与拒绝 |
+| [x] | C04 | 后端保存恢复和故障隔离 | scratch 回读、取消/错误、无盲目重试 |
+| [x] | C05 | selector 单事务 | 保存选择读取恢复、失败不发布部分值 |
+| [x] | C06 | 低 EL 与 R52+ 支持边界 | Unknown/Restricted/Unsupported 及正常成功路径 |
 | [ ] | D01 | 既有寄存器界面与格式复验 | 分组/列/字段/枚举/说明/格式/变化 |
 | [ ] | D02 | 状态、原因与旧值来源 | 各失败类别、灰显、失败非零、原来源保留 |
 | [ ] | D03 | 全部生命周期边界 | 核/帧/运行/暂停/重连/共享 owner |
@@ -255,3 +255,26 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - 后端生产补丁未修改，SHA256 仍为 `e00fc84b3a10b1c84706463cbd3ae958da475713851f0c61e53f095a52a4426a`，沿用迭代 14 同源码的八个 C 事务模型证据，不重复构建。完整 Windows/Linux 新候选和命令入口仍未验收，source.lock 的 build verified=false、候选摘要为空，旧二进制与软件夹具不作为当前后端执行证据。当前软件编译不能当作目标 ARM 指令或实板验证。
 - 本批日志在 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-r52-mpu-targeted-20261006.log`、`readonly-r52-mpu-targeted-final-20261006.log`、`readonly-r52-mpu-unit-20261006.log`、`readonly-r52-mpu-selector-full-20261006.log`、`readonly-r52-mpu-clippy-20261006.log`。manifest `readonly-r52-mpu-evidence-20261006.json` 记录测试/实际 EXE 报告、源码与三个核心参考摘要、最后提交与远端核验；[普通读取及 MPU 总览说明](register-r52-core-read.md) 已同步。
 - 剩余仍为 **C03～C06、D01～D04、E01～E05**。下一批实现有界 R52 MPU selector 后端单事务，使用当前 EL2、正确 bank 新鲜容量、合法原 selector、真正 ISB、选择/恢复回读及 stop-on-fault；不得以固定 Hyp 传入旧 Plan 伪造权限，也不继续扩大 PMU selector。接通 host 后构建并核验 Windows/Linux 后端候选，再完成最终界面/生命周期与非主分支发布验收。Goal 保持 active，未发布 Release。
+
+## 迭代 16：R52 MPU selector 与完整后端软件验收
+
+2026-10-06，完成 **C03/C04/C05/C06**，累计 **27 完成 / 9 未完成**。起点为已推送的 `8bd3946af5cdadd7b0cd9b2b22a13b93c54ca2eb`；该起点更新执行目标，没有重置此前 23 项成果。本轮完成最后的 selector 子批次，并据普通读取、MPU 总览、selector 及完整新候选的证据验收 C 组；没有扩展 PMU selector、低 EL 或写入范围。
+
+- 新生产 `aarch64 r52_select el1|el2 INDEX EXPECTED_COUNT` 只接受已核对的 16/20/24 容量范围。外部 MIDR/EDSCR 在 CPU 指令前核实实际 D13/AArch32/当前 Debug EL2/HDD=0；保存 User DSPSR 不授予权限。单事务核对 DSPSR/DLR、独立 bank 的新鲜容量与合法原 selector，执行真正 T32 ISB、选择回读、BAR/LAR、恢复回读，最后复核完整容量/状态/身份。逐操作保存恢复及物理回读 R0；零 EL2、容量变化、非法原 selector 在 selector 写入前拒绝。任何传输、状态或恢复不确定立即中止，不推测回滚、不发布部分值。
+- Host 复用既有服务锁、target 包装和实际线程/frame 0 检查；新路径不向旧 Plan 传固定 Hyp。核对实际生效目录的 reader、owner、读属性、副作用、min_el/NeedEnable/存在条件，保留客户严格限制。响应原值、恢复值、index、count、当前证明和 route 精确验证；先解析恢复证明，再检查最终物理上下文，避免帧改变掩盖恢复异常。正常提交后的取消完成恢复后丢弃值；故障/矛盾恢复证明保持 FAULT、撤销 Probe 并隔离服务。Scope All 仅读选中核，旧值保留原始时间/owner/来源/证明；协议拒绝不回退旧 MRC/MCR/GDB。
+
+| 已验收 feature | 本轮闭合的证据边界 |
+| --- | --- |
+| C03 | 普通 CP15、MPU 总览和 selector 共用新鲜当前 Debug 规则；实际生产 C 模型与 host worker/EXE 均有 EL2 成功、低 EL/HDD/容量拒绝及独立核路径；Windows/Linux 完整候选提供所需协议和命令。 |
+| C04 | scratch/DSPSR/DLR/selector 保存恢复及回读；逐物理 I/O 故障点立即停止、无后续注入；host 取消/帧改变丢弃、未知恢复隔离、错误旧来源保留；不扩大范围外 writer 验收。 |
+| C05 | 两 bank 的合法容量与全部 index、原 selector 相同/不同、真正 ISB、选择和恢复回读、非法原值/容量拒绝；实际单次后端命令、严格响应和 host 发布边界，无部分成功。 |
+| C06 | 明确只放行已复核 D13/当前 Debug EL2；低 EL/Guest 为 Unknown/Restricted，R52+ 未验证身份为 Unsupported，保留目录不冒充硬件适配；保存 User 与当前 EL2 的正向软件路径已通过。 |
+
+- 新增 6 项 native selector worker/实际 EXE 集成与 2 项协议/解析单元测试。最终完整单元 **498 通过、0 失败、2 既有 ignored**，60.98 秒；完整 `selector_access` **139 通过、0 失败**，254.60 秒；严格 `cargo clippy --locked --all-targets -- -D warnings` **通过**，19.44 秒。合计 **637 项所选 Cargo 测试通过**，新专项已包含其中，不重复计数；这不是最终全 Cargo/发布回归。fmt、Node/Python/JSON 语法、diff、用户规格未变、补丁反向匹配与 12 项生产源摘要也通过。
+- 首轮失败日志保留。修正 native PMU 请求在容量查询前拒绝、帧改变后的旧样本 stale 断言、EXE 夹具真实 frame 函数和 UI 提示断言；完整回归发现新 Tcl 模型局部 `original` 遮蔽旧 selector 保存映射，改名 `original_selector` 后 139 项全部复验通过。没有削弱恢复、权限、多核或独立基线断言，没有将软件失败改为跳过。
+- 九个实际生产 C 事务模型及 Python 驱动 **8 项通过**。新 `r52-selector-transfer.c` 使用独立手写指令字与物理 I/O 模型，覆盖 **360 成功、24,336 个立即中止故障点、100 个容量/原 selector 用例**；并检查状态、身份、容量、scratch 和选择/恢复回读变化。普通 R52 模型同批仍验证 111 项、4360 个故障点、768 个独立容量组合。模型不是 ARM 指令或实板执行。
+- 当前补丁 SHA256 为 `4cccd65e244745a3d3ec650153c462ee5bf1ca91ce9cc5e35696af794f20b2aa`。固定 OpenOCD/Jim 源码在新目录完整构建 Linux/Windows，实际可执行入口验证九协议、命令帮助、参数/索引及未 examine target 的精确错误码。两平台均有 J-Link、CMSIS-DAP、ST-Link、FTDI；Windows 本机另验收 DLL 闭包、对应源码 ZIP、两项 F429 配置及 CMSIS-DAP 双 backend 离线配置。关闭服务端口，禁止物理 init；未连接探针。`source.lock.json` 仅更新软件 build verified=true 与当前摘要，board verified=false，历史候选保持历史。
+- Windows EXE SHA256 **`0820f197803c55ecf756d7b7ef33f6c82ef97821b2764561ad71d32455e779a0`**，产物根为 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\openocd-r52-selector-windows-20261006`，含 `install`、`windows-tests`、候选运行 ZIP 和对应源码 ZIP。Linux ELF SHA256 **`f20a92efb849f49ca93c188a32aedb074bba29cb6c695282f56e0e641b4c1a0d`**，产物根为 WSL Ubuntu-22.04 的 `/tmp/debugtui-r52-selector-linux-20261006`。锁与说明更新后重新封装、校验对应源码和 Windows 包，二进制摘要保持不变；未重复平台编译，未替换全局安装。
+- 延后 [四项 native selector 硬件 case](../tests/cases/register-r52-selector-read.md)、独立基线模板及既有驱动已准备。默认 **4 SKIPPED、零 I/O**；实际 DebugTUI EXE/软件夹具正向 **5 通过**，错误独立 pair 基线流程 **3 通过/1 预期失败/1 跳过**，由集成测试验收为成功。新增 case 与已有普通读取/MPU case 全部未上板，所有报告 `board_tests_executed=false`，不升级 hardware verified；AP/探针声明不代替观测。三个核心文档的绝对路径完整保留在目标、说明与 case。
+- 本轮证据位于 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly`：`readonly-r52-selector-unit-final-20261006.log`、`readonly-r52-selector-full-verified-20261006.log`、`readonly-r52-selector-clippy-verified-20261006.log`、`readonly-r52-selector-linux-build-20261006.log`、`readonly-r52-selector-linux-report-20261006.json`、`readonly-r52-selector-linux-drivers-20261006.log`、`readonly-r52-selector-windows-build-20261006.log`、`readonly-r52-selector-windows-package-final-20261006.log`、`readonly-r52-selector-windows-package-verify-final-20261006.log`。manifest `readonly-r52-selector-evidence-20261006.json` 保存最终源文件、日志、驱动报告、平台报告/包的摘要和提交/远端核验。
+- 剩余 **D01～D04、E01～E05** 共 9 项。下一轮复验既有 ADS 参考界面、状态/旧值来源、生命周期及按需 I/O，补齐本版用户文档和全部延后 case 的统一入口；然后执行最终完整回归、升版/安装/升级及非主分支预发布。Goal 保持 active，最终 Release 尚未发布。本轮提交 SHA 和实际推送核验由最终输出及 manifest 记录。

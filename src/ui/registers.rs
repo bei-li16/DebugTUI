@@ -779,7 +779,7 @@ impl App {
         }
         if self.active_register_config().selector_command.is_empty() {
             self.notice =
-                "A verified selector MCR command must be declared; direct Read remains available."
+                "A verified selector command must be declared; direct Read remains available."
                     .into();
             return;
         }
@@ -2104,7 +2104,7 @@ mod tests {
         });
         app.command(Some(&engine), ":register-bank-read");
         assert!(requests.try_recv().is_err());
-        assert!(app.notice.contains("MCR"));
+        assert!(app.notice.contains("verified selector command"));
         app.project.registers.selector_command = "arm mcr".into();
         for id in ["r0", "prbar23", "prlar23"] {
             let mut value = sample(&app, id, "0x1234");

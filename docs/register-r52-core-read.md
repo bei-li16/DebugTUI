@@ -1,6 +1,6 @@
 # R52 常用寄存器的受保护只读访问
 
-本批接通普通 32 位 CP15 读取的 host 与生产后端事务，是 C03 的子批次。支持已复核的 15 项身份/控制/MPU 标量及 96 项 EL1/EL2 MPU 直接索引定义，不增加目录类别。MPU 总览现已复用该事务并核对整批证据，见下节；selector 的统一权限改造、完整 OpenOCD 候选构建与命令入口验收仍待完成，不能仅凭本批模型和 worker 通过勾选 C03。
+普通 32 位 CP15、MPU 总览和有界 MPU selector 已接通当前 Debug EL2 的 host 与生产事务，并通过 Windows/Linux 完整 OpenOCD 候选构建和实际命令入口检查。支持已复核的 15 项身份/控制/MPU 标量及 96 项 EL1/EL2 MPU 直接索引定义，不增加目录类别。软件验收见唯一账本 C03～C06；尚未执行目标 ARM 指令或实板验证，最终发布另行验收。
 
 三个核心参考保持绝对路径：
 
@@ -20,7 +20,7 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 [registers]
 cpu = "cortex-r52"
 cp15_command = "aarch64 r52_read"
-selector_command = ""
+selector_command = "aarch64 r52_select"
 isb_command = ""
 tcl_endpoint = "localhost:6666"
 [registers.targets]
@@ -28,7 +28,7 @@ tcl_endpoint = "localhost:6666"
 "core1" = "soc.r52.1"
 ```
 
-每核覆盖继续使用已有 `cores.registers`。当前配置验证只允许旧 selector 与旧 MRC 家族匹配，因此这个普通读取子批次清空 selector/ISB；不要混用旧 selector 编码参数。已有 Banked/VFP/Timer/PMU/GIC 的显式专用配置继续独立生效。
+每核覆盖继续使用已有 `cores.registers`。需要 MPU selector 时显式配置上述匹配命令；仅普通 CP15/MPU 总览可以清空 selector。新事务自带真正 ISB，`isb_command` 保持为空，不混用旧 MRC/MCR。已有 Banked/VFP/Timer/PMU/GIC 的显式专用配置继续独立生效。
 
 后端命令为 `aarch64 r52_read NAME`，只接受 MIDR、MPIDR、SCTLR、HSCTLR、CPACR、HCR、MPUIR、HMPUIR、PRSELR、HPRSELR、HPRENR、MAIR0/1、HMAIR0/1 的小写名称，以及 `prbar0..23`、`prlar0..23`、`hprbar0..23`、`hprlar0..23`。实际 index 必须小于同次读取的 bank 容量。编码由既有 reader 转为受限名称；未知编码、错误宽度或非 core 归属不发送数据请求。
 
@@ -60,10 +60,28 @@ host 的 min_el 预检查仅在全部读取依赖都是受限 core reader 时，
 
 延后 [MPU 硬件 case](../tests/cases/register-r52-mpu-read.md) 复用 `scripts/test-mpu-regions-hardware.cjs`，增加可选 `current_debug` 独立期望，校验实际 EXE 返回的 route、当前状态和全部 region/MAIR。新模板为 `tests/fixtures/r52-native-mpu-board.example.json`；software_example 不能用于实板验收。
 
+## MPU selector
+
+`aarch64 r52_select el1|el2 INDEX EXPECTED_COUNT` 只接受 16/20/24 容量内的 MPU index；PMU selector 不在新协议范围。`aarch64 debugtui_r52_selector_protocol` 返回 `debugtui-r52-selector-1 external-identity current-el2 dspsr dlr fresh-capacity selector-readback isb scratch-readback stop-on-fault`。
+
+`registers_select` 保留既有 API 和两项样本。新路径不从保存 CPSR 构造旧 Plan；读前检查实际生效目录的身份、容量、selector 和 BAR/LAR 定义、owner、读属性、副作用及客户访问条件。服务锁覆盖当前物理核和线程/frame 0；Scope All 仍只读选中核。
+
+后端在同一事务中核对外部 MIDR/EDSCR、DSPSR/DLR 和正确 bank 的容量原值，实际 count 必须等于请求的 Probe count。原 selector 必须小于 count，RES0/非法值不用于恢复。选择前执行真正 ISB，临时写 selector 后执行 ISB 并回读；读完 BAR/LAR 恢复原 selector，执行 ISB 并回读，再核对完整容量、DSPSR/DLR 和外部身份/状态。R0 逐操作保存恢复及物理回读。没有选择变化时不写 selector。
+
+ISB 使用现有 DPM AArch32 EDITR 路径接受的 T32 编码，最终由 `T32_FMTITR` 排列指令；不把 A32 `0xf57ff06f` 直接交给该格式化器，也不依赖 SCTLR.CP15BEN 或修改控制位。
+
+响应固定为 `midr RAW32 dscr RAW32 dspsr RAW32 dlr RAW32 bank el1|el2 capacity RAW32 original RAW32 restored RAW32 selected RAW32 base RAW32 limit RAW32`。host 严格核对字段顺序、32 位宽、身份、当前 EL2、bank/count/index 和原 selector/恢复值；成功样本的 `access.r52_core` 保留此次事务证明。协议不符不执行 selector；容量改变撤销 Probe；注入故障或恢复证据矛盾立即 FAULT/隔离，无后续注入和自动重试。取消发生在原子请求提交之后时完成当前事务再丢弃结果；帧/核改变也不能发布新有效值，旧值保留原来源。
+
+延后 [native selector 硬件 case](../tests/cases/register-r52-selector-read.md) 使用既有驱动和 `tests/fixtures/r52-native-selector-board.example.json`，核对独立 BAR/LAR、容量、当前 Debug 证据、原 selector、控制值及 peer。默认四项 SKIPPED、零目标 I/O；software_example 只验证流程，不是实板基线。
+
 ## 验证边界
 
 `tools/openocd-adapter/tests/r52-transfer.c` 编译实际生产事务头文件，物理 I/O 使用独立模型；手写指令字来自 TRM，覆盖 111 项、4360 个逐操作故障点、768 个独立 bank 容量组合，以及恢复/身份/DSPSR/DLR/EDSCR 变化。低 EL/HDD 拒绝不执行 CPU 指令，容量拒绝无 region 数据读取，无模式/selector/使能/控制 MCR。
 
 Rust 测试覆盖受限编码与协议解析、权限预检查、实际 MI/TCP/Tcl worker、多核隔离、能力 Probe、保存 User 状态、取消/帧变化、旧值和故障隔离。延后驱动默认四项 SKIPPED；实际 EXE 与软件夹具验证驱动流程及错误独立基线拒绝，不能当作 ARM 指令执行或实板证据。
 
-最终日志、适用源码及摘要见 [唯一验收账本](registers-readonly-goal.md) 本批记录。[硬件 case](../tests/cases/register-r52-core-read.md) 尚未上板；`source.lock.json` 的 Windows/Linux 新候选仍未构建，verified=false、候选摘要为空。稳定后端的完整候选及最终非主分支 Release 仍是目标结束条件。
+`r52-selector-transfer.c` 编译同一生产头文件，使用独立指令字和物理 I/O 模型，覆盖两 bank 的所有 16/20/24 容量索引、原 selector 相同/不同的成功与逐操作失败路径、非法原值、容量变化、scratch/selector 回读、状态漂移及立即中止。它与完整后端命令入口、目标 ARM 指令和上板验证分别记账。
+
+2026-10-06 的 Windows/Linux 候选已由固定源码和本批补丁完整构建；实际程序验收九项协议、命令帮助、参数/索引拒绝和未 examine target 的精确错误码。Windows 另通过本机 DLL 闭包、对应源码包及离线配置检查，两平台均包含 J-Link、CMSIS-DAP、ST-Link、FTDI 驱动。检查关闭服务端口，未连接物理探针。`source.lock.json` 仅据此更新软件 build verified 和当前候选摘要；`board_support_verified=false` 保持不变，已安装 xPack 工具未被替换。
+
+当前 Windows EXE SHA256 为 `0820f197803c55ecf756d7b7ef33f6c82ef97821b2764561ad71d32455e779a0`，Linux ELF 为 `f20a92efb849f49ca93c188a32aedb074bba29cb6c695282f56e0e641b4c1a0d`。最终日志、适用源码、候选包及摘要见 [唯一验收账本](registers-readonly-goal.md) 迭代 16。[硬件 case](../tests/cases/register-r52-core-read.md) 尚未上板；候选构建和软件入口不代替最终 DebugTUI 升版、安装、完整回归及非主分支 Release。

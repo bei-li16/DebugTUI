@@ -2,7 +2,11 @@
 
 这是独立的 GPL-2.0-or-later OpenOCD 修改，固定上游 `d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e` 和 Jim Tcl 子模块版本。校验和见 `source.lock.json`，补丁可以干净应用到该提交。现有 xPack Windows OpenOCD 没有被替换；相同的 `0.12.0` 版本号不证明具备本适配器。
 
-当前补丁另提供有界普通 R52 读取 `aarch64 r52_read NAME` 及独立 `debugtui_r52_protocol`，见 [配置、当前 EL2 与事务边界](../../docs/register-r52-core-read.md)。实际生产 C 模型与 host 集成已验收，MPU 总览已复用当前证据；selector 统一接入及完整新 OpenOCD 命令入口仍待完成。`source.lock.json` 的 Windows/Linux build verified 为 false、候选摘要为空。以下已构建候选的描述是各旧子批次的历史证据，不能证明当前补丁构建、当前安装或实板执行。新命令不接受任意 CP15 编码，不与旧 selector 参数直接混用。
+当前补丁提供有界普通 R52 读取 `aarch64 r52_read NAME` 与 MPU selector `aarch64 r52_select el1|el2 INDEX EXPECTED_COUNT`，各有独立协议，见 [配置、当前 EL2 与事务边界](../../docs/register-r52-core-read.md)。普通读取、MPU 总览和 selector 共用当次 Debug 证据；selector 在后端单事务内验证容量、保存/选择/恢复回读及真正 T32 ISB，不使用保存 CPSR 授予权限。当前仅支持已复核的实际 R52 D13/AArch32/Debug EL2、有界寄存器，不接通新 PMU selector 或任意 CP15 指令。
+
+2026-10-06，当前补丁已在 Windows/Linux 完整构建并通过实际协议、帮助、参数/索引边界及未 examine target 命令检查，九个生产 C 事务模型和八项 Python 驱动测试通过。Windows 本机 DLL 闭包、对应源码包及三项离线配置也通过。两平台均包含 J-Link、CMSIS-DAP、ST-Link、FTDI；这些检查未连接探针、未执行 ARM 指令。`source.lock.json` 的软件 build verified 为 true，当前 Windows/Linux 二进制摘要已记录；硬件 verified 仍为 false，现有安装未替换，最终 Release 尚未发布。
+
+当前候选 Windows EXE SHA256 为 `0820f197803c55ecf756d7b7ef33f6c82ef97821b2764561ad71d32455e779a0`，Linux ELF 为 `f20a92efb849f49ca93c188a32aedb074bba29cb6c695282f56e0e641b4c1a0d`；源码补丁为 `4cccd65e244745a3d3ec650153c462ee5bf1ca91ce9cc5e35696af794f20b2aa`。证据和实际产物位置见 [唯一账本迭代 16](../../docs/registers-readonly-goal.md)。下文各旧子批次的候选描述按历史源码保留，不能当作当前安装或实板证据。
 
 `aarch64 mrrc cpnum op1 CRm` 对暂停的 AArch32 核执行一次 MRRC，将 R0/R1 的低、高字拼成 64 位结果，输出固定 16 位十六进制。它先保存物理 R0/R1，恢复后回读检查，不用缓存代替物理原值。补丁也使该命令组的 `aarch64 mrc/mcr` 保存、恢复并回读 R0。通用 `arm mrc/mcr` 和内部旧 DPM 路径没有被改造。
 

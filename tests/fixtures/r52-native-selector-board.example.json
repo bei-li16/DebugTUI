@@ -1,0 +1,18 @@
+{
+  "software_example": true,
+  "frame_function": "debug_selector_fixture",
+  "expected_midr": "0x411fd134",
+  "stable_registers": ["cpsr", "sctlr", "hsctlr"],
+  "peer_core": "core1",
+  "control_scope": "all",
+  "current_debug": {
+    "endpoint": "REPLACE_WITH_ACTUAL_TCL_ENDPOINT",
+    "targets": {"core0":"cpu0", "core1":"cpu1"},
+    "ap": {"core0":0, "core1":1},
+    "saved_dspsr": {"core0":"0xa2000410", "core1":"0xa2000410"}
+  },
+  "requests": [
+    {"kind":"mpu_el1", "index":23, "expected_capacity":"0x00001800", "expected":["0x2017001b", "0x2017ffc1"]},
+    {"kind":"mpu_el2", "index":19, "expected_capacity":"0x00000014", "expected":["0x2013001b", "0x2013ffc1"]}
+  ]
+}

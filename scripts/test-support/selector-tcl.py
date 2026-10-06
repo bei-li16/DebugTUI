@@ -169,6 +169,40 @@ def evaluate(data):
         if op == 'debugtui_r52_protocol':
             return (0, 'old-r52-adapter' if fault == 'r52_protocol' else
                     'debugtui-r52-core-1 external-identity current-el2 dspsr dlr fresh-capacity scratch-readback stop-on-fault')
+        if op == 'debugtui_r52_selector_protocol':
+            return (0, 'old-selector-adapter' if fault == 'r52_selector_protocol' else
+                    'debugtui-r52-selector-1 external-identity current-el2 dspsr dlr fresh-capacity selector-readback isb scratch-readback stop-on-fault')
+        if op == 'r52_select':
+            assert len(args) == 3 and args[0] in ('el1', 'el2')
+            bank, index, expected = args[0], int(args[1]), int(args[2])
+            assert expected in (16, 20, 24) and 0 <= index < expected
+            dscr = cpu.get('r52_dscr', '0x01050213')
+            midr = cpu.get('r52_midr', '0x411fd134')
+            if int(dscr,16) & (1 << 15) or (bank == 'el2' and (int(dscr,16) >> 8) & 3 != 2):
+                return (1, 'debugtui-r52:access-restricted', -308)
+            if (int(dscr,16) >> 8) & 3 != 2:
+                return (1, 'debugtui-r52:access-unknown', -308)
+            count = cpu['el2_count' if bank == 'el2' else 'el1_count']
+            if count == 0 and bank == 'el2': return (1, 'debugtui-r52:not-implemented', -308)
+            if count != expected: return (1, 'debugtui-r52:capacity-changed', -308)
+            selector = 'hprselr' if bank == 'el2' else 'prselr'
+            original_selector = cpu[selector]
+            if original_selector >= count: return (1, 'debugtui-r52:selector-invalid', -308)
+            cpu[selector] = index
+            cpu['native_selector_writes'] = cpu.get('native_selector_writes',0) + int(index != original_selector)
+            if fault == 'r52_selector_fault':
+                cpu['status'] = 'unknown'
+                return (1, 'Core state restoration failed: R52 selector fixture outcome unknown', -1)
+            base = (0x30000000 if name == 'cpu1' else 0x20000000) + index * 0x10000
+            cpu[selector] = original_selector
+            cpu['native_selector_writes'] += int(index != original_selector)
+            restored = original_selector ^ 1 if fault in ('r52_selector_forged_restore', 'r52_selector_bad_context_restore') else original_selector
+            if fault in ('r52_selector_context_change', 'r52_selector_bad_context_restore'):
+                Path(state['context_file']).write_text('{"thread":"2","frame":1}', encoding='utf-8')
+            capacity = count if bank == 'el2' else count << 8
+            dspsr = cpu.get('r52_dspsr', '0xa2000410')
+            dlr = cpu.get('r52_dlr', '0x81234568')
+            return (0, f'midr {midr} dscr {dscr} dspsr {dspsr} dlr {dlr} bank {bank} capacity 0x{capacity:08x} original 0x{original_selector:08x} restored 0x{restored:08x} selected 0x{index:08x} base 0x{base+0x1b:08x} limit 0x{base+0xffc1:08x}')
         if op == 'r52_read':
             assert len(args) == 1
             reg = args[0]

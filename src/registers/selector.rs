@@ -47,6 +47,110 @@ pub struct Evidence {
     pub values: [RawValue; 2],
     pub synchronization: String,
 }
+pub const NATIVE_COMMAND: &str = "aarch64 r52_select";
+pub const NATIVE_PROTOCOL: &str = "debugtui-r52-selector-1 external-identity current-el2 dspsr dlr fresh-capacity selector-readback isb scratch-readback stop-on-fault";
+
+/// Bounded request metadata, never a permission grant based on saved CPSR.
+pub struct NativePlan {
+    pub kind: Kind,
+    pub index: u8,
+    pub count: u8,
+    pub selector: &'static str,
+    pub ids: [String; 2],
+}
+impl NativePlan {
+    pub fn new(kind: Kind, index: u8, count: u64) -> Result<Self, String> {
+        let count = u8::try_from(count).map_err(|_| "Invalid selector count")?;
+        if kind == Kind::Pmu || !matches!(count, 16 | 20 | 24) || index >= count {
+            return Err("Native selector only supports adapted R52 MPU banks and indices".into());
+        }
+        Ok(Self {
+            kind,
+            index,
+            count,
+            selector: if kind == Kind::MpuEl2 {
+                "hprselr"
+            } else {
+                "prselr"
+            },
+            ids: kind.ids(index),
+        })
+    }
+    pub fn script(&self) -> String {
+        format!(
+            "if {{[catch {{aarch64 debugtui_r52_selector_protocol}} __dt_r52_protocol] || $__dt_r52_protocol ne \"{NATIVE_PROTOCOL}\"}} {{error \"R52 selector adapter protocol unsupported\"}}; \
+             if {{[catch {{{NATIVE_COMMAND} {} {} {}}} __dt_r52_result]}} {{set __dt_r52_code $::errorCode; \
+             if {{[[target current] curstate] ne \"halted\"}} {{error \"Core state restoration failed: R52 selector target state unknown\"}}; \
+             if {{$__dt_r52_code eq [list OpenOCD -300]}} {{error \"R52 selector reader unsupported: $__dt_r52_result\"}}; error $__dt_r52_result}}; set __dt_r52_result",
+            if self.kind == Kind::MpuEl2 {
+                "el2"
+            } else {
+                "el1"
+            },
+            self.index,
+            self.count
+        )
+    }
+    pub fn parse(&self, text: &str) -> Result<(Evidence, super::r52_core::Evidence), String> {
+        let words: Vec<_> = text.split_whitespace().collect();
+        if words.len() != 22
+            || [words[12], words[14], words[16], words[18], words[20]]
+                != ["original", "restored", "selected", "base", "limit"]
+        {
+            return Err("Malformed R52 selector current Debug response".into());
+        }
+        let request = super::r52_core::Request {
+            name: self.ids[0].clone(),
+            bank: if self.kind == Kind::MpuEl2 {
+                super::r52_core::CapacityBank::El2
+            } else {
+                super::r52_core::CapacityBank::El1
+            },
+            region: Some(self.index),
+        };
+        let response = super::r52_core::Response::parse(
+            &format!("{} value {}", words[..12].join(" "), words[19]),
+            &request,
+        )?;
+        let actual_count = response.evidence.capacity.integer()?
+            >> if self.kind == Kind::MpuEl2 { 0 } else { 8 }
+            & 255;
+        if actual_count != u128::from(self.count) {
+            return Err("R52 selector fresh capacity contradicts its request".into());
+        }
+        let exact = |raw: &str| {
+            if raw.len() != 10
+                || !raw.starts_with("0x")
+                || !raw[2..].bytes().all(|b| b.is_ascii_hexdigit())
+            {
+                return Err("R52 selector response requires exactly 32 raw bits".into());
+            }
+            RawValue::parse(raw, 32)
+        };
+        let original = exact(words[13])?;
+        let restored = exact(words[15])?;
+        if original != restored
+            || original.integer()? >= actual_count
+            || exact(words[17])?.integer()? != u128::from(self.index)
+        {
+            return Err(
+                "R52 selector selection/restoration evidence contradicts its request".into(),
+            );
+        }
+        Ok((
+            Evidence {
+                original,
+                restored,
+                selected: self.index,
+                values: [response.value, exact(words[21])?],
+                synchronization:
+                    "Genuine ISB in native R52 transaction; selector restore readback verified"
+                        .into(),
+            },
+            response.evidence,
+        ))
+    }
+}
 pub fn register_selection(id: &str) -> Option<(Kind, u8)> {
     for (prefix, kind) in [
         ("hprbar", Kind::MpuEl2),
@@ -289,6 +393,52 @@ pub fn decode_mpu(kind: Kind, base: &RawValue, limit: &RawValue) -> Result<MpuRe
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn native_selector_proof_binds_bank_count_index_identity_and_restoration() {
+        let plan = NativePlan::new(Kind::MpuEl2, 19, 20).unwrap();
+        let good = "midr 0x411fd134 dscr 0x01050213 dspsr 0xa2000410 dlr 0x81234568 bank el2 capacity 0x00000014 original 0x00000002 restored 0x00000002 selected 0x00000013 base 0x3013001b limit 0x3013ffc1";
+        let (evidence, proof) = plan.parse(good).unwrap();
+        assert_eq!(evidence.selected, 19);
+        assert_eq!(evidence.original.hex, "0x00000002");
+        assert_eq!(proof.current_el(), Some(2));
+        assert_eq!(proof.dspsr.hex, "0xa2000410");
+        for bad in [
+            good.replace("bank el2", "bank el1"),
+            good.replace("0x00000014", "0x00000018"),
+            good.replace("0x00000014", "0x00000000"),
+            good.replace("restored 0x00000002", "restored 0x00000003"),
+            good.replace("0x00000002", "0x00000014"),
+            good.replace("selected 0x00000013", "selected 0x00000012"),
+            good.replace("0x3013001b", "0x3013"),
+            good.replace("0x3013ffc1", "0x13013ffc1"),
+            good.replace("0x01050213", "0x01058213"),
+            good.replace("0x01050213", "0x01050113"),
+            good.replace("0x411fd134", "0x511fd134"),
+            format!("{good} extra"),
+        ] {
+            assert!(plan.parse(&bad).is_err(), "{bad}");
+        }
+        assert!(NativePlan::new(Kind::Pmu, 0, 4).is_err());
+        assert!(NativePlan::new(Kind::MpuEl2, 0, 0).is_err());
+        assert!(NativePlan::new(Kind::MpuEl1, 16, 16).is_err());
+        assert!(NativePlan::new(Kind::MpuEl1, 0, 256).is_err());
+        assert!(plan.script().contains("aarch64 r52_select el2 19 20"));
+        assert!(!plan.script().contains(" mcr"));
+    }
+    #[test]
+    fn native_selector_configuration_requires_matching_reader_and_internal_isb() {
+        let mut config = crate::registers::Config {
+            cp15_command: super::super::r52_core::COMMAND.into(),
+            selector_command: NATIVE_COMMAND.into(),
+            ..Default::default()
+        };
+        config.validate().unwrap();
+        config.isb_command = "aarch64 isb".into();
+        assert!(config.validate().is_err());
+        config.isb_command.clear();
+        config.cp15_command = "arm mrc".into();
+        assert!(config.validate().is_err());
+    }
     #[test]
     fn selector_bounds_privilege_and_known_restoration_encodings_are_strict() {
         for kind in [Kind::MpuEl1, Kind::MpuEl2, Kind::Pmu] {

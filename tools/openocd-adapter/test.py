@@ -83,6 +83,12 @@ def main():
                     '-o', str(r52_executable)], check=True)
     r52_tested = subprocess.run([str(r52_executable)], capture_output=True, text=True, check=True)
     (out/'r52-transfer-test.log').write_text(r52_tested.stdout+r52_tested.stderr, encoding='utf-8')
+    r52_selector_executable = out/('r52-selector-transfer.exe' if os.name == 'nt' else 'r52-selector-transfer')
+    subprocess.run([args.cc, '-std=c11', '-Wall', '-Wextra', '-Werror',
+                    '-I', str(source/'src/target'), str(here/'tests/r52-selector-transfer.c'),
+                    '-o', str(r52_selector_executable)], check=True)
+    r52_selector_tested = subprocess.run([str(r52_selector_executable)], capture_output=True, text=True, check=True)
+    (out/'r52-selector-transfer-test.log').write_text(r52_selector_tested.stdout+r52_selector_tested.stderr, encoding='utf-8')
     subprocess.run([sys.executable, str(here/'tests/vfp-write-driver.py'),
                     '--out', str(out/'vfp-write-driver')], check=True)
     report = {'board_tests_executed': False, 'revision': revision,
@@ -103,6 +109,9 @@ def main():
               'timer_transaction_binary_sha256': digest(timer_executable),
               'r52_core_transaction_passed': True, 'r52_core_protocol': lock['r52_core_protocol'],
               'r52_core_transaction_binary_sha256': digest(r52_executable),
+              'r52_selector_transaction_passed': True,
+              'r52_selector_protocol': lock['r52_selector_protocol'],
+              'r52_selector_transaction_binary_sha256': digest(r52_selector_executable),
               'backend_commands_passed': False, 'limitations':
               ['Transport/exception execution requires the deferred physical-core cases.']}
     if args.openocd:
@@ -115,6 +124,7 @@ def main():
         pmu_protocol = lock['pmu_protocol']
         gic_protocol = lock['gic_protocol']
         r52_core_protocol = lock['r52_core_protocol']
+        r52_selector_protocol = lock['r52_selector_protocol']
         # Initialize only the virtual adapter, keeping the target unexamined.
         # Exact native error codes prevent an init-mode rejection from falsely
         # passing an argument/state-guard test.
@@ -143,6 +153,8 @@ if {[aarch64 debugtui_gic_protocol] ne "%s"} {error "GIC protocol mismatch"}
 help aarch64 gic
 if {[aarch64 debugtui_r52_protocol] ne "%s"} {error "R52 protocol mismatch"}
 help aarch64 r52_read
+if {[aarch64 debugtui_r52_selector_protocol] ne "%s"} {error "R52 selector protocol mismatch"}
+help aarch64 r52_select
 catch {init} dummy_init_result
 proc expect_error {body expected} {
     if {![catch {uplevel 1 $body} result]} {error "command unexpectedly succeeded"}
@@ -157,6 +169,18 @@ expect_error {aarch64 isb} -311
 expect_error {aarch64 isb 0} -601
 expect_error {aarch64 debugtui_timer_protocol 0} -601
 expect_error {aarch64 debugtui_r52_protocol 0} -601
+expect_error {aarch64 debugtui_r52_selector_protocol 0} -601
+foreach operands {{} {el1 0} {el1 0 16 0}} {expect_error [list aarch64 r52_select {*}$operands] -601}
+foreach operands {{pmu 0 16} {EL2 0 20} {el1 16 16} {el2 20 20} {el2 24 24} {el1 0 0} {el2 0 255}} {
+    expect_error [list aarch64 r52_select {*}$operands] -603
+}
+foreach bank {el1 el2} {
+    foreach count {16 20 24} {
+        for {set index 0} {$index < $count} {incr index} {
+            expect_error [list aarch64 r52_select $bank $index $count] -311
+        }
+    }
+}
 expect_error {aarch64 r52_read} -601
 expect_error {aarch64 r52_read sctlr 0} -601
 foreach invalid {MIDR prbar24 hprlar24 prbar00 prlar-1 pmselr bpiall sctlr;} {expect_error [list aarch64 r52_read $invalid] -603}
@@ -213,7 +237,7 @@ for {set index 0} {$index < 16} {incr index} {
 }
 puts "PASS: adapter protocol, command help, encoding bounds, unexamined target guards"
 shutdown
-''' % (protocol, bank_protocol, vfp_protocol, vfp_write_protocol, timer_protocol, pmu_protocol, gic_protocol, r52_core_protocol)
+''' % (protocol, bank_protocol, vfp_protocol, vfp_write_protocol, timer_protocol, pmu_protocol, gic_protocol, r52_core_protocol, r52_selector_protocol)
         script_file = out/'backend-commands.tcl'
         script_file.write_text(script, encoding='utf-8')
         result = subprocess.run([str(backend), '-f', str(script_file)],

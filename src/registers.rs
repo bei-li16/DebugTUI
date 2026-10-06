@@ -76,7 +76,7 @@ pub struct Config {
     pub vfp_command: String,
     /// Independent opt-in writer. Reader availability never enables data writes.
     pub vfp_write_command: String,
-    /// Opt-in MCR used only for adapted, saved/restored selector transactions.
+    /// Opt-in MCR or bounded native command for saved/restored selector transactions.
     pub selector_command: String,
     /// Genuine ISB; empty retains the guarded legacy CP15ISB route.
     pub isb_command: String,
@@ -230,11 +230,13 @@ impl Config {
         if !self.selector_command.is_empty()
             && !matches!(
                 (self.cp15_command.as_str(), self.selector_command.as_str()),
-                ("arm mrc", "arm mcr") | ("aarch64 mrc", "aarch64 mcr")
+                ("arm mrc", "arm mcr")
+                    | ("aarch64 mrc", "aarch64 mcr")
+                    | (r52_core::COMMAND, selector::NATIVE_COMMAND)
             )
         {
             return Err(
-                "registers.selector_command must explicitly match the verified MRC command family"
+                "registers.selector_command must explicitly match the verified CP15 command family"
                     .into(),
             );
         }

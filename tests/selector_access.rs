@@ -43,6 +43,8 @@ mod pmu_cases;
 mod r52_core_cases;
 #[path = "selector_access/r52_mpu_cases.rs"]
 mod r52_mpu_cases;
+#[path = "selector_access/r52_selector_cases.rs"]
+mod r52_selector_cases;
 #[path = "selector_access/running_cases.rs"]
 mod running_cases;
 #[path = "selector_access/timer_adapter_cases.rs"]
@@ -201,7 +203,9 @@ fn fixture(fault: &'static str) -> Fixture {
                 if pending
                     .as_ref()
                     .is_some_and(|request| match request.method.as_str() {
-                        "registers_select" => script.contains("arm mcr"),
+                        "registers_select" => {
+                            script.contains("arm mcr") || script.contains("aarch64 r52_select")
+                        }
                         "registers_mpu" | "registers_cache" => {
                             script.contains("arm mrc")
                                 || script.contains("aarch64 r52_read")

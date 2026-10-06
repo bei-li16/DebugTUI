@@ -169,6 +169,8 @@ def stage(args):
         'timer_protocol': lock['timer_protocol'],
         'pmu_protocol': lock['pmu_protocol'],
         'gic_protocol': lock['gic_protocol'],
+        'r52_core_protocol': lock['r52_core_protocol'],
+        'r52_selector_protocol': lock['r52_selector_protocol'],
         'source_revision': lock['revision'], 'jimtcl_revision': lock['jimtcl_revision'],
         'patch_sha256': lock['patch_sha256'], 'dependency_sources': deps,
         'compiler_version': checked([str(compiler), '--version']).strip(),
@@ -209,6 +211,10 @@ def verify(args):
         raise ValueError('Candidate does not correspond to the current PMU protocol')
     if record.get('gic_protocol') != lock['gic_protocol']:
         raise ValueError('Candidate does not correspond to the current GIC protocol')
+    if record.get('r52_core_protocol') != lock['r52_core_protocol']:
+        raise ValueError('Candidate does not correspond to the current R52 core protocol')
+    if record.get('r52_selector_protocol') != lock['r52_selector_protocol']:
+        raise ValueError('Candidate does not correspond to the current R52 selector protocol')
     if record['dependency_sources'] != deps:
         raise ValueError('Candidate does not correspond to the current dependency lock')
     for name, expected in record['recipe_sha256'].items():

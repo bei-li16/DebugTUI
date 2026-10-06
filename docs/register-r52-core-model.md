@@ -24,7 +24,7 @@
 
 目录写回时省略默认空的字段枚举列表，仍兼容输入中的显式 `enums=[]`，非空枚举完整保留。这样新增手册元数据后的 R52/R52+ 目录仍能在原有 4 MiB 限制内序列化并重新加载，用户覆盖与 Setup 详情沿用同一生产加载器；不提高输入资源上限。软件测试同时检查实际内置目录的完整写回和再次解析。
 
-这里完成 C01/C02 的描述、编码与容量模型验收。**当前 Debug 权限生产路径仍由 C03 跟踪**：normal-execution 的 EL/trap 说明不能充当注入许可，停止前 CPSR/DSPSR 不能证明当前 Debug EL；普通 CP15、MPU、selector 的统一证明和成功/拒绝生产路径尚未完成。C04/C05 的恢复事务及 C06 的低 EL/R52+ 边界仍需完整验收。
+这里完成 C01/C02 的描述、编码与容量模型验收。normal-execution 的 EL/trap 说明不能充当注入许可，停止前 CPSR/DSPSR 不能证明当前 Debug EL。后续已接通普通 CP15、MPU 和 selector 的统一当前证明，并通过恢复、拒绝及完整后端候选的软件验收；当前协议与边界见 [受保护只读访问](register-r52-core-read.md)，实时 C03～C06 状态和证据只维护于 [唯一账本](registers-readonly-goal.md)。这些软件结果不代表实板通过。
 
 软件模型测试检查内置实际 TOML 的来源、位宽、reader、字段、复位边界、冲突及每个 direct region 的独立 bank 条件；既有 MPU/MAIR 解码测试保持。它们不模拟 ARM 指令执行，也不证明实际 AP 归属。六项 [延后环境 case](../tests/cases/register-r52-core-model.md) 均 SKIPPED，不升级 hardware verified。
 

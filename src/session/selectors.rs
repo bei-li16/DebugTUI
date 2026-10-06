@@ -2,7 +2,7 @@
 use super::*;
 use crate::registers::{
     Catalogue, Implementation, Reason, Sample, State,
-    selector::{Kind, Plan, Request as SelectorRequest, decode_mpu},
+    selector::{Kind, NativePlan, Plan, Request as SelectorRequest, decode_mpu},
 };
 
 impl Engine {
@@ -32,6 +32,10 @@ impl Engine {
         {
             return Err("Actual Cortex-R52 identity is not adapted".into());
         }
+        let native = self.project.registers.cp15_command == crate::registers::r52_core::COMMAND;
+        if native && request.kind == Kind::Pmu {
+            return Err("Native selector only supports adapted R52 MPU banks and indices".into());
+        }
         let key = match request.kind {
             Kind::MpuEl1 => "mpu.el1.regions",
             Kind::MpuEl2 => "mpu.el2.regions",
@@ -42,13 +46,44 @@ impl Engine {
             .get(key)
             .ok_or("Selector count has not been observed from this core")?
             .value;
-        let mode = probe.raw("cpsr").ok_or("Physical CPSR mode is not known")? & 31;
-        let plan = Plan::new(request.kind, request.index, count, mode)?;
-        let operation = plan.script_with_sync(
-            &self.project.registers.cp15_command,
-            &self.project.registers.selector_command,
-            &self.project.registers.isb_command,
-        )?;
+        let native_plan = if native {
+            if self.project.registers.selector_command != crate::registers::selector::NATIVE_COMMAND
+            {
+                return Err("Declare aarch64 r52_select for the native R52 MPU selector".into());
+            }
+            Some(NativePlan::new(request.kind, request.index, count)?)
+        } else {
+            None
+        };
+        let legacy_plan = if native {
+            None
+        } else {
+            let mode = probe.raw("cpsr").ok_or("Physical CPSR mode is not known")? & 31;
+            Some(Plan::new(request.kind, request.index, count, mode)?)
+        };
+        let (plan_index, plan_count, plan_selector, plan_ids, operation) =
+            if let Some(plan) = &native_plan {
+                (
+                    plan.index,
+                    plan.count,
+                    plan.selector,
+                    plan.ids.clone(),
+                    plan.script(),
+                )
+            } else {
+                let plan = legacy_plan.as_ref().unwrap();
+                (
+                    plan.index,
+                    plan.count,
+                    plan.selector,
+                    plan.ids.clone(),
+                    plan.script_with_sync(
+                        &self.project.registers.cp15_command,
+                        &self.project.registers.selector_command,
+                        &self.project.registers.isb_command,
+                    )?,
+                )
+            };
         let target = self
             .project
             .registers
@@ -56,9 +91,58 @@ impl Engine {
             .get(&request.context.core)
             .ok_or("Declare this core's system-register target")?
             .clone();
-        let catalogue = Catalogue::builtin("cortex-r52")?;
-        let eligibility: std::collections::BTreeMap<_, _> = plan
-            .ids
+        let builtin = Catalogue::builtin("cortex-r52")?;
+        let (catalogue, catalogue_source) = if native {
+            self.register_catalogue
+                .as_ref()
+                .map_err(Clone::clone)?
+                .as_ref()
+                .ok_or("Select an R52 register catalogue")?
+                .clone()
+        } else {
+            (builtin.clone(), "builtin:cortex-r52".into())
+        };
+        if native {
+            let facts = self.effective_register_facts();
+            let count_id = if request.kind == Kind::MpuEl2 {
+                "hmpuir"
+            } else {
+                "mpuir"
+            };
+            for id in ["midr", count_id, plan_selector, &plan_ids[0], &plan_ids[1]] {
+                let actual = catalogue
+                    .register(id)
+                    .ok_or_else(|| format!("Selector catalogue entry missing: {id}"))?;
+                let expected = builtin
+                    .register(id)
+                    .ok_or("Built-in MPU selector definition missing")?;
+                if actual.reader != expected.reader
+                    || actual.bits != 32
+                    || actual.scope != crate::registers::Scope::Core
+                    || actual.read_side_effect
+                    || !actual.access.readable()
+                {
+                    return Err(format!(
+                        "Selector action requires the verified direct definition for {id}"
+                    ));
+                }
+                if let Some((reason, detail)) =
+                    catalogue.checked_el2_backend_denial(actual, &facts, true)
+                {
+                    return Err(format!(
+                        "Selector action {id}: {reason:?}: {detail}; no read sent"
+                    ));
+                }
+                if catalogue.has_presence_rule(actual)
+                    && catalogue.implementation(actual, &facts).0 != Implementation::Yes
+                {
+                    return Err(format!(
+                        "Selector action {id}: presence not proven; no read sent"
+                    ));
+                }
+            }
+        }
+        let eligibility: std::collections::BTreeMap<_, _> = plan_ids
             .iter()
             .map(|id| {
                 (
@@ -70,7 +154,7 @@ impl Engine {
                             Some(&probe),
                             &request.context,
                         )
-                        .with_catalogue_source("builtin:cortex-r52"),
+                        .with_catalogue_source(&catalogue_source),
                 )
             })
             .collect();
@@ -91,12 +175,14 @@ impl Engine {
             return Err("Actual physical GDB context changed since capability probe".into());
         }
         self.register_value_access = None;
-        let response = self.register_tcl_value(
-            &operation,
-            &format!("Selector {} index {}", plan.selector, plan.index),
-        );
-        let access = self.register_value_access.clone();
+        let label = format!("Selector {plan_selector} index {plan_index}");
+        // The outer leases and GDB guards protect this whole operation. Parse
+        // restoration evidence before the final context guard: a frame change
+        // must not hide an uncertain selector outcome.
+        let response = self.register_tcl_value(&operation, &label);
+        let mut access = self.register_value_access.clone();
         if let Some(error) = self.register_access_fault.clone() {
+            self.snapshot.register_probe = None;
             for lease in &mut leases {
                 lease.quarantine(&error);
             }
@@ -105,7 +191,7 @@ impl Engine {
                 "selector",
                 format!(
                     "{} index={} owner={} target={target}: outcome unknown; {error}",
-                    plan.selector, plan.index, request.context.core
+                    plan_selector, plan_index, request.context.core
                 ),
             );
             return Err(format!(
@@ -117,6 +203,7 @@ impl Engine {
             Err((reason, error)) => {
                 if error.contains("Physical capability count changed")
                     || error.contains("Physical MIDR is not an adapted R52")
+                    || error.contains("debugtui-r52:capacity-changed")
                 {
                     self.snapshot.register_probe = None;
                 }
@@ -125,11 +212,21 @@ impl Engine {
                     || error.contains("adapter protocol unsupported")
                 {
                     Reason::ReaderUnsupported
+                } else if error.contains("debugtui-r52:access-restricted") {
+                    Reason::AccessRestricted
+                } else if error.contains("debugtui-r52:not-implemented") {
+                    Reason::HardwareNotImplemented
+                } else if error.contains("debugtui-r52:access-unknown")
+                    || error.contains("debugtui-r52:selector-invalid")
+                    || error.contains("debugtui-r52:capacity-changed")
+                {
+                    Reason::Unknown
+                } else if error.contains("R52 selector reader unsupported") {
+                    Reason::ReaderUnsupported
                 } else {
                     reason
                 };
-                let samples: Vec<_> = plan
-                    .ids
+                let samples: Vec<_> = plan_ids
                     .iter()
                     .map(|id| Sample {
                         id: id.clone(),
@@ -160,26 +257,47 @@ impl Engine {
                         timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
                         source: format!(
                             "openocd:selector:{target}:{}:{}",
-                            plan.selector, plan.index
+                            plan_selector, plan_index
                         ),
                     })
                     .collect();
-                self.store_register_samples(&samples, &Catalogue::builtin("cortex-r52")?);
+                self.store_register_samples(&samples, &catalogue);
                 self.log(
                     "selector",
                     format!(
                         "{} index={} read failed after known restoration: {error}",
-                        plan.selector, plan.index
+                        plan_selector, plan_index
                     ),
                 );
                 self.publish();
                 return Err(format!("Selector read {reason:?}: {error}"));
             }
         };
-        let mut evidence = match plan.parse(&raw) {
+        let parsed = if let Some(plan) = &native_plan {
+            plan.parse(&raw).and_then(|(evidence, proof)| {
+                if proof.midr.integer()?
+                    != u128::from(probe.raw("midr").ok_or("Probe MIDR missing")?)
+                {
+                    return Err("Selector physical identity changed since probe".into());
+                }
+                let provenance = access
+                    .as_mut()
+                    .filter(|a| {
+                        a.context == request.context
+                            && a.phase == crate::registers::provenance::Phase::Responded
+                    })
+                    .ok_or("Selector lacks current physical transaction provenance")?;
+                provenance.r52_core = Some(proof);
+                Ok(evidence)
+            })
+        } else {
+            legacy_plan.as_ref().unwrap().parse(&raw)
+        };
+        let mut evidence = match parsed {
             Ok(evidence) => evidence,
             Err(error) => {
                 self.register_access_fault = Some(error.clone());
+                self.snapshot.register_probe = None;
                 for lease in &mut leases {
                     lease.quarantine(&error);
                 }
@@ -191,7 +309,7 @@ impl Engine {
                 return Err(format!("Selector outcome unknown; reconnect: {error}"));
             }
         };
-        if !self.project.registers.isb_command.is_empty() {
+        if !native && !self.project.registers.isb_command.is_empty() {
             evidence.synchronization =
                 "Genuine ISB via debugtui-armv8-1; selector restore readback verified".into();
         }
@@ -206,6 +324,7 @@ impl Engine {
             || self.register_context() != request.context
             || self.snapshot.state != "STOPPED"
         {
+            self.snapshot.register_probe = None;
             return Err(
                 "Selector was restored, but physical context changed; samples discarded".into(),
             );
@@ -221,14 +340,13 @@ impl Engine {
         };
         let detail = format!(
             "{} index={} saved={} restored={}; {}",
-            plan.selector,
-            plan.index,
+            plan_selector,
+            plan_index,
             evidence.original.hex,
             evidence.restored.hex,
             evidence.synchronization
         );
-        let samples: Vec<_> = plan
-            .ids
+        let samples: Vec<_> = plan_ids
             .iter()
             .zip(&evidence.values)
             .map(|(id, value)| Sample {
@@ -252,20 +370,22 @@ impl Engine {
                 eligibility: eligibility.get(id).cloned(),
                 last_value_eligibility: None,
                 timestamp_ms: Stamp::now().elapsed_ms(self.session_started),
-                source: format!("openocd:selector:{target}:{}:{}", plan.selector, plan.index),
+                source: format!("openocd:selector:{target}:{plan_selector}:{plan_index}"),
             })
             .collect();
         self.check_register_read_cancelled()?;
-        self.store_register_samples(&samples, &Catalogue::builtin("cortex-r52")?);
+        self.store_register_samples(&samples, &catalogue);
         self.log(
             "selector",
             format!("{detail}; owner={} target={target}", request.context.core),
         );
         self.publish();
         Ok(
-            json!({"context":request.context,"kind":request.kind,"index":plan.index,"count":plan.count,
-            "selector":plan.selector,"evidence":evidence,"samples":samples,"region":region,
-            "target":target,"endpoint":self.project.registers.tcl_endpoint,"source":"target-scoped MRC/MCR selector transaction; no counter enable/reset or MPU configuration write"}),
+            json!({"context":request.context,"kind":request.kind,"index":plan_index,"count":plan_count,
+            "selector":plan_selector,"evidence":evidence,"samples":samples,"region":region,
+            "target":target,"endpoint":self.project.registers.tcl_endpoint,"source": if native {
+                "native R52 current Debug EL2 MPU selector transaction; temporary selector writes restored and verified"
+            } else { "target-scoped MRC/MCR selector transaction; no counter enable/reset or MPU configuration write" }}),
         )
     }
 }

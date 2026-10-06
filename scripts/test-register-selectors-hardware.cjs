@@ -18,6 +18,7 @@ const binary = path.resolve(options.binary || path.join(root, 'target/release/de
 const project = path.resolve(options.project), caseFile = path.resolve(options.case);
 for (const file of [binary, project, caseFile]) assert(fs.existsSync(file), `Missing input: ${file}`);
 const spec = JSON.parse(fs.readFileSync(caseFile));
+assert(!spec.software_example || options['software-fixture'], 'Replace the software example with an independently verified board baseline');
 assert(typeof spec.frame_function === 'string' && spec.frame_function, 'Declare a dedicated paused fixture function');
 assert(spec.expected_midr && Array.isArray(spec.requests) && spec.requests.length, 'Declare known MIDR and selector requests');
 const exact = raw => { assert(/^0x[0-9a-f]{8}$/i.test(raw), `Not an exact 32-bit raw value: ${raw}`); return BigInt(raw); };
@@ -27,8 +28,17 @@ for (const request of spec.requests) {
   assert(Array.isArray(request.expected) && request.expected.length === 2, 'Declare an independently known pair for every request');
   request.expected.forEach(exact);
 }
-assert(Array.isArray(spec.stable_registers) && ['cpsr', 'pmcr'].every(id=>spec.stable_registers.includes(id)), 'Declare stable controls, including CPSR and PMCR');
+assert(Array.isArray(spec.stable_registers) && (spec.current_debug ? ['cpsr'] : ['cpsr', 'pmcr']).every(id=>spec.stable_registers.includes(id)), 'Declare stable controls, including CPSR and PMCR when using the legacy selector');
 assert(spec.stable_registers.includes('sctlr') || spec.stable_registers.includes('hsctlr'), 'Include the controlling SCTLR or HSCTLR');
+if (spec.current_debug) {
+  assert(spec.current_debug.endpoint, 'Declare the native Tcl endpoint');
+  for (const core of [options.core, spec.peer_core].filter(Boolean)) {
+    assert(spec.current_debug.targets?.[core], `Declare target for ${core}`);
+    assert(Number.isInteger(spec.current_debug.ap?.[core]) && spec.current_debug.ap[core]>=0, `Declare AP for ${core}`);
+    exact(spec.current_debug.saved_dspsr?.[core]);
+  }
+  for (const request of spec.requests) { assert(request.kind!=='pmu', 'Native selector scope is MPU only'); exact(request.expected_capacity); }
+}
 const projectHash = hash(project);
 Object.assign(suite.metadata, {binary, binary_sha256:hash(binary), project, project_sha256:projectHash, case_file:caseFile, case_sha256:hash(caseFile), peer_core:spec.peer_core || null});
 let session, context, before, probe, peerBefore;
@@ -84,13 +94,29 @@ const select = async core => { if (core !== 'default' || spec.peer_core) await s
         assert.deepEqual(result.context, context); assert.equal(result.selector, selector);
         assert.equal(exact(result.evidence.original.hex), exact(before[selector]));
         assert.deepEqual(result.evidence.restored, result.evidence.original);
-        assert.equal(result.evidence.selected, request.index); assert(result.evidence.synchronization.includes('CP15ISB'));
+        assert.equal(result.evidence.selected, request.index);
+        assert(result.evidence.synchronization.includes(spec.current_debug ? 'Genuine ISB in native R52' : 'CP15ISB'));
         const pair = [a+request.index, b+request.index];
         const direct = await read(pair);
         for (let i=0;i<2;i++) {
           const sample = result.samples.find(s=>s.id===pair[i]);
           assert.equal(sample?.state, 'valid'); assert.equal(sample.owner, `core:${options.core}`);
           assert.deepEqual(sample.context, context); assert(sample.source.includes(`:selector:${result.target}:`));
+          if (spec.current_debug) {
+            const access = sample.provenance?.access, proof = access?.r52_core;
+            assert.equal(access?.phase, 'responded'); assert.deepEqual(access.context, context);
+            assert.equal(access.route.target, spec.current_debug.targets[options.core]);
+            assert.equal(access.route.endpoint, spec.current_debug.endpoint);
+            assert.equal(proof?.bank, request.kind==='mpu_el2' ? 'el2' : 'el1');
+            assert.equal(exact(proof.capacity.hex),exact(request.expected_capacity));
+            assert.equal(exact(proof.midr.hex),exact(spec.expected_midr));
+            assert.equal(exact(proof.dspsr.hex),exact(spec.current_debug.saved_dspsr[options.core]));
+            const dscr=exact(proof.dscr.hex);
+            assert.equal((dscr>>8n)&3n,2n); assert.equal(dscr&(1n<<15n),0n);
+            assert.equal(dscr&((1n<<16n)|(1n<<18n)),(1n<<16n)|(1n<<18n));
+            assert.equal(dscr&(1n<<24n),1n<<24n); assert.equal(dscr&0x1c0000c0n,0n);
+            exact(proof.dlr.hex);
+          }
           assert.equal(exact(sample.value.hex), exact(request.expected[i]));
           assert.equal(exact(direct[pair[i]]), exact(request.expected[i]), 'Independent direct-index read must agree');
         }
