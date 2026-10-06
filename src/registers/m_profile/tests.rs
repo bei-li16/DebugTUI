@@ -75,6 +75,55 @@ fn probe(catalogue: &Catalogue, cpuid: u64) -> Probe {
 }
 
 #[test]
+fn m_cpacr_permission_fields_preserve_reserved_values_and_have_exact_manual_sources() {
+    for (cpu, page) in [("cortex-m4", 264), ("cortex-m7", 287)] {
+        let c = Catalogue::builtin(cpu).unwrap();
+        let register = c.register("scb.cpacr").unwrap();
+        assert!(register.writer.is_none());
+        assert_eq!(register.source.as_ref().unwrap().page, Some(page));
+        for cp10 in 0..4_u128 {
+            for cp11 in 0..4_u128 {
+                let raw = RawValue::from_integer((cp10 << 20) | (cp11 << 22), 32).unwrap();
+                let fields = &register.fields;
+                assert_eq!(
+                    fields
+                        .iter()
+                        .find(|f| f.name == "CP10")
+                        .unwrap()
+                        .extract(&raw)
+                        .unwrap()
+                        .integer()
+                        .unwrap(),
+                    cp10
+                );
+                let f = fields.iter().find(|f| f.name == "CP11").unwrap();
+                assert_eq!(f.extract(&raw).unwrap().integer().unwrap(), cp11);
+                assert_eq!(f.enums.len(), 4);
+                assert_eq!(f.enums[2].name, "ReservedUnpredictable");
+            }
+        }
+        // GDB's external regfile read does not execute an FP instruction through CPACR.
+        assert!(c.register("d0").unwrap().access_rule.need_enable.is_none());
+    }
+}
+
+#[test]
+fn enabled_dwt_zero_count_is_known_and_disabling_revokes_the_capacity() {
+    let c = Catalogue::builtin("cortex-m4").unwrap();
+    let mut p = probe(&c, 0x410fc241);
+    p.samples
+        .extend([sample(&c, "dcb.demcr", 1 << 24), sample(&c, "dwt.ctrl", 0)]);
+    decode(&mut p, &c);
+    assert_eq!(p.facts["dwt.comparators"].value, 0);
+    let mut disabled = sample(&c, "dcb.demcr", 0);
+    disabled.timestamp_ms += 1;
+    p.samples.push(disabled);
+    decode(&mut p, &c);
+    assert!(!p.facts.contains_key("dwt.comparators"));
+    assert_eq!(p.facts["dwt.enabled"].value, 0);
+}
+
+#[test]
 fn m_identity_and_id_ranges_supply_actual_dynamic_capacities() {
     for (cpu, cpuid, regions) in [
         ("cortex-m3", 0x412fc231, 0),

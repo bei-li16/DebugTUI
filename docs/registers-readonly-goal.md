@@ -39,8 +39,8 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | B03 | NVIC 与优先级来源 | 动态 bank/优先级位、无依据 Unknown、不写探测 |
 | [x] | B04 | SysTick 与读副作用 | CTRL/LOAD/VAL/CALIB、手动读与自动零 I/O |
 | [x] | B05 | M MPU 与 region 读取 | TYPE/CTRL/RNR/RBAR/RASR、容量及保存恢复 |
-| [ ] | B06 | Debug、DWT/FPB 身份容量 | 不轮询 DHCSR、不自动使能、门控原因 |
-| [ ] | B07 | M4 FPU 配置与身份 | CPACR/FPCCR/FPCAR/FPDSCR/MVFR、GDB regfile 复用 |
+| [x] | B06 | Debug、DWT/FPB 身份容量 | 不轮询 DHCSR、不自动使能、门控原因 |
+| [x] | B07 | M4 FPU 配置与身份 | CPACR/FPCCR/FPCAR/FPDSCR/MVFR、GDB regfile 复用 |
 | [ ] | B08 | M7 cache/TCM 配置 | TRM/CMSIS 有据定义、维护命令不执行 |
 | [x] | B09 | M ID 探测与动态实例 | CPUID/ICTR/MPU_TYPE 等成功/缺失/非法结果 |
 | [ ] | B10 | CorePrivate 和异构双核隔离 | 同 PPB 地址经不同核路由、缓存与失败隔离 |
@@ -138,3 +138,15 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 - `cargo fmt --all --check`、严格 Clippy 全 targets（17.15 秒）、diff 检查、六份离线目录生成一致性及 Node 语法检查通过。Clippy 日志 `readonly-m-mpu-clippy-20261006.log`。未修改或重建 OpenOCD。
 - [M MPU 文档](register-cortex-m-mpu.md)、用户指南及三项 [环境 case](../tests/cases/register-cortex-m-mpu.md) 完成；驱动 `scripts/test-m-profile-mpu-hardware.cjs` 默认三个阶段全部 SKIPPED、零目标 I/O，报告位于上述构建目录 `evidence/m-profile-mpu-hardware-1791266088629-c6f06ef9`。所有硬件未执行，verified 未升级。三个核心绝对参考路径均保留。
 - 剩余 A04；B06/B07/B08/B10/B11；C01～C06；D01～D04；E01～E05。下一批验收 M Debug/DWT/FPB 与 FPU/cache 模块整体行为，复用已有目录和 ID；完整异构生命周期、运行态、R52 当前 Debug 权限和 Release 仍未完成。最终提交 SHA 与远端核验由本轮输出和证据 manifest 记录。
+
+## 迭代 7：M Debug/DWT/FPB 与 FPU 整体验收
+
+2026-10-06，完成 B06/B07，累计 **17 完成 / 19 未完成**。开始时核对 HEAD 与远端开发分支均为 `e4bd648f464abb46fadd45f64484fdf45a6edb2a`。本轮一并保存用户要求重新生成的 Goal 文本，其 15/21 是修订起点，本清单为实时状态。
+
+- 复用已验收的 M 目录、ID 与 CorePrivate。实际 Coordinator/worker/MI 在 M3/M4/M7 验证 DHCSR 自动零 I/O、手动单次读取，DWT 未使能/未知/已使能读取及新 DEMCR 关闭/失败撤销容量；FPB REV 0/1、零容量、分离 NUM_CODE 的高低段、未知 revision 和失败均有独立原始响应与断言。没有启用 DWT、FPB 或写比较器。
+- 修正 M4/M7 CPACR 缺字段：固定 CMSIS 供地址，位域和枚举分别来自 DUI 0553A §4.6.1/Table 4-50 物理第 264 页和 DUI 0646B §4.7.1/Table 4-59 物理第 287 页。保留 CP10/CP11 不一致与保留编码；不填未知 reset，不添加 writer。离线生成器及输出一致，4 项 Python 转换检查通过。
+- M4/M7 FPU 配置和 GDB D/S/FPSCR 实际读取验收：禁止/仅特权/完全访问 CPACR 的软件情形不自动改变使能；GDB 停止帧与外部读取独立检查。非对称 64 位、NaN payload、D15/S30/S31 和 FPSCR 精确保留，同批父 D 与 S 别名复用一次来源。无效/缺失 MVFR0、伪造声明、只有 S 名而缺 D 父项、错误响应和旧来源保留分别检查。软件模型不宣称任何实板必然在所有权限配置下可读。
+- `readonly-m-modules-final-20261006.log` 在 C 盘 build-cache：8 项 M profile 模型单元、1 项新增 CPACR UI（35×12/80×24）和完整 12 项 `m_capability_access` 集成均通过。其中 CPACR 模型在两个过滤命令中重复出现，唯一单元/UI 是 9 项，不能合计成 10。测试直接运行生产解析、字段、UI、Coordinator/worker/MI；不是 ARM 执行模拟。新增 6 项集成中的实际 EXE 驱动通过五阶段加 cleanup，故意错误独立 D0 baseline 被正确判失败。
+- 严格 `cargo clippy --locked --all-targets -- -D warnings`、`cargo fmt --all --check`、六目录离线生成一致性、Node 语法和 `git diff --check` 通过。没有为未改动 OpenOCD 重建平台，没有声称本轮完成全仓回归；前序证据保持适用。初次新测试中暴露的 M7 source 页码缺失和 retained-origin 包装断言已按实际 schema 修正后通过。
+- [模块说明](register-cortex-m-modules.md)、[五项环境 case](../tests/cases/register-cortex-m-modules.md)、显式运行驱动和独立期望值模板完成。默认报告 `evidence/m-profile-modules-hardware-1791267355736-4dfa8b96/report.json` 为 0 passed / 0 failed / 5 skipped，目标零 I/O、`board_tests_executed=false`。没有上板或自动升级 verified。
+- 剩余 A04、B08/B10/B11、C01～C06、D01～D04、E01～E05，共 19 项。下一批优先 M7 cache/TCM 及 selector，再接通按通道的运行态和完整异构隔离；R52 当前 Debug 权限及最终发布仍待完成。提交 SHA 和推送核验结果在本轮最终输出报告，证据 manifest 保存最终提交。

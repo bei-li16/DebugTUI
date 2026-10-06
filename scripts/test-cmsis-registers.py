@@ -4,7 +4,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
-from cmsis_registers import Header, INPUT
+from cmsis_registers import Header, INPUT, deltas, common
 
 
 class Conversion(unittest.TestCase):
@@ -26,6 +26,20 @@ class Conversion(unittest.TestCase):
         self.header.macros["CYCLE"]=("CYCLE",1)
         with self.assertRaises(ValueError):
             self.header.number("CYCLE")
+
+    def test_cpacr_fields_have_m_profile_manual_evidence_and_no_writer(self):
+        lock=json.loads((INPUT/"source-lock.json").read_text())
+        for model in (4,7):
+            header=Header(f"core_cm{model}.h",lock)
+            definition=next(r for r in deltas(header,common(self.header)) if r["id"]=="scb.cpacr")
+            self.assertEqual(definition["reader"],dict(kind="core_private",address=0xE000ED88))
+            self.assertEqual([(f["name"],f["segments"]) for f in definition["fields"]],
+                             [("CP10",[dict(offset=20,width=2)]),("CP11",[dict(offset=22,width=2)])])
+            self.assertEqual([e["value"] for e in definition["fields"][0]["enums"]],["0","1","2","3"])
+            self.assertEqual(definition["source"]["number"],"DUI 0553A" if model==4 else "DUI 0646B")
+            self.assertGreater(definition["source"]["page"],0)
+            self.assertNotIn("writer",definition)
+            self.assertNotIn("reset",definition)
 
     def test_conditional_conflicts_and_unknown_field_overlap_fail_closed(self):
         with self.assertRaisesRegex(ValueError,"Conditional CMSIS macro"):

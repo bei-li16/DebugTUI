@@ -74,12 +74,12 @@ group = "m_fpu"
 bits = 32
 access = "rw"
 scope = "core"
-description = "SCB CPACR; reset and implementation-specific values are not assumed."
+description = "CP10/CP11 instruction access configuration, with CMSIS address and Arm M-profile field definitions. Read-only debugger view; no CPU-mode inference or automatic FPU enable."
 reader = { kind = "core_private", address = 3758157192 }
 access_rule = { need_halt = false }
-source = { document = "CMSIS-Core core_cm7.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "SCB_Type.CPACR and field masks", line = 494, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm7.h#L494" }
+source = { document = "Cortex-M7 Devices Generic User Guide", version = "B", number = "DUI 0646B", section = "4.7.1, Table 4-59, printed page 4-56", page = 287, url = "https://documentation-service.arm.com/static/61efd6602dd99944d051417b" }
 confidence = "high"
-fields = []
+fields = [{ name = "CP10", segments = [{ offset = 20, width = 2 }], description = "Processor FP instruction access permission; this is not debugger regfile authorization. Reserved encoding stays visible; no automatic enable.", enums = [{ value = "0", name = "Denied" }, { value = "1", name = "PrivilegedOnly" }, { value = "2", name = "ReservedUnpredictable" }, { value = "3", name = "FullAccess" }] }, { name = "CP11", segments = [{ offset = 22, width = 2 }], description = "Processor FP instruction access permission; this is not debugger regfile authorization. Reserved encoding stays visible; no automatic enable.", enums = [{ value = "0", name = "Denied" }, { value = "1", name = "PrivilegedOnly" }, { value = "2", name = "ReservedUnpredictable" }, { value = "3", name = "FullAccess" }] }]
 
 [[registers]]
 id = "fpu.mvfr0"

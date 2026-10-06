@@ -858,6 +858,8 @@ Headless 使用 `registers_mpu`，参数为当前 `context`、`bank`（`el1`／`
 
 Cortex-M3/M4/M7 使用 `:mpu`／`:mpu m`，Headless 使用 `bank="m"`。先在物理 frame 0 暂停并 Probe，显式 Read 通过该核独立 Tcl/AP 通道读取 TYPE/CTRL 和全部有效 RBAR/RASR，单事务保存、选择、读取、恢复并回读 RNR。没有 MPU 时不读取控制/region；只写事务所需 RNR，不改 MPU 配置。失败/取消不发布部分 bank，旧值保留原来源并 stale；恢复或响应不确定进入 FAULT。indexed region 在 Snapshot 的 `register_mpu` 中保存，不覆盖普通当前 RNR 样本。打开、字段展开和滚动零 I/O；仅 GDB memory 路线不能执行此 bank 事务。配置和延后硬件用例见 [M MPU 说明](docs/register-cortex-m-mpu.md)。
 
+M 核 Debug/DWT/FPB 目录区分实现、容量和使能状态：DHCSR 仅手动单次读，DWT 未有 DEMCR.TRCENA 的有效证明时显示 NeedEnable/Unknown，不自动使能。M4/M7 的 CPACR 可展开 CP10/CP11 权限字段，显示保留编码及手册来源；其指令权限不替代外部调试授权。有效 MVFR0 证明后，FPU 配置与 GDB D/S/FPSCR 读取分别核对实际通道；同批 D/S 复用父样本，缺名或失败不显示零。模块支持边界、来源与默认 SKIPPED 的环境驱动见 [M Debug/FPU 说明](docs/register-cortex-m-modules.md)。
+
 ### 编辑 Core 寄存器（开发分支）
 
 开发分支新增的 Core 寄存器编辑尚未进入 v0.9.3 release。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。

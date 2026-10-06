@@ -1,0 +1,25 @@
+{
+  "software_example": true,
+  "cpu": "cortex-m4",
+  "revision": "r0p1",
+  "probe": "MI software fixture; replace for hardware",
+  "openocd_version": "not used by software fixture; replace for hardware",
+  "gdb_version": "mock-gdb.cjs; replace for hardware",
+  "frame_function": "main",
+  "evidence_source": "independent software byte/register fixture; capture board values independently",
+  "target": "fixture.cpu0",
+  "endpoint": "localhost:4900",
+  "ap": 0,
+  "cpuid": "0x410fc241",
+  "trace_enabled": false,
+  "demcr": "0x00000000",
+  "fpb": {"ctrl": "0x100052a1", "revision": 1, "code": 90, "literal": 2},
+  "manual_dhcsr": true,
+  "dhcsr": {"mask": "0x00020000", "value": "0x00020000"},
+  "fpu": {
+    "mvfr0": "0x10110021",
+    "d_registers": 16,
+    "configuration": {"scb.cpacr": "0x00000000", "fpu.fpccr": "0xc0000000", "fpu.fpcar": "0x20001000", "fpu.fpdscr": "0x02400000"},
+    "storage": {"d0": "0x7fc01234bf800000", "s0": "0xbf800000", "s1": "0x7fc01234", "fpscr": "0x02400000"}
+  }
+}

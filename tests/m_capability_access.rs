@@ -1,4 +1,6 @@
 //! Production session/Coordinator/MI tests. The fixture supplies bytes, not ARM execution.
+#[path = "m_capability_access/m_modules_cases.rs"]
+mod m_modules_cases;
 use debugtui::{
     config::{Core, Project},
     coordinator,

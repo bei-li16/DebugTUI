@@ -197,7 +197,22 @@ def deltas(header, baseline):
         parent = next(r for r in baseline if r["id"] == item["id"])
         if item["fields"] != parent["fields"]:
             result.append(dict(item, override=True))
-    result.append(ppb(header, "SCB_Type", "SCB", "CPACR", "m_fpu"))
+    cpacr = ppb(header, "SCB_Type", "SCB", "CPACR", "m_fpu")
+    # CMSIS supplies the address but no CPACR masks in these pinned headers.
+    # The M-specific user guides independently specify CP10[21:20]/CP11[23:22].
+    m7 = header.name == "core_cm7.h"
+    cpacr["source"] = dict(document=f"Cortex-M{7 if m7 else 4} Devices Generic User Guide",
+                           version="B" if m7 else "A", number="DUI 0646B" if m7 else "DUI 0553A",
+                           section="4.7.1, Table 4-59, printed page 4-56" if m7 else "4.6.1, Table 4-50, printed page 4-48",
+                           page=287 if m7 else 264,
+                           url="https://documentation-service.arm.com/static/61efd6602dd99944d051417b" if m7 else "https://documentation-service.arm.com/static/5f2ac4ab60a93e65927bbdbf")
+    cpacr["fields"] = [dict(name=f"CP{n}", segments=[dict(offset=2*n, width=2)],
+                           description="Processor FP instruction access permission; this is not debugger regfile authorization. Reserved encoding stays visible; no automatic enable.",
+                           enums=[dict(value=str(value), name=name) for value, name in
+                                  enumerate(["Denied", "PrivilegedOnly", "ReservedUnpredictable", "FullAccess"])])
+                        for n in (10,11)]
+    cpacr["description"] = "CP10/CP11 instruction access configuration, with CMSIS address and Arm M-profile field definitions. Read-only debugger view; no CPU-mode inference or automatic FPU enable."
+    result.append(cpacr)
     for name in ["MVFR0", "MVFR1", "MVFR2", "FPCCR", "FPCAR", "FPDSCR"]:
         item = ppb(header, "FPU_Type", "FPU", name, "m_fpu")
         if name not in ["MVFR0", "MVFR1", "MVFR2"]:

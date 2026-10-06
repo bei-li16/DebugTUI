@@ -98,6 +98,61 @@ fn register_status_reports_manual_sources_inheritance_and_unknown_reset_without_
 }
 
 #[test]
+fn m_cpacr_field_status_shows_permission_enums_and_manual_pages_without_io() {
+    for (cpu, page) in [("cortex-m4", 264), ("cortex-m7", 287)] {
+        for (width, height) in [(35, 12), (80, 24)] {
+            for field in 0..2 {
+                let mut app = app();
+                app.project.registers.cpu = cpu.into();
+                app.register_view.catalogue =
+                    Some(crate::registers::Catalogue::builtin(cpu).unwrap());
+                let selected = index(&app, "scb.cpacr");
+                app.register_view.rows = vec![Row::Field(selected, field, 2)];
+                app.selections[3] = 0;
+                let mut value = sample(&app, "scb.cpacr", "0x00900000");
+                value.view = crate::registers::SampleView::PhysicalCore;
+                app.register_view.values.insert(
+                    ("core:default".into(), "scb.cpacr".into(), "default".into()),
+                    value,
+                );
+                let (engine, requests) = engine();
+                app.open_register_status();
+                let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+                let mut rendered = String::new();
+                loop {
+                    terminal.draw(|f| draw(f, &mut app)).unwrap();
+                    rendered.push_str(&text(&terminal));
+                    let popup = app.register_view.status_popup.as_ref().unwrap();
+                    if popup.scroll >= popup.max_scroll {
+                        break;
+                    }
+                    app.register_status_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+                }
+                let compact: String = rendered
+                    .chars()
+                    .filter(|c| !c.is_whitespace() && *c != '│')
+                    .collect();
+                for expected in [
+                    format!("CP{}", field + 10),
+                    "Denied".into(),
+                    "PrivilegedOnly".into(),
+                    "ReservedUnpredictable".into(),
+                    "FullAccess".into(),
+                    format!("PDFpage:{page}"),
+                ] {
+                    assert!(
+                        compact.contains(&expected),
+                        "{cpu} {width}x{height}: {expected}"
+                    );
+                }
+                assert!(!app.ensure_registers(Some(&engine)));
+                assert!(requests.try_recv().is_err());
+            }
+        }
+    }
+}
+
+#[test]
 fn nvic_status_shows_priority_source_irq_names_conflict_and_unknown_without_io() {
     let mut app = app();
     app.register_view.catalogue = Some(crate::registers::Catalogue::builtin("cortex-m4").unwrap());
