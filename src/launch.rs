@@ -1184,7 +1184,8 @@ impl Setup {
             }
         })?;
         if !project.program.svd.as_os_str().is_empty() {
-            crate::svd::Device::load(&project.program.svd)?;
+            // Validates and warms the shared parse the workspace uses next.
+            crate::svd::Device::load_shared(&project.program.svd)?;
         }
         self.pending = true;
         self.message = "Closing the previous session and preparing the selected project...".into();

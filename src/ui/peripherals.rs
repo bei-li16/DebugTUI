@@ -1,6 +1,9 @@
 use super::*;
 use crate::svd::Device;
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{Arc, mpsc},
+};
 
 pub(super) const PANE: usize = 10;
 type RegisterKey = (usize, usize);
@@ -17,13 +20,49 @@ mod tests {
     fn app() -> App {
         let mut a = App::new(Project::default(), false);
         a.snapshot.state = "STOPPED".into();
-        a.peripherals.device =
-            Some(Device::parse(include_str!("../../tests/fixtures/peripherals.svd")).unwrap());
+        a.peripherals.device = Some(Arc::new(
+            Device::parse(include_str!("../../tests/fixtures/peripherals.svd")).unwrap(),
+        ));
         a.peripherals.rebuild();
         a.select_pane(PANE);
         a.view_rects[PANE] = Rect::new(0, 0, 70, 5);
         a.side_rect = a.view_rects[PANE];
         a
+    }
+    #[test]
+    fn background_load_shows_progress_then_installs_the_shared_description() {
+        let dir =
+            std::env::temp_dir().join(format!("debugtui-svd-background-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("chip.svd");
+        fs::write(&path, include_str!("../../tests/fixtures/peripherals.svd")).unwrap();
+        let mut a = App::new(Project::default(), false);
+        let (done, loading) = mpsc::channel();
+        a.peripherals = Peripherals {
+            loading: Some(loading),
+            ..Default::default()
+        };
+        a.select_pane(PANE);
+        let mut t = Terminal::new(TestBackend::new(120, 36)).unwrap();
+        t.draw(|f| draw(f, &mut a)).unwrap();
+        let text: String = t.backend().buffer().content().iter().map(|c| c.symbol()).collect();
+        assert!(text.contains("Loading SVD"), "{text}");
+        assert!(!a.peripherals.poll(), "nothing installed before the parse ends");
+        done.send(Device::load_shared(&path)).unwrap();
+        assert!(a.peripherals.poll());
+        assert!(!a.peripherals.loading());
+        let shared = Device::load_shared(&path).unwrap();
+        assert!(Arc::ptr_eq(a.peripherals.device.as_ref().unwrap(), &shared));
+        assert!(a.peripherals.len() > 0);
+
+        let mut view = Peripherals::load_in_background(&path);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !view.poll() {
+            assert!(Instant::now() < deadline, "background SVD load never finished");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(Arc::ptr_eq(view.device.as_ref().unwrap(), &shared));
+        fs::remove_dir_all(&dir).unwrap();
     }
     fn response(a: &mut App, request: &Request, value: Option<u64>) {
         let result = value
@@ -391,8 +430,10 @@ struct Reading {
 }
 #[derive(Default)]
 pub(super) struct Peripherals {
-    device: Option<Device>,
+    device: Option<Arc<Device>>,
     error: Option<String>,
+    /// A description still being parsed off the UI thread.
+    loading: Option<mpsc::Receiver<Result<Arc<Device>, String>>>,
     open: HashSet<usize>,
     fields: HashSet<RegisterKey>,
     rows: Vec<Row>,
@@ -400,16 +441,51 @@ pub(super) struct Peripherals {
     pending: Option<(u64, RegisterKey, String)>,
 }
 impl Peripherals {
+    #[cfg(test)]
     pub fn load(path: &Path) -> Self {
         let mut view = Self::default();
         if !path.as_os_str().is_empty() {
-            match Device::load(path) {
-                Ok(device) => view.device = Some(device),
-                Err(error) => view.error = Some(error),
-            }
+            view.finish(Device::load_shared(path));
         }
-        view.rebuild();
         view
+    }
+    /// Parses off the UI thread so a large description never delays the first
+    /// frame; `poll` installs the result.
+    pub fn load_in_background(path: &Path) -> Self {
+        let mut view = Self::default();
+        if !path.as_os_str().is_empty() {
+            let (done, loading) = mpsc::channel();
+            let path = path.to_path_buf();
+            std::thread::spawn(move || {
+                let _ = done.send(Device::load_shared(&path));
+            });
+            view.loading = Some(loading);
+        }
+        view
+    }
+    pub fn loading(&self) -> bool {
+        self.loading.is_some()
+    }
+    /// Installs a finished background parse; true when the view changed.
+    pub fn poll(&mut self) -> bool {
+        let Some(loading) = &self.loading else {
+            return false;
+        };
+        let result = match loading.try_recv() {
+            Ok(result) => result,
+            Err(mpsc::TryRecvError::Empty) => return false,
+            Err(mpsc::TryRecvError::Disconnected) => Err("SVD loader stopped".into()),
+        };
+        self.loading = None;
+        self.finish(result);
+        true
+    }
+    fn finish(&mut self, result: Result<Arc<Device>, String>) {
+        match result {
+            Ok(device) => self.device = Some(device),
+            Err(error) => self.error = Some(error),
+        }
+        self.rebuild();
     }
     fn rebuild(&mut self) {
         self.rows.clear();
@@ -699,6 +775,15 @@ impl App {
         key.is_some_and(|key| self.read_peripheral(engine, key))
     }
     pub(super) fn draw_peripherals(&mut self, f: &mut UiFrame, rect: Rect) {
+        if self.peripherals.loading() {
+            theme::empty(
+                f,
+                rect,
+                "Loading SVD…",
+                "The chip description is parsed in the background.",
+            );
+            return;
+        }
         if let Some(error) = &self.peripherals.error {
             theme::empty(f, rect, "SVD could not be loaded", error);
             return;

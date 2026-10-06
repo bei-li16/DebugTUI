@@ -246,10 +246,10 @@ impl Engine {
             let device = if source.is_empty() {
                 None
             } else {
-                Some(crate::svd::Device::load(&self.project.program.svd))
+                Some(crate::svd::Device::load_shared(&self.project.program.svd))
             };
             let mut nvic = crate::registers::m_profile::nvic_metadata(
-                device.as_ref().and_then(|d| d.as_ref().ok()),
+                device.as_ref().and_then(|d| d.as_deref().ok()),
                 &source,
                 self.project
                     .registers

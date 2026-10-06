@@ -316,7 +316,7 @@ impl App {
             })),
             setup: None,
             launch: None,
-            peripherals: peripherals::Peripherals::load(&project.program.svd),
+            peripherals: peripherals::Peripherals::load_in_background(&project.program.svd),
             register_view: registers::RegisterView::load(&project),
             project,
             snapshot: Snapshot::default(),
@@ -1256,16 +1256,15 @@ impl App {
     /// event that wakes the loop anyway.
     fn next_deadline(&self) -> Option<Instant> {
         let now = Instant::now();
-        let scan = self
-            .setup
-            .as_ref()
-            .filter(|setup| setup.scanning())
-            .map(|_| now + Duration::from_millis(50));
+        // Background ELF scans and SVD parses report through channels: poll.
+        let background = (self.setup.as_ref().is_some_and(Setup::scanning)
+            || self.peripherals.loading())
+        .then(|| now + Duration::from_millis(50));
         [
             self.completion_deadline(),
             self.symbol_search_deadline(),
             self.monitor_deadline(),
-            scan,
+            background,
         ]
         .into_iter()
         .flatten()
@@ -2014,7 +2013,8 @@ pub fn run(
                     app.monitor = monitor::Monitor::default();
                     app.memory_panel = memory::MemoryView::default();
                     app.core_hits.clear();
-                    app.peripherals = peripherals::Peripherals::load(&project.program.svd);
+                    app.peripherals =
+                        peripherals::Peripherals::load_in_background(&project.program.svd);
                     app.register_view = registers::RegisterView::load(&project);
                     app.document = launch.document;
                     app.setup = None;
@@ -2083,6 +2083,9 @@ pub fn run(
             dirty = true;
         }
         if app.setup.as_mut().is_some_and(Setup::tick) {
+            dirty = true;
+        }
+        if app.peripherals.poll() {
             dirty = true;
         }
         if app.ensure_completion(engine.as_ref()) {

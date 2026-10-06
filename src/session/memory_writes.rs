@@ -172,7 +172,8 @@ impl Engine {
         &self,
         target: &Json,
     ) -> Result<(u64, crate::writes::Register, Option<bool>), String> {
-        let device = crate::svd::Device::load(&self.project.program.svd)?;
+        // Shared with the Peripherals view: no XML parse per preview or write.
+        let device = crate::svd::Device::load_shared(&self.project.program.svd)?;
         let peripheral = target["peripheral"]
             .as_str()
             .ok_or("Peripheral name required")?;

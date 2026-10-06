@@ -49,8 +49,13 @@ pub struct Plan {
 }
 
 pub fn catalogue_path() -> Result<PathBuf, String> {
+    Ok(user_dir()?.join("profiles/devices.toml"))
+}
+/// Per-user DebugTUI directory: `DEBUGTUI_CONFIG_DIR`, else the platform's
+/// local configuration directory.
+pub fn user_dir() -> Result<PathBuf, String> {
     if let Some(root) = env::var_os("DEBUGTUI_CONFIG_DIR").filter(|s| !s.is_empty()) {
-        return Ok(PathBuf::from(root).join("profiles/devices.toml"));
+        return Ok(PathBuf::from(root));
     }
     let root = if cfg!(windows) {
         env::var_os("LOCALAPPDATA").map(PathBuf::from)
@@ -60,7 +65,7 @@ pub fn catalogue_path() -> Result<PathBuf, String> {
             .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
     }
     .ok_or("Cannot locate user configuration directory; set DEBUGTUI_CONFIG_DIR")?;
-    Ok(root.join("debugtui/profiles/devices.toml"))
+    Ok(root.join("debugtui"))
 }
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty()

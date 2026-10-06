@@ -1,9 +1,16 @@
 //! Chip descriptions only. Target access remains a generic GDB/MI operation.
 use crate::writes;
-use std::{fs, path::Path};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    fs,
+    path::{Path, PathBuf},
+    sync::{Arc, Mutex, OnceLock, PoisonError},
+    time::UNIX_EPOCH,
+};
 use svd_parser::svd::{Access, Endian, ModifiedWriteValues, Usage, WriteConstraint};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Device {
     pub name: String,
     pub little_endian: Option<bool>,
@@ -19,13 +26,13 @@ pub struct Interrupt {
     pub description: String,
     pub value: u32,
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Peripheral {
     pub name: String,
     pub address: u64,
     pub registers: Vec<Register>,
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Register {
     pub name: String,
     pub description: String,
@@ -37,7 +44,7 @@ pub struct Register {
     pub fields: Vec<Field>,
     pub write: writes::Register,
 }
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Field {
     pub name: String,
     pub offset: u32,
@@ -58,7 +65,68 @@ impl Register {
         self.readable_width() && !self.side_effect
     }
 }
+/// Size and modification time; a description is parsed again when either changes.
+type Stamp = (u64, Option<(u64, u32)>);
+type Loaded = Result<Arc<Device>, String>;
+
+/// Above this size an XML parse takes long enough, and peaks high enough, to
+/// keep the compact model on disk for later launches.
+const DISK_CACHE_MIN_BYTES: u64 = 4 * 1024 * 1024;
+const DISK_CACHE_FORMAT: u32 = 1;
+
+#[derive(Serialize, Deserialize)]
+struct CacheFile {
+    format: u32,
+    version: String,
+    source: PathBuf,
+    stamp: Stamp,
+    device: Device,
+}
+
 impl Device {
+    /// One parse per file per process: the UI, Setup and every worker share
+    /// the result until the file changes.
+    pub fn load_shared(path: &Path) -> Loaded {
+        static PARSED: OnceLock<Mutex<HashMap<PathBuf, (Stamp, Loaded)>>> = OnceLock::new();
+        let metadata = fs::metadata(path).map_err(|e| format!("SVD {}: {e}", path.display()))?;
+        let stamp = (
+            metadata.len(),
+            metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+                .map(|d| (d.as_secs(), d.subsec_nanos())),
+        );
+        let source = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+        // Held while parsing: a second caller waits for this parse instead of
+        // repeating it.
+        let mut parsed = PARSED
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        if let Some((known, loaded)) = parsed.get(&source)
+            && *known == stamp
+        {
+            return loaded.clone();
+        }
+        let loaded = Self::load_cached(path, &source, stamp).map(Arc::new);
+        parsed.insert(source, (stamp, loaded.clone()));
+        loaded
+    }
+    fn load_cached(path: &Path, source: &Path, stamp: Stamp) -> Result<Self, String> {
+        let file = (stamp.0 >= DISK_CACHE_MIN_BYTES)
+            .then(|| disk_cache_file(source))
+            .flatten();
+        if let Some(device) = file.as_deref().and_then(|f| read_disk_cache(f, source, stamp)) {
+            return Ok(device);
+        }
+        let device = Self::load(path)?;
+        if let Some(file) = &file {
+            write_disk_cache(file, source, stamp, device)
+        } else {
+            Ok(device)
+        }
+    }
     pub fn load(path: &Path) -> Result<Self, String> {
         let metadata = fs::metadata(path).map_err(|e| format!("SVD {}: {e}", path.display()))?;
         if metadata.len() > 32 * 1024 * 1024 {
@@ -189,6 +257,54 @@ impl Device {
             peripherals,
         })
     }
+}
+
+fn disk_cache_file(source: &Path) -> Option<PathBuf> {
+    // FNV-1a of the canonical path: stable across runs and builds.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in source.to_string_lossy().bytes() {
+        hash = (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3);
+    }
+    Some(
+        crate::devices::user_dir()
+            .ok()?
+            .join("cache/svd")
+            .join(format!("{hash:016x}.json")),
+    )
+}
+fn read_disk_cache(file: &Path, source: &Path, stamp: Stamp) -> Option<Device> {
+    let cached: CacheFile = serde_json::from_slice(&fs::read(file).ok()?).ok()?;
+    (cached.format == DISK_CACHE_FORMAT
+        && cached.version == env!("CARGO_PKG_VERSION")
+        && cached.source == source
+        && cached.stamp == stamp)
+        .then_some(cached.device)
+}
+/// Best effort: failing to store the cache never fails the load.
+fn write_disk_cache(
+    file: &Path,
+    source: &Path,
+    stamp: Stamp,
+    device: Device,
+) -> Result<Device, String> {
+    let cached = CacheFile {
+        format: DISK_CACHE_FORMAT,
+        version: env!("CARGO_PKG_VERSION").into(),
+        source: source.to_path_buf(),
+        stamp,
+        device,
+    };
+    if let Some(dir) = file.parent()
+        && fs::create_dir_all(dir).is_ok()
+        && let Ok(bytes) = serde_json::to_vec(&cached)
+    {
+        // Write aside and rename so a reader never sees a partial file.
+        let partial = file.with_extension(format!("{}.tmp", std::process::id()));
+        if fs::write(&partial, bytes).is_err() || fs::rename(&partial, file).is_err() {
+            let _ = fs::remove_file(&partial);
+        }
+    }
+    Ok(cached.device)
 }
 
 fn write_access(access: Option<Access>) -> writes::Access {
@@ -350,5 +466,42 @@ mod tests {
         assert_eq!(wo.write.access, writes::Access::WriteOnly);
         assert!(!wo.auto_read());
         assert!(device.peripherals[0].registers[3].write.read_side_effect);
+    }
+
+    #[test]
+    fn shared_loads_parse_once_until_the_file_changes() {
+        let dir = std::env::temp_dir().join(format!("debugtui-svd-share-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("chip.svd");
+        let xml = include_str!("../tests/fixtures/peripherals.svd");
+        fs::write(&path, xml).unwrap();
+        let first = Device::load_shared(&path).unwrap();
+        assert!(Arc::ptr_eq(&first, &Device::load_shared(&path).unwrap()));
+        // A different size is a different description, whatever the mtime.
+        fs::write(&path, format!("{xml}\n")).unwrap();
+        let second = Device::load_shared(&path).unwrap();
+        assert!(!Arc::ptr_eq(&first, &second));
+        assert_eq!(first.peripherals.len(), second.peripherals.len());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn disk_cache_round_trips_only_for_the_same_source_and_stamp() {
+        let dir = std::env::temp_dir().join(format!("debugtui-svd-cache-{}", std::process::id()));
+        let file = dir.join("svd/cache.json");
+        let source = dir.join("chip.svd");
+        let device = Device::parse(include_str!("../tests/fixtures/peripherals.svd")).unwrap();
+        let stamp = (42, Some((7, 9)));
+        let device = write_disk_cache(&file, &source, stamp, device).unwrap();
+        let cached = read_disk_cache(&file, &source, stamp).unwrap();
+        assert_eq!(
+            serde_json::to_value(&cached).unwrap(),
+            serde_json::to_value(&device).unwrap()
+        );
+        assert!(read_disk_cache(&file, &source, (43, Some((7, 9)))).is_none());
+        assert!(read_disk_cache(&file, &dir.join("other.svd"), stamp).is_none());
+        fs::write(&file, b"{truncated").unwrap();
+        assert!(read_disk_cache(&file, &source, stamp).is_none());
+        fs::remove_dir_all(&dir).unwrap();
     }
 }
