@@ -193,6 +193,12 @@ impl Catalogue {
             .map(|p| p.effective(declared))
             .unwrap_or_else(|| declared.clone());
         facts.retain(|key, _| !key.starts_with(FIELD_FACT_PREFIX));
+        if super::m_profile::adapted_cpu(&self.cpu) {
+            facts.retain(|key, _| !super::m_profile::FACT_KEYS.contains(&key.as_str()));
+            facts.extend(super::m_profile::current_facts(
+                self, probe, samples, context,
+            ));
+        }
         facts.extend(
             self.field_observations(probe, samples, context, topology)
                 .into_iter()
@@ -223,7 +229,7 @@ impl Catalogue {
             }
         }
         let mut fields = BTreeMap::new();
-        for sample in latest.into_values() {
+        for sample in latest.values().copied() {
             let Some(register) = self.register(&sample.id) else {
                 continue;
             };
@@ -291,6 +297,9 @@ impl Catalogue {
                 _ => false,
             };
             if !route_matches {
+                continue;
+            }
+            if !super::m_profile::field_allowed(self, &sample.id, &latest, context) {
                 continue;
             }
             for field in &register.fields {

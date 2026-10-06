@@ -23,6 +23,7 @@ fn matrix_stale_probe_never_overrides_configuration_or_claims_current_evidence()
             },
         )]),
         samples: vec![],
+        nvic: None,
         gdb_names: vec![],
         notes: vec![],
     });

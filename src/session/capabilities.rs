@@ -1,4 +1,4 @@
-//! Explicit, bounded R52 identity/capability probe; no implementation guesses on failure.
+//! Explicit, bounded M/R identity probes; no implementation guesses on failure.
 use super::*;
 use crate::registers::{
     Catalogue, Context, Implementation, Reason, Sample, State,
@@ -37,11 +37,12 @@ impl Engine {
             .as_ref()
             .map_err(Clone::clone)?
             .as_ref()
-            .ok_or("Select an R52 register catalogue")?;
-        if current.0.architecture != "armv8-r-aarch32" {
-            return Err("This capability probe is adapted for the R52 AArch32 catalogue".into());
+            .ok_or("Select an adapted M3/M4/M7 or R52 register catalogue")?;
+        let is_m = crate::registers::m_profile::adapted_cpu(&current.0.cpu);
+        if !is_m && current.0.architecture != "armv8-r-aarch32" {
+            return Err("This capability probe is adapted for M3/M4/M7 and R52 AArch32".into());
         }
-        let catalogue = Catalogue::builtin("cortex-r52")?;
+        let catalogue = Catalogue::builtin(if is_m { &current.0.cpu } else { "cortex-r52" })?;
         let services = crate::debug_access::for_project(&self.project)?;
         let mut leases = services
             .iter()
@@ -59,13 +60,26 @@ impl Engine {
         }
         // Replace current evidence only on a complete probe. Physical faults
         // and context changes still invalidate it through their normal guards.
-        let mut probe=Probe {context:context.clone(),thread,identity:None,facts:BTreeMap::new(),samples:vec![],gdb_names:vec![],notes:vec![
+        let mut probe=Probe {context:context.clone(),thread,identity:None,facts:BTreeMap::new(),samples:vec![],nvic:None,gdb_names:vec![],notes:vec![
             "GDB names prove visibility only; unspecified widths and unprobed classes remain unknown".into(),
             "FPU presence, FPEXC.EN, banked-register and genuine MRRC capabilities are not inferred from CPACR or a read failure".into(),
             "Identity/MPU/GIC/VFP decoding uses Cortex-R52 TRM 100026_0104_01_en §§4.3, 10.3, 16.5–16.6 and DDI 0568 D1.3; target responses retained separately".into()]};
+        if is_m {
+            probe.notes = vec!["Cortex-M ID probe uses each core's explicit CorePrivate route; raw samples remain separate from decoded capacities".into(),
+                "CPUID must match the adapted selected model; errors, invalid encodings and unenabled DWT remain Unknown, never trigger writes".into(),
+                "CMSIS pinned sources and Arm DDI 0403/0439/0489 define the M ID fields; ICTR is an upper bound, not a real IRQ list".into()];
+        }
         let mut values = super::registers::ReadCache::default();
-        for &id in PROBE_IDS {
+        let ids = if is_m {
+            crate::registers::m_profile::PROBE_IDS
+        } else {
+            PROBE_IDS
+        };
+        for &id in ids {
             self.check_register_read_cancelled()?;
+            if is_m && catalogue.register(id).is_none() {
+                continue;
+            }
             let register = catalogue
                 .register(id)
                 .ok_or_else(|| format!("Built-in probe register missing: {id}"))?;
@@ -96,7 +110,10 @@ impl Engine {
                 .facts
                 .get("gic.system_interface")
                 .is_some_and(|f| f.value == 1);
-            let denied = match id {
+            let denied = if is_m {
+                crate::registers::m_profile::probe_denial(&probe, &catalogue, id)
+            } else {
+                match id {
                 _ if !matches!(id, "cpsr" | "midr")
                     && !probe
                         .identity
@@ -138,6 +155,7 @@ impl Engine {
                     ))
                 }
                 _ => None,
+            }.map(|(reason, detail)| (reason, detail.to_string()))
             };
             if let Some((reason, detail)) = denied {
                 sample.state = if reason == Reason::ReaderUnsupported {
@@ -146,17 +164,26 @@ impl Engine {
                     State::Unavailable
                 };
                 sample.reason = reason;
-                sample.detail = detail.into();
+                sample.detail = detail;
             } else {
                 // A genuine named GDB register is an independent read route.
                 self.register_value_access = None;
+                if is_m {
+                    values.facts = Some(catalogue.observation_facts_for_owners(
+                        &self.project.registers.facts,
+                        Some(&probe),
+                        &[],
+                        &context,
+                        &self.register_topology(),
+                    ));
+                }
                 let native = (id == "pmcr" && !self.project.registers.pmu_command.is_empty())
                     || (matches!(id, "icc_ctlr" | "ich_vtr")
                         && !self.project.registers.gic_command.is_empty());
                 let result = if native {
                     sample.source = self.register_sample_origin(register, &catalogue).1;
                     self.read_register_value(register, &catalogue, &mut values)
-                } else if self.reg_names.iter().any(|n| n == id) {
+                } else if !is_m && self.reg_names.iter().any(|n| n == id) {
                     sample.source = format!("gdb:{id}");
                     self.gdb_register_value(id, 32)
                 } else {
@@ -191,7 +218,11 @@ impl Engine {
                 }
             }
             probe.samples.push(sample);
-            probe.decode();
+            if is_m {
+                crate::registers::m_profile::decode(&mut probe, &catalogue);
+            } else {
+                probe.decode();
+            }
             if self.register_context() != context || self.snapshot.state != "STOPPED" {
                 self.snapshot.register_probe = None;
                 return Err("Context changed; discarded capability probe".into());
@@ -200,11 +231,36 @@ impl Engine {
                 break;
             }
         }
-        if self.project.registers.mmio_probe && self.register_access_fault.is_none() {
+        if !is_m && self.project.registers.mmio_probe && self.register_access_fault.is_none() {
             self.probe_mmio_capabilities(&mut probe)?;
         }
-        if self.register_access_fault.is_none() {
+        if !is_m && self.register_access_fault.is_none() {
             self.probe_stm_capabilities(&mut probe)?;
+        }
+        if is_m {
+            let source = self.project.program.svd.to_string_lossy().into_owned();
+            let device = if source.is_empty() {
+                None
+            } else {
+                Some(crate::svd::Device::load(&self.project.program.svd))
+            };
+            let mut nvic = crate::registers::m_profile::nvic_metadata(
+                device.as_ref().and_then(|d| d.as_ref().ok()),
+                &source,
+                self.project
+                    .registers
+                    .facts
+                    .get("nvic.priority_bits")
+                    .copied(),
+                &catalogue.cpu,
+                probe.facts.get("nvic.lines_upper_bound").map(|f| f.value),
+            );
+            if let Some(Err(error)) = device {
+                nvic.notes
+                    .push(format!("SVD metadata unavailable: {error}"));
+            }
+            probe.notes.extend(nvic.notes.iter().cloned());
+            probe.nvic = Some(nvic);
         }
         probe.gdb_names = self.reg_names.clone();
         probe.notes.sort();

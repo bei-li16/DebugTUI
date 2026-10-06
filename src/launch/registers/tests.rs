@@ -74,6 +74,7 @@ fn probe(context: &Context, midr: &str) -> Probe {
         identity: None,
         facts: Default::default(),
         samples: vec![sample],
+        nvic: None,
         gdb_names: vec![],
         notes: vec![],
     };

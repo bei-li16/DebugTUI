@@ -13,6 +13,8 @@ pub(super) struct ReadCache {
     values: BTreeMap<String, RawValue>,
     pub(super) provenance: BTreeMap<String, Provenance>,
     manual: bool,
+    /// A bounded in-progress probe's evidence, not published as a snapshot.
+    pub(super) facts: Option<BTreeMap<String, u64>>,
 }
 impl std::ops::Deref for ReadCache {
     type Target = BTreeMap<String, RawValue>;
@@ -461,7 +463,10 @@ impl Engine {
         self.check_register_read_cancelled()
             .map_err(|error| (Reason::Unknown, error))?;
         self.register_value_access = None;
-        let facts = self.effective_register_facts();
+        let facts = values
+            .facts
+            .clone()
+            .unwrap_or_else(|| self.effective_register_facts());
         if let Some(denial) =
             catalogue.access_denial(register, &facts, self.snapshot.state == "STOPPED", None)
         {
@@ -562,16 +567,14 @@ impl Engine {
                         )
                     })?;
                     // Alias requests cannot bypass a parent's access or implementation restrictions.
-                    let (implementation, evidence) =
-                        catalogue.implementation(parent, &self.effective_register_facts());
+                    let (implementation, evidence) = catalogue.implementation(parent, &facts);
                     let (readable, side_effect) = catalogue.read_policy(parent);
                     if implementation == Implementation::No {
                         return Err((Reason::HardwareNotImplemented, evidence));
                     }
                     if !readable
                         || (side_effect && !values.manual)
-                        || (!values.manual
-                            && !catalogue.automatic_read(parent, &self.effective_register_facts()))
+                        || (!values.manual && !catalogue.automatic_read(parent, &facts))
                     {
                         return Err((
                             Reason::AccessRestricted,

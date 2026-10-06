@@ -7,7 +7,17 @@ use svd_parser::svd::{Access, Endian, ModifiedWriteValues, Usage, WriteConstrain
 pub struct Device {
     pub name: String,
     pub little_endian: Option<bool>,
+    pub cpu_name: Option<String>,
+    pub nvic_priority_bits: Option<u32>,
+    pub interrupts: Vec<Interrupt>,
     pub peripherals: Vec<Peripheral>,
+}
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct Interrupt {
+    pub peripheral: String,
+    pub name: String,
+    pub description: String,
+    pub value: u32,
 }
 #[derive(Debug)]
 pub struct Peripheral {
@@ -72,7 +82,14 @@ impl Device {
             _ => None,
         });
         let mut peripherals = Vec::new();
+        let mut interrupts = Vec::new();
         for peripheral in &device.peripherals {
+            interrupts.extend(peripheral.interrupt.iter().map(|irq| Interrupt {
+                peripheral: peripheral.name.clone(),
+                name: irq.name.clone(),
+                description: irq.description.clone().unwrap_or_default(),
+                value: irq.value,
+            }));
             let mut registers = Vec::new();
             for r in peripheral.registers() {
                 let address = peripheral
@@ -160,9 +177,15 @@ impl Device {
             });
         }
         peripherals.sort_by(|a, b| a.name.cmp(&b.name));
+        interrupts.sort_by(|a, b| {
+            (a.value, &a.peripheral, &a.name).cmp(&(b.value, &b.peripheral, &b.name))
+        });
         Ok(Self {
             name: device.name,
             little_endian,
+            cpu_name: device.cpu.as_ref().map(|cpu| cpu.name.clone()),
+            nvic_priority_bits: device.cpu.as_ref().map(|cpu| cpu.nvic_priority_bits),
+            interrupts,
             peripherals,
         })
     }

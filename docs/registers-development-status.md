@@ -1,5 +1,13 @@
 # 寄存器功能实现进度
 
+## 2026-10-06：只读 Goal 的 M ID 与 NVIC 来源
+
+本次完成边界以 [冻结的 36 项清单](registers-readonly-goal.md) 为准，旧 71 项记录仅作追溯。本批完成 B03/B09，当前 **14 完成 / 22 未完成**。M3/M4/M7 复用生产 worker 的 CorePrivate/MI/Tcl 通道，CPUID 核对后才探测可选 ID；非法、缺失或未使能不伪造容量。NVIC bank 来自有效 ICTR，上限与真实 SVD IRQ 声明分开，优先级使用有来源的 SVD/显式配置，Status 显示来源、冲突及 IRQ 名称，没有写入式探测。见 [M 探测说明](register-cortex-m-probe.md)。
+
+单元回归 **457 通过、0 失败、2 ignored**；最终 M 模型专项 **6/6**，相关集成共 **27 项最终通过**，包括既有 R52 13 项和新的 M MI/Tcl 6 项。最终严格 Clippy、格式检查和离线生成一致性通过，3 项生成 Python 测试通过。全回归记录后新增一项 FPU 非法编码专项并收紧该判定，已用最终 M 专项/生产 MI 再验证；不声称本轮执行了未选择的全部集成或最终发布回归。证据与初始失败分析见冻结清单迭代 5。
+
+新增四项硬件 case，全部 SKIPPED；软件夹具不证明真实 AP 映射或实板通过。M MPU selector、完整模块能力/CorePrivate 生命周期、运行态入口、R52 当前 Debug 权限统一、最终回归/打包/非主分支 Release 继续按冻结清单推进。本批不增加旧 TODO 勾选，不升级硬件 verified。
+
 ## 2026-10-06：BUS 绑定生命周期、统一策略与实际来源
 
 Watch 新增 worker 绑定句柄与 selection_epoch，停止读取前重新证明实际线程/帧/PC；参数修改、重新解析、换帧及重连后的旧句柄在内存 dispatch 前拒绝。同帧线程通知发布失效快照，稳定运行 AP 使用原停止绑定不额外查询 GDB；协调器 Continue revision 与实际 worker 停止 Context 分开。统一芯片/核心/条目、Watch 根继承及旧键覆盖，外设手工读取、默认 GDB、轮询和编辑器不绕过芯片策略，typed Watch writer 也遵循同一有效策略。见 [绑定与面板来源](bus-read-provenance.md)。

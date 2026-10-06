@@ -39,6 +39,7 @@ fn app() -> App {
             sample(&app, "mpuir", "0x1800"),
             sample(&app, "hmpuir", "0x14"),
         ],
+        nvic: None,
         gdb_names: vec![],
         notes: vec![],
     };

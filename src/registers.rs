@@ -19,6 +19,7 @@ pub mod banked;
 pub mod capabilities;
 mod catalogue_loader;
 mod core_config;
+pub mod m_profile;
 pub use core_config::CoreConfig;
 pub mod core_private;
 pub mod display;
@@ -151,6 +152,13 @@ impl Config {
         )))
     }
     pub fn validate(&self) -> Result<(), String> {
+        if self
+            .facts
+            .get("nvic.priority_bits")
+            .is_some_and(|bits| !(3..=8).contains(bits))
+        {
+            return Err("registers.facts.nvic.priority_bits must be in the adapted Cortex-M3/M4/M7 range 3..8".into());
+        }
         self.topology.validate()?;
         if self.component_owners.len() > 1024
             || self.component_owners.iter().any(|(name, bindings)| {

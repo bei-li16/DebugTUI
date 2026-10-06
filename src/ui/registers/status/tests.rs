@@ -98,6 +98,89 @@ fn register_status_reports_manual_sources_inheritance_and_unknown_reset_without_
 }
 
 #[test]
+fn nvic_status_shows_priority_source_irq_names_conflict_and_unknown_without_io() {
+    let mut app = app();
+    app.register_view.catalogue = Some(crate::registers::Catalogue::builtin("cortex-m4").unwrap());
+    let selected = index(&app, "nvic.ipr31");
+    app.register_view.rows = vec![Row::Register(selected, 0)];
+    app.selections[3] = 0;
+    let context = app.register_context();
+    let nvic = crate::registers::m_profile::Nvic {
+        catalogue_cpu: "cortex-m4".into(),
+        priority_bits: Some(crate::registers::m_profile::Priority {
+            value: 4,
+            source: "SVD G:\\board.svd: /device/cpu/nvicPrioBits".into(),
+        }),
+        configured_priority_bits: Some(5),
+        svd_priority_bits: Some(4),
+        svd_source: Some("G:\\board.svd".into()),
+        svd_cpu: Some("CM4".into()),
+        interrupts: Some(vec![crate::svd::Interrupt {
+            peripheral: "UART".into(),
+            name: "UART_RX".into(),
+            description: "接收中断".into(),
+            value: 31,
+        }]),
+        notes: vec!["NVIC priority conflict: SVD=4 configuration=5".into()],
+    };
+    app.snapshot.register_probe = Some(crate::registers::capabilities::Probe {
+        context: context.clone(),
+        thread: "1".into(),
+        identity: None,
+        facts: Default::default(),
+        samples: vec![],
+        nvic: Some(nvic),
+        gdb_names: vec![],
+        notes: vec![],
+    });
+    let (engine, requests) = engine();
+    for stale in [false, true] {
+        if stale {
+            app.snapshot
+                .register_probe
+                .as_mut()
+                .unwrap()
+                .context
+                .generation += 1;
+        }
+        app.open_register_status();
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        let mut rendered = String::new();
+        loop {
+            terminal.draw(|f| draw(f, &mut app)).unwrap();
+            rendered.push_str(&text(&terminal));
+            let popup = app.register_view.status_popup.as_ref().unwrap();
+            if popup.scroll >= popup.max_scroll {
+                break;
+            }
+            app.register_status_key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        }
+        let compact: String = rendered
+            .chars()
+            .filter(|c| !c.is_whitespace() && *c != '│')
+            .collect();
+        if stale {
+            assert!(compact.contains("NVICprioritybits:Unknown"));
+            assert!(!compact.contains("UART_RX"));
+        } else {
+            for required in [
+                "NVICprioritybits:4",
+                "/device/cpu/nvicPrioBits",
+                "IRQ31:UART/UART_RX",
+                "接收中断",
+                "NVICpriorityconflict",
+            ] {
+                assert!(compact.contains(required), "missing {required}");
+            }
+        }
+        app.register_status_key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
+        app.probe_registers(None);
+        assert!(requests.try_recv().is_err());
+    }
+    drop(engine);
+}
+
+#[test]
 fn register_status_preserves_current_latest_and_retained_condition_sources_without_io() {
     let mut app = app();
     let selected = index(&app, "r0");
@@ -186,6 +269,7 @@ fn register_status_warns_on_current_observed_cpu_mismatch_without_probing_or_cro
         identity: None,
         facts: Default::default(),
         samples: vec![sample(&app, "midr", "0x411fd134")],
+        nvic: None,
         gdb_names: vec![],
         notes: vec![],
     };
@@ -255,6 +339,7 @@ fn setup_render_imports_current_identity_and_clears_it_on_run_or_draft_target_ch
         identity: None,
         facts: Default::default(),
         samples: vec![sample(&app, "midr", "0x411fd134")],
+        nvic: None,
         gdb_names: vec![],
         notes: vec![],
     };

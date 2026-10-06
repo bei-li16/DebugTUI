@@ -36,13 +36,13 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 | [x] | A10 | 3～5 个代表性定义样例 | schema/字段/来源/条件/副作用专项 |
 | [x] | B01 | M3/M4/M7 公共加增量目录 | 内置加载、继承、型号差异及离线生成一致性 |
 | [x] | B02 | SCB 与故障字段 | 常用状态/控制及 CFSR/HFSR/MMFAR/BFAR 定义 |
-| [ ] | B03 | NVIC 与优先级来源 | 动态 bank/优先级位、无依据 Unknown、不写探测 |
+| [x] | B03 | NVIC 与优先级来源 | 动态 bank/优先级位、无依据 Unknown、不写探测 |
 | [x] | B04 | SysTick 与读副作用 | CTRL/LOAD/VAL/CALIB、手动读与自动零 I/O |
 | [ ] | B05 | M MPU 与 region 读取 | TYPE/CTRL/RNR/RBAR/RASR、容量及保存恢复 |
 | [ ] | B06 | Debug、DWT/FPB 身份容量 | 不轮询 DHCSR、不自动使能、门控原因 |
 | [ ] | B07 | M4 FPU 配置与身份 | CPACR/FPCCR/FPCAR/FPDSCR/MVFR、GDB regfile 复用 |
 | [ ] | B08 | M7 cache/TCM 配置 | TRM/CMSIS 有据定义、维护命令不执行 |
-| [ ] | B09 | M ID 探测与动态实例 | CPUID/ICTR/MPU_TYPE 等成功/缺失/非法结果 |
+| [x] | B09 | M ID 探测与动态实例 | CPUID/ICTR/MPU_TYPE 等成功/缺失/非法结果 |
 | [ ] | B10 | CorePrivate 和异构双核隔离 | 同 PPB 地址经不同核路由、缓存与失败隔离 |
 | [ ] | B11 | 按 reader 运行态读取 | 安全 MMIO 正向、sysreg/GDB NeedHalt 拒绝 |
 | [ ] | C01 | R52 常用身份/控制完整描述 | 规定寄存器编码、位宽、主要字段及页码 |
@@ -111,3 +111,16 @@ G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
 ## 迭代和发布约束
 
 每轮先专项验证；阶段边界和发布前完整回归。无新增改动或疑点不重复相同全量测试，不重建未改动的 OpenOCD。每轮形成可审查改动后提交并推送开发分支。只读允许必须恢复的 scratch/selector 临时写入，不自动使能或改变模式、权限。全部 36 项验收后，更新版本并按仓库发布流程发布非主分支 Release，注明仅软件验证及待执行硬件用例；完成后结束目标。
+
+
+## 迭代 5：M ID、动态容量和 NVIC 声明来源
+
+2026-10-06，完成 B03/B09，累计 **14 完成 / 22 未完成**。迭代 4 已提交并推送为 `e904383db607cba54e5c7aa8d50183b167de6910`，远端已核对一致。同步修订用户要求的新 Goal 起点记录，保留三个绝对引用，不变更冻结范围。
+
+- M3/M4/M7 使用同一生产 capability 入口，复用 worker/服务锁、当前 frame/thread 检查及 CorePrivate MI/Tcl memory。CPUID 匹配适配型号才读取 ICTR/MPU_TYPE/DEMCR/FP_CTRL 等；DWT 先证明 TRCENA，FPU 仅核实的正向 MVFR 编码给出能力。没有新增注入后端、DCRSR/DCRDR 调试器或 writer。原始样本保留，非法容量不授权动态 bank/MPU 项，配置不能伪造观测；较新的失败或身份变化撤销有效事实，早期 probe 不复活旧值。
+- `probe.nvic` 保留 SVD CPU/来源/优先级/IRQ 列表及配置声明；优先有效 SVD，再用 3..8 的显式配置，缺失 Unknown。CPU 错配和越界 IRQ 报告冲突，不据此增加实例。NVIC Status 展示优先级来源和匹配 IRQ 名称，过期上下文不复用；这些来源是声明，不冒充 ID 观测。Scope All 仍只探测选中核，异构 worker 不串 owner/端点/容量。
+- 新增 M 模型六项、Status 一项单元测试，M 生产 MI/Tcl 六项集成；三种型号分别通过实际 MI，异构 M4/M7 经两个不同端点，实际 TCP Tcl 检查精确 target/address/32-bit/count 与七次只读请求。正向、未知/错配/缺失/非法 ID、未使能、越界零 I/O、配置/SVD 冲突、运行通知中止和较新身份撤销均有独立断言。绝不以夹具字节证明 ARM 实板。
+- 单元回归 **457 通过、0 失败、2 ignored**，当时选择的相关集成 **25 通过**；日志 `C:\Users\18283\.codex\build-cache\DebugTUI-registers-readonly\readonly-m-probe-regression-final-20261006.log`。随后新增 FPU 非法编码单元及 Tcl/坏容量集成、收紧 FPU DP 编码，最终 M 专项 **6/6** 和 M MI/Tcl **6/6**，相关集成合计 **27 项最终通过**。最终日志为同目录 `readonly-m-probe-final-focused-20261006.log`、`readonly-m-probe-mi-complete-20261006.log`。不宣称后续未选的全仓集成已运行，也不把重复执行算新 case。
+- 初次集成遇到 Windows 时钟目录碰撞，改为进程内唯一计数而保留原读取次数断言；新增 UI 测试错误使用 key helper，改为实际 KeyEvent；Tcl 新夹具的 accepted socket 继承 nonblocking，明确还原 blocking 后通过。初始失败日志保留在同目录 `readonly-m-probe-mi-20261006.log`、`readonly-m-probe-regression-20261006.log`、`readonly-m-probe-final-mi-20261006.log`。这些是夹具/编译修正，没有放宽生产协议或跳过失败。
+- 严格 Clippy 全 target 最终通过（16.80 秒）：`readonly-m-probe-clippy-final-20261006.log`；首次仅提示 String 的冗余转换，等价去除后复验。`cargo fmt --all --check`、diff 检查、六份离线目录生成一致性和三项 Python 生成测试通过。正式目录未增加新的寄存器类别，未重建不变的 OpenOCD。
+- 文档 [M 身份、容量与 NVIC](register-cortex-m-probe.md) 和四项 [硬件 case](../tests/cases/register-cortex-m-probe.md) 完成，硬件全部 SKIPPED，来源引用保留。B05 的 region 事务、B06/B07/B08 整体模块验收、B10 生命周期和 B11 运行态仍未完成；已有 ID/目录/路线成果可复用，不能把它们重复开发。C01～C06、D01～D04、E01～E05 继续按清单推进。提交 SHA 与推送核验结果由本轮最终输出报告。

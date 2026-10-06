@@ -19,6 +19,8 @@ M3 的 VTOR 宏有 r2p1 前后的条件分支，缺少观测 revision 时保留�
 
 NVIC 最多展示头文件定义的 8 个 bank 与 240 个 priority byte。实际可读 bank/byte 由当前物理 ICTR.INTLINESNUM 门控，这个字段仅代表中断数量上限；实际中断列表、优先级位数仍需要 SVD 或显式配置。本批不将这些定义数量记作板级数量或动态探测验收。MPU TYPE 提供 DREGION 条件；RBAR/RASR 展示当前 selector 的值，不隐式选择新 region。完整 region 事务单独验收。
 
+后续 ID 接入现已完成，见 [M 身份、容量与 NVIC 来源](register-cortex-m-probe.md)：有效条件还要求当前物理 CPUID 与选定适配型号匹配，并校验容量编码。SVD/显式优先级来源、实际 IRQ 声明及 Unknown/冲突在 Probe/Status 中可见。这里的目录数量仍不是实板成功读取数量。
+
 所有新 PPB 定义使用 CorePrivate，读取必须满足 [私有核路线约束](register-structured-policy.md)。没有新 writer。现有通用 GDB 定义与 writer 保留；M4/M7 D/S 视图仍复用 GDB/同源 Alias，新增 MVFR0 条件，仅真实物理字段观测可以满足该条件。旧 GDB 定义未补造手册来源，confidence 仍为 Unknown。
 
 FP_CTRL 的地址与非连续 NUM_CODE 使用 [DDI 0403E.e §C1.11.3、物理 PDF 页 756–757](https://documentation-service.arm.com/static/606dc36485368c4c2b1bf62f)；REV、NUM_LIT 与 NUM_CODE 分开，不截断高 3 位。DWT CTRL 要求已有 DEMCR.TRCENA 观测为 1，不自动使能。

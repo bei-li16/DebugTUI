@@ -570,6 +570,7 @@ mod tests {
                 identity: None,
                 facts: Default::default(),
                 samples: vec![midr],
+                nvic: None,
                 gdb_names: vec![],
                 notes: vec![],
             };

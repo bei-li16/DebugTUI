@@ -31,6 +31,7 @@ fn probe() -> capabilities::Probe {
         .into_iter()
         .map(|(id, raw)| sample(&context, id, raw))
         .collect(),
+        nvic: None,
         gdb_names: vec![],
         notes: vec![],
     };

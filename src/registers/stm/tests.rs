@@ -38,6 +38,7 @@ fn fixture() -> Probe {
         identity: None,
         facts: BTreeMap::new(),
         samples: vec![],
+        nvic: None,
         gdb_names: vec![],
         notes: vec![],
     };

@@ -256,6 +256,7 @@ fn failure_supersedes_same_context_probe_fields_and_debug_el_is_not_saved_cpsr()
         identity: None,
         facts: BTreeMap::new(),
         samples: vec![observed.clone()],
+        nvic: None,
         gdb_names: vec![],
         notes: vec![],
     };

@@ -344,6 +344,47 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             }
         }
         text.push(format!("Access condition: {}", register.access_condition));
+        if register.id.starts_with("nvic.") {
+            let nvic = app
+                .snapshot
+                .register_probe
+                .as_ref()
+                .filter(|probe| probe.context == context && app.snapshot.state == "STOPPED")
+                .and_then(|probe| probe.nvic.as_ref());
+            text.push(match nvic.and_then(|n| n.priority_bits.as_ref()) {
+                Some(priority) => format!(
+                    "NVIC priority bits: {} · {} (declaration; no write probe)",
+                    priority.value, priority.source
+                ),
+                None => {
+                    "NVIC priority bits: Unknown; no current usable SVD or explicit declaration"
+                        .into()
+                }
+            });
+            if let Some(nvic) = nvic {
+                text.push(format!(
+                    "Priority declarations: configured={:?}, SVD={:?}",
+                    nvic.configured_priority_bits, nvic.svd_priority_bits
+                ));
+                text.push(format!("SVD interrupt entries: {} · {}. ICTR supplies an upper bound, not actual IRQs.",
+                    nvic.interrupts.as_ref().map(|irqs| irqs.len().to_string()).unwrap_or_else(|| "Unknown".into()),
+                    nvic.svd_source.as_deref().unwrap_or("Unknown")));
+                if let Some(irq) = register
+                    .id
+                    .strip_prefix("nvic.ipr")
+                    .and_then(|number| number.parse::<u32>().ok())
+                    && let Some(interrupts) = &nvic.interrupts
+                {
+                    for entry in interrupts.iter().filter(|entry| entry.value == irq) {
+                        text.push(format!(
+                            "IRQ {irq}: {} / {} · {}",
+                            entry.peripheral, entry.name, entry.description
+                        ));
+                    }
+                }
+                text.extend(nvic.notes.iter().cloned());
+            }
+        }
         if let Some(Row::Field(_, field, _)) = app.register_view.rows.get(app.selected(3)) {
             let field = &register.fields[*field];
             text.push(register.description.clone());

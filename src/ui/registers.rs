@@ -2066,6 +2066,7 @@ mod tests {
             identity: None,
             facts: BTreeMap::new(),
             samples: vec![],
+            nvic: None,
             gdb_names: vec![],
             notes: vec![],
         });
@@ -2217,6 +2218,7 @@ mod tests {
                 sample(&app, "cpsr", "0x1a"),
                 sample(&app, "icc_ctlr", "0x400"),
             ],
+            nvic: None,
             gdb_names: vec![],
             notes: vec![],
         };

@@ -28,6 +28,8 @@ pub struct Probe {
     pub identity: Option<Identity>,
     pub facts: BTreeMap<String, Fact>,
     pub samples: Vec<Sample>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nvic: Option<super::m_profile::Nvic>,
     pub gdb_names: Vec<String>,
     pub notes: Vec<String>,
 }
@@ -64,6 +66,13 @@ impl Probe {
         );
     }
     pub fn decode(&mut self) {
+        if let Some(cpu) = self.nvic.as_ref().map(|nvic| nvic.catalogue_cpu.clone())
+            && super::m_profile::adapted_cpu(&cpu)
+            && let Ok(catalogue) = Catalogue::builtin(&cpu)
+        {
+            super::m_profile::decode(self, &catalogue);
+            return;
+        }
         self.facts.clear();
         self.notes.retain(|note| !note.starts_with("Decode: "));
         self.identity = self.raw("midr").map(|n| {
@@ -346,11 +355,16 @@ impl Probe {
         )];
         if let Some(identity) = &self.identity {
             lines.push(format!(
-                "CPU={} {} implementer={:#04x} part={:#05x}; decoded from MIDR",
+                "CPU={} {} implementer={:#04x} part={:#05x}; decoded from {}",
                 identity.model.as_deref().unwrap_or("Unknown"),
                 identity.revision_name,
                 identity.implementer,
-                identity.part
+                identity.part,
+                if self.samples.iter().any(|s| s.id == "scb.cpuid") {
+                    "CPUID"
+                } else {
+                    "MIDR"
+                }
             ));
         }
         lines.extend(self.samples.iter().map(|s| {
@@ -373,6 +387,15 @@ impl Probe {
                 fact.value, fact.register, fact.source, fact.detail
             )
         }));
+        if let Some(nvic) = &self.nvic {
+            lines.push(match &nvic.priority_bits {
+                Some(priority) => format!("NVIC priority bits={} from {}", priority.value, priority.source),
+                None => "NVIC priority bits=Unknown; no usable SVD or explicit configuration; no write probe".into(),
+            });
+            lines.push(format!("NVIC interrupt list={} source={}; ICTR is a bank upper bound, not an interrupt list",
+                nvic.interrupts.as_ref().map(|irqs| irqs.len().to_string()).unwrap_or_else(|| "Unknown".into()),
+                nvic.svd_source.as_deref().unwrap_or("Unknown")));
+        }
         lines.push(format!(
             "GDB exposes {} names; this alone proves neither widths nor backend side effects",
             self.gdb_names.len()
