@@ -229,7 +229,7 @@ ELF path prefix & Enter & 选择 ELF 中与 Source root 对应的目录层级；
 \bottomrule
 \end{longtable}}
 
-\textbf{配置职责：}debug.toml 保存程序、源码映射、任务、SVD、Watch/断点、逐核映射、组策略和 \code{session.on_exit}；debug-env.toml 保存 GDB、OpenOCD/服务、连接默认值、板级动作和 \code{session.timeout_ms}。后者默认 8000 ms 是单条工具命令等待时间，不是工程退出策略。Setup 已移除六个工具编辑项，Tools/profile 只选择引用，On exit 仍是工程字段。旧工程内嵌工具覆盖继续有效；保存不展开环境值、不改共享 profile，并保留单核/多核的后台偏好。
+\textbf{配置职责：}debug.toml 保存程序、源码映射、任务、SVD、Watch/断点、逐核映射、组策略和 \code{session.on_exit}；debug-env.toml 保存 GDB、OpenOCD/服务、连接默认值、板级动作和 \code{session.timeout_ms}，也可通过 \code{[program] svd} 提供芯片 SVD 默认值，其路径相对于 profile 所在目录。工程中的 SVD 配置优先，空字符串表示禁用；ELF 和源码路径仍由工程配置。0.10.0-readonly.1 及更早版本会拒绝含 \code{[program]} 的 profile，随附 profile 因此暂不设置，由 \path{tools/install.ps1} 把 SVD 写入工程。后者默认 8000 ms 是单条工具命令等待时间，不是工程退出策略。Setup 已移除六个工具编辑项，Tools/profile 只选择引用，On exit 仍是工程字段。旧工程内嵌工具覆盖继续有效；保存不展开环境值、不改共享 profile，并保留单核/多核的后台偏好。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{42mm}Y@{}}\toprule
 Setup 中的按键/按钮 & 行为\\\midrule

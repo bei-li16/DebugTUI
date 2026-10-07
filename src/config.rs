@@ -735,6 +735,7 @@ impl Project {
                 if !matches!(
                     key.as_str(),
                     "gdb"
+                        | "program"
                         | "target"
                         | "service"
                         | "actions"
@@ -749,6 +750,19 @@ impl Project {
                         | "core_targets"
                 ) {
                     return Err(format!("Unsupported environment section: {key}"));
+                }
+            }
+            // Profiles may supply a chip description; ELF and source paths
+            // still belong to the project.
+            if let Some(program) = environment.get("program") {
+                for key in program
+                    .as_table()
+                    .ok_or("Environment [program] must be a TOML table")?
+                    .keys()
+                {
+                    if key != "svd" {
+                        return Err(format!("Unsupported environment program field: {key}"));
+                    }
                 }
             }
             selected_path = Some(p);
@@ -797,6 +811,13 @@ impl Project {
             let directory = p.parent().unwrap();
             expand(&mut environment, &portable_path(directory));
             resolve_launch_paths(&mut environment, directory);
+            if let Some(toml::Value::String(svd)) = environment
+                .get_mut("program")
+                .and_then(|section| section.get_mut("svd"))
+                && !svd.is_empty()
+            {
+                *svd = portable_path(&absolute(directory, Path::new(svd)));
+            }
         }
         resolve_launch_paths(&mut raw, &base);
         if let Some(mut values) = raw.get("registers").cloned() {
@@ -1542,6 +1563,70 @@ mod tests {
         fs::remove_dir(base.join("tools/registers")).unwrap();
         fs::remove_dir(base.join("tools")).unwrap();
         fs::remove_dir(base).unwrap();
+    }
+    #[test]
+    fn environment_svd_paths_allow_project_overrides_and_explicit_clear() {
+        let base = artifact_root().join(format!("svd-paths-{}", std::process::id()));
+        fs::create_dir_all(base.join("tools/chip")).unwrap();
+        fs::create_dir_all(base.join("project/chip")).unwrap();
+        let profile = base.join("tools/debug-env.toml");
+        let path = base.join("project/debug.toml");
+        let project = "version=2\n[tools]\nprofile='../tools/debug-env.toml'\n";
+        fs::write(&path, project).unwrap();
+        for svd in ["./chip/test.svd", "${profile_dir}/chip/test.svd"] {
+            fs::write(&profile, format!("[program]\nsvd='{svd}'\n")).unwrap();
+            let inherited = Project::load(&path).unwrap();
+            assert_eq!(
+                fs::canonicalize(inherited.program.svd.parent().unwrap()).unwrap(),
+                fs::canonicalize(base.join("tools/chip")).unwrap()
+            );
+            assert!(inherited.program.svd.ends_with("chip/test.svd"));
+            let explicit = Project::load_with_environment(None, Some(&profile)).unwrap();
+            assert_eq!(explicit.program.svd, inherited.program.svd);
+        }
+        fs::write(&path, format!("{project}[program]\nsvd='chip/local.svd'\n")).unwrap();
+        let overridden = Project::load(&path).unwrap();
+        assert_eq!(
+            fs::canonicalize(overridden.program.svd.parent().unwrap()).unwrap(),
+            fs::canonicalize(base.join("project/chip")).unwrap()
+        );
+        fs::write(&path, format!("{project}[program]\nsvd=''\n")).unwrap();
+        assert!(
+            Project::load(&path)
+                .unwrap()
+                .program
+                .svd
+                .as_os_str()
+                .is_empty()
+        );
+        for key in ["elf", "source_root", "unknown"] {
+            fs::write(&profile, format!("[program]\n{key}='project-only'\n")).unwrap();
+            assert!(
+                Project::load(&path)
+                    .unwrap_err()
+                    .contains(&format!("Unsupported environment program field: {key}"))
+            );
+        }
+    }
+    #[test]
+    fn bundled_stm32_profiles_stay_loadable_and_chip_description_parses() {
+        // DebugTUI 0.10.0 and earlier reject [program] in a profile, so the
+        // bundled profiles leave the SVD to the project; install.ps1 writes it.
+        let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("tools");
+        for profile in [
+            "debug-env.toml",
+            "debug-env-cmsis-dap.toml",
+            "debug-env-stlink.toml",
+        ] {
+            let path = tools.join(profile);
+            let raw: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(raw.get("program").is_none(), "{profile}");
+            let project = Project::load_with_environment(None, Some(&path)).unwrap();
+            assert!(project.program.svd.as_os_str().is_empty(), "{profile}");
+        }
+        let device = crate::svd::Device::load_shared(&tools.join("chip/STM32F429.svd")).unwrap();
+        assert_eq!(device.name, "STM32F429");
+        assert_eq!(device.peripherals.len(), 84);
     }
     #[test]
     fn environment_memory_channels_are_portable_and_validate_core_restrictions() {

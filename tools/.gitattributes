@@ -6,6 +6,7 @@
 
 # Keep bundled dependencies byte-identical across Git checkouts.
 bin/** -text -filter
+chip/**/*.svd -text -filter -whitespace
 *.exe binary
 *.dll binary
 *.gdb text eol=lf

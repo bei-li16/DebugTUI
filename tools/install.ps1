@@ -41,6 +41,19 @@ function Get-FileSha256([string]$Path) {
     return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 
+# The string value of KEY in [TABLE], or $null when it is not set.
+function Get-TomlString([string[]]$Lines, [string]$Table, [string]$Key) {
+    $inTable = $false
+    foreach ($line in $Lines) {
+        if ($line -match '^\s*\[') {
+            $inTable = $line -match ('^\s*\[' + [regex]::Escape($Table) + '\]\s*(#.*)?$')
+        } elseif ($inTable -and $line -match ('^\s*' + [regex]::Escape($Key) + '\s*=\s*(?:"([^"]*)"|''([^'']*)'')')) {
+            return [string]$Matches[1] + [string]$Matches[2]
+        }
+    }
+    return $null
+}
+
 # Set KEY = "VALUE" inside [TABLE], adding the key or the table when missing.
 function Set-TomlString([string[]]$Lines, [string]$Table, [string]$Key, [string]$Value) {
     $entry = $Key + ' = "' + $Value + '"'
@@ -118,7 +131,9 @@ if (Test-Path -LiteralPath $installedLock) {
 
 # Copy with the same layout as tools/, so every relative path in the profiles holds.
 $settings = @($profiles.Values) + @(Get-ChildItem -LiteralPath (Join-Path $tools 'config') -File | ForEach-Object { 'config/' + $_.Name })
-foreach ($name in $binaries + $settings + @('dependencies.lock.json')) {
+$chipRoot = Join-Path $tools 'chip'
+$chipFiles = @(Get-ChildItem -LiteralPath $chipRoot -File -Recurse | ForEach-Object { 'chip/' + $_.FullName.Substring($chipRoot.Length + 1).Replace('\', '/') })
+foreach ($name in $binaries + $settings + $chipFiles + @('dependencies.lock.json')) {
     $source = Join-Path $tools $name
     $destination = Join-Path $target $name
     New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
@@ -133,16 +148,19 @@ foreach ($entry in $lock.files.PSObject.Properties) {
     if ((Get-FileSha256 (Join-Path $target $entry.Name)) -ne $entry.Value.sha256) { throw "Installed file differs from the lock: $($entry.Name)" }
 }
 
-# The STM32F429 SVD is in the DebugTUI repository, not in the tools package.
+# The chip description the project uses: the one the selected profile names
+# relative to itself, or else the only .svd in chip/, seen from the project
+# under .vscode. The bundled profiles leave it out, since DebugTUI 0.10.0 and
+# earlier reject [program] in a profile.
 $svdValue = $null
-$svdSource = Join-Path (Split-Path -Parent $tools) 'resources\svd\stm32\STM32F429.svd'
-if (Test-Path -LiteralPath $svdSource -PathType Leaf) {
-    $svdDirectory = Join-Path $target 'svd'
-    New-Item -ItemType Directory -Path $svdDirectory -Force | Out-Null
-    Copy-Item -LiteralPath $svdSource -Destination $svdDirectory -Force
-    Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $svdSource) 'licenses\Apache-2.0.txt') -Destination $svdDirectory -Force
-    $svdValue = './.vscode/svd/STM32F429.svd'
+$profileSvd = Get-TomlString ([IO.File]::ReadAllLines((Join-Path $target $profiles[$Probe]))) 'program' 'svd'
+if ($profileSvd -and $profileSvd -match '^(\./|\$\{profile_dir\}/)') {
+    $svdValue = './.vscode/' + ($profileSvd -replace '^(\./|\$\{profile_dir\}/)', '')
+} elseif (-not $profileSvd) {
+    $chipSvds = @(Get-ChildItem -LiteralPath (Join-Path $target 'chip') -Filter '*.svd' -File -ErrorAction SilentlyContinue)
+    if ($chipSvds.Count -eq 1) { $svdValue = './.vscode/chip/' + $chipSvds[0].Name }
 }
+if ($svdValue -and -not (Test-Path -LiteralPath (Join-Path $projectRoot $svdValue) -PathType Leaf)) { $svdValue = $null }
 
 # ELF: from the argument or, for a new debug.toml, the newest one built in the project.
 $debugToml = Join-Path $projectRoot 'debug.toml'
@@ -186,15 +204,45 @@ if (-not (Test-Path -LiteralPath $debugToml)) {
         if ($lines.Count -and $lines[$lines.Count - 1] -eq '') { $lines = $lines[0..($lines.Count - 2)] }
         $lines = Set-TomlString $lines 'tools' 'profile' $profileValue
         if ($Elf) { $lines = Set-TomlString $lines 'program' 'elf' $elfValue }
+        # An SVD that is this chip description kept elsewhere (for example in
+        # the DebugTUI checkout) now uses the .vscode copy. Other SVDs and an
+        # empty value, which disables SVD, stay as they are.
+        $currentSvd = Get-TomlString $lines 'program' 'svd'
+        if ($svdValue -and $currentSvd -and $currentSvd -ne $svdValue) {
+            $currentPath = if ([IO.Path]::IsPathRooted($currentSvd)) { $currentSvd } else { Join-Path $projectRoot $currentSvd }
+            $same = if (Test-Path -LiteralPath $currentPath -PathType Leaf) {
+                (Get-FileSha256 $currentPath) -eq (Get-FileSha256 (Join-Path $projectRoot $svdValue))
+            } else {
+                [IO.Path]::GetFileName($currentSvd) -eq [IO.Path]::GetFileName($svdValue)
+            }
+            if ($same) { $lines = Set-TomlString $lines 'program' 'svd' $svdValue }
+        }
         $updated = ($lines -join "`n") + "`n"
         if ($updated -ne ($text -replace "`r`n", "`n")) {
-            Copy-Item -LiteralPath $debugToml -Destination ($debugToml + '.bak') -Force
+            # The first backup holds the project's own version; later runs keep it.
+            $backup = $debugToml + '.bak'
+            if (-not (Test-Path -LiteralPath $backup)) { Copy-Item -LiteralPath $debugToml -Destination $backup }
             [IO.File]::WriteAllText($debugToml, $updated, $utf8)
-            Write-Output "Updated $debugToml (previous version: debug.toml.bak)"
+            Write-Output "Updated $debugToml (original kept in debug.toml.bak)"
         } else {
             Write-Output "debug.toml already uses $profileValue"
         }
     }
+}
+
+# Earlier installs copied the SVD to .vscode\svd. Drop files identical to the
+# chip/ copies once debug.toml no longer refers to that folder.
+$oldSvd = Join-Path $target 'svd'
+$projectText = if (Test-Path -LiteralPath $debugToml) { [IO.File]::ReadAllText($debugToml) } else { '' }
+if ((Test-Path -LiteralPath $oldSvd -PathType Container) -and $projectText -notmatch '\.vscode/svd/') {
+    $chipFiles = @(Get-ChildItem -LiteralPath (Join-Path $target 'chip') -File -Recurse -ErrorAction SilentlyContinue)
+    foreach ($old in @(Get-ChildItem -LiteralPath $oldSvd -File)) {
+        $hash = Get-FileSha256 $old.FullName
+        if ($chipFiles | Where-Object { $_.Name -eq $old.Name -and (Get-FileSha256 $_.FullName) -eq $hash }) {
+            Remove-Item -LiteralPath $old.FullName -Force
+        }
+    }
+    if (-not @(Get-ChildItem -LiteralPath $oldSvd -Force)) { Remove-Item -LiteralPath $oldSvd -Force }
 }
 
 Write-Output "Installed DebugTUI tools for $Probe into $target"

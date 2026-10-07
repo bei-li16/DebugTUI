@@ -10,6 +10,8 @@
 
 三者都使用 `bin/gdb` 的 ARM GDB 和 `bin/openocd` 的 OpenOCD；GDB 3333、TCL 6666 仅监听本机，telnet 关闭。GDB/Server 路径按 TOML 所在目录解析，`${profile_dir}` 用于环境自己的资源路径。复制 profile 可以建立不同板卡的配置；修改端口时同步修改板级 cfg 和 `target.endpoint`。TUI 无需重新编译。
 
+`chip/` 集中存放各芯片的 SVD 文档及许可说明，安装脚本把它复制到工程的 `.vscode/chip/`，并在 `debug.toml` 中写入 `svd = "./.vscode/chip/<芯片名>.svd"`。本分支的 DebugTUI 也支持在 profile 的 `[program]` 中设置 SVD 默认值（路径相对 profile 所在目录，工程设置优先，空字符串表示禁用），但 0.10.0-readonly.1 及更早的版本会拒绝含 `[program]` 的 profile，所以随附 profile 暂不使用它。当前文件的来源、版本和校验值见 [chip/README.md](chip/README.md)。
+
 每个 profile 写明用哪个 GDB、如何启动 OpenOCD 和连接、复位/运行/下载/断开时发送的命令，以及 Live refresh 使用的内存通道；三者只有板级配置（探针）不同。工程的 `debug.toml` 用 `[tools] profile` 选其中一个。`dependencies.lock.json` 记录 `bin/` 下每个文件的大小和 SHA-256，打包和安装前据此校验，DebugTUI 运行时不读它。
 
 ## 安装到工程
@@ -18,11 +20,11 @@
 tools\install.bat <工程目录> [auto|jlink|cmsis-dap|stlink] [ELF]
 ~~~
 
-把 profile、板级配置、`bin/` 和校验清单按本目录的结构复制到 `<工程>\.vscode\`，profile 里的相对路径不用改；在仓库中运行时还会把 STM32F429 的 SVD 复制到 `.vscode\svd\`。复制前后都按校验清单检查文件。
+把 profile、板级配置、`chip/`、`bin/` 和校验清单按本目录的结构复制到 `<工程>\.vscode\`，profile 里的相对路径不用改；SVD 和许可说明随 `chip/` 复制到 `.vscode\chip\`，独立工具包也包含这些文件。复制前后都按校验清单检查二进制文件。
 
 - 探针：省略或 `auto` 时按已连接的 USB 设备识别 J-Link、ST-Link 或 CMSIS-DAP；识别不到或有多种时用 J-Link（`debug-env.toml`）。
-- `debug.toml`：工程里没有时新建，写入 profile、ELF、SVD 和 `on_exit`；没指定 ELF 时取工程里最新的 `*.elf`。已有时只改 `[tools] profile`（指定了 ELF 时也改 `[program] elf`），原文件先存为 `debug.toml.bak`；带自己 `[gdb]` 的不修改，只给出提示。
-- 重复运行：按上次安装的校验清单删除这一版已不再包含的文件；你改过的 profile 或板级配置先存为 `.bak`。
+- `debug.toml`：工程里没有时新建，profile 和 SVD 都写成 `./.vscode/...`，另写 ELF 和 `on_exit`；SVD 取所选 profile 的 `[program] svd`，没指定 ELF 时取工程里最新的 `*.elf`。已有时改 `[tools] profile`；`[program] svd` 若指向别处的同一份芯片描述（例如 DebugTUI 仓库里的），也改成 `.vscode` 中的副本，自定义 SVD 和空值（禁用）不动；指定了 ELF 时也改 `[program] elf`。第一次修改前把原文件存为 `debug.toml.bak`，之后再运行不覆盖它。带自己 `[gdb]` 的不修改，只给出提示。
+- 重复运行：按上次安装的校验清单删除这一版已不再包含的文件；你改过的 profile 或板级配置先存为 `.bak`。早期版本复制到 `.vscode\svd\` 的 SVD 在不再被引用时删除。
 - 在 cmd 中路径可以用双引号或单引号。
 
 安装后在工程目录运行 `debugtui`，Setup 已带出该工程，按 F5 开始调试；`debugtui --project .` 则直接连接。`.vscode\bin` 约 15 MB，不想提交到 git 时在工程的 `.gitignore` 加 `.vscode/bin/`。
@@ -94,6 +96,6 @@ debugtui --environment ./tools/debug-env.toml --connect 127.0.0.1:3333 --elf ./b
 ./tools/package.ps1
 ~~~
 
-生成 `artifacts/debugtui-tools-arm-win-x64.zip`，解压后得到 tools 目录。包中只有运行所需的 profile、板级配置、安装脚本和 `bin/`；随附 OpenOCD 的补丁源码在 `third_party/openocd-adapter/`，不进入该包。打包前校验 `dependencies.lock.json`，`bin/` 下有清单外的文件时拒绝打包；`bin/` 下的文件变化后运行 `./tools/package.ps1 -UpdateLock` 重新生成该清单。TUI 版本升级无需重复安装工具集。
+生成 `artifacts/debugtui-tools-arm-win-x64.zip`，解压后得到 tools 目录。包中包含运行所需的 profile、板级配置、`chip/` SVD 与许可说明、安装脚本和 `bin/`；随附 OpenOCD 的补丁源码在 `third_party/openocd-adapter/`，不进入该包。打包前校验 `dependencies.lock.json`，`bin/` 下有清单外的文件时拒绝打包；`bin/` 下的文件变化后运行 `./tools/package.ps1 -UpdateLock` 重新生成该清单。TUI 版本升级无需重复安装工具集。
 
 此最小工具集无 Python。GDB 的许可证位于 `bin/gdb/license.txt`；OpenOCD 的 GPLv2 文本、其他组件许可和来源在 `bin/openocd/COPYING.txt`、`bin/openocd/licenses/`、`bin/openocd/PROVENANCE.txt`。应用源码许可证不替代第三方条款。
