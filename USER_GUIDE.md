@@ -116,7 +116,7 @@ debugtui --gdb C:/toolchain/bin/arm-none-eabi-gdb.exe --connect localhost:3333 -
 debugtui --gdb C:/MinGW/bin/gdb.exe --local --elf ./build/app.exe
 ~~~
 
-使用 tools 中的环境配置，使用该环境声明的服务启动与连接流程：
+使用 tools 中的环境配置，使用该环境声明的服务启动与连接流程。也可以运行 `tools\install.bat <工程目录>`，把工具装进工程的 `.vscode` 并生成 `debug.toml`，之后在工程目录直接运行 `debugtui`，见 [tools/README.md](tools/README.md)：
 
 ~~~powershell
 debugtui --tools-dir ./tools --elf ./build/app.elf
