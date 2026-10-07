@@ -497,6 +497,44 @@ impl App {
         a.sync_register_preferences();
         a
     }
+    /// Start over for a newly launched project. Everything is rebuilt as `new`
+    /// builds it, so state added later resets by default; only what belongs to
+    /// this terminal session carries over.
+    fn switch_project(&mut self, project: Project, document: Document) {
+        let demo = self.demo;
+        let old = std::mem::replace(self, App::new(project, demo));
+        self.document = document;
+        self.logs = old.logs;
+        self.console = old.console;
+        self.console_view = old.console_view;
+        self.input = old.input;
+        self.history = old.history;
+        self.history_index = old.history_index;
+        self.palette = old.palette;
+        self.palette_index = old.palette_index;
+        self.palette_query = old.palette_query;
+        self.help = old.help;
+        self.help_scroll = old.help_scroll;
+        // Request ids stay unique across debugger workers.
+        self.next_id = old.next_id;
+        self.notice = old.notice;
+        self.quitting = old.quitting;
+        self.zoom = old.zoom;
+        self.pointer = old.pointer;
+        self.fx.focused = old.fx.focused;
+        // The last frame's geometry, until the next draw replaces it.
+        self.source_rect = old.source_rect;
+        self.side_rect = old.side_rect;
+        self.console_input_rect = old.console_input_rect;
+        self.watch_input_rect = old.watch_input_rect;
+        self.view_rects = old.view_rects;
+        self.scrollbars = old.scrollbars;
+        self.pane_hits = old.pane_hits;
+        self.action_hits = old.action_hits;
+        self.palette_hits = old.palette_hits;
+        self.help_tab_hits = old.help_tab_hits;
+        self.hover_probes = old.hover_probes;
+    }
     fn log(&mut self, text: String) {
         self.log_at(text, &crate::logging::Stamp::now().wall);
     }
@@ -2102,53 +2140,7 @@ pub fn run(
             })();
             match prepared {
                 Ok(project) => {
-                    app.project = project.clone();
-                    app.source_keys.get_mut().clear();
-                    app.fx = effects::Effects::default();
-                    app.fx.mode = project.ui.animations;
-                    app.formats = formats::Formats::default();
-                    app.breaks = breakpoints::Breaks::default();
-                    app.monitor = monitor::Monitor::default();
-                    app.memory_panel = memory::MemoryView::default();
-                    app.core_hits.clear();
-                    app.peripherals =
-                        peripherals::Peripherals::load_in_background(&project.program.svd);
-                    app.register_view = registers::RegisterView::load(&project);
-                    app.document = launch.document;
-                    app.setup = None;
-                    app.snapshot = Snapshot::default();
-                    app.core_info = None;
-                    app.source.clear();
-                    app.source_comments.clear();
-                    app.source_file.clear();
-                    app.source_line = 0;
-                    app.source_text.reset(0);
-                    app.source_top = 0;
-                    app.sources = SourceTabs::default();
-                    app.file_search = search::FileSearch::default();
-                    app.symbol_search = search::SymbolSearch::default();
-                    app.selection = 0;
-                    app.pane = 0;
-                    app.main_pane = 0;
-                    app.side_pane = 3;
-                    app.variable_pane = 1;
-                    app.selections.fill(0);
-                    app.view_tops.fill(0);
-                    app.log_follow = true;
-                    app.scroll_drag = None;
-                    app.view_stamps.fill(None);
-                    app.view_errors.fill(None);
-                    app.pending_view = None;
-                    app.pending_commands.clear();
-                    app.pending_elf = None;
-                    app.pending_task = None;
-                    app.editing = false;
-                    app.watch_editing = false;
-                    app.watch_input.clear();
-                    app.pending_watch = None;
-                    app.watch = watch::WatchView::default();
-                    app.completion = completion::Completion::default();
-                    app.confirm = None;
+                    app.switch_project(project.clone(), launch.document);
                     let connect_ready = project.clone().prepare_workspace().unwrap_or(false);
                     engine = Some(coordinator::spawn_with(project, bell.clone()));
                     if connect_ready {
@@ -2478,6 +2470,66 @@ mod tests {
             snapshot: Box::default(),
         });
         assert!(a.core_info.is_none());
+    }
+    #[test]
+    fn project_switch_resets_project_state_and_keeps_terminal_session() {
+        let mut a = App::new(Project::default(), false);
+        a.log("[ui] before the switch".into());
+        a.history.push("info registers".into());
+        a.input = "p counter".into();
+        a.next_id = 41;
+        a.zoom = true;
+        a.fx.focused = false;
+        a.notice = "Launching".into();
+        a.snapshot.state = "STOPPED".into();
+        a.snapshot.watches = vec![Variable {
+            name: "counter".into(),
+            value: "1".into(),
+            ..Default::default()
+        }];
+        a.source = vec!["int main(void) {}".into()];
+        a.source_file = "old/main.c".into();
+        a.pane = 1;
+        a.side_pane = 10;
+        a.selections[1] = 3;
+        a.view_tops[8] = 5;
+        a.watch_editing = true;
+        a.watch_input = "old_draft".into();
+        a.pending_commands.insert(7);
+        a.pending_task = Some(8);
+        a.setup = Some(Setup::new(a.document.clone()));
+        a.source_keys
+            .get_mut()
+            .insert("old/main.c".into(), "old/main.c".into());
+        let logs = a.logs.clone();
+        let console = a.console.clone();
+        let mut project = Project::default();
+        project.ui.animations = crate::config::Motion::Off;
+        let document = Document::empty(PathBuf::from("next/debug.toml"));
+        a.switch_project(project, document);
+        assert_eq!(a.document.path, PathBuf::from("next/debug.toml"));
+        assert_eq!(a.fx.mode, crate::config::Motion::Off);
+        // Terminal session.
+        assert_eq!(a.logs, logs);
+        assert_eq!(a.console, console);
+        assert_eq!(a.history, ["info registers"]);
+        assert_eq!(a.input, "p counter");
+        assert_eq!(a.next_id, 41);
+        assert!(a.zoom);
+        assert!(!a.fx.focused);
+        assert_eq!(a.notice, "Launching");
+        // Project and debugger session.
+        assert!(a.setup.is_none());
+        assert_eq!(a.snapshot.state, "DISCONNECTED");
+        assert!(a.snapshot.watches.is_empty());
+        assert!(a.source.is_empty() && a.source_file.is_empty());
+        assert_eq!((a.pane, a.main_pane, a.side_pane), (0, 0, 3));
+        assert_eq!(a.variable_pane, 1);
+        assert!(a.selections.iter().chain(&a.view_tops).all(|&v| v == 0));
+        assert!(!a.watch_editing && a.watch_input.is_empty());
+        assert!(a.pending_commands.is_empty() && a.pending_task.is_none());
+        assert!(a.source_keys.get_mut().is_empty());
+        assert!(a.log_follow);
     }
     fn render(a: &mut App, w: u16, h: u16) -> String {
         let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
