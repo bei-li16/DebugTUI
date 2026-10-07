@@ -1254,6 +1254,78 @@ fn data_line(text: &str, current: bool, assembly: bool) -> Line<'static> {
     Line::from(spans).style(Style::default().bg(if current { theme::PC } else { theme::PANEL }))
 }
 
+/// The Shortcuts page for `width` columns: group titles, then keys and
+/// actions in two columns with actions wrapped in their own column. Narrow
+/// pages put the keys above their action instead.
+fn shortcut_lines(width: u16) -> Vec<Line<'static>> {
+    use unicode_width::UnicodeWidthStr;
+    let width = (width as usize).saturating_sub(1);
+    let column = SHORTCUTS
+        .iter()
+        .flat_map(|(_, rows)| rows.iter())
+        .map(|(keys, _)| keys.width())
+        .max()
+        .unwrap_or(0);
+    let stacked = width < column + 30;
+    let title = Style::default()
+        .fg(theme::ACCENT)
+        .add_modifier(Modifier::BOLD);
+    let key = Style::default()
+        .fg(theme::TEXT)
+        .add_modifier(Modifier::BOLD);
+    let note = Style::default().fg(theme::MUTED);
+    let mut lines = vec![];
+    for (group, rows) in SHORTCUTS {
+        if !lines.is_empty() {
+            lines.push(Line::default());
+        }
+        lines.push(Line::styled(format!(" {group}"), title));
+        for (keys, action) in *rows {
+            if keys.is_empty() {
+                for text in wrap_words(action, width.saturating_sub(3)) {
+                    lines.push(Line::styled(format!("   {text}"), note));
+                }
+            } else if stacked {
+                lines.push(Line::styled(format!("   {keys}"), key));
+                for text in wrap_words(action, width.saturating_sub(5)) {
+                    lines.push(Line::from(format!("     {text}")));
+                }
+            } else {
+                let indent = 3 + column + 2;
+                for (i, text) in wrap_words(action, width.saturating_sub(indent))
+                    .into_iter()
+                    .enumerate()
+                {
+                    let keys = if i == 0 { *keys } else { "" };
+                    let pad = " ".repeat(column - keys.width() + 2);
+                    lines.push(Line::from(vec![
+                        Span::styled(format!("   {keys}{pad}"), key),
+                        Span::raw(text),
+                    ]));
+                }
+            }
+        }
+    }
+    lines
+}
+/// Greedy word wrap by display width; a word longer than the line keeps its
+/// own line.
+fn wrap_words(text: &str, width: usize) -> Vec<String> {
+    use unicode_width::UnicodeWidthStr;
+    let mut lines = vec![];
+    let mut line = String::new();
+    for word in text.split(' ') {
+        if !line.is_empty() && line.width() + 1 + word.width() > width {
+            lines.push(std::mem::take(&mut line));
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(word);
+    }
+    lines.push(line);
+    lines
+}
 fn hint(command: &str) -> &str {
     match command.split_whitespace().next().unwrap_or("") {
         "setup" => "Select project / environment",
@@ -1768,24 +1840,36 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
                 filter,
             );
         }
-        f.render_widget(
-            Paragraph::new(if a.help {
-                " ↑ ↓ scroll · Tab commands · Esc close"
+        let inner = parts[1];
+        let footer = if a.help {
+            let lines = shortcut_lines(inner.width);
+            let max = lines.len().saturating_sub(inner.height as usize);
+            a.help_scroll = a.help_scroll.min(max as u16);
+            let top = a.help_scroll as usize;
+            f.render_widget(Paragraph::new(lines).scroll((a.help_scroll, 0)), inner);
+            let keys = if inner.width >= 70 {
+                " ↑ ↓ PgUp PgDn scroll · Tab commands · Esc close"
             } else {
-                " type to filter · ↑ ↓ Enter · Tab shortcuts · Esc close"
-            })
-            .style(Style::default().fg(theme::MUTED)),
+                " ↑↓ scroll · Esc close"
+            };
+            if max > 0 {
+                let bottom = top + inner.height as usize;
+                format!(
+                    "{keys}   {}-{bottom}/{}",
+                    top + 1,
+                    max + inner.height as usize
+                )
+            } else {
+                keys.into()
+            }
+        } else {
+            " type to filter · ↑ ↓ Enter · Tab shortcuts · Esc close".into()
+        };
+        f.render_widget(
+            Paragraph::new(footer).style(Style::default().fg(theme::MUTED)),
             parts[2],
         );
-        let inner = parts[1];
-        if a.help {
-            f.render_widget(
-                Paragraph::new(HELP)
-                    .scroll((a.help_scroll, 0))
-                    .wrap(Wrap { trim: false }),
-                inner,
-            );
-        } else {
+        if !a.help {
             let commands = a.palette_commands();
             let selected = commands
                 .iter()

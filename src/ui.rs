@@ -182,106 +182,284 @@ const COMMANDS: [&str; 54] = [
     "quit",
 ];
 const DEMO_SOURCE: &str = "/* DebugTUI demo: no target connected */\n#include <stdint.h>\n\n\nvolatile uint32_t counter;\nvolatile uint8_t flag = 1;\n\nvoid process_items(void)\n{\n    for (unsigned i = 0; i < 100; ++i) {\n        update_value(\"sample\\n\");\n        counter++;\n    }\n}\n\nvoid update_value(const char *format)\n{\n    uint8_t ret = 0;\n    flag = 0;\n    /* Place a data breakpoint on flag. */\n}\n";
-const HELP: &str = r#"DebugTUI — GDB debugging workspace
-
-Multi-core: Run All starts each core once, then resumes it.
-Scope: All / Core controls Continue (F5) and Pause (F6).
-All scope: a breakpoint halts running peers and selects the triggering core.
-Step / Next / Finish operate on the selected core; peers stay stopped in All scope.
-Reset Chip always pauses and resets the whole group, even in Core scope.
-Software group commands are ordered; they are not hardware lockstep/CTI synchronization.
-
-Left: Source / Asm / Files / Log
-Right top: System Regs / Peripherals / Stack / Memory / Breaks
-Right bottom: Watch / Locals
-Tab / Shift+Tab switches view and keyboard focus; Alt+1..9, Alt+0 and Alt+- jump
-straight to Source, Asm, Files, Log, Regs, Peripherals, Stack, Memory, Breaks, Watch, Locals.
-z (or :zoom) lets the focused panel group fill the workspace; z again restores it.
-Click tabs to change only that group; source stays visible.
-Wheel over a view or drag its scrollbar to browse content.
-Click Stack rows to select a frame; Delete removes a breakpoint or watch.
-Breaks: click [x] or Space / Enter to disable or enable without deleting.
-+ Code / Insert adds a code breakpoint; + Data / d adds a read, write or read/write watchpoint.
-Edit / e / right-click sets enabled state, condition and ignore count; Delete removes the record.
-Cores / c selects the cores for an existing code breakpoint. New source breakpoints use this core only.
-Linked breakpoint edits/deletion include all its cores; Enable all also includes linked peers.
-Disabled records, core membership and data breakpoints are saved.
-Hardware / temporary code breakpoints are available in the editor. Hit totals come from GDB.
-Write watchpoints stop on value changes; Read and Read/write require hardware support.
-Watch: enter a variable below the list, then click + Add or press Enter.
-Structures / pointers / arrays: click the arrow or press Enter to expand; Left/Right collapses/expands.
-Large arrays: select Load more and Enter. Children support per-value display formats (f).
-Watch / Peripherals: right-click or f, then r opens Memory access / Live refresh.
-Choose a channel and 50..60000 ms interval. Read once is available without polling.
-GDB access requires a stopped core; only explicitly capable bus channels read while running.
-Only visible values are polled; Watch addresses resolve while stopped. LIVE marks fresh samples.
-Multicore: click Cores buttons (or Ctrl+T); view colors follow the selected core.
-Click a variable's x to remove it, or select it and press Delete / Del Remove.
-Delete while typing does not remove a Watch item.
-Narrow terminals show the focused group; Tab reaches all views.
-Source files stay open in tabs; click a name or × to close.
-< / > and the tab-strip wheel browse hidden tabs; [Files N] lists all.
-Ctrl+PgUp / Ctrl+PgDn switches files; Ctrl+W closes; Ctrl+O lists.
-Files: click Find / Ctrl+F filters filenames (case-insensitive fuzzy search).
-Ctrl+K / Symbols searches ELF functions, global/static variables and types.
-Enter / click opens the result in Source, using the project's source mappings.
-Source: drag text or double-click a word; Shift+arrows extends the selection.
-Copy / Ctrl+C copies selected source only; without a selection Ctrl+C still pauses.
-Add to Watch / Ctrl+Enter adds the selected expression to the current core.
-Right-click source opens Copy / Add to Watch. Esc clears the selection.
-Home / End moves within the line; Ctrl+Home / Ctrl+End reaches file boundaries.
-Source remains read-only. Copy preserves tabs and excludes line numbers / breakpoints.
-
-Toolbar buttons: Run, Continue, Pause, Reset, Reconnect,
-Step In, Step Over, Step Out, Exit, Help. Unavailable actions are dimmed.
-Help / Ctrl+P lists commands; click or Enter selects.
-Help tabs / Tab switch between Commands and Shortcuts.
-Commands with arguments open the command line for editing.
-Asm loads at $pc on entry and updates after each stop.
-Project bar: Setup / Build / Download. Setup returns to configuration without quitting.
-Start debugging at the top (Enter / Ctrl+R / F5) closes the previous session and starts the new configuration.
-Workspace / Esc returns without restarting; Ctrl+Q exits the program.
-Shell commands run in Source root; output appears in Console.
-Connected sessions are released, then restored after success.
-Memory: Memory access selects address, byte count and channel; Read refreshes the range.
-:memory ADDRESS [COUNT] uses the selected channel. GDB accepts $sp while stopped;
-bus channels require a literal address and never halt the target to read.
-Peripherals: configure SVD in F2 Setup. Click / Enter expands groups and fields.
-Left / Right collapses / expands; r / Refresh reads the selected register.
-Only visible registers inside expanded groups refresh after stops.
-Write-only registers are skipped; read side effects require manual refresh.
-
-F2 Setup         F5 Continue      F6 Pause
-F9 Breakpoint    F10 Step Over    F11 Step In / Shift+F11 Step Out
-Arrows / PgUp / PgDn / Home / End scroll or select
-Enter opens a file / selects a stack frame
-: Command line   / GDB console   Ctrl+F Find source
-Click the Console input to type GDB commands or :commands.
-f / right-click a value: binary, octal, decimal or hexadecimal for that item.
-Data defaults to decimal; registers and SVD fields default to hexadecimal.
-:appearance chooses Off / Subtle / Full animation and Unicode / ASCII effects.
-Both inputs offer completion: Up / Down selects, Tab or click fills, Enter submits.
-With no suggestions, Up / Down recalls Console history; Esc leaves input.
-Watch: click watch> or + Add; type a global variable or C expression to add it.
-Variable and member completion uses the current ELF/GDB when stopped.
-Ctrl+C Pause     Ctrl+Q Exit      Esc Cancel / close dialog
-Step In / Over / Out send GDB step / next / finish respectively.
-
-:setup :connect :reconnect :run :continue :pause :disconnect
-:step :next :stepi :finish :restart :download :refresh
-:watch counter   :unwatch counter   :data-break flag
-:data-break read counter   :data-break access *(uint32_t *)0x20000000
-:disable 2   :enable 2   :disable all   :break-edit
-:break main   :delete 2   :frame 1
-:memory $sp 256   :disasm $pc   :files   :open source.c
-:find text   :elf app.elf   :build   :help   :quit
-
-Other input goes to GDB, e.g. p/x variable or info registers.
-Running views show the last stopped snapshot.
-Run / reset / download behavior comes from the environment.
-Exit ends debugging and closes TUI, following session.on_exit.
-
-Esc / ? closes this help."#;
+/// The Shortcuts help page: titled groups of (keys, action) rows. A row
+/// without keys is a note for the whole group.
+const SHORTCUTS: &[(&str, &[(&str, &str)])] = &[
+    (
+        "Debugging",
+        &[
+            ("F5", "Continue"),
+            (
+                "F6 / Ctrl+C",
+                "Pause; with Source text selected, Ctrl+C copies instead",
+            ),
+            ("F10 / F11", "Step Over / Step In (GDB next / step)"),
+            ("Shift+F11", "Step Out (GDB finish)"),
+            ("F9", "Add or remove a breakpoint on the Source line"),
+            ("F2", "Setup: choose a project and debugging environment"),
+            (
+                "Ctrl+Q / Exit",
+                "End debugging and close the TUI, following session.on_exit",
+            ),
+            ("Esc", "Cancel / close a dialog"),
+            (
+                "",
+                "Toolbar: Run, Continue, Pause, Reset, Reconnect, Step In, Step Over, Step Out, Exit, Help. Unavailable actions are dimmed.",
+            ),
+            (
+                "",
+                "Run, reset and download behavior comes from the environment. Running views show the last stopped snapshot.",
+            ),
+        ],
+    ),
+    (
+        "Multi-core",
+        &[
+            ("Ctrl+T / Cores", "Select the core; view colors follow it"),
+            (
+                "",
+                "Run All starts each core once, then resumes it. Scope: All / Core controls Continue (F5) and Pause (F6).",
+            ),
+            (
+                "",
+                "All scope: a breakpoint halts running peers and selects the triggering core. Step / Next / Finish operate on the selected core; peers stay stopped.",
+            ),
+            (
+                "",
+                "Reset Chip always pauses and resets the whole group, even in Core scope.",
+            ),
+            (
+                "",
+                "Software group commands are ordered; they are not hardware lockstep / CTI synchronization.",
+            ),
+        ],
+    ),
+    (
+        "Views",
+        &[
+            (
+                "Tab / Shift+Tab",
+                "Next / previous view, moving keyboard focus",
+            ),
+            (
+                "Alt+1..9 Alt+0 Alt+-",
+                "Source, Asm, Files, Log, Regs, Peripherals, Stack, Memory, Breaks, Watch, Locals",
+            ),
+            (
+                "z / :zoom",
+                "The focused panel group fills the workspace; z again restores it",
+            ),
+            (
+                "Click a tab",
+                "Change only that group; Source stays visible",
+            ),
+            ("Arrows / PgUp / PgDn", "Scroll or select; also Home / End"),
+            ("Wheel / scrollbar", "Browse a view; drag the scrollbar"),
+            ("Enter / click", "Open a file / select a stack frame"),
+            (
+                "",
+                "Left: Source / Asm / Files / Log. Right top: System Regs / Peripherals / Stack / Memory / Breaks. Right bottom: Watch / Locals.",
+            ),
+            (
+                "",
+                "Narrow terminals show the focused group; Tab reaches all views.",
+            ),
+        ],
+    ),
+    (
+        "Source",
+        &[
+            ("Ctrl+PgUp / Ctrl+PgDn", "Previous / next open file"),
+            ("Ctrl+W / ×", "Close the file"),
+            ("Ctrl+O / [Files N]", "List the open files"),
+            ("< / > / tab wheel", "Browse tabs hidden by the width"),
+            (
+                "Drag / double-click",
+                "Select text / a word; Shift+arrows extend the selection",
+            ),
+            (
+                "Ctrl+C / Copy",
+                "Copy the selected source: tabs kept, no line numbers or breakpoints",
+            ),
+            (
+                "Ctrl+Enter",
+                "Add to Watch: the selected expression, on the current core",
+            ),
+            ("Right-click", "Copy / Add to Watch menu"),
+            ("Esc", "Clear the selection"),
+            (
+                "Home / End",
+                "Start / end of the line; with Ctrl, of the file",
+            ),
+            ("", "Source files stay open in tabs and are read-only."),
+        ],
+    ),
+    (
+        "Find",
+        &[
+            (
+                "Ctrl+F / Find",
+                "Filter Files by name (case-insensitive fuzzy search)",
+            ),
+            (
+                "Ctrl+K / Symbols",
+                "Search ELF functions, global / static variables and types",
+            ),
+            (
+                "Enter / click",
+                "Open the result in Source, using the project's source mappings",
+            ),
+        ],
+    ),
+    (
+        "Breakpoints",
+        &[
+            ("Insert / + Code", "Add a code breakpoint"),
+            ("d / + Data", "Add a read, write or read/write watchpoint"),
+            (
+                "e / Edit / right-click",
+                "Enabled state, condition and ignore count; hardware and temporary code breakpoints",
+            ),
+            (
+                "c / Cores",
+                "Cores of a code breakpoint; new source breakpoints use this core only",
+            ),
+            ("Space / Enter / [x]", "Disable or enable without deleting"),
+            ("Delete", "Remove the breakpoint"),
+            (
+                "",
+                "Edits and deletion of a linked breakpoint include all its cores; Enable all also includes linked peers.",
+            ),
+            (
+                "",
+                "Disabled records, core membership and data breakpoints are saved. Hit totals come from GDB.",
+            ),
+            (
+                "",
+                "Write watchpoints stop on value changes; Read and Read/write require hardware support.",
+            ),
+        ],
+    ),
+    (
+        "Watch and Locals",
+        &[
+            (
+                "Enter / + Add",
+                "Add the global variable or C expression typed below the list (click watch> to type)",
+            ),
+            ("Enter / arrow", "Expand structures, pointers and arrays"),
+            ("Left / Right", "Collapse / expand"),
+            ("Enter on Load more", "Show more array elements"),
+            (
+                "f / right-click",
+                "Format: binary, octal, decimal or hexadecimal, per value",
+            ),
+            (
+                "r (after f)",
+                "Memory access / Live refresh, also for Peripherals",
+            ),
+            (
+                "Delete / x",
+                "Remove the selected item; while typing, Delete edits the input",
+            ),
+            (
+                "",
+                "Data defaults to decimal; registers and SVD fields to hexadecimal.",
+            ),
+            (
+                "",
+                "Live refresh: choose a channel and a 50..60000 ms interval; Read once works without polling. Only visible values are polled; LIVE marks fresh samples.",
+            ),
+            (
+                "",
+                "GDB access requires a stopped core; only explicitly capable bus channels read while running. Watch addresses resolve while stopped.",
+            ),
+            (
+                "",
+                "Variable and member completion uses the current ELF / GDB when stopped.",
+            ),
+        ],
+    ),
+    (
+        "Memory and Peripherals",
+        &[
+            (
+                "Memory access",
+                "Choose address, byte count and channel; Read refreshes the range",
+            ),
+            (
+                ":memory ADDR [COUNT]",
+                "Read with the selected channel; GDB accepts $sp while stopped",
+            ),
+            (
+                "Click / Enter",
+                "Expand peripheral groups and fields; Left / Right collapse / expand",
+            ),
+            ("r / Refresh", "Read the selected peripheral register"),
+            (
+                "",
+                "Bus channels need a literal address and never halt the target to read.",
+            ),
+            (
+                "",
+                "Configure the SVD file in F2 Setup. Only visible registers in expanded groups refresh after stops. Write-only registers are skipped; read side effects require manual refresh.",
+            ),
+        ],
+    ),
+    (
+        "Console and commands",
+        &[
+            (
+                "/",
+                "GDB command input (or click it), e.g. p/x variable or info registers",
+            ),
+            (":", "A :command, e.g. :memory $sp 256"),
+            (
+                "Ctrl+P / Help",
+                "Command list: type to filter; click or Enter runs; commands with arguments open the command line",
+            ),
+            (
+                "? / Esc",
+                "Open / close these shortcuts; Tab switches to Commands",
+            ),
+            (
+                "Up / Down",
+                "Choose a completion; with none, recall history",
+            ),
+            ("Tab / click", "Fill the completion; Enter submits"),
+            ("Shift+PgUp", "Scroll back through the Console"),
+            ("Esc", "Leave the input"),
+            (
+                ":appearance",
+                "Off / Subtle / Full animation and Unicode / ASCII effects",
+            ),
+            ("", "Asm loads at $pc on entry and updates after each stop."),
+            (
+                "",
+                "Examples: :watch counter, :unwatch counter, :data-break read counter, :data-break access *(uint32_t *)0x20000000, :break main, :delete 2, :disable all, :frame 1, :disasm $pc, :open source.c, :elf app.elf",
+            ),
+        ],
+    ),
+    (
+        "Project",
+        &[
+            ("F2 / Setup", "Return to configuration without quitting"),
+            (
+                "Enter / Ctrl+R / F5",
+                "In Setup: close the previous session and start the new one",
+            ),
+            ("Esc / Workspace", "In Setup: return without restarting"),
+            (
+                "Build / Download",
+                "Run the project's commands in Source root; output goes to Console",
+            ),
+            (
+                "",
+                "Connected sessions are released for Build / Download, then restored after success.",
+            ),
+        ],
+    ),
+];
 pub struct App {
     project: Project,
     document: Document,
@@ -1115,10 +1293,13 @@ impl App {
             match key.code {
                 KeyCode::Esc | KeyCode::Char('?') => self.help = false,
                 KeyCode::Tab | KeyCode::BackTab => self.open_help(false),
-                KeyCode::Down => self.help_scroll = self.help_scroll.saturating_add(1).min(30),
+                // Drawing clamps the scroll to the page length.
+                KeyCode::Down => self.help_scroll = self.help_scroll.saturating_add(1),
                 KeyCode::Up => self.help_scroll = self.help_scroll.saturating_sub(1),
-                KeyCode::PageDown => self.help_scroll = self.help_scroll.saturating_add(8).min(30),
+                KeyCode::PageDown => self.help_scroll = self.help_scroll.saturating_add(8),
                 KeyCode::PageUp => self.help_scroll = self.help_scroll.saturating_sub(8),
+                KeyCode::Home => self.help_scroll = 0,
+                KeyCode::End => self.help_scroll = u16::MAX,
                 _ => {}
             }
             return false;
@@ -1792,7 +1973,7 @@ impl App {
             if self.help {
                 match mouse.kind {
                     MouseEventKind::ScrollDown => {
-                        self.help_scroll = self.help_scroll.saturating_add(3).min(30)
+                        self.help_scroll = self.help_scroll.saturating_add(3)
                     }
                     MouseEventKind::ScrollUp => {
                         self.help_scroll = self.help_scroll.saturating_sub(3)
@@ -3227,6 +3408,37 @@ mod tests {
             None,
         );
         assert!(a.quitting);
+    }
+    #[test]
+    fn shortcuts_page_groups_keys_and_scrolls_to_the_last_group() {
+        let mut a = App::new(Project::default(), true);
+        a.key(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE), None);
+        assert!(a.help);
+        let text = render(&mut a, 120, 36);
+        // Keys and their action share a row.
+        assert!(
+            text.lines()
+                .any(|l| l.contains("F10 / F11") && l.contains("Step Over / Step In")),
+            "{text}"
+        );
+        assert!(!text.contains("Connected sessions are released"));
+        a.key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE), None);
+        let text = render(&mut a, 120, 36);
+        assert!(text.contains("Connected sessions are released"), "{text}");
+        let max = a.help_scroll;
+        assert!(max > 30, "a fixed 30-line limit hid the end of the page");
+        assert!(text.contains(&format!("{}-{}/{}", max + 1, max + 30, max + 30)));
+        a.key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE), None);
+        render(&mut a, 120, 36);
+        assert_eq!(a.help_scroll, max);
+        a.key(KeyEvent::new(KeyCode::Up, KeyModifiers::NONE), None);
+        assert_eq!(a.help_scroll, max - 1);
+        // Narrow pages put the keys above their action.
+        a.key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), None);
+        let text = render(&mut a, 45, 16);
+        let lines: Vec<&str> = text.lines().collect();
+        let row = lines.iter().position(|l| l.contains("F10 / F11")).unwrap();
+        assert!(!lines[row].contains("Step Over") && lines[row + 1].contains("Step Over"));
     }
     #[test]
     fn help_tabs_switch_without_dispatching_debug_commands() {
