@@ -739,19 +739,19 @@ SWO / ETM / RTT & 当前没有专用采集/解码 UI。RTT 是目标 RAM 缓冲�
 实际移植应先验证调试访问，再验证运行时读取或 CTI，最后单独验收 Trace 的完整采集链。即使外部工具能显示 SWV，也不意味着 DebugTUI 已接入该数据源。后续工具配置只建立本工程已实现的 GDB/TCL 路径，避免把芯片可选能力混入现有 profile 的承诺。
 
 \newsection{tools：GDB 与 OpenOCD}\label{sec:tools}
-\subsection{两个 profile 的差异}
-下表均为仓库实际配置。两者复用 ARM GDB、GDB 端口 3333 和 TCL 6666，telnet 禁用，仅监听本机。同一端口不能由两个服务同时占用。SEGGER J-Link GDB Server 不再随附，见第\ref{sec:jlink-server}节。
+\subsection{三个 profile 的差异}
+下表均为仓库实际配置。三者复用 ARM GDB、GDB 端口 3333 和 TCL 6666，telnet 禁用，仅监听本机。同一端口不能由两个服务同时占用。SEGGER J-Link GDB Server 不再随附，见第\ref{sec:jlink-server}节。
 
-\noindent\begin{tabularx}{\linewidth}{@{}P{31mm}Y Y@{}}\toprule
-项目 & OpenOCD/J-Link & OpenOCD/CMSIS-DAP\\\midrule
-profile 文件 & \path{debug-env.toml} & \path{debug-env-cmsis-dap.toml}\\
-服务程序 & openocd & openocd\\
-探针驱动 & OpenOCD jlink & OpenOCD cmsis-dap\\
-芯片/接口 & stm32f4x / SWD & stm32f4x / SWD\\
-速度 & 1000 kHz & 1000 kHz\\
-TCL 实时读 & ahb / core-tcl & ahb / core-tcl\\
-退出前动作 & monitor resume & monitor resume\\
-本地证据 & 0.8.0/F429 运行读取等实板通过 & 2026-09-20 最新本地实板资料完整\\\bottomrule
+\noindent\begin{tabularx}{\linewidth}{@{}P{31mm}Y Y Y@{}}\toprule
+项目 & OpenOCD/J-Link & OpenOCD/CMSIS-DAP & OpenOCD/ST-Link\\\midrule
+profile 文件 & \path{debug-env.toml} & \path{debug-env-cmsis-dap.toml} & \path{debug-env-stlink.toml}\\
+服务程序 & openocd & openocd & openocd\\
+探针驱动 & OpenOCD jlink & OpenOCD cmsis-dap & OpenOCD st-link（dapdirect）\\
+芯片/接口 & stm32f4x / SWD & stm32f4x / SWD & stm32f4x / SWD\\
+速度 & 1000 kHz & 1000 kHz & 1000 kHz\\
+TCL 实时读 & ahb / core-tcl & ahb / core-tcl & ahb / core-tcl\\
+退出前动作 & monitor resume & monitor resume & monitor resume\\
+本地证据 & 0.8.0/F429 运行读取等实板通过 & 2026-09-20 最新本地实板资料完整 & 仅配置解析，尚未上板\\\bottomrule
 \end{tabularx}
 
 \subsection{GDB 最小运行环境}

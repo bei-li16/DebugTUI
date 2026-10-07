@@ -6,8 +6,9 @@
 |---|---|---|
 | `debug-env.toml` | J-Link，经 OpenOCD jlink 驱动 | `config/stm32f429-live.cfg` |
 | `debug-env-cmsis-dap.toml` | CMSIS-DAP | `config/stm32f429-dap.cfg` |
+| `debug-env-stlink.toml` | ST-Link V2J24 及以上或 V3，尚未上板验证 | `config/stm32f429-stlink.cfg` |
 
-两者都使用 `bin/gdb` 的 ARM GDB 和 `bin/openocd` 的 OpenOCD；GDB 3333、TCL 6666 仅监听本机，telnet 关闭。GDB/Server 路径按 TOML 所在目录解析，`${profile_dir}` 用于环境自己的资源路径。复制 profile 可以建立不同板卡的配置；修改端口时同步修改板级 cfg 和 `target.endpoint`。TUI 无需重新编译。
+三者都使用 `bin/gdb` 的 ARM GDB 和 `bin/openocd` 的 OpenOCD；GDB 3333、TCL 6666 仅监听本机，telnet 关闭。GDB/Server 路径按 TOML 所在目录解析，`${profile_dir}` 用于环境自己的资源路径。复制 profile 可以建立不同板卡的配置；修改端口时同步修改板级 cfg 和 `target.endpoint`。TUI 无需重新编译。
 
 ## OpenOCD 版本
 
@@ -46,6 +47,10 @@ debugtui --project <工程目录> --environment ./tools/debug-env-cmsis-dap.toml
 ~~~
 
 也可在启动页选择该 Tools / profile 并保存。换探针不需要重新编译 TUI。若工程原先配置了启动 J-Link 的 Download command，请清空它，使用 profile 中的 GDB 下载动作；Build command 仍依赖工程自己的编译工具链。
+
+## STM32F429 / ST-Link
+
+`debug-env-stlink.toml` 通过 OpenOCD 的 st-link 驱动（dapdirect 模式）使用 ST-Link，SWD 1000 kHz，`config/stm32f429-stlink.cfg` 与其他两个 profile 一样建立 M4 CPU target 和 AP0 `mem_ap` target。V2J24 之前的 ST-LINK/V2 固件不支持该模式，需要先用 ST 的工具升级。此 profile 只经过配置解析检查，尚未在板卡上验证。
 
 ## SEGGER J-Link GDB Server（不随附）
 
