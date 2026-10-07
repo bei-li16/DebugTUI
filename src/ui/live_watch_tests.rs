@@ -33,7 +33,7 @@ fn watch_line(a: &mut App) -> String {
         .formats
         .hits
         .iter()
-        .find(|v| v.pane == 1 && v.name == "uart_cnt" && v.row % 2 == 1)
+        .find(|v| v.pane == 1 && v.name == "uart_cnt")
         .unwrap()
         .rect;
     (hit.x..hit.right())

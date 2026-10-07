@@ -174,7 +174,7 @@ impl App {
     }
     pub(super) fn watch_monitor_item(&self, row: usize) -> Option<Item> {
         watch::rows(&self.snapshot.watches)
-            .get(row / 2)
+            .get(row)
             .filter(|n| !n.more)
             .map(watch_item)
     }
@@ -183,8 +183,8 @@ impl App {
     fn visible_monitor_items(&self) -> Vec<Item> {
         let mut items = self.visible_peripheral_monitors();
         if self.variable_pane == 1 && self.view_rects[1].height > 0 {
-            let start = self.view_tops[1] / 2;
-            let end = (self.view_tops[1] + self.view_rects[1].height as usize).div_ceil(2);
+            let start = self.view_tops[1];
+            let end = self.view_tops[1] + self.view_rects[1].height as usize;
             items.extend(
                 watch::rows(&self.snapshot.watches)
                     .iter()

@@ -59,6 +59,28 @@ struct WatchLine {
     expanded: bool,
     limited: bool,
 }
+/// Pads or cuts `text` to exactly `width` terminal columns.
+fn fit_width(text: &str, width: usize) -> String {
+    let full = unicode_width::UnicodeWidthStr::width(text);
+    let (mut out, mut used) = (String::with_capacity(width + 4), 0);
+    if full <= width {
+        out.push_str(text);
+        used = full;
+    } else {
+        for ch in text.chars() {
+            let w = unicode_width::UnicodeWidthChar::width(ch).unwrap_or(0);
+            if used + w + 1 > width {
+                break;
+            }
+            out.push(ch);
+            used += w;
+        }
+        out.push('…');
+        used += 1;
+    }
+    out.extend(std::iter::repeat_n(' ', width.saturating_sub(used)));
+    out
+}
 /// Same count as `rows(watches).len()` without building the list.
 pub(super) fn row_count(watches: &[Variable]) -> usize {
     fn visit(value: &Variable) -> usize {
@@ -138,7 +160,7 @@ impl App {
         };
         let nodes = rows(values);
         let node = nodes
-            .get(self.selected(pane) / 2)
+            .get(self.selected(pane))
             .filter(|n| !n.more)
             .ok_or("Select a scalar variable or member")?;
         let type_hint = node
@@ -185,7 +207,7 @@ impl App {
         engine: Option<&EngineHandle>,
     ) -> bool {
         let nodes = rows(&self.snapshot.locals);
-        let Some(node) = nodes.get(self.selected(9) / 2) else {
+        let Some(node) = nodes.get(self.selected(9)) else {
             return false;
         };
         let Some(tree) = &node.value.tree else {
@@ -237,7 +259,7 @@ impl App {
             return;
         }
         let row = self.selected(pane);
-        let previous = old.get(row / 2);
+        let previous = old.get(row);
         let index = previous
             .and_then(|previous| {
                 next.iter()
@@ -248,18 +270,14 @@ impl App {
                         })
                     })
             })
-            .unwrap_or_else(|| (row / 2).min(next.len().saturating_sub(1)));
-        let row = if next.is_empty() {
-            0
-        } else {
-            index * 2 + row % 2
-        };
+            .unwrap_or_else(|| row.min(next.len().saturating_sub(1)));
+        let row = if next.is_empty() { 0 } else { index };
         self.selections[pane] = row;
         if self.pane == pane {
             self.selection = row;
         }
         let visible = self.view_rects[pane].height.max(1) as usize;
-        let max = (next.len() * 2).saturating_sub(visible);
+        let max = next.len().saturating_sub(visible);
         self.view_tops[pane] = self.view_tops[pane].min(max);
         if self.pane == pane {
             if row < self.view_tops[pane] {
@@ -281,7 +299,7 @@ impl App {
     }
     pub(super) fn remove_selected_watch(&mut self, engine: Option<&EngineHandle>) {
         if let Some(value) = rows(&self.snapshot.watches)
-            .get(self.selected(1) / 2)
+            .get(self.selected(1))
             .filter(|v| v.removable())
         {
             let name = value.root.to_owned();
@@ -292,7 +310,7 @@ impl App {
     }
     pub(super) fn watch_removable(&self) -> bool {
         rows(&self.snapshot.watches)
-            .get(self.selected(1) / 2)
+            .get(self.selected(1))
             .is_some_and(WatchRow::removable)
     }
     /// Returns false for scalar rows so Enter can still focus the input.
@@ -302,7 +320,7 @@ impl App {
         engine: Option<&EngineHandle>,
     ) -> bool {
         let nodes = rows(&self.snapshot.watches);
-        let Some(node) = nodes.get(self.selected(1) / 2) else {
+        let Some(node) = nodes.get(self.selected(1)) else {
             return false;
         };
         let Some(tree) = &node.value.tree else {
@@ -329,7 +347,7 @@ impl App {
         } else {
             &self.snapshot.locals
         });
-        let node = nodes.get(row / 2).filter(|v| !v.more)?;
+        let node = nodes.get(row).filter(|v| !v.more)?;
         Some(formats::Item {
             register: None,
             rect: Rect::default(),
@@ -399,8 +417,6 @@ impl App {
     }
     pub(super) fn watch_numeric_view(&mut self, f: &mut UiFrame, pane: usize, rect: Rect) {
         let start = self.view_tops[pane];
-        // Each node draws two rows (name, value): collect each visible node once.
-        let first = start / 2;
         let lines: Vec<WatchLine> = {
             let nodes = rows(if pane == 1 {
                 &self.snapshot.watches
@@ -409,54 +425,54 @@ impl App {
             });
             nodes
                 .iter()
-                .take((start + rect.height as usize).div_ceil(2))
-                .skip(first)
+                .skip(start)
+                .take(rect.height as usize)
                 .map(|node| self.watch_line(pane, node))
                 .collect()
         };
-        for row in start..start + rect.height as usize {
-            let Some(line) = lines.get(row / 2 - first) else {
-                break;
-            };
+        // One row per variable. Names share a column so values line up; long
+        // names give way to values beyond 45% of the width.
+        let name_width = lines
+            .iter()
+            .filter(|line| !line.more)
+            .map(|line| {
+                2 * line.depth + 2 + unicode_width::UnicodeWidthStr::width(line.name.as_str())
+            })
+            .max()
+            .unwrap_or(0)
+            .clamp(6, (rect.width as usize * 45 / 100).max(6));
+        for (offset, line) in lines.into_iter().enumerate() {
+            let row = start + offset;
             let close_width = if pane == 1 && line.removable && rect.width >= 8 {
                 3
             } else {
                 0
             };
-            let hit = Rect::new(
-                rect.x,
-                rect.y + (row - start) as u16,
-                rect.width - close_width,
-                1,
-            );
+            let hit = Rect::new(rect.x, rect.y + offset as u16, rect.width - close_width, 1);
+            let indent = "  ".repeat(line.depth);
             let mut item = formats::Item {
                 register: None,
                 rect: hit,
                 pane,
                 row,
-                key: line.format_key.clone(),
-                name: line.name.clone(),
-                raw: line.raw.clone(),
+                key: line.format_key,
+                name: line.name,
+                raw: line.raw,
                 default: crate::config::Radix::Decimal,
             };
-            let indent = "  ".repeat(line.depth);
             let spans = if line.more {
                 vec![Span::styled(
                     format!(
                         "{indent}  {}",
-                        if row % 2 == 0 {
-                            if line.limited {
-                                "Expansion limit reached"
-                            } else {
-                                "… Load more (Enter)"
-                            }
+                        if line.limited {
+                            "Expansion limit reached"
                         } else {
-                            ""
+                            "… Load more (Enter)"
                         }
                     ),
                     Style::default().fg(theme::MUTED),
                 )]
-            } else if row % 2 == 0 {
+            } else {
                 let arrow = match (line.expandable, line.expanded, self.project.ui.unicode) {
                     (true, true, true) => "▾",
                     (true, false, true) => "▸",
@@ -464,25 +480,28 @@ impl App {
                     (true, false, false) => "+",
                     _ => " ",
                 };
-                vec![
+                let mut spans = vec![
                     Span::styled(
-                        format!("{indent}{arrow} {}", item.name),
+                        fit_width(&format!("{indent}{arrow} {}", item.name), name_width),
                         Style::default().fg(theme::MUTED),
                     ),
-                    Span::styled(
-                        line.type_name
-                            .as_ref()
-                            .map(|t| format!("  {t}"))
-                            .unwrap_or_default(),
-                        Style::default().fg(theme::DIM),
-                    ),
-                ]
-            } else {
-                let mut spans = vec![Span::raw(format!("{indent}    "))];
+                    Span::raw(" "),
+                ];
                 spans.extend(self.numeric_spans(&item, line.changed, line.error));
+                if let Some(type_name) = &line.type_name {
+                    let used: usize = spans.iter().map(Span::width).sum();
+                    if used + 2 + unicode_width::UnicodeWidthStr::width(type_name.as_str())
+                        <= hit.width as usize
+                    {
+                        spans.push(Span::styled(
+                            format!("  {type_name}"),
+                            Style::default().fg(theme::DIM),
+                        ));
+                    }
+                }
                 spans
             };
-            let selected = self.pane == pane && self.selected(pane) / 2 == row / 2;
+            let selected = self.pane == pane && self.selected(pane) == row;
             let bg = if selected {
                 theme::SELECTED
             } else {
@@ -493,7 +512,7 @@ impl App {
                 vec![Line::from(spans).style(Style::default().bg(bg))],
                 hit,
             );
-            if line.more || (line.expandable && row % 2 == 0) {
+            if line.more || line.expandable {
                 let arrow = if line.more {
                     hit
                 } else {
@@ -505,9 +524,9 @@ impl App {
                     )
                 };
                 if pane == 1 {
-                    self.watch.expand_hits.push((arrow, line.key.clone()));
+                    self.watch.expand_hits.push((arrow, line.key));
                 } else {
-                    self.watch.local_expand_hits.push((arrow, line.key.clone()));
+                    self.watch.local_expand_hits.push((arrow, line.key));
                 }
                 // Value/name selection outside the disclosure arrow is unchanged.
                 if !line.more && arrow.right() > hit.x {
@@ -517,13 +536,10 @@ impl App {
             }
             if close_width > 0 {
                 let close = Rect::new(hit.right(), hit.y, close_width, 1);
-                let show = row % 2 == 0 || row == start;
                 let enabled = self.watch.pending_remove.is_none() && self.pending_task.is_none();
                 let hover = self.pointer_over(close);
                 f.render_widget(
-                    Paragraph::new(if !show {
-                        "   "
-                    } else if self.project.ui.unicode {
+                    Paragraph::new(if self.project.ui.unicode {
                         " × "
                     } else {
                         " x "
@@ -537,17 +553,11 @@ impl App {
                             } else {
                                 theme::MUTED
                             })
-                            .bg(if show && enabled && hover {
-                                theme::HOVER
-                            } else {
-                                bg
-                            }),
+                            .bg(if enabled && hover { theme::HOVER } else { bg }),
                     ),
                     close,
                 );
-                if show {
-                    self.watch.remove_hits.push((close, line.root.clone()));
-                }
+                self.watch.remove_hits.push((close, line.root));
             }
             if !line.more {
                 self.formats.hits.push(item);
@@ -568,7 +578,7 @@ impl App {
                     .position(|v| v.key() == *key);
                 if let Some(index) = index {
                     self.select_pane(9);
-                    self.selection = index * 2;
+                    self.selection = index;
                     self.editing = false;
                     self.watch_editing = false;
                     self.completion.invalidate();
@@ -597,7 +607,7 @@ impl App {
                 .position(|v| v.key() == *key);
             if let Some(index) = index {
                 self.select_pane(1);
-                self.selection = index * 2;
+                self.selection = index;
                 self.editing = false;
                 self.watch_editing = false;
                 self.completion.invalidate();
@@ -620,7 +630,7 @@ impl App {
                 return true;
             };
             self.select_pane(1);
-            self.selection = index * 2;
+            self.selection = index;
         } else if !self.watch.remove_rect.contains(point) {
             return false;
         }
@@ -668,7 +678,7 @@ mod tests {
     fn watch_delete_tail_keeps_a_valid_selection_until_empty() {
         let (engine, requests) = session::test_channel();
         let mut a = app(&["first", "middle", "last"]);
-        a.selection = 5;
+        a.selection = 2;
         for name in ["last", "middle", "first"] {
             key(&mut a, KeyCode::Delete, &engine);
             let request = requests
@@ -687,19 +697,19 @@ mod tests {
     fn watch_selection_follows_expression_when_an_earlier_item_is_removed() {
         let (engine, _) = session::test_channel();
         let mut a = app(&["first", "middle", "last"]);
-        a.selection = 3;
+        a.selection = 1;
         removed(
             &mut a,
             &Request::new(15, "unwatch", json!({"expression":"first"})),
         );
-        assert_eq!(a.snapshot.watches[a.selected(1) / 2].name, "middle");
+        assert_eq!(a.snapshot.watches[a.selected(1)].name, "middle");
         a.select_pane(0);
         removed(
             &mut a,
             &Request::new(16, "unwatch", json!({"expression":"last"})),
         );
         a.select_pane(1);
-        assert_eq!(a.selected(1) / 2, 0);
+        assert_eq!(a.selected(1), 0);
         key(&mut a, KeyCode::Delete, &engine);
     }
     #[test]
@@ -731,17 +741,17 @@ mod tests {
         );
     }
     #[test]
-    fn watch_delete_handles_scrolled_name_and_value_rows_and_mouse_button() {
+    fn watch_delete_handles_scrolled_rows_by_key_and_mouse_button() {
         let names = (0..40).map(|i| format!("counter_{i}")).collect::<Vec<_>>();
         let refs = names.iter().map(String::as_str).collect::<Vec<_>>();
-        for value_row in [false, true] {
+        for by_button in [false, true] {
             let (engine, requests) = session::test_channel();
             let mut a = app(&refs);
             a.fx.mode = crate::config::Motion::Off;
             render(&mut a);
-            a.set_view_top(1, 60);
+            a.set_view_top(1, 30);
             render(&mut a);
-            let row = 60 + usize::from(value_row);
+            let row = 30;
             let hit = a
                 .formats
                 .hits
@@ -751,13 +761,11 @@ mod tests {
                 .rect;
             click(&mut a, hit, &engine);
             let t = render(&mut a);
-            for offset in 0..2 {
-                assert_eq!(
-                    t.backend().buffer()[(a.view_rects[1].x, a.view_rects[1].y + offset)].bg,
-                    theme::SELECTED
-                );
-            }
-            if value_row {
+            assert_eq!(
+                t.backend().buffer()[(a.view_rects[1].x, a.view_rects[1].y)].bg,
+                theme::SELECTED
+            );
+            if by_button {
                 let button = a.watch.remove_rect;
                 click(&mut a, button, &engine);
             } else {
@@ -778,7 +786,7 @@ mod tests {
     fn watch_delete_serializes_requests_and_recovers_from_failure() {
         let (engine, requests) = session::test_channel();
         let mut a = app(&["first", "last"]);
-        a.selection = 2;
+        a.selection = 1;
         key(&mut a, KeyCode::Delete, &engine);
         let first = requests.try_recv().unwrap();
         key(&mut a, KeyCode::Delete, &engine);
@@ -810,7 +818,7 @@ mod tests {
     fn watch_remove_button_works_while_running_and_input_delete_keeps_draft() {
         let (engine, requests) = session::test_channel();
         let mut a = app(&["first", "last"]);
-        a.selection = 3;
+        a.selection = 1;
         a.snapshot.state = "RUNNING".into();
         a.focus_input(true);
         a.watch_input = "unfinished_expression".into();
@@ -967,7 +975,7 @@ mod tests {
             assert!(a.watch.add_rect.width > 0 && a.watch.add_rect.height > 0);
             assert_eq!(a.watch_input_rect.right(), a.watch.add_rect.x);
             assert!(a.watch_input_rect.width >= 10);
-            a.set_view_top(1, 61);
+            a.set_view_top(1, 30);
             t.draw(|f| draw(f, &mut a)).unwrap();
             let (close, name) = a.watch.remove_hits.first().unwrap().clone();
             assert_eq!(name, "counter_30");
@@ -1063,14 +1071,14 @@ mod tests {
     fn variable_editor_binds_selected_nested_member_and_locals_frame_without_assignment() {
         let (engine, requests) = session::test_channel();
         let mut a = tree_app();
-        a.selection = 4;
+        a.selection = 2;
         let candidate = a.variable_edit_candidate(1).unwrap();
         assert_eq!(candidate.target["expression"], "outer");
         assert_eq!(candidate.target["path"], json!([0, 0]));
         a.snapshot.locals = a.snapshot.watches.clone();
         a.snapshot.frame.level = 2;
         a.select_pane(9);
-        a.selection = 4;
+        a.selection = 2;
         key(&mut a, KeyCode::Char('e'), &engine);
         assert!(a.write_editor.modal());
         a.write_paste("77");
@@ -1106,7 +1114,7 @@ mod tests {
             assert_eq!(request.method, "local_expand");
             assert_eq!(request.params["expanded"], false);
         }
-        a.selection = 4;
+        a.selection = 2;
         let mut next = a.snapshot.clone();
         next.locals[0].tree.as_mut().unwrap().expanded = false;
         a.update(Event::Snapshot {
@@ -1135,7 +1143,7 @@ mod tests {
             request.params,
             json!({"expression":"outer","path":[],"expanded":false,"more":false})
         );
-        a.selection = 2; // Nested pair, not the second root.
+        a.selection = 1; // Nested pair, not the second root.
         key(&mut a, KeyCode::Right, &engine);
         assert_eq!(
             requests.try_recv().unwrap().params,
@@ -1144,7 +1152,7 @@ mod tests {
         key(&mut a, KeyCode::Enter, &engine);
         assert_eq!(requests.try_recv().unwrap().params["expanded"], false);
         assert!(!a.watch_editing);
-        a.selection = 10; // Scalar root still opens Watch input on Enter.
+        a.selection = 5; // Scalar root still opens Watch input on Enter.
         key(&mut a, KeyCode::Enter, &engine);
         assert!(a.watch_editing);
         assert!(requests.try_recv().is_err());
@@ -1153,36 +1161,36 @@ mod tests {
     fn watch_tree_delete_cannot_remove_a_sibling_root_from_a_child_row() {
         let (engine, requests) = session::test_channel();
         let mut a = tree_app();
-        a.selection = 4;
+        a.selection = 2;
         key(&mut a, KeyCode::Delete, &engine);
         assert!(requests.try_recv().is_err());
         assert!(!a.watch_removable());
-        a.selection = 10;
+        a.selection = 5;
         key(&mut a, KeyCode::Delete, &engine);
         assert_eq!(requests.try_recv().unwrap().params["expression"], "counter");
     }
     #[test]
     fn watch_tree_selection_follows_collapsed_ancestor_and_shifted_roots() {
         let mut a = tree_app();
-        a.selection = 5;
+        a.selection = 2;
         let mut snapshot = a.snapshot.clone();
         snapshot.watches[0].tree.as_mut().unwrap().expanded = false;
         a.update(Event::Snapshot {
             snapshot: Box::new(snapshot),
         });
-        assert_eq!(a.selection, 1); // Same name/value parity, closest visible ancestor.
-        assert_eq!(a.view_len(1), 4);
-        a.selection = 3;
+        assert_eq!(a.selection, 0); // Closest visible ancestor.
+        assert_eq!(a.view_len(1), 2);
+        a.selection = 1;
         let expanded = tree_app().snapshot;
         a.update(Event::Snapshot {
             snapshot: Box::new(expanded),
         });
-        assert_eq!(a.selection, 11); // Root counter stayed selected after new rows appeared.
+        assert_eq!(a.selection, 5); // Root counter stayed selected after new rows appeared.
     }
     #[test]
     fn watch_tree_children_have_independent_radix_and_more_is_not_a_value() {
         let mut a = tree_app();
-        a.selection = 4;
+        a.selection = 2;
         a.open_format(None);
         let item = a.formats.popup.take().unwrap();
         assert_eq!(item.raw, "53");
@@ -1203,7 +1211,7 @@ mod tests {
             crate::config::Radix::Decimal
         );
         a.formats.selected = Some(item.key);
-        a.selection = 8; // Load more.
+        a.selection = 4; // Load more.
         a.open_format(None);
         assert!(a.formats.popup.is_none());
     }
@@ -1211,7 +1219,7 @@ mod tests {
     fn watch_tree_paging_and_running_expansion_guards() {
         let (engine, requests) = session::test_channel();
         let mut a = tree_app();
-        a.selection = 8;
+        a.selection = 4;
         key(&mut a, KeyCode::Enter, &engine);
         assert_eq!(
             requests.try_recv().unwrap().params,

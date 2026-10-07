@@ -224,7 +224,7 @@ impl App {
             3 => &self.snapshot.registers,
             _ => return None,
         };
-        let v = vars.get(if pane == 3 { row } else { row / 2 })?;
+        let v = vars.get(row)?;
         Some(Item {
             register: None,
             rect: Rect::default(),
@@ -444,22 +444,18 @@ impl App {
             self.watch_numeric_view(f, pane, rect);
             return;
         }
-        let stride = if pane == 3 { 1 } else { 2 };
+        // The GDB register list, one row each. Copy only the visible rows,
+        // not the whole list every frame.
         let start = self.view_tops[pane];
-        // Copy the visible rows only, not the whole register list every frame.
-        let visible: Vec<_> = {
-            let vars = match pane {
-                1 => &self.snapshot.watches,
-                9 => &self.snapshot.locals,
-                _ => &self.snapshot.registers,
-            };
-            (start..start + rect.height as usize)
-                .map_while(|row| {
-                    vars.get(row / stride)
-                        .map(|v| (row, v.name.clone(), v.value.clone(), v.changed, v.error))
-                })
-                .collect()
-        };
+        let visible: Vec<_> = self
+            .snapshot
+            .registers
+            .iter()
+            .enumerate()
+            .skip(start)
+            .take(rect.height as usize)
+            .map(|(row, v)| (row, v.name.clone(), v.value.clone(), v.changed, v.error))
+            .collect();
         for (row, name, value, changed, error) in visible {
             let hit = Rect::new(rect.x, rect.y + (row - start) as u16, rect.width, 1);
             let item = Item {
@@ -470,29 +466,13 @@ impl App {
                 key: self.numeric_key(pane, &name),
                 name,
                 raw: value,
-                default: if pane == 3 {
-                    Radix::Hex
-                } else {
-                    Radix::Decimal
-                },
+                default: Radix::Hex,
             };
-            let spans = if stride == 2 && row % 2 == 0 {
-                vec![Span::styled(
-                    format!("  {}", item.name),
-                    Style::default().fg(theme::MUTED),
-                )]
-            } else {
-                let mut spans = vec![Span::styled(
-                    if pane == 3 {
-                        format!("  {:8} ", item.name)
-                    } else {
-                        "    ".into()
-                    },
-                    Style::default().fg(theme::MUTED),
-                )];
-                spans.extend(self.numeric_spans(&item, changed, error));
-                spans
-            };
+            let mut spans = vec![Span::styled(
+                format!("  {:8} ", item.name),
+                Style::default().fg(theme::MUTED),
+            )];
+            spans.extend(self.numeric_spans(&item, changed, error));
             let selected = self.formats.selected.as_ref() == Some(&item.key)
                 || (self.pane == pane && self.selected(pane) == row);
             let bg = if selected {
