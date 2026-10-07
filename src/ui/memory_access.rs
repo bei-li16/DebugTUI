@@ -109,7 +109,7 @@ impl App {
             || !access
                 .completed_ms
                 .is_some_and(|end| end >= access.timestamp_ms)
-            || !matches!(state, "STOPPED" | "RUNNING")
+            || !matches!(state, state::STOPPED | state::RUNNING)
             || result["atomic"] != false
             || state != self.snapshot.state
         {
@@ -139,7 +139,7 @@ impl App {
                 } else {
                     format!("-data-read-memory-bytes {address} {}", bits / 8)
                 };
-                state == "STOPPED"
+                state == state::STOPPED
                     && *configured_endpoint == self.memory_gdb_configured_endpoint()
                     && endpoint
                         .as_ref()
@@ -178,7 +178,7 @@ impl App {
                         && *byte_order == order
                         && !atomic
                         && (configured.cores.is_empty() || configured.cores.contains(&context.core))
-                        && (state == "STOPPED" || configured.while_running)
+                        && (state == state::STOPPED || configured.while_running)
                         && access.command
                             == format!(
                                 "{} read_memory {address} {bus} {}",
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn exact_wide_scalar_receipt_rejects_wrong_source_layout_and_raw_value() {
         let mut app = App::new(Project::default(), false);
-        app.snapshot.state = "STOPPED".into();
+        app.snapshot.state = state::STOPPED.into();
         app.project.memory_access_source = "profile:fixture".into();
         app.project.memory_access.push(crate::config::MemoryAccess {
             id: "bus".into(),

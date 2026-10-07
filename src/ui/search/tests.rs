@@ -168,7 +168,7 @@ fn other_dialogs_own_paste_when_file_search_was_focused() {
 fn symbols_debounce_bound_requests_and_reject_stale_query_and_core_replies() {
     let (engine, requests) = session::test_channel();
     let mut a = App::new(Project::default(), false);
-    a.snapshot.state = "STOPPED".into();
+    a.snapshot.state = state::STOPPED.into();
     a.open_symbol_search();
     a.search_paste("spi");
     assert!(!a.ensure_symbol_search(Some(&engine)));
@@ -189,14 +189,14 @@ fn symbols_debounce_bound_requests_and_reject_stale_query_and_core_replies() {
         index: 1,
         name: "core1".into(),
         endpoint: "localhost:3334".into(),
-        state: "STOPPED".into(),
+        state: state::STOPPED.into(),
     });
     a.update(Event::Snapshot {
         snapshot: Box::new(snapshot),
     });
     a.symbol_response(current.id, &json!({"symbols":[{"name":"old","kind":"function","file":"wrong.c","line":1,"description":""}]}), None);
     assert!(a.symbol_search.items.is_empty());
-    a.snapshot.state = "RUNNING".into();
+    a.snapshot.state = state::RUNNING.into();
     a.ensure_symbol_search(Some(&engine));
     assert!(a.symbol_search.hint.contains("Pause/connect"));
     assert!(requests.try_recv().is_err()); // No implicit pause, expression evaluation or target run.
@@ -252,7 +252,7 @@ fn symbol_navigation_maps_ci_paths_and_preserves_debugger_frame() {
 fn closing_pending_search_can_retry_and_error_partial_results_are_visible() {
     let (engine, requests) = session::test_channel();
     let mut a = App::new(Project::default(), false);
-    a.snapshot.state = "READY".into();
+    a.snapshot.state = state::READY.into();
     a.open_symbol_search();
     a.search_paste("spi");
     a.symbol_search.changed -= Duration::from_secs(1);
@@ -282,7 +282,7 @@ fn closing_pending_search_can_retry_and_error_partial_results_are_visible() {
 fn files_load_from_ready_elf_without_requesting_target_memory_or_registers() {
     let (engine, requests) = session::test_channel();
     let mut a = App::new(Project::default(), false);
-    a.snapshot.state = "READY".into();
+    a.snapshot.state = state::READY.into();
     a.select_pane(pane::FILES);
     a.side_pane = pane::MEMORY;
     render(&mut a, 120, 36);

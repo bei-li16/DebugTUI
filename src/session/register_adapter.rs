@@ -46,7 +46,7 @@ impl Engine {
                 lease.quarantine(&error);
             }
             self.snapshot.register_probe = None;
-            self.state("FAULT");
+            self.state(state::FAULT);
             return Err((Reason::TransportError, error));
         }
         let final_thread = self.write_thread().map_err(|error| {

@@ -87,7 +87,7 @@ impl App {
     fn request_mpu_regions(&mut self, engine: Option<&EngineHandle>) {
         if self.demo
             || engine.is_none()
-            || self.snapshot.state != "STOPPED"
+            || self.snapshot.state != state::STOPPED
             || self.register_view.pending.is_some()
             || self.register_view.probe_pending.is_some()
         {
@@ -507,7 +507,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         .as_ref()
         .filter(|p| {
             p.context == context
-                && app.snapshot.state == "STOPPED"
+                && app.snapshot.state == state::STOPPED
                 && p.identity.as_ref().is_some_and(|i| {
                     if m_profile {
                         i.model.as_ref().is_some_and(|model| {
@@ -606,7 +606,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
                 .values()
                 .cloned()
                 .map(|mut s| {
-                    if app.snapshot.state != "STOPPED" {
+                    if app.snapshot.state != state::STOPPED {
                         s.stale();
                     }
                     s

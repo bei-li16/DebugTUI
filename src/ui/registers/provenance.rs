@@ -426,6 +426,7 @@ mod tests {
         assert!(!text.contains("FP current Debug EL: 2"));
     }
     use crate::registers::{Reader, Scope, State};
+    use crate::session::state;
     use crate::ui::registers::{
         Row, draw_status,
         framework_tests::key,
@@ -669,7 +670,12 @@ mod tests {
                     evidence.context.session += 1;
                 }
                 app.snapshot.register_probe = Some(evidence);
-                app.snapshot.state = if stopped { "STOPPED" } else { "RUNNING" }.into();
+                app.snapshot.state = if stopped {
+                    state::STOPPED
+                } else {
+                    state::RUNNING
+                }
+                .into();
                 key(&mut app, KeyCode::Char('t'), &engine);
                 let mut terminal = Terminal::new(TestBackend::new(100, 24)).unwrap();
                 terminal.draw(|f| draw_status(f, &mut app)).unwrap();

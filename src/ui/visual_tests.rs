@@ -13,7 +13,7 @@ fn theme_preserves_hit_areas_focus_and_execution_context() {
     // Static theme assertions are independent of transient hover interpolation.
     a.project.ui.animations = crate::config::Motion::Off;
     a.fx.mode = crate::config::Motion::Off;
-    a.snapshot.state = "STOPPED".into();
+    a.snapshot.state = state::STOPPED.into();
     for (w, h) in [(45, 12), (80, 24), (120, 36), (180, 50)] {
         let t = terminal(&mut a, w, h);
         assert_eq!(
@@ -132,7 +132,7 @@ fn wide_workspace_aligns_project_core_search_and_shared_execution_toolbar() {
             index,
             name: format!("core.{index}"),
             endpoint: format!("localhost:{}", 3333 + index),
-            state: "STOPPED".into(),
+            state: state::STOPPED.into(),
         })
         .collect();
     a.snapshot.core = Some(a.snapshot.cores[0].clone());
@@ -245,13 +245,13 @@ fn export_color_previews_when_requested() {
     a.source_top = 8;
     a.fx.request(400, "step");
     let mut running = a.snapshot.clone();
-    running.state = "RUNNING".into();
+    running.state = state::RUNNING.into();
     a.update(Event::Snapshot {
         snapshot: Box::new(running),
     });
     capture(root, "running", &mut a, 160, 42);
     let mut stopped = a.snapshot.clone();
-    stopped.state = "STOPPED".into();
+    stopped.state = state::STOPPED.into();
     stopped.generation += 1;
     stopped.frame.line = 19;
     stopped.stop_reason = "breakpoint-hit".into();

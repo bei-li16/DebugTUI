@@ -15,7 +15,7 @@ impl Engine {
         after: bool,
     ) -> Result<bool, String> {
         self.check_register_read_cancelled()?;
-        if self.register_context() != probe.context || self.snapshot.state != "STOPPED" {
+        if self.register_context() != probe.context || self.snapshot.state != state::STOPPED {
             self.snapshot.register_probe = None;
             return Err("Context changed; discarded MMIO capability probe".into());
         }
@@ -97,7 +97,7 @@ impl Engine {
         let valid = sample.state == State::Valid;
         probe.samples.push(sample);
         self.check_register_read_cancelled()?;
-        if self.register_context() != probe.context || self.snapshot.state != "STOPPED" {
+        if self.register_context() != probe.context || self.snapshot.state != state::STOPPED {
             self.snapshot.register_probe = None;
             return Err("Context changed; discarded MMIO capability probe".into());
         }

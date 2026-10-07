@@ -171,7 +171,7 @@ impl Engine {
         if indices.len() != 1 {
             return Err("GDB writer register name is missing or ambiguous".into());
         }
-        if self.register_context() != expected || self.snapshot.state != "STOPPED" {
+        if self.register_context() != expected || self.snapshot.state != state::STOPPED {
             return Err("Write context changed during preview".into());
         }
         let token = format!(
@@ -286,7 +286,7 @@ impl Engine {
             } else {
                 None
             };
-            if self.register_context() != draft.context || self.snapshot.state != "STOPPED" {
+            if self.register_context() != draft.context || self.snapshot.state != state::STOPPED {
                 return Err("Write context changed during the fresh read".into());
             }
             let resolved = draft.plan.resolve(fresh.as_ref())?;
@@ -318,13 +318,14 @@ impl Engine {
                     lease.quarantine(&error);
                 }
                 self.register_access_fault = Some(error.clone());
-                self.state("FAULT");
+                self.state(state::FAULT);
                 result["error"] = json!(error);
                 result["code"] = json!("write_result_unknown");
                 Outcome::Unknown
             }
             Ok(_)
-                if self.register_context() != draft.context || self.snapshot.state != "STOPPED" =>
+                if self.register_context() != draft.context
+                    || self.snapshot.state != state::STOPPED =>
             {
                 result["error"] =
                     json!("Write was accepted, but target context changed before verification");
@@ -335,7 +336,7 @@ impl Engine {
             Ok(_) => match self.gdb_register_value(&draft.gdb_name, resolved.command.bits) {
                 Ok(value)
                     if self.register_context() == draft.context
-                        && self.snapshot.state == "STOPPED" =>
+                        && self.snapshot.state == state::STOPPED =>
                 {
                     result["observed"] = json!(value);
                     if resolved.matches(&value)? {
@@ -386,7 +387,7 @@ impl Engine {
         self.snapshot.memory.clear();
         self.snapshot.stack.clear();
         self.snapshot.assembly.clear();
-        self.refresh_pending = self.snapshot.state == "STOPPED";
+        self.refresh_pending = self.snapshot.state == state::STOPPED;
         self.publish();
     }
 }

@@ -84,7 +84,7 @@ impl App {
         if owner_changed
             || matches!(
                 next.state.as_str(),
-                "DISCONNECTED" | "STARTING GDB" | "FAULT"
+                state::DISCONNECTED | state::STARTING_GDB | state::FAULT
             )
         {
             self.memory_panel.popup = None;
@@ -381,13 +381,16 @@ impl App {
         if self.demo || self.memory_panel.busy() || self.setup.is_some() || self.quitting {
             return false;
         }
-        if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING") {
+        if !matches!(
+            self.snapshot.state.as_str(),
+            state::STOPPED | state::RUNNING
+        ) {
             return false;
         }
         let context = self.register_context();
         let key = self.memory_key();
         let channel = self.memory_channel();
-        if self.snapshot.state == "RUNNING"
+        if self.snapshot.state == state::RUNNING
             && !self.project.memory_access.iter().any(|access| {
                 access.id == channel
                     && access.while_running
@@ -400,7 +403,7 @@ impl App {
             return false;
         }
         // Arbitrary ranges are manual while running. Do not poll unknown MMIO.
-        if !manual && self.snapshot.state != "STOPPED" {
+        if !manual && self.snapshot.state != state::STOPPED {
             return false;
         }
         let epoch = self.snapshot.memory_selection_epoch;
@@ -454,7 +457,7 @@ impl App {
             if result["channel"].as_str() != Some(pending.channel.as_str())
                 || serde_json::from_value::<Context>(result["context"].clone()).ok()
                     != Some(pending.context.clone())
-                || (pending.channel.is_empty() && self.snapshot.state != "STOPPED")
+                || (pending.channel.is_empty() && self.snapshot.state != state::STOPPED)
             {
                 return Err("Memory response belongs to an expired context or route".into());
             }
@@ -577,7 +580,7 @@ impl App {
                 && sample.epoch == self.snapshot.memory_selection_epoch
                 && sample.route_key == self.memory_route_fingerprint(&sample.channel)
                 && self.memory_panel.error.is_none()
-                && (self.snapshot.state == "STOPPED" || !sample.channel.is_empty());
+                && (self.snapshot.state == state::STOPPED || !sample.channel.is_empty());
             format!(
                 "{} · {} · {}s ago{}",
                 if fresh { "sampled" } else { "retained / stale" },
@@ -668,7 +671,7 @@ mod tests {
 
     fn app() -> App {
         let mut app = App::new(Project::default(), false);
-        app.snapshot.state = "STOPPED".into();
+        app.snapshot.state = state::STOPPED.into();
         app.snapshot.register_session = 91;
         app.project.debug.chip = "chip-a".into();
         app.select_pane(pane::MEMORY);
@@ -810,7 +813,7 @@ mod tests {
                         name: "core1".into(),
                         index: 1,
                         endpoint: "localhost:3334".into(),
-                        state: "STOPPED".into(),
+                        state: state::STOPPED.into(),
                     })
                 }
                 _ => {
@@ -846,14 +849,14 @@ mod tests {
         );
         assert!(!app.ensure_memory_dump(Some(&engine)));
         assert!(requests.try_recv().is_err());
-        app.snapshot.state = "RUNNING".into();
+        app.snapshot.state = state::RUNNING.into();
         assert!(app.memory_caption().contains("stale"));
         assert!(!app.request_memory_dump(Some(&engine), true));
         assert!(requests.try_recv().is_err());
-        app.snapshot.state = "STOPPED".into();
+        app.snapshot.state = state::STOPPED.into();
         assert!(app.request_memory_dump(Some(&engine), true));
         let read = requests.recv().unwrap();
-        app.snapshot.state = "RUNNING".into();
+        app.snapshot.state = state::RUNNING.into();
         app.memory_response(read.id, &response, None);
         assert!(app.memory_panel.error.as_ref().unwrap().contains("expired"));
     }
@@ -869,7 +872,7 @@ mod tests {
                 interval_ms: 0,
             },
         );
-        app.snapshot.state = "RUNNING".into();
+        app.snapshot.state = state::RUNNING.into();
         assert!(!app.ensure_memory_dump(Some(&engine)));
         assert!(app.request_memory_dump(Some(&engine), true));
         let read = requests.recv().unwrap();
@@ -898,9 +901,9 @@ mod tests {
             name: "core1".into(),
             index: 1,
             endpoint: "localhost:3334".into(),
-            state: "RUNNING".into(),
+            state: state::RUNNING.into(),
         });
-        next.state = "RUNNING".into();
+        next.state = state::RUNNING.into();
         app.update(Event::Snapshot {
             snapshot: Box::new(next),
         });
@@ -956,7 +959,7 @@ mod tests {
                 "width" => bad["access"]["route"]["bits"] = json!(64),
                 "byte-order" => bad["access"]["route"]["byte_order"] = json!("big"),
                 "atomic" => bad["atomic"] = json!(true),
-                "state" => bad["state"] = json!("RUNNING"),
+                "state" => bad["state"] = json!(state::RUNNING),
                 _ => unreachable!(),
             }
             assert!(app.memory_response(read.id, &bad, None));

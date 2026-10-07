@@ -71,11 +71,9 @@ impl Engine {
             return Err("Shared write owner membership is not completely declared".into());
         }
         for core in &related {
-            if !self
-                .write_peers
-                .iter()
-                .any(|p| p.name == core.name && p.endpoint == core.endpoint && p.state == "STOPPED")
-            {
+            if !self.write_peers.iter().any(|p| {
+                p.name == core.name && p.endpoint == core.endpoint && p.state == state::STOPPED
+            }) {
                 return Err(format!(
                     "Shared write requires coordinator-confirmed stopped core {}",
                     core.name
@@ -153,7 +151,7 @@ impl Engine {
             }
             (access.tcl_endpoint, access.target)
         };
-        if context != &self.register_context() || self.snapshot.state != "STOPPED" {
+        if context != &self.register_context() || self.snapshot.state != state::STOPPED {
             return Err("Write context changed during capability checks".into());
         }
         Ok((owner, thread, endpoint, target))
@@ -494,7 +492,7 @@ impl Engine {
         };
         if self.cancellation.load(Ordering::Relaxed)
             || self.register_context() != draft.context
-            || self.snapshot.state != "STOPPED"
+            || self.snapshot.state != state::STOPPED
         {
             result["error"] = json!("Write cancelled or context changed before sending");
             return Ok(result);
@@ -511,14 +509,15 @@ impl Engine {
                     lease.quarantine(&error);
                 }
                 self.register_access_fault = Some(error.clone());
-                self.state("FAULT");
+                self.state(state::FAULT);
                 result["error"] = json!(error);
                 result["code"] = json!("write_result_unknown");
                 Outcome::Unknown
             }
             Ok(()) => {
                 let verify: Result<Outcome, String> = (|| {
-                    if self.register_context() != draft.context || self.snapshot.state != "STOPPED"
+                    if self.register_context() != draft.context
+                        || self.snapshot.state != state::STOPPED
                     {
                         return Err("Write accepted but context changed".into());
                     }
@@ -551,7 +550,7 @@ impl Engine {
                                 *native_little,
                             )?;
                             if self.register_context() != draft.context
-                                || self.snapshot.state != "STOPPED"
+                                || self.snapshot.state != state::STOPPED
                             {
                                 return Err("Context changed during verification".into());
                             }

@@ -211,13 +211,13 @@ mod tests {
     use super::*;
     fn fixture() -> App {
         let mut a = App::new(Project::default(), false);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.snapshot.cores = (0..3)
             .map(|i| session::CoreStatus {
                 index: i,
                 name: format!("core{i}"),
                 endpoint: String::new(),
-                state: "STOPPED".into(),
+                state: state::STOPPED.into(),
             })
             .collect();
         a.snapshot.core = Some(a.snapshot.cores[0].clone());

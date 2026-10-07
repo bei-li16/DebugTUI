@@ -97,7 +97,7 @@ fn per_core_register_ui_switches_catalogue_facts_and_drops_other_model_values() 
         index: 1,
         name: "r52".into(),
         endpoint: "localhost:3334".into(),
-        state: "STOPPED".into(),
+        state: state::STOPPED.into(),
     });
     app.update(Event::Snapshot {
         snapshot: Box::new(snapshot.clone()),
@@ -129,7 +129,7 @@ fn per_core_register_ui_switches_catalogue_facts_and_drops_other_model_values() 
         index: 0,
         name: "m4".into(),
         endpoint: "localhost:3333".into(),
-        state: "STOPPED".into(),
+        state: state::STOPPED.into(),
     });
     app.update(Event::Snapshot {
         snapshot: Box::new(snapshot),
@@ -177,9 +177,9 @@ fn m_multicore_ui_switch_rejects_late_same_ppb_value_from_the_other_builtin_mode
         index: 0,
         name: "m7".into(),
         endpoint: "localhost:3333".into(),
-        state: "STOPPED".into(),
+        state: state::STOPPED.into(),
     });
-    snapshot.state = "STOPPED".into();
+    snapshot.state = state::STOPPED.into();
     snapshot.register_session = 17;
     app.update(Event::Snapshot {
         snapshot: Box::new(snapshot),
@@ -193,7 +193,7 @@ fn m_multicore_ui_switch_rejects_late_same_ppb_value_from_the_other_builtin_mode
         index: 1,
         name: "m4".into(),
         endpoint: "localhost:3334".into(),
-        state: "STOPPED".into(),
+        state: state::STOPPED.into(),
     });
     snapshot.register_session = 18;
     app.update(Event::Snapshot {
@@ -596,7 +596,7 @@ fn register_change_highlight_compares_same_owner_and_field_bits_only_after_valid
                     index: 1,
                     name: "core1".into(),
                     endpoint: "localhost:3334".into(),
-                    state: "STOPPED".into(),
+                    state: state::STOPPED.into(),
                 })
             }
             _ => {}
@@ -628,7 +628,7 @@ fn register_change_highlight_compares_same_owner_and_field_bits_only_after_valid
         assert!(requests.try_recv().is_err());
     }
     // A previous value remains accessible, but a failed/currently stale read never claims a change.
-    app.snapshot.state = "RUNNING".into();
+    app.snapshot.state = state::RUNNING.into();
     terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
     assert_eq!(
         terminal.backend().buffer()[(6, app.view_rects[pane::REGS].y)].fg,

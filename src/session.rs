@@ -153,6 +153,20 @@ pub struct Breakpoint {
     pub pending: bool,
     pub restore_error: String,
 }
+/// Target states as snapshots and the JSON interface spell them.
+pub mod state {
+    pub const DISCONNECTED: &str = "DISCONNECTED";
+    pub const STARTING_SERVER: &str = "STARTING SERVER";
+    pub const STARTING_GDB: &str = "STARTING GDB";
+    pub const CONNECTING: &str = "CONNECTING";
+    pub const READY: &str = "READY";
+    pub const RUNNING: &str = "RUNNING";
+    pub const STOPPED: &str = "STOPPED";
+    pub const DISCONNECTING: &str = "DISCONNECTING";
+    pub const BUILDING: &str = "BUILDING";
+    pub const DOWNLOADING: &str = "DOWNLOADING";
+    pub const FAULT: &str = "FAULT";
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Snapshot {
     pub state: String,
@@ -201,7 +215,7 @@ pub struct CoreStatus {
 impl Default for Snapshot {
     fn default() -> Self {
         Self {
-            state: "DISCONNECTED".into(),
+            state: state::DISCONNECTED.into(),
             stop_reason: String::new(),
             frame: Frame::default(),
             stack: vec![],
@@ -615,9 +629,9 @@ impl Engine {
         let mut child = command.spawn().map_err(|e| format!("Start {kind}: {e}"))?;
         job.attach(&mut child)?;
         self.state(if kind == "build" {
-            "BUILDING"
+            state::BUILDING
         } else {
-            "DOWNLOADING"
+            state::DOWNLOADING
         });
         let stdout = log_reader(child.stdout.take().unwrap(), kind, self.logs.clone());
         let stderr = log_reader(child.stderr.take().unwrap(), kind, self.logs.clone());
@@ -652,7 +666,7 @@ impl Engine {
         let _ = stdout.join();
         let _ = stderr.join();
         self.flush_logs();
-        self.state("DISCONNECTED");
+        self.state(state::DISCONNECTED);
         outcome?;
         self.log(kind, "Command completed successfully.");
         if reconnect && !self.cancellation.load(Ordering::Relaxed) {
@@ -725,9 +739,9 @@ impl Engine {
     fn state(&mut self, state: &str) {
         self.write_drafts.clear();
         self.snapshot.state = if self.register_access_fault.is_some()
-            && matches!(state, "STOPPED" | "RUNNING" | "READY")
+            && matches!(state, state::STOPPED | state::RUNNING | state::READY)
         {
-            "FAULT".into()
+            state::FAULT.into()
         } else {
             state.into()
         };
@@ -770,7 +784,7 @@ impl Engine {
                         Err(_) => break,
                     }
                 }
-                if self.refresh_pending && self.snapshot.state == "STOPPED" {
+                if self.refresh_pending && self.snapshot.state == state::STOPPED {
                     self.refresh_pending = false;
                     if let Err(e) = self.refresh() {
                         self.log("error", e);
@@ -853,21 +867,21 @@ impl Engine {
                     }
                 }
                 if r.kind == '*' && r.class == "running" {
-                    self.state("RUNNING");
+                    self.state(state::RUNNING);
                 } else if r.kind == '*' && r.class == "stopped" {
                     if r.data.string("reason").starts_with("exited") {
                         self.snapshot.generation += 1;
                         self.snapshot.frame = Frame::default();
                         self.snapshot.stop_reason = r.data.string("reason");
                         self.refresh_pending = false;
-                        self.state("READY");
+                        self.state(state::READY);
                         return;
                     }
                     self.snapshot.generation += 1;
                     self.snapshot.state = if self.register_access_fault.is_some() {
-                        "FAULT".into()
+                        state::FAULT.into()
                     } else {
-                        "STOPPED".into()
+                        state::STOPPED.into()
                     };
                     self.snapshot.assembly.clear();
                     self.snapshot.memory.clear();
@@ -923,9 +937,9 @@ impl Engine {
             Incoming::Closed => {
                 if !matches!(
                     self.snapshot.state.as_str(),
-                    "DISCONNECTING" | "DISCONNECTED"
+                    state::DISCONNECTING | state::DISCONNECTED
                 ) {
-                    self.state("FAULT");
+                    self.state(state::FAULT);
                     self.log(
                         "error",
                         "GDB closed the connection. Target state is unknown.",
@@ -977,7 +991,7 @@ impl Engine {
                 for lease in &mut leases {
                     lease.quarantine("GDB request timed out; target state is unknown");
                 }
-                self.state("FAULT");
+                self.state(state::FAULT);
                 return Err(format!(
                     "GDB request timed out; reconnect to recover: {command}"
                 ));
@@ -1052,21 +1066,21 @@ impl Engine {
             .field("threads")
             .is_some_and(|v| v.items().iter().any(|t| t.string("state") == "running"));
         if running {
-            self.state("RUNNING");
+            self.state(state::RUNNING);
         } else if self.mi("-stack-info-frame").is_ok() {
             self.snapshot.generation += 1;
-            self.state("STOPPED");
+            self.state(state::STOPPED);
             self.refresh_pending = false;
             self.refresh()?;
         } else {
             // Breakpoints exist before a local inferior is started too.
             self.refresh_breakpoints()?;
-            self.state("READY");
+            self.state(state::READY);
         }
         Ok(())
     }
     fn stopped(&self) -> Result<(), String> {
-        if self.snapshot.state == "STOPPED" {
+        if self.snapshot.state == state::STOPPED {
             Ok(())
         } else {
             Err(format!(
@@ -1076,7 +1090,9 @@ impl Engine {
         }
     }
     fn inactive(&self) -> Result<(), String> {
-        if self.gdb.is_some() && matches!(self.snapshot.state.as_str(), "READY" | "STOPPED") {
+        if self.gdb.is_some()
+            && matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED)
+        {
             Ok(())
         } else {
             Err("Operation requires a connected inactive or stopped target".into())
@@ -1089,7 +1105,7 @@ impl Engine {
         if !service.enabled {
             return Ok(());
         }
-        self.state("STARTING SERVER");
+        self.state(state::STARTING_SERVER);
         let mut c = Command::new(&service.command);
         c.args(&service.args)
             .stdin(Stdio::null())
@@ -1218,13 +1234,13 @@ impl Engine {
             self.gdb.take();
             self.connected_gdb_endpoint = None;
             self.server.take();
-            self.state("FAULT");
+            self.state(state::FAULT);
         }
         result
     }
     fn connect_inner(&mut self) -> Result<Json, String> {
         self.start_server()?;
-        self.state("STARTING GDB");
+        self.state(state::STARTING_GDB);
         let mut c = Command::new(&self.project.gdb.executable);
         c.args(&self.project.gdb.args)
             .args(["-nx", "-q", "--interpreter=mi2"]);
@@ -1314,7 +1330,7 @@ impl Engine {
             &self.project.gdb.init.clone(),
             Duration::from_millis(self.project.session.timeout_ms),
         )?;
-        self.state("CONNECTING");
+        self.state(state::CONNECTING);
         // -target-select forwards its target arguments verbatim; quoting an endpoint
         // makes this GDB interpret it as a serial-device filename.
         if self.project.target.mode != "local" {
@@ -1361,7 +1377,7 @@ impl Engine {
             }
             Err(error) => return Err(error),
         };
-        if self.snapshot.state == "STOPPED" {
+        if self.snapshot.state == state::STOPPED {
             return Ok(true); // A concurrent async notification is authoritative.
         }
         let threads = response
@@ -1374,7 +1390,7 @@ impl Engine {
             self.snapshot.frame = Frame::default();
             self.snapshot.stop_reason = "no-inferior".into();
             self.refresh_pending = false;
-            self.state("READY");
+            self.state(state::READY);
             return Ok(true);
         }
         if !threads
@@ -1392,17 +1408,17 @@ impl Engine {
             "session",
             "GDB confirms stopped threads; synchronizing the session without reconnecting.",
         );
-        self.state("STOPPED");
+        self.state(state::STOPPED);
         Ok(true)
     }
     fn interrupt_target(&mut self) -> Result<(), String> {
         if let Err(error) = self.mi("-exec-interrupt --all") {
-            if self.snapshot.state == "FAULT" {
+            if self.snapshot.state == state::FAULT {
                 return Err(error);
             }
             // Includes the valid race where the target stopped just before
             // interrupt and GDB replies "Inferior not executing".
-            if self.snapshot.state != "STOPPED"
+            if self.snapshot.state != state::STOPPED
                 && !self.reconcile_stop(Duration::from_millis(self.project.session.timeout_ms))?
             {
                 return Err(error);
@@ -1411,7 +1427,7 @@ impl Engine {
         Ok(())
     }
     fn pause(&mut self) -> Result<Json, String> {
-        if self.snapshot.state == "STOPPED" {
+        if self.snapshot.state == state::STOPPED {
             return Ok(json!({"stopped":true}));
         }
         self.log(
@@ -1430,20 +1446,20 @@ impl Engine {
         let mut check_at = started + Duration::from_millis(250);
         let mut retried = false;
         loop {
-            if self.snapshot.state == "READY"
+            if self.snapshot.state == state::READY
                 && (self.snapshot.stop_reason.starts_with("exited")
                     || self.snapshot.stop_reason == "no-inferior")
             {
                 return Ok(
-                    json!({"reason":self.snapshot.stop_reason,"state":"READY","frame":self.snapshot.frame}),
+                    json!({"reason":self.snapshot.stop_reason,"state":state::READY,"frame":self.snapshot.frame}),
                 );
             }
-            if self.snapshot.state == "STOPPED" {
+            if self.snapshot.state == state::STOPPED {
                 self.refresh_pending = false;
                 self.refresh()?;
                 return Ok(json!({"reason":self.snapshot.stop_reason,"frame":self.snapshot.frame}));
             }
-            if self.snapshot.state == "FAULT" {
+            if self.snapshot.state == state::FAULT {
                 return Err("Target connection lost".into());
             }
             if Instant::now() >= deadline {
@@ -1643,13 +1659,13 @@ impl Engine {
             self.project.session.on_exit == "resume" && self.project.target.mode != "local";
         let mut failure = None;
         if self.gdb.is_some() {
-            if self.snapshot.state == "RUNNING"
+            if self.snapshot.state == state::RUNNING
                 && let Err(e) = self.pause()
-                && self.snapshot.state != "READY"
+                && self.snapshot.state != state::READY
             {
                 failure = Some(e);
             }
-            if matches!(self.snapshot.state.as_str(), "READY" | "STOPPED") {
+            if matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED) {
                 // Query GDB: Console edits in READY do not trigger stopped refreshes.
                 if let Err(e) = self.refresh_breakpoints() {
                     failure = Some(e);
@@ -1657,7 +1673,7 @@ impl Engine {
                     self.remember_breakpoints();
                 }
             }
-            if self.snapshot.state == "STOPPED" {
+            if self.snapshot.state == state::STOPPED {
                 if let Err(e) = self.console("delete breakpoints") {
                     failure = Some(e);
                 }
@@ -1671,9 +1687,11 @@ impl Engine {
                     failure = Some(e);
                 }
             }
-            let attached = matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
-                || self.project.target.mode != "local";
-            self.state("DISCONNECTING");
+            let attached = matches!(
+                self.snapshot.state.as_str(),
+                state::STOPPED | state::RUNNING
+            ) || self.project.target.mode != "local";
+            self.state(state::DISCONNECTING);
             let command = if self.project.session.on_exit == "disconnect" || resume_remote {
                 "-target-disconnect"
             } else {
@@ -1707,9 +1725,9 @@ impl Engine {
             self.log("error", format!("Save preferences: {e}"));
         }
         self.state(if failure.is_some() {
-            "FAULT"
+            state::FAULT
         } else {
-            "DISCONNECTED"
+            state::DISCONNECTED
         });
         if let Some(e) = failure {
             Err(format!(
@@ -1892,19 +1910,19 @@ impl Engine {
                 Ok(json!({"matches":names}))
             }
             "continue" => {
-                if self.snapshot.state == "READY" {
+                if self.snapshot.state == state::READY {
                     return self.execute("run", p);
                 }
                 self.stopped()?;
                 let generation = self.snapshot.generation;
                 self.mi("-exec-continue")?;
                 if self.snapshot.generation == generation {
-                    self.state("RUNNING");
+                    self.state(state::RUNNING);
                 }
-                Ok(json!({"running":self.snapshot.state=="RUNNING"}))
+                Ok(json!({"running":self.snapshot.state==state::RUNNING}))
             }
             "run" => {
-                if !matches!(self.snapshot.state.as_str(), "READY" | "STOPPED") {
+                if !matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED) {
                     return Err("Run requires a connected, inactive or stopped target".into());
                 }
                 let generation = self.snapshot.generation;
@@ -1918,9 +1936,9 @@ impl Engine {
                     Duration::from_millis(self.project.session.timeout_ms),
                 )?;
                 if self.snapshot.generation == generation {
-                    self.state("RUNNING");
+                    self.state(state::RUNNING);
                 }
-                Ok(json!({"running":self.snapshot.state=="RUNNING"}))
+                Ok(json!({"running":self.snapshot.state==state::RUNNING}))
             }
             "pause" => self.pause(),
             "wait_stopped" => self.wait_stopped(Duration::from_millis(
@@ -1945,9 +1963,9 @@ impl Engine {
                     )
                 })?;
                 if self.snapshot.generation == generation {
-                    self.state("RUNNING");
+                    self.state(state::RUNNING);
                 }
-                Ok(json!({"running":self.snapshot.state=="RUNNING"}))
+                Ok(json!({"running":self.snapshot.state==state::RUNNING}))
             }
             "synchronize" => {
                 self.inactive()?;
@@ -2003,7 +2021,7 @@ impl Engine {
                 }
                 if !self.watch_names.contains(&expr) {
                     self.watch_names.push(expr.clone());
-                    if self.snapshot.state != "STOPPED" {
+                    if self.snapshot.state != state::STOPPED {
                         self.snapshot.watches.push(Variable {
                             name: expr,
                             value: "<available after next stop>".into(),
@@ -2012,7 +2030,7 @@ impl Engine {
                         self.publish();
                     }
                 }
-                if self.snapshot.state == "STOPPED" {
+                if self.snapshot.state == state::STOPPED {
                     self.refresh()?;
                 }
                 Ok(json!({"watches":self.watch_names}))
@@ -2171,13 +2189,13 @@ impl Engine {
                     return Err("Download is not configured by this environment".into());
                 }
                 self.stopped()?;
-                self.state("DOWNLOADING");
+                self.state(state::DOWNLOADING);
                 let result = self.commands(
                     &self.project.actions.download.clone(),
                     Duration::from_secs(90),
                 );
-                if self.snapshot.state != "FAULT" {
-                    self.state("STOPPED");
+                if self.snapshot.state != state::FAULT {
+                    self.state(state::STOPPED);
                 }
                 result?;
                 self.sync_target_state()?;
@@ -2199,7 +2217,7 @@ impl Engine {
                     "run" | "r" => return self.execute("run", &Json::Null),
                     _ => {}
                 }
-                if !matches!(self.snapshot.state.as_str(), "READY" | "STOPPED") {
+                if !matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED) {
                     return Err("Console requires a connected inactive or stopped target".into());
                 }
                 // Console may change registers, select a frame, replace symbols or reset a chip;

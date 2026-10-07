@@ -264,7 +264,7 @@ impl Engine {
                     lease.quarantine(&error);
                 }
                 self.register_access_fault = Some(error.clone());
-                self.state("FAULT");
+                self.state(state::FAULT);
                 result["error"] = json!(error);
                 result["code"] = json!("write_result_unknown");
                 result["outcome"] = json!(Outcome::Unknown);

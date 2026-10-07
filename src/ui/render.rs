@@ -239,10 +239,10 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                 "Memory range",
                 "Memory access selects the range and channel; Read obtains a sample.",
             ),
-            pane::ASM if a.snapshot.state == "RUNNING" => {
+            pane::ASM if a.snapshot.state == state::RUNNING => {
                 ("Target running", "Pause the target to load this view.")
             }
-            pane::ASM if a.snapshot.state == "STOPPED" => (
+            pane::ASM if a.snapshot.state == state::STOPPED => (
                 "Reading from GDB…",
                 "The view will update when the request completes.",
             ),
@@ -291,9 +291,9 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                 &a.snapshot.assembly
             };
             if values.is_empty() {
-                let message = if a.snapshot.state == "RUNNING" {
+                let message = if a.snapshot.state == state::RUNNING {
                     "Pause the target to load this view."
-                } else if a.snapshot.state == "STOPPED" {
+                } else if a.snapshot.state == state::STOPPED {
                     "Loading from GDB…"
                 } else {
                     "Connect and stop the target to load this view."
@@ -374,7 +374,7 @@ fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
         scrollbar(f, a, pane::SOURCE);
         let message = if a.sources.active.is_some() {
             "This source file is empty.".into()
-        } else if a.snapshot.state == "STOPPED"
+        } else if a.snapshot.state == state::STOPPED
             && a.snapshot.frame.file.is_empty()
             && !a.snapshot.frame.address.is_empty()
         {
@@ -1388,9 +1388,9 @@ fn hint(command: &str) -> &str {
 
 fn header(f: &mut UiFrame, a: &App, rect: Rect) {
     let state = a.snapshot.state.as_str();
-    let color = if state == "FAULT" {
+    let color = if state == state::FAULT {
         theme::RED
-    } else if state == "RUNNING" {
+    } else if state == state::RUNNING {
         theme::GREEN
     } else {
         theme::ACCENT
@@ -1424,7 +1424,7 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
         Paragraph::new(badge).style(
             Style::default()
                 .fg(color)
-                .bg(if state.contains("STOPPED") {
+                .bg(if state.contains(state::STOPPED) {
                     theme::PC
                 } else {
                     theme::RAISED
@@ -1556,7 +1556,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
             &a.project,
             a.snapshot.register_probe.as_ref(),
             &setup_register_context.unwrap(),
-            a.snapshot.state == "STOPPED",
+            a.snapshot.state == state::STOPPED,
         );
         setup.draw(f);
         return;

@@ -4,7 +4,7 @@ use crate::{
     config::Project,
     coordinator,
     launch::{Document, Launch, Setup},
-    session::{EngineHandle, Event, Frame, Request, Snapshot, Variable},
+    session::{EngineHandle, Event, Frame, Request, Snapshot, Variable, state},
     theme::{self, SplitCached},
 };
 use crossterm::{
@@ -784,7 +784,7 @@ impl App {
                 if snapshot.state != self.snapshot.state
                     && matches!(
                         snapshot.state.as_str(),
-                        "DISCONNECTED" | "STARTING GDB" | "FAULT"
+                        state::DISCONNECTED | state::STARTING_GDB | state::FAULT
                     )
                 {
                     self.symbol_search.invalidate();
@@ -807,7 +807,7 @@ impl App {
                     self.monitor.invalidate();
                 } else if matches!(
                     snapshot.state.as_str(),
-                    "DISCONNECTED" | "STARTING GDB" | "FAULT"
+                    state::DISCONNECTED | state::STARTING_GDB | state::FAULT
                 ) {
                     self.view_stamps.fill(None);
                     self.peripherals.invalidate();
@@ -819,7 +819,7 @@ impl App {
                     || snapshot.frame.line != self.snapshot.frame.line
                     || snapshot.frame.level != self.snapshot.frame.level;
                 if moved
-                    && (snapshot.state == "STOPPED" || core_changed)
+                    && (snapshot.state == state::STOPPED || core_changed)
                     && !snapshot.frame.file.is_empty()
                 {
                     self.sources.frame_key = self.source_key(&snapshot.frame.file);
@@ -827,7 +827,7 @@ impl App {
                     self.source_line = snapshot.frame.line.saturating_sub(1) as usize;
                     self.source_top = self.source_line.saturating_sub(8);
                     self.source_text.reset(self.source_line);
-                } else if moved && (snapshot.state == "STOPPED" || core_changed) {
+                } else if moved && (snapshot.state == state::STOPPED || core_changed) {
                     // Preserve open tabs, but never present the old source as the
                     // current stop when the new PC has no source information.
                     self.sources.frame_key.clear();
@@ -1640,17 +1640,19 @@ impl App {
             || self.completion.busy()
             || self.symbol_search.busy()
             || !self.pending_commands.is_empty()
-            || (self.snapshot.state != "STOPPED"
-                && !(self.snapshot.state == "RUNNING" && self.side_pane == pane::REGS)
-                && !(self.snapshot.state == "READY" && self.main_pane == pane::FILES))
+            || (self.snapshot.state != state::STOPPED
+                && !(self.snapshot.state == state::RUNNING && self.side_pane == pane::REGS)
+                && !(self.snapshot.state == state::READY && self.main_pane == pane::FILES))
         {
             return false;
         }
-        if self.snapshot.state == "STOPPED" && self.ensure_peripherals(engine) {
+        if self.snapshot.state == state::STOPPED && self.ensure_peripherals(engine) {
             return true;
         }
-        if matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
-            && self.ensure_registers(engine)
+        if matches!(
+            self.snapshot.state.as_str(),
+            state::STOPPED | state::RUNNING
+        ) && self.ensure_registers(engine)
         {
             return true;
         }
@@ -1662,7 +1664,7 @@ impl App {
             panes.push(self.side_pane);
         }
         for pane in panes {
-            if self.snapshot.state != "STOPPED" && pane != pane::FILES {
+            if self.snapshot.state != state::STOPPED && pane != pane::FILES {
                 continue;
             }
             let (method, params) = match pane {
@@ -1772,14 +1774,17 @@ impl App {
         {
             let cores = &self.snapshot.cores;
             let connected = !cores.is_empty()
-                && cores
-                    .iter()
-                    .all(|c| matches!(c.state.as_str(), "READY" | "STOPPED" | "RUNNING"));
+                && cores.iter().all(|c| {
+                    matches!(
+                        c.state.as_str(),
+                        state::READY | state::STOPPED | state::RUNNING
+                    )
+                });
             return connected
                 && match command {
-                    "pause" => cores.iter().any(|c| c.state == "RUNNING"),
+                    "pause" => cores.iter().any(|c| c.state == state::RUNNING),
                     "restart" => self.has_reset(),
-                    _ => cores.iter().any(|c| c.state != "RUNNING"),
+                    _ => cores.iter().any(|c| c.state != state::RUNNING),
                 };
         }
         match command {
@@ -1791,8 +1796,10 @@ impl App {
             "watch-access" => !self.snapshot.watches.is_empty(),
             "memory-access" => true,
             "memory-refresh" => {
-                matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
-                    && !self.memory_panel.busy()
+                matches!(
+                    self.snapshot.state.as_str(),
+                    state::STOPPED | state::RUNNING
+                ) && !self.memory_panel.busy()
             }
             "peripheral-access" => self
                 .peripheral_monitor_item(self.selections[pane::PERIPHERALS])
@@ -1801,25 +1808,26 @@ impl App {
                 self.project.has_build()
                     && matches!(
                         self.snapshot.state.as_str(),
-                        "STOPPED" | "READY" | "DISCONNECTED" | "FAULT"
+                        state::STOPPED | state::READY | state::DISCONNECTED | state::FAULT
                     )
             }
             "download" => {
                 if !self.project.tasks.download.trim().is_empty() {
                     matches!(
                         self.snapshot.state.as_str(),
-                        "STOPPED" | "READY" | "DISCONNECTED" | "FAULT"
+                        state::STOPPED | state::READY | state::DISCONNECTED | state::FAULT
                     )
                 } else {
-                    self.project.has_download() && self.snapshot.state == "STOPPED"
+                    self.project.has_download() && self.snapshot.state == state::STOPPED
                 }
             }
             "reconnect" => {
-                !self.snapshot.state.starts_with("STARTING") && self.snapshot.state != "CONNECTING"
+                !self.snapshot.state.starts_with("STARTING")
+                    && self.snapshot.state != state::CONNECTING
             }
-            "pause" => self.snapshot.state == "RUNNING",
+            "pause" => self.snapshot.state == state::RUNNING,
             "register-probe" | "register-bank-read" => {
-                self.register_view.enabled() && self.snapshot.state == "STOPPED"
+                self.register_view.enabled() && self.snapshot.state == state::STOPPED
             }
             "register-cancel" => self.register_read_pending(),
             "register-status" => self.register_view.enabled(),
@@ -1830,22 +1838,27 @@ impl App {
             "cache" => self.register_view.cache_view_available(),
             "register-refresh" => {
                 self.register_view.enabled()
-                    && matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
+                    && matches!(
+                        self.snapshot.state.as_str(),
+                        state::STOPPED | state::RUNNING
+                    )
                     && self.pending_commands.is_empty()
             }
             "peripheral-refresh" => {
                 self.side_pane == pane::PERIPHERALS
-                    && self.snapshot.state == "STOPPED"
+                    && self.snapshot.state == state::STOPPED
                     && self.pending_commands.is_empty()
             }
-            "run" | "continue" => matches!(self.snapshot.state.as_str(), "STOPPED" | "READY"),
+            "run" | "continue" => {
+                matches!(self.snapshot.state.as_str(), state::STOPPED | state::READY)
+            }
             "restart" => {
-                (self.snapshot.state == "STOPPED"
-                    || (self.snapshot.state == "RUNNING"
+                (self.snapshot.state == state::STOPPED
+                    || (self.snapshot.state == state::RUNNING
                         && !self.project.multicore.restart.is_empty()))
                     && self.has_reset()
             }
-            _ => self.snapshot.state == "STOPPED",
+            _ => self.snapshot.state == state::STOPPED,
         }
     }
     fn view_len(&self, pane: usize) -> usize {
@@ -2209,7 +2222,10 @@ impl App {
             self.document = document;
         }
         let mut setup = Setup::new(self.document.clone());
-        if !matches!(self.snapshot.state.as_str(), "DISCONNECTED" | "FAULT") {
+        if !matches!(
+            self.snapshot.state.as_str(),
+            state::DISCONNECTED | state::FAULT
+        ) {
             setup.message =
                 "Session remains active while configuring. Start closes it, then connects with these settings."
                     .into();
@@ -2360,7 +2376,7 @@ pub fn run(
                             break;
                         }
                         if app.update(event) {
-                            if app.snapshot.state == "FAULT" {
+                            if app.snapshot.state == state::FAULT {
                                 return Err(
                                     "Session ended with errors; target state must be checked"
                                         .into(),
@@ -2447,7 +2463,7 @@ pub fn run(
         let active = app.setup.is_none()
             && (!app.pending_commands.is_empty()
                 || app.pending_view.is_some()
-                || app.snapshot.state == "RUNNING");
+                || app.snapshot.state == state::RUNNING);
         if app.fx.tick(app.project.ui.animations, active) {
             dirty = true;
         }
@@ -2584,7 +2600,7 @@ mod tests {
     use super::*;
     #[test]
     fn setup_exit_button_uses_normal_quit_without_starting_a_session() {
-        for state in ["DISCONNECTED", "RUNNING"] {
+        for state in [state::DISCONNECTED, state::RUNNING] {
             let (engine, requests) = session::test_channel();
             let mut app = App::new(Project::default(), false);
             app.snapshot.state = state.into();
@@ -2614,7 +2630,7 @@ mod tests {
     fn visible_setup_button_returns_without_quitting_and_keeps_the_draft() {
         let (engine, requests) = session::test_channel();
         let mut a = App::new(Project::default(), false);
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         let text = render(&mut a, 80, 24);
         assert!(text.contains("← Setup"));
         let hit = a
@@ -2643,7 +2659,7 @@ mod tests {
             Some(&engine),
         );
         assert!(a.setup.is_none());
-        assert_eq!(a.snapshot.state, "RUNNING");
+        assert_eq!(a.snapshot.state, state::RUNNING);
         a.open_setup();
         assert_eq!(
             a.setup
@@ -2698,7 +2714,7 @@ mod tests {
             index: 1,
             name: "cpu1".into(),
             endpoint: "localhost:3334".into(),
-            state: "STOPPED".into(),
+            state: state::STOPPED.into(),
         };
         snapshot.core = Some(core.clone());
         snapshot.cores = vec![
@@ -2706,7 +2722,7 @@ mod tests {
                 index: 0,
                 name: "cpu0".into(),
                 endpoint: "localhost:3333".into(),
-                state: "RUNNING".into(),
+                state: state::RUNNING.into(),
             },
             core,
         ];
@@ -2735,7 +2751,7 @@ mod tests {
         a.zoom = true;
         a.fx.focused = false;
         a.notice = "Launching".into();
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.snapshot.watches = vec![Variable {
             name: "counter".into(),
             value: "1".into(),
@@ -2774,7 +2790,7 @@ mod tests {
         assert_eq!(a.notice, "Launching");
         // Project and debugger session.
         assert!(a.setup.is_none());
-        assert_eq!(a.snapshot.state, "DISCONNECTED");
+        assert_eq!(a.snapshot.state, state::DISCONNECTED);
         assert!(a.snapshot.watches.is_empty());
         assert!(a.source.is_empty() && a.source_file.is_empty());
         assert_eq!(
@@ -2815,7 +2831,7 @@ mod tests {
     fn command_palette_filters_as_you_type_and_runs_the_selected_match() {
         let (engine, requests) = session::test_channel();
         let mut a = App::new(Project::default(), false);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         let key = |a: &mut App, code| a.key(KeyEvent::new(code, KeyModifiers::NONE), Some(&engine));
         a.key(
             KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL),
@@ -2915,7 +2931,7 @@ mod tests {
     #[test]
     fn pointer_moves_redraw_only_when_a_drawn_hover_state_changes() {
         let mut a = App::new(Project::default(), true);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         render(&mut a, 120, 36);
         let text = a.source_rect;
         let (x, y) = (text.x + text.width / 2, text.y + 2);
@@ -3098,7 +3114,7 @@ mod tests {
     fn console_input_click_submit_history_and_debug_shortcuts() {
         let (engine, commands) = session::test_channel();
         let mut a = App::new(Project::default(), false);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         assert!(render(&mut a, 120, 36).contains("gdb>"));
         let input = a.console_input_rect;
         mouse_at(
@@ -3174,7 +3190,7 @@ mod tests {
     fn stop_without_symbols_does_not_keep_previous_source_location() {
         let mut a = App::new(Project::default(), true);
         let mut stopped = a.snapshot.clone();
-        stopped.state = "STOPPED".into();
+        stopped.state = state::STOPPED.into();
         stopped.generation += 1;
         stopped.stop_reason = "signal-received".into();
         stopped.frame = Frame {
@@ -3261,7 +3277,7 @@ mod tests {
         let (engine, commands) = session::test_channel();
         let mut a = App::new(Project::default(), false);
         a.project.actions.restart = vec!["monitor reset".into()];
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         render(&mut a, 120, 36);
         for action in [
             "run",
@@ -3301,7 +3317,7 @@ mod tests {
             Some(&engine),
         );
         assert!(commands.try_recv().is_err());
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         mouse_at(
             &mut a,
             MouseEventKind::Down(event::MouseButton::Left),
@@ -3345,13 +3361,13 @@ mod tests {
     fn exit_button_cancels_worker_once_in_each_state_and_exits_demo() {
         for (w, h) in [(45, 12), (120, 36)] {
             for state in [
-                "DISCONNECTED",
-                "STARTING GDB",
-                "CONNECTING",
-                "READY",
-                "STOPPED",
-                "RUNNING",
-                "FAULT",
+                state::DISCONNECTED,
+                state::STARTING_GDB,
+                state::CONNECTING,
+                state::READY,
+                state::STOPPED,
+                state::RUNNING,
+                state::FAULT,
             ] {
                 let (engine, commands) = session::test_channel();
                 let mut a = App::new(Project::default(), false);
@@ -3588,7 +3604,7 @@ mod tests {
     fn assembly_loads_on_entry_and_stop_without_repeated_requests() {
         let (engine, commands) = session::test_channel();
         let mut a = App::new(Project::default(), false);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.snapshot.frame.address = "0x08000000".into();
         render(&mut a, 120, 36);
         assert!(!a.ensure_visible_data(Some(&engine)));
@@ -3618,7 +3634,7 @@ mod tests {
         });
         assert!(render(&mut a, 120, 36).contains("Cannot access memory"));
         assert!(!a.ensure_visible_data(Some(&engine)));
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         a.snapshot.generation += 1;
         assert!(!a.ensure_visible_data(Some(&engine)));
     }
@@ -3627,7 +3643,7 @@ mod tests {
         let (engine, commands) = session::test_channel();
         let mut a = App::new(Project::default(), false);
         a.project.actions.restart = vec!["monitor reset".into()];
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.select_pane(pane::ASM);
         render(&mut a, 120, 36);
         a.command(Some(&engine), ":restart");
@@ -3649,7 +3665,7 @@ mod tests {
         let (engine, commands) = session::test_channel();
         let mut a = App::new(Project::default(), true);
         a.demo = false;
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.select_pane(pane::STACK);
         render(&mut a, 140, 40);
         let side = a.side_rect;

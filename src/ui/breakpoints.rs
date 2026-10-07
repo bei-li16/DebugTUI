@@ -48,12 +48,12 @@ impl App {
     pub(super) fn break_action_enabled(&self, action: &str) -> bool {
         if self.breaks.pending.is_some()
             || self.pending_task.is_some()
-            || !matches!(self.snapshot.state.as_str(), "READY" | "STOPPED")
+            || !matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED)
         {
             return false;
         }
         match action {
-            "break-data" => self.snapshot.state == "STOPPED",
+            "break-data" => self.snapshot.state == state::STOPPED,
             "break-new" => true,
             "break-cores" => {
                 self.snapshot.cores.len() > 1
@@ -643,7 +643,7 @@ mod tests {
     use super::*;
     fn fixture() -> App {
         let mut a = App::new(Project::default(), false);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.snapshot.breakpoints = vec![crate::session::Breakpoint {
             id: "7".into(),
             location: "main".into(),

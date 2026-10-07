@@ -17,7 +17,7 @@ fn counts(app: &App) -> Counts {
     app.register_view.counts(
         &app.project,
         &app.register_context(),
-        app.snapshot.state == "STOPPED",
+        app.snapshot.state == state::STOPPED,
     )
 }
 fn put(app: &mut App, id: &str, state: State, reason: Reason) {
@@ -76,7 +76,7 @@ fn register_configuration_status_switches_declaration_sources_and_cleared_maps_w
             index,
             name: core.into(),
             endpoint: format!("localhost:{}", 3333 + index),
-            state: "STOPPED".into(),
+            state: state::STOPPED.into(),
         });
         app.update(Event::Snapshot {
             snapshot: Box::new(snapshot),
@@ -433,9 +433,9 @@ fn register_status_warns_on_current_observed_cpu_mismatch_without_probing_or_cro
         "unadapted",
     ] {
         let mut evidence = probe.clone();
-        app.snapshot.state = "STOPPED".into();
+        app.snapshot.state = state::STOPPED.into();
         match change {
-            "run" => app.snapshot.state = "RUNNING".into(),
+            "run" => app.snapshot.state = state::RUNNING.into(),
             "session" => evidence.context.session += 1,
             "stop" => evidence.context.generation += 1,
             "core" => evidence.context.core = "other".into(),
@@ -515,10 +515,10 @@ fn setup_render_imports_current_identity_and_clears_it_on_run_or_draft_target_ch
     assert!(text(&terminal).contains("Register catalogue / preview"));
     for state in ["current", "run", "target-change"] {
         if state == "run" {
-            app.snapshot.state = "RUNNING".into();
+            app.snapshot.state = state::RUNNING.into();
         }
         if state == "target-change" {
-            app.snapshot.state = "STOPPED".into();
+            app.snapshot.state = state::STOPPED.into();
             app.setup
                 .as_mut()
                 .unwrap()
@@ -625,9 +625,9 @@ fn register_status_counts_apply_owner_stop_session_and_gdb_frame_rules() {
     app.snapshot.frame.level = 1;
     assert_eq!(counts(&app).get(Category::Stale), 1);
     app.snapshot.frame.level = 0;
-    app.snapshot.state = "RUNNING".into();
+    app.snapshot.state = state::RUNNING.into();
     assert_eq!(counts(&app).get(Category::Valid), 0);
-    app.snapshot.state = "STOPPED".into();
+    app.snapshot.state = state::STOPPED.into();
     app.snapshot.generation += 1;
     assert_eq!(counts(&app).get(Category::Stale), 1);
     app.snapshot.generation -= 1;
@@ -865,7 +865,7 @@ fn runtime_absence_never_uses_a_peer_sample_or_an_id_outside_the_current_catalog
         app.register_view.runtime_absent,
         BTreeSet::from(["r0".into()])
     );
-    app.snapshot.state = "RUNNING".into();
+    app.snapshot.state = state::RUNNING.into();
     app.sync_register_absence();
     assert!(app.register_view.runtime_absent.is_empty());
     assert!(!app.ensure_registers(Some(&engine)));

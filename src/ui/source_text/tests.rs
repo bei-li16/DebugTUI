@@ -11,7 +11,7 @@ fn app(lines: &[&str]) -> App {
     a.source_file = "test.c".into();
     a.source = lines.iter().map(|s| s.to_string()).collect();
     a.source_comments = highlight::comment_starts(&a.source);
-    a.snapshot.state = "STOPPED".into();
+    a.snapshot.state = state::STOPPED.into();
     a.fx.mode = crate::config::Motion::Off;
     a.select_pane(pane::SOURCE);
     render(&mut a);
@@ -193,7 +193,7 @@ fn core_switch_and_file_close_clear_selection_but_watch_refresh_does_not() {
         index: 1,
         name: "core.1".into(),
         endpoint: "localhost:3334".into(),
-        state: "STOPPED".into(),
+        state: state::STOPPED.into(),
     });
     a.update(Event::Snapshot {
         snapshot: Box::new(next),

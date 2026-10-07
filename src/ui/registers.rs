@@ -443,8 +443,10 @@ impl App {
                     && item.context == sample.context
                     && item.state == State::Stale
             });
-            if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
-                || !sample.runtime_matches(self.snapshot.state == "STOPPED")
+            if !matches!(
+                self.snapshot.state.as_str(),
+                state::STOPPED | state::RUNNING
+            ) || !sample.runtime_matches(self.snapshot.state == state::STOPPED)
                 || engine_invalidated
                 || !sample.applies_at(&context, sample.owner.as_deref(), generations)
             {
@@ -474,7 +476,7 @@ impl App {
             .register_view
             .catalogue
             .as_ref()
-            .filter(|_| self.snapshot.state == "STOPPED")
+            .filter(|_| self.snapshot.state == state::STOPPED)
             .map(|c| {
                 candidates
                     .into_iter()
@@ -758,7 +760,7 @@ impl App {
     pub(super) fn read_register_bank(&mut self, engine: Option<&EngineHandle>) {
         if self.demo
             || engine.is_none()
-            || self.snapshot.state != "STOPPED"
+            || self.snapshot.state != state::STOPPED
             || self.register_view.pending.is_some()
             || self.register_view.probe_pending.is_some()
         {
@@ -810,7 +812,7 @@ impl App {
         if topology.chip.is_empty() {
             topology.chip = self.project.debug.chip.clone();
         }
-        let facts = if self.snapshot.state == "STOPPED"
+        let facts = if self.snapshot.state == state::STOPPED
             && let Some(catalogue) = &self.register_view.catalogue
         {
             catalogue.observation_facts_for_owners(
@@ -825,7 +827,7 @@ impl App {
                 .register_probe
                 .as_ref()
                 .filter(|p| {
-                    p.context == self.register_context() && self.snapshot.state == "STOPPED"
+                    p.context == self.register_context() && self.snapshot.state == state::STOPPED
                 })
                 .map(|p| p.effective(&config.facts))
                 .unwrap_or_else(|| config.facts.clone())
@@ -846,7 +848,7 @@ impl App {
         let context = self.register_context();
         if let Some(probe) = &self.snapshot.register_probe
             && probe.context == context
-            && self.snapshot.state == "STOPPED"
+            && self.snapshot.state == state::STOPPED
         {
             for sample in &probe.samples {
                 if sample.context != context {
@@ -890,7 +892,7 @@ impl App {
         if self.demo
             || engine.is_none()
             || !self.register_view.enabled()
-            || self.snapshot.state != "STOPPED"
+            || self.snapshot.state != state::STOPPED
             || self.register_view.pending.is_some()
             || self.register_view.probe_pending.is_some()
         {
@@ -930,7 +932,7 @@ impl App {
                 .into();
             return true;
         }
-        if context != self.register_context() || self.snapshot.state != "STOPPED" {
+        if context != self.register_context() || self.snapshot.state != state::STOPPED {
             return true;
         }
         if let Some(error) = error {
@@ -1112,7 +1114,10 @@ impl App {
         if ids.is_empty()
             || engine.is_none()
             || self.demo
-            || !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
+            || !matches!(
+                self.snapshot.state.as_str(),
+                state::STOPPED | state::RUNNING
+            )
             || self.register_view.pending.is_some()
             || self.register_view.probe_pending.is_some()
         {
@@ -1178,8 +1183,8 @@ impl App {
             };
             let register = &catalogue.registers[index];
             if catalogue.automatic_read(register, &self.register_view.facts)
-                && (self.snapshot.state == "STOPPED"
-                    || self.snapshot.state == "RUNNING"
+                && (self.snapshot.state == state::STOPPED
+                    || self.snapshot.state == state::RUNNING
                         && crate::registers::running::denial(
                             catalogue,
                             register,
@@ -1195,7 +1200,7 @@ impl App {
                     .access_denial(
                         register,
                         &self.register_view.facts,
-                        self.snapshot.state == "STOPPED",
+                        self.snapshot.state == state::STOPPED,
                         None,
                     )
                     .is_none()
@@ -1203,7 +1208,7 @@ impl App {
                     &self.project,
                     &context,
                     index,
-                    self.snapshot.state == "STOPPED",
+                    self.snapshot.state == state::STOPPED,
                 ) != status::Category::Valid
                 && !self.register_view.runtime_absent.contains(&register.id)
                 && !self.register_view.attempts.contains(&(
@@ -1349,8 +1354,10 @@ impl App {
                     continue;
                 }
                 if sample.state == State::Valid
-                    && (!matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
-                        || !sample.runtime_matches(self.snapshot.state == "STOPPED")
+                    && (!matches!(
+                        self.snapshot.state.as_str(),
+                        state::STOPPED | state::RUNNING
+                    ) || !sample.runtime_matches(self.snapshot.state == state::STOPPED)
                         || !sample.applies_at(
                             &context,
                             expected_owner.as_deref(),
@@ -1477,7 +1484,7 @@ impl App {
             let counts = self.register_view.counts(
                 &self.project,
                 &context,
-                self.snapshot.state == "STOPPED",
+                self.snapshot.state == state::STOPPED,
             );
             f.render_widget(
                 Paragraph::new(counts.compact()).style(Style::default().fg(theme::MUTED)),
@@ -1524,7 +1531,7 @@ impl App {
                         &self.project,
                         &context,
                         *index,
-                        self.snapshot.state == "STOPPED",
+                        self.snapshot.state == state::STOPPED,
                     ) == status::Category::Valid;
                     let field = if let Row::Field(_, field, _) = row {
                         Some(&register.fields[*field])
@@ -1555,7 +1562,7 @@ impl App {
                             &self.project,
                             &context,
                             *index,
-                            self.snapshot.state == "STOPPED",
+                            self.snapshot.state == state::STOPPED,
                         )
                         .label()
                         .to_string();
@@ -1718,7 +1725,7 @@ impl App {
                                     &self.project,
                                     &context,
                                     index,
-                                    self.snapshot.state == "STOPPED"
+                                    self.snapshot.state == state::STOPPED
                                 )
                                 .label(),
                             sample.source,
@@ -1760,7 +1767,7 @@ mod tests {
         project.registers.catalogue =
             Path::new(env!("CARGO_MANIFEST_DIR")).join("profiles/registers/cortex-r52.toml");
         let mut app = App::new(project, false);
-        app.snapshot.state = "STOPPED".into();
+        app.snapshot.state = state::STOPPED.into();
         app.snapshot.register_session = 17;
         app.snapshot.generation = 3;
         app.select_pane(pane::REGS);
@@ -1820,7 +1827,7 @@ mod tests {
                         project.registers.vfp_write_command = "aarch64 vfp_write".into();
                     }
                     let mut app = App::new(project, false);
-                    app.snapshot.state = "STOPPED".into();
+                    app.snapshot.state = state::STOPPED.into();
                     app.select_pane(pane::REGS);
                     app.register_view.query = name.into();
                     app.register_view.rebuild();
@@ -1924,7 +1931,7 @@ mod tests {
             index: 1,
             name: "core1".into(),
             endpoint: "localhost:3334".into(),
-            state: "STOPPED".into(),
+            state: state::STOPPED.into(),
         });
         app.sync_register_preferences();
         assert_ne!(app.register_view.preference_scope, core0_scope);
@@ -2394,7 +2401,7 @@ mod tests {
                         index: 1,
                         name: "core1".into(),
                         endpoint: "localhost:3334".into(),
-                        state: "STOPPED".into(),
+                        state: state::STOPPED.into(),
                     })
                 }
             }
@@ -2500,7 +2507,7 @@ mod tests {
                 assert!(text.contains("Size") && text.contains("Access"));
             }
         }
-        app.snapshot.state = "RUNNING".into();
+        app.snapshot.state = state::RUNNING.into();
         let mut terminal =
             ratatui::Terminal::new(ratatui::backend::TestBackend::new(100, 24)).unwrap();
         terminal

@@ -18,7 +18,7 @@ mod tests {
     use super::*;
     fn app() -> App {
         let mut a = App::new(Project::default(), false);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.peripherals.device = Some(Arc::new(
             Device::parse(include_str!("../../tests/fixtures/peripherals.svd")).unwrap(),
         ));
@@ -158,9 +158,9 @@ mod tests {
         a.select_pane(pane::REGS);
         assert!(!a.ensure_visible_data(Some(&engine)));
         a.select_pane(pane::PERIPHERALS);
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         assert!(!a.ensure_visible_data(Some(&engine)));
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         assert!(a.ensure_visible_data(Some(&engine)));
         let req = rx.try_recv().unwrap();
         response(&mut a, &req, Some(43));
@@ -209,7 +209,7 @@ mod tests {
                 },
             );
         }
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         assert!(!a.ensure_monitors(Some(&engine)));
         a.toggle_peripheral(Some(true));
         assert!(a.ensure_monitors(Some(&engine)));
@@ -338,13 +338,13 @@ mod tests {
             "{caption}"
         );
         assert!(!a.ensure_visible_data(Some(&engine)));
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         a.refresh_peripheral(Some(&engine));
         let request = requests.recv().unwrap();
         response(&mut a, &request, Some(44));
         assert!(a.monitor_fresh("svd:TestDevice:PORT.DATA"));
         let mut next = a.snapshot.clone();
-        next.state = "FAULT".into();
+        next.state = state::FAULT.into();
         a.update(Event::Snapshot {
             snapshot: Box::new(next),
         });
@@ -354,7 +354,7 @@ mod tests {
                 .contains("retained / stale")
         );
         let mut next = a.snapshot.clone();
-        next.state = "STOPPED".into();
+        next.state = state::STOPPED.into();
         next.generation += 1;
         next.register_generation = Some(8);
         a.update(Event::Snapshot {

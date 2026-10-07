@@ -32,7 +32,7 @@ fn app() -> App {
         )]),
     );
     let mut app = App::new(project, false);
-    app.snapshot.state = "RUNNING".into();
+    app.snapshot.state = state::RUNNING.into();
     app.snapshot.register_session = 17;
     app.snapshot.generation = 3;
     app.select_pane(pane::REGS);
@@ -66,7 +66,7 @@ fn running_sample(app: &App, id: &str) -> Sample {
 fn running_real_ui_scheduler_reads_only_visible_safe_rows_once_and_renews_after_runtime_boundary() {
     let mut app = app();
     let (engine, requests) = engine();
-    app.snapshot.state = "STOPPED".into();
+    app.snapshot.state = state::STOPPED.into();
     app.sync_register_sample_validity();
     app.register_view
         .attempts
@@ -74,7 +74,7 @@ fn running_real_ui_scheduler_reads_only_visible_safe_rows_once_and_renews_after_
     app.register_view
         .attempts
         .insert((17, 3, "default".into(), 0, "scb.ccr".into()));
-    app.snapshot.state = "RUNNING".into();
+    app.snapshot.state = state::RUNNING.into();
     assert!(app.ensure_visible_data(Some(&engine)));
     let request = requests.try_recv().unwrap();
     assert_eq!(request.method, "registers_read");
@@ -100,7 +100,7 @@ fn running_real_ui_scheduler_reads_only_visible_safe_rows_once_and_renews_after_
             .category(&app.project, &context, pos, false),
         status::Category::Valid
     );
-    app.snapshot.state = "STOPPED".into();
+    app.snapshot.state = state::STOPPED.into();
     app.sync_register_sample_validity();
     let stored = app
         .register_view
@@ -108,7 +108,7 @@ fn running_real_ui_scheduler_reads_only_visible_safe_rows_once_and_renews_after_
         .unwrap();
     assert_eq!(stored.state, State::Stale);
     assert!(stored.value.is_some());
-    app.snapshot.state = "FAULT".into();
+    app.snapshot.state = state::FAULT.into();
     assert!(!app.ensure_visible_data(Some(&engine)));
     assert!(requests.try_recv().is_err());
 }
@@ -146,7 +146,7 @@ fn running_ui_has_zero_automatic_requests_for_stopped_or_gdb_memory_routes_and_d
     app.register_view
         .values
         .insert(("core:default".into(), s.id.clone(), "default".into()), s);
-    app.snapshot.state = "DISCONNECTED".into();
+    app.snapshot.state = state::DISCONNECTED.into();
     app.sync_register_sample_validity();
     assert_eq!(
         app.register_view

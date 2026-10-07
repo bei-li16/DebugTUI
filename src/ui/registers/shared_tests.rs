@@ -42,7 +42,7 @@ fn switch(app: &mut App, name: &str, index: usize, session: u64) {
         index,
         name: name.into(),
         endpoint: format!("localhost:{}", 5330 + index),
-        state: "STOPPED".into(),
+        state: state::STOPPED.into(),
     });
     snapshot.register_session = session;
     app.update(Event::Snapshot {

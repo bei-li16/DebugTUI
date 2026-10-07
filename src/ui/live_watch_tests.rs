@@ -17,7 +17,7 @@ fn sample(value: u64, core: Option<usize>, generation: u64) -> Event {
 }
 fn app() -> App {
     let mut a = App::new(Project::default(), false);
-    a.snapshot.state = "RUNNING".into();
+    a.snapshot.state = state::RUNNING.into();
     a.snapshot.generation = 7;
     a.snapshot.watches = vec![Variable {
         name: "uart_cnt".into(),
@@ -75,7 +75,7 @@ fn late_wrong_core_deleted_and_stopped_samples_are_ignored() {
     assert!(a.watch_sample("watch:uart_cnt").is_none());
     a.update(sample(7500, None, 7));
     let mut stopped = a.snapshot.clone();
-    stopped.state = "STOPPED".into();
+    stopped.state = state::STOPPED.into();
     stopped.generation = 8;
     stopped.watches[0].value = "7600".into();
     a.update(Event::Snapshot {
@@ -86,7 +86,7 @@ fn late_wrong_core_deleted_and_stopped_samples_are_ignored() {
     let line = watch_line(&mut a);
     assert!(line.contains("7600"));
     assert!(!line.contains("LIVE"));
-    a.snapshot.state = "RUNNING".into();
+    a.snapshot.state = state::RUNNING.into();
     a.snapshot.watches.clear();
     a.update(sample(9999, None, 8));
     assert!(a.watch_sample("watch:uart_cnt").is_none());

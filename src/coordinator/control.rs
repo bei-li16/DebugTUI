@@ -43,7 +43,7 @@ impl Coordinator {
             if req.method == "console"
                 && matches!(
                     self.engines[self.active].snapshot.state.as_str(),
-                    "READY" | "STOPPED"
+                    state::READY | state::STOPPED
                 )
             {
                 // An arbitrary monitor command may reset shared hardware, even before an error.
@@ -127,7 +127,7 @@ impl Coordinator {
         if let Some(&i) = indices.iter().find(|&&i| {
             !matches!(
                 self.engines[i].snapshot.state.as_str(),
-                "READY" | "STOPPED" | "RUNNING"
+                state::READY | state::STOPPED | state::RUNNING
             )
         }) {
             self.reply(
@@ -140,7 +140,7 @@ impl Coordinator {
             );
             return true;
         }
-        if stepping && self.engines[self.active].snapshot.state != "STOPPED" {
+        if stepping && self.engines[self.active].snapshot.state != state::STOPPED {
             self.reply(
                 req.id,
                 self.info(),
@@ -151,7 +151,7 @@ impl Coordinator {
         let mut steps = VecDeque::new();
         if shared_reset || stepping || req.method == "pause" {
             for &i in &indices {
-                if self.engines[i].snapshot.state == "RUNNING" {
+                if self.engines[i].snapshot.state == state::RUNNING {
                     steps.push_back(Step::Core(i, "pause".into()));
                 }
             }
@@ -226,9 +226,9 @@ impl Coordinator {
             return;
         }
         let old = &self.engines[i].snapshot;
-        let stopped = snapshot.state == "STOPPED"
+        let stopped = snapshot.state == state::STOPPED
             && snapshot.generation != old.generation
-            && (old.state == "RUNNING"
+            && (old.state == state::RUNNING
                 || matches!(
                     snapshot.stop_reason.as_str(),
                     "breakpoint-hit"
@@ -256,7 +256,7 @@ impl Coordinator {
             .order
             .iter()
             .copied()
-            .filter(|&i| i != trigger && self.engines[i].snapshot.state == "RUNNING")
+            .filter(|&i| i != trigger && self.engines[i].snapshot.state == state::RUNNING)
             .map(|i| Step::Core(i, "pause".into()))
             .collect();
         // Internal batches never emit a response with a user request id.
@@ -288,7 +288,7 @@ mod tests {
         let (tx, rx) = mpsc::sync_channel(512);
         let mut c = Coordinator::new(p, tx, Arc::new(AtomicBool::new(false)));
         for e in &mut c.engines {
-            e.snapshot.state = "STOPPED".into();
+            e.snapshot.state = state::STOPPED.into();
         }
         (c, rx)
     }
@@ -320,7 +320,7 @@ mod tests {
         c.project.multicore.restart_core = "core.0".into();
         c.project.multicore.restart = vec!["monitor chipreset".into()];
         for e in &mut c.engines {
-            e.snapshot.state = "RUNNING".into();
+            e.snapshot.state = state::RUNNING.into();
             e.launched = true;
         }
         c.begin(Request::new(1, "restart", json!({"scope":"core"})));
@@ -359,13 +359,13 @@ mod tests {
     #[test]
     fn breakpoint_focus_and_peer_halt_do_not_steal_focus() {
         let (mut c, _rx) = coordinator();
-        c.engines[0].snapshot.state = "RUNNING".into();
-        c.engines[1].snapshot.state = "RUNNING".into();
+        c.engines[0].snapshot.state = state::RUNNING.into();
+        c.engines[1].snapshot.state = state::RUNNING.into();
         c.event(
             1,
             Event::Snapshot {
                 snapshot: Box::new(Snapshot {
-                    state: "STOPPED".into(),
+                    state: state::STOPPED.into(),
                     stop_reason: "breakpoint-hit".into(),
                     generation: 1,
                     ..Default::default()
@@ -379,7 +379,7 @@ mod tests {
             0,
             Event::Snapshot {
                 snapshot: Box::new(Snapshot {
-                    state: "STOPPED".into(),
+                    state: state::STOPPED.into(),
                     stop_reason: "signal-received".into(),
                     generation: 1,
                     ..Default::default()
@@ -393,7 +393,7 @@ mod tests {
     fn pause_continues_after_failure_and_resume_failure_halts_started_peers() {
         let (mut c, _rx) = coordinator();
         for e in &mut c.engines {
-            e.snapshot.state = "RUNNING".into();
+            e.snapshot.state = state::RUNNING.into();
         }
         c.begin(Request::new(1, "pause", json!({})));
         let mut b = c.batch.take().unwrap();
@@ -413,11 +413,11 @@ mod tests {
     #[test]
     fn step_pauses_peers_first_and_fault_prevents_partial_resume() {
         let (mut c, rx) = coordinator();
-        c.engines[1].snapshot.state = "RUNNING".into();
+        c.engines[1].snapshot.state = state::RUNNING.into();
         c.begin(Request::new(1, "stepi", json!({})));
         assert_eq!(methods(&c), [(1, "pause"), (0, "stepi")]);
         c.batch = None;
-        c.engines[1].snapshot.state = "FAULT".into();
+        c.engines[1].snapshot.state = state::FAULT.into();
         c.begin(Request::new(2, "continue", json!({})));
         assert!(c.batch.is_none());
         assert!(rx.try_iter().any(|e| matches!(
@@ -433,7 +433,7 @@ mod tests {
     fn group_wait_keeps_peer_breakpoints_responsive() {
         let (mut c, _rx) = coordinator();
         for e in &mut c.engines {
-            e.snapshot.state = "RUNNING".into();
+            e.snapshot.state = state::RUNNING.into();
         }
         c.begin(Request::new(1, "wait_stopped", json!({"timeout_ms":8000})));
         c.advance();
@@ -446,7 +446,7 @@ mod tests {
             1,
             Event::Snapshot {
                 snapshot: Box::new(Snapshot {
-                    state: "STOPPED".into(),
+                    state: state::STOPPED.into(),
                     stop_reason: "breakpoint-hit".into(),
                     generation: 1,
                     ..Default::default()

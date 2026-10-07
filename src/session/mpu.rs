@@ -236,7 +236,9 @@ impl Engine {
             let mut samples = vec![];
             for id in &ids {
                 self.check_register_read_cancelled()?;
-                if self.register_context() != request.context || self.snapshot.state != "STOPPED" {
+                if self.register_context() != request.context
+                    || self.snapshot.state != state::STOPPED
+                {
                     return Err("Physical MPU context changed; samples discarded".into());
                 }
                 let register = reading_catalogue.register(id).unwrap();
@@ -311,7 +313,7 @@ impl Engine {
                 }
                 samples.push(sample);
                 if let Some(fault) = self.register_access_fault.clone() {
-                    self.state("FAULT");
+                    self.state(state::FAULT);
                     return Err(format!("MPU read outcome unknown; reconnect: {fault}"));
                 }
             }
@@ -348,7 +350,7 @@ impl Engine {
                 || (native && final_status != program_status)
                 || (!native && final_status & 31 != mode)
                 || self.register_context() != request.context
-                || self.snapshot.state != "STOPPED"
+                || self.snapshot.state != state::STOPPED
             {
                 return Err("Physical MPU context changed; samples discarded".into());
             }
@@ -384,7 +386,7 @@ impl Engine {
             for lease in &mut leases {
                 lease.quarantine(&fault);
             }
-            self.state("FAULT");
+            self.state(state::FAULT);
             return Err(format!("MPU read outcome unknown; reconnect: {fault}"));
         }
         result

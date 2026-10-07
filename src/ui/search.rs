@@ -213,7 +213,7 @@ impl App {
         if self.symbol_search.requested.as_ref() == Some(&key) {
             return false;
         }
-        if !self.demo && !matches!(self.snapshot.state.as_str(), "READY" | "STOPPED") {
+        if !self.demo && !matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED) {
             let hint = "Pause/connect to search ELF symbols; existing results remain usable.";
             let changed = self.symbol_search.hint != hint;
             self.symbol_search.hint = hint.into();

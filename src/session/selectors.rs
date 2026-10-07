@@ -186,7 +186,7 @@ impl Engine {
             for lease in &mut leases {
                 lease.quarantine(&error);
             }
-            self.state("FAULT");
+            self.state(state::FAULT);
             self.log(
                 "selector",
                 format!(
@@ -301,7 +301,7 @@ impl Engine {
                 for lease in &mut leases {
                     lease.quarantine(&error);
                 }
-                self.state("FAULT");
+                self.state(state::FAULT);
                 self.log(
                     "selector",
                     format!("Invalid selector evidence: {raw}; {error}"),
@@ -322,7 +322,7 @@ impl Engine {
                 .field("frame")
                 .is_none_or(|f| f.string("level") != "0")
             || self.register_context() != request.context
-            || self.snapshot.state != "STOPPED"
+            || self.snapshot.state != state::STOPPED
         {
             self.snapshot.register_probe = None;
             return Err(

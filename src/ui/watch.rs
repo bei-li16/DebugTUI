@@ -334,7 +334,7 @@ impl App {
             return false;
         }
         let expanded = expand.unwrap_or(!tree.expanded || node.more);
-        if expanded && self.snapshot.state != "STOPPED" {
+        if expanded && self.snapshot.state != state::STOPPED {
             self.notice = "Pause the target before expanding Watch values.".into();
             return true;
         }
@@ -665,7 +665,7 @@ mod tests {
 
     fn app(names: &[&str]) -> App {
         let mut a = App::new(Project::default(), false);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.snapshot.watches = names
             .iter()
             .map(|name| Variable {
@@ -835,7 +835,7 @@ mod tests {
         let (engine, requests) = session::test_channel();
         let mut a = app(&["first", "last"]);
         a.selection = 1;
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         a.focus_input(true);
         a.watch_input = "unfinished_expression".into();
         render(&mut a);
@@ -969,14 +969,14 @@ mod tests {
         click(&mut a, close, &engine);
         assert!(requests.try_recv().is_err());
         a.select_pane(pane::WATCH);
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         click(&mut a, add, &engine);
         assert_eq!(requests.try_recv().unwrap().method, "watch");
         click(&mut a, close, &engine);
         let request = requests.try_recv().unwrap();
         assert_eq!(request.method, "unwatch");
         assert_eq!(request.params["expression"], "first");
-        assert_eq!(a.snapshot.state, "RUNNING");
+        assert_eq!(a.snapshot.state, state::RUNNING);
     }
 
     #[test]
@@ -1241,7 +1241,7 @@ mod tests {
             requests.try_recv().unwrap().params,
             json!({"expression":"outer","path":[1],"expanded":true,"more":true})
         );
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         key(&mut a, KeyCode::Right, &engine);
         assert!(requests.try_recv().is_err());
         a.selection = 0;

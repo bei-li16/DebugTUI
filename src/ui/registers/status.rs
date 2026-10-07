@@ -195,9 +195,9 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         return;
     }
     let context = app.register_context();
-    let counts = app
-        .register_view
-        .counts(&app.project, &context, app.snapshot.state == "STOPPED");
+    let counts =
+        app.register_view
+            .counts(&app.project, &context, app.snapshot.state == state::STOPPED);
     let mut text = vec![
         format!("Catalogue total: {}", counts.total),
         format!("Shown registers: {}", counts.shown),
@@ -222,7 +222,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             &app.project,
             &context,
             index,
-            app.snapshot.state == "STOPPED",
+            app.snapshot.state == state::STOPPED,
         );
         text.push(format!(
             "Selected: {} · {} bits {} · {}",
@@ -252,8 +252,8 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
                     app.snapshot
                         .register_probe
                         .as_ref()
-                        .filter(|_| app.snapshot.state == "STOPPED"),
-                    if app.snapshot.state == "STOPPED" {
+                        .filter(|_| app.snapshot.state == state::STOPPED),
+                    if app.snapshot.state == state::STOPPED {
                         &app.snapshot.register_samples
                     } else {
                         &[]
@@ -356,7 +356,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
                 .snapshot
                 .register_probe
                 .as_ref()
-                .filter(|probe| probe.context == context && app.snapshot.state == "STOPPED")
+                .filter(|probe| probe.context == context && app.snapshot.state == state::STOPPED)
                 .and_then(|probe| probe.nvic.as_ref());
             text.push(match nvic.and_then(|n| n.priority_bits.as_ref()) {
                 Some(priority) => format!(
@@ -464,7 +464,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
             .snapshot
             .register_probe
             .as_ref()
-            .filter(|probe| probe.context == context && app.snapshot.state == "STOPPED")
+            .filter(|probe| probe.context == context && app.snapshot.state == state::STOPPED)
             .and_then(|probe| probe.identity.as_ref())
             .and_then(|identity| identity.model.as_deref())
             .unwrap_or("unknown; no current identity evidence");

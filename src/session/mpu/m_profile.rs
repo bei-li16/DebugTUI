@@ -125,7 +125,7 @@ impl Engine {
                         lease.quarantine(&error);
                     }
                     self.register_access_fault = Some(error.clone());
-                    self.state("FAULT");
+                    self.state(state::FAULT);
                     return Err(format!("M MPU outcome unknown; reconnect: {error}"));
                 }
                 self.check_register_read_cancelled()?;
@@ -141,7 +141,7 @@ impl Engine {
             .as_ref()
             .is_ok_and(|thread| thread == &probe.thread)
             || self.register_context() != *context
-            || self.snapshot.state != "STOPPED"
+            || self.snapshot.state != state::STOPPED
         {
             self.snapshot.register_probe = None;
             return Err("Physical M MPU context changed; complete batch discarded".into());

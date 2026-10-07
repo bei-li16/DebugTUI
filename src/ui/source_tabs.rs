@@ -677,7 +677,7 @@ mod tests {
 
     fn stop(a: &mut App, file: &str, line: u32) {
         let mut snapshot = a.snapshot.clone();
-        snapshot.state = "STOPPED".into();
+        snapshot.state = state::STOPPED.into();
         snapshot.generation += 1;
         snapshot.frame = Frame {
             file: file.into(),

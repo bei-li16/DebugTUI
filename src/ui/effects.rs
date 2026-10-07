@@ -207,17 +207,19 @@ impl Effects {
     pub fn snapshot(&mut self, old: &Snapshot, new: &Snapshot) {
         if self.connection.is_some() {
             match new.state.as_str() {
-                "STARTING SERVER" => self.connection = Some(0),
-                "STARTING GDB" => self.connection = Some(1),
-                "CONNECTING" => self.connection = Some(2),
+                state::STARTING_SERVER => self.connection = Some(0),
+                state::STARTING_GDB => self.connection = Some(1),
+                state::CONNECTING => self.connection = Some(2),
                 _ => {}
             }
         }
-        if new.state == "FAULT" && old.state != "FAULT" {
+        if new.state == state::FAULT && old.state != state::FAULT {
             self.trigger("error", 600);
             self.connection = None;
         }
-        if new.state == "STOPPED" && (old.state != "STOPPED" || old.generation != new.generation) {
+        if new.state == state::STOPPED
+            && (old.state != state::STOPPED || old.generation != new.generation)
+        {
             if matches!(
                 self.last_action.as_str(),
                 "step" | "next" | "finish" | "stepi"
@@ -239,10 +241,10 @@ impl Effects {
         }
     }
     pub fn glyph(&self, unicode: bool, state: &str, busy: bool) -> &'static str {
-        if state == "FAULT" {
+        if state == state::FAULT {
             return if unicode { "⊗" } else { "!" };
         }
-        if state == "RUNNING" {
+        if state == state::RUNNING {
             return if unicode {
                 ["●", "◉", "●", "○"][self.phase as usize % 4]
             } else {
@@ -256,7 +258,7 @@ impl Effects {
                 ["|", "/", "-", "\\"][self.phase as usize % 4]
             };
         }
-        if state.contains("STOPPED") {
+        if state.contains(state::STOPPED) {
             if unicode { "●" } else { "*" }
         } else if unicode {
             "○"
@@ -353,7 +355,7 @@ pub(super) fn paint(f: &mut UiFrame, a: &mut App) {
             task_pulse * 0.16,
         );
     }
-    let running = a.snapshot.state == "RUNNING";
+    let running = a.snapshot.state == state::RUNNING;
     if running {
         for pane in [
             pane::WATCH,
@@ -586,9 +588,9 @@ mod tests {
         fx.request(1, "connect");
         let mut old = Snapshot::default();
         for (state, stage) in [
-            ("STARTING SERVER", 0),
-            ("STARTING GDB", 1),
-            ("CONNECTING", 2),
+            (state::STARTING_SERVER, 0),
+            (state::STARTING_GDB, 1),
+            (state::CONNECTING, 2),
         ] {
             let new = Snapshot {
                 state: state.into(),
@@ -604,7 +606,7 @@ mod tests {
         old.frame.line = 18;
         fx.request(2, "step");
         let new = Snapshot {
-            state: "STOPPED".into(),
+            state: state::STOPPED.into(),
             generation: 1,
             frame: Frame {
                 file: "led.c".into(),
@@ -620,7 +622,7 @@ mod tests {
         fx.request(3, "build");
         assert_eq!(fx.task.as_ref().unwrap().progress, None);
         fx.response(3, false);
-        let (label, color) = fx.task_label("DISCONNECTED").unwrap();
+        let (label, color) = fx.task_label(state::DISCONNECTED).unwrap();
         assert!(label.contains("failed"));
         assert_eq!(color, theme::RED);
         fx.age_for_preview(2000);

@@ -83,9 +83,9 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App, rect: Rect) {
             break;
         }
         let badge = match core.state.as_str() {
-            "RUNNING" => "RUN",
-            "STOPPED" => "STOP",
-            "READY" => "READY",
+            state::RUNNING => "RUN",
+            state::STOPPED => "STOP",
+            state::READY => "READY",
             _ => "OFF",
         };
         let label = format!("{} · {badge}", core.name);
@@ -113,11 +113,11 @@ mod tests {
                 index: i,
                 name: format!("core{i}"),
                 endpoint: i.to_string(),
-                state: "STOPPED".into(),
+                state: state::STOPPED.into(),
             })
             .collect();
         a.snapshot.core = Some(a.snapshot.cores[8].clone());
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         for width in [45, 80, 160] {
             let mut t = Terminal::new(TestBackend::new(width, 32)).unwrap();
             t.draw(|f| super::super::draw(f, &mut a)).unwrap();
@@ -140,13 +140,13 @@ mod tests {
     #[test]
     fn core_switch_updates_source_assembly_registers_and_surface_color() {
         let mut a = App::new(Project::default(), true);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.snapshot.cores = (0..2)
             .map(|i| session::CoreStatus {
                 index: i,
                 name: format!("core{i}"),
                 endpoint: format!("localhost:{}", 3333 + i),
-                state: "STOPPED".into(),
+                state: state::STOPPED.into(),
             })
             .collect();
         let mut colors = vec![];
@@ -213,13 +213,18 @@ mod tests {
         p.multicore.scope = crate::config::ControlScope::All;
         p.multicore.restart = vec!["monitor chipreset".into()];
         let mut a = App::new(p, false);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.snapshot.cores = (0..2)
             .map(|i| session::CoreStatus {
                 index: i,
                 name: format!("core.{i}"),
                 endpoint: i.to_string(),
-                state: if i == 0 { "STOPPED" } else { "RUNNING" }.into(),
+                state: if i == 0 {
+                    state::STOPPED
+                } else {
+                    state::RUNNING
+                }
+                .into(),
             })
             .collect();
         a.snapshot.core = Some(a.snapshot.cores[0].clone());

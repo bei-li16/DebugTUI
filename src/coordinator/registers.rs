@@ -285,7 +285,7 @@ mod tests {
         ]
         .into();
         for (core, engine) in coordinator.engines.iter_mut().enumerate() {
-            engine.snapshot.state = "STOPPED".into();
+            engine.snapshot.state = state::STOPPED.into();
             engine.snapshot.register_session = core as u64 + 1;
             engine.snapshot.generation = 2;
             for (id, owner) in [

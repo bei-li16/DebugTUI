@@ -397,7 +397,7 @@ impl App {
         let old = old.and_then(|s| number(&s, base));
         let aligned = base == Radix::Hex && old.as_ref().is_some_and(|s| s.len() == value.len());
         let live = self.monitor_fresh(&item.key);
-        let stale = self.snapshot.state == "RUNNING" && !live;
+        let stale = self.snapshot.state == state::RUNNING && !live;
         let fg = if error {
             theme::RED
         } else if stale {

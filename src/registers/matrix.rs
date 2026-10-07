@@ -3,6 +3,7 @@
 use super::provenance::Phase;
 use super::*;
 use crate::config::MemoryAccess;
+use crate::session::state;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Environment {
@@ -142,7 +143,7 @@ impl Report {
         self.planned_classes.clear();
         let config = &self.environment.registers;
         let probe = self.probe.as_ref().filter(|p| {
-            self.environment.target_state == "STOPPED"
+            self.environment.target_state == state::STOPPED
                 && p.context == self.context
                 && self.context.frame == 0
         });
@@ -163,7 +164,7 @@ impl Report {
         let facts = catalogue.observation_facts_for_owners(
             &config.facts,
             probe,
-            if self.environment.target_state == "STOPPED" {
+            if self.environment.target_state == state::STOPPED {
                 &self.observations
             } else {
                 &[]
@@ -185,7 +186,7 @@ impl Report {
             let observation = self.observations.iter().position(|s| s.id == register.id);
             let sample = observation.map(|i| &self.observations[i]);
             let current = sample.is_some_and(|s| {
-                self.environment.target_state == "STOPPED"
+                self.environment.target_state == state::STOPPED
                     && s.applies_at(&self.context, owner.as_deref(), &self.owner_generations)
             });
             let support = if owner.is_none() {
@@ -302,7 +303,7 @@ impl Report {
                         .access_denial(
                             register,
                             &facts,
-                            self.environment.target_state == "STOPPED",
+                            self.environment.target_state == state::STOPPED,
                             None,
                         )
                         .is_none(),

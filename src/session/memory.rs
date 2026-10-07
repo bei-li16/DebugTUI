@@ -149,7 +149,10 @@ impl Engine {
                 "GDB".into(),
             )
         } else {
-            if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING") {
+            if !matches!(
+                self.snapshot.state.as_str(),
+                state::STOPPED | state::RUNNING
+            ) {
                 return Err("Memory access requires a connected target".into());
             }
             let access = self
@@ -160,7 +163,7 @@ impl Engine {
                 .filter(|access| access.cores.is_empty() || access.cores.contains(&context.core))
                 .cloned()
                 .ok_or("Memory channel is not available for this core")?;
-            if self.snapshot.state == "RUNNING" && !access.while_running {
+            if self.snapshot.state == state::RUNNING && !access.while_running {
                 return Err("This memory channel requires a stopped core".into());
             }
             let base = literal_address(address)?;
@@ -233,7 +236,10 @@ impl Engine {
         if channel.is_empty() {
             return self.read_memory_gdb_scalar(p, &boundary);
         }
-        if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING") {
+        if !matches!(
+            self.snapshot.state.as_str(),
+            state::STOPPED | state::RUNNING
+        ) {
             return Err("Memory access requires a connected target".into());
         }
         let access = self
@@ -244,7 +250,7 @@ impl Engine {
             .filter(|a| a.cores.is_empty() || a.cores.contains(&boundary.context.core))
             .cloned()
             .ok_or("Memory channel is not available for this core")?;
-        if self.snapshot.state == "RUNNING" && !access.while_running {
+        if self.snapshot.state == state::RUNNING && !access.while_running {
             return Err("This memory channel requires a stopped core".into());
         }
         let address = p["address"].as_u64().ok_or("Memory address is required")?;
@@ -449,7 +455,7 @@ mod tests {
         });
         let (events, _) = mpsc::sync_channel(512);
         let mut engine = Engine::new(project, events, Arc::new(AtomicBool::new(false)));
-        engine.snapshot.state = "RUNNING".into();
+        engine.snapshot.state = state::RUNNING.into();
         let listed = engine.memory_channels().unwrap();
         assert_eq!(listed["source"], "profile:fixture.toml");
         assert_eq!(listed["channels"][0]["available_for_core"], true);
@@ -480,7 +486,7 @@ mod tests {
         assert_eq!(result["raw"]["hex"], "0xfedcba9876543210");
         assert_eq!(result["target"], "bus0");
         assert_eq!(result["endpoint"], endpoint);
-        assert_eq!(result["state"], "RUNNING");
+        assert_eq!(result["state"], state::RUNNING);
         assert_eq!(result["atomic"], false);
         assert_eq!(result["access"]["phase"], "responded");
         assert_eq!(result["access"]["context"], result["context"]);
@@ -540,7 +546,7 @@ mod tests {
         });
         let (events, _) = mpsc::sync_channel(512);
         let mut engine = Engine::new(project, events, Arc::new(AtomicBool::new(false)));
-        engine.snapshot.state = "RUNNING".into();
+        engine.snapshot.state = state::RUNNING.into();
         engine
     }
 
@@ -662,7 +668,7 @@ mod tests {
             for dump in [false, true] {
                 let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
                 let mut engine = memory_engine(&listener.local_addr().unwrap().to_string());
-                engine.snapshot.state = "STOPPED".into();
+                engine.snapshot.state = state::STOPPED.into();
                 let sender = notification_queue(&mut engine);
                 let dispatch_sender = sender.clone();
                 let injected = notices.clone();

@@ -60,7 +60,7 @@ impl Engine {
         result["thread"] = json!(after.0);
         result["frame_address"] = json!(after.2);
         result["source"] = json!("gdb_typed_address");
-        result["state"] = json!("STOPPED");
+        result["state"] = json!(state::STOPPED);
         let context = self.register_context();
         self.watch_bindings.retain(|_, proof| {
             proof.context == context
@@ -120,7 +120,7 @@ impl Engine {
                 "Watch binding no longer matches its context, program or typed address".into(),
             );
         }
-        if self.snapshot.state == "STOPPED" {
+        if self.snapshot.state == state::STOPPED {
             let frame = self.selected_register_frame()?;
             if frame != (proof.thread, proof.context.frame, proof.pc) {
                 self.snapshot.memory_selection_epoch =
@@ -250,7 +250,7 @@ impl Engine {
             });
         if let Err(error) = &cleanup {
             self.register_access_fault = Some(error.clone());
-            self.state("FAULT");
+            self.state(state::FAULT);
         }
         match (result, cleanup) {
             (Ok(value), Ok(())) => Ok(value),

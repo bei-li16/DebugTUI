@@ -104,7 +104,7 @@ fn tha6206_source_selection_to_real_watch() {
                 );
             }
             refresh(&mut a, &engine, &mut events);
-            if a.snapshot.state != "STOPPED" {
+            if a.snapshot.state != state::STOPPED {
                 command(&mut a, &engine, "pause", json!({}), &mut events);
                 command(
                     &mut a,

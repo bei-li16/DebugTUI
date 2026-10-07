@@ -143,7 +143,7 @@ impl App {
             frame: next.frame.level,
         };
         if let Some(popup) = &mut self.write_editor.popup
-            && (popup.context != context || next.state != "STOPPED")
+            && (popup.context != context || next.state != state::STOPPED)
         {
             if let Some(preview) = popup.preview.take()
                 && let Some(token) = preview["draft"].as_str()
@@ -222,7 +222,7 @@ impl App {
         if popup.candidate.reason.is_some()
             || popup.expired
             || self.demo
-            || self.snapshot.state != "STOPPED"
+            || self.snapshot.state != state::STOPPED
             || (popup.physical() && popup.context.frame != 0)
         {
             popup.detail = popup
@@ -308,7 +308,7 @@ impl App {
         self.fx.response(id, error.is_none());
         if pending.stage == Stage::Preview {
             let current =
-                pending.context == self.register_context() && self.snapshot.state == "STOPPED";
+                pending.context == self.register_context() && self.snapshot.state == state::STOPPED;
             let matches = error.is_some()
                 || serde_json::from_value::<Context>(result["context"].clone()).ok()
                     == Some(pending.context.clone());
@@ -527,7 +527,7 @@ pub(super) fn draw(f: &mut UiFrame, app: &mut App) {
         let available = popup.candidate.reason.is_none()
             && !popup.expired
             && !app.demo
-            && app.snapshot.state == "STOPPED"
+            && app.snapshot.state == state::STOPPED
             && (!popup.physical() || popup.context.frame == 0)
             && app.write_editor.pending.is_none();
         let disabled =
@@ -554,7 +554,7 @@ mod tests {
         let mut project = Project::default();
         project.registers.cpu = "cortex-r52".into();
         let mut app = App::new(project, false);
-        app.snapshot.state = "STOPPED".into();
+        app.snapshot.state = state::STOPPED.into();
         app.snapshot.register_session = 73;
         app.snapshot.generation = 9;
         app.select_pane(pane::REGS);

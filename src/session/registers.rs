@@ -54,9 +54,13 @@ impl Engine {
                     })
                 });
         if checked_r52 {
-            catalogue.checked_el2_backend_denial(register, facts, self.snapshot.state == "STOPPED")
+            catalogue.checked_el2_backend_denial(
+                register,
+                facts,
+                self.snapshot.state == state::STOPPED,
+            )
         } else {
-            catalogue.access_denial(register, facts, self.snapshot.state == "STOPPED", None)
+            catalogue.access_denial(register, facts, self.snapshot.state == state::STOPPED, None)
         }
     }
 
@@ -88,13 +92,15 @@ impl Engine {
             .snapshot
             .register_probe
             .as_ref()
-            .is_some_and(|p| p.context != context || self.snapshot.state != "STOPPED")
+            .is_some_and(|p| p.context != context || self.snapshot.state != state::STOPPED)
         {
             self.snapshot.register_probe = None;
         }
         for sample in &mut self.snapshot.register_samples {
-            if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
-                || !sample.runtime_matches(self.snapshot.state == "STOPPED")
+            if !matches!(
+                self.snapshot.state.as_str(),
+                state::STOPPED | state::RUNNING
+            ) || !sample.runtime_matches(self.snapshot.state == state::STOPPED)
                 || !sample.applies(&context, sample.owner.as_deref())
             {
                 sample.stale();
@@ -118,7 +124,7 @@ impl Engine {
             .filter(|v| v.state == State::Valid)
         {
             let facts = self.effective_register_facts();
-            let valid = self.snapshot.state == "STOPPED"
+            let valid = self.snapshot.state == state::STOPPED
                 && view.valid_for(&self.register_context())
                 && self
                     .register_catalogue
@@ -152,7 +158,7 @@ impl Engine {
         else {
             return;
         };
-        let valid = self.snapshot.state == "STOPPED"
+        let valid = self.snapshot.state == state::STOPPED
             && view.valid_for(&self.register_context())
             && self
                 .register_catalogue
@@ -307,7 +313,10 @@ impl Engine {
     }
     pub(super) fn read_registers(&mut self, params: &Json) -> Result<Json, String> {
         self.drain_memory_notices();
-        if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING") {
+        if !matches!(
+            self.snapshot.state.as_str(),
+            state::STOPPED | state::RUNNING
+        ) {
             return Err("Register reads require a connected stopped or running target".into());
         }
         let read_state = self.snapshot.state.clone();
@@ -361,7 +370,7 @@ impl Engine {
             self.drain_memory_notices();
             if self.register_context() != context
                 || self.snapshot.state != read_state
-                || (read_state == "RUNNING" && self.memory_context_epoch != read_epoch)
+                || (read_state == state::RUNNING && self.memory_context_epoch != read_epoch)
             {
                 break;
             }
@@ -387,7 +396,7 @@ impl Engine {
             let access_denial = self
                 .register_access_denial(&catalogue, register, &self.effective_register_facts())
                 .or_else(|| {
-                    if read_state == "RUNNING" {
+                    if read_state == state::RUNNING {
                         crate::registers::running::denial(
                             &catalogue,
                             register,
@@ -448,7 +457,7 @@ impl Engine {
                 sample.detail =
                     "Capability is unknown; verify it or request an explicit manual read".into();
             } else {
-                if read_state == "RUNNING" {
+                if read_state == state::RUNNING {
                     sample.view = SampleView::RunningMemory;
                 }
                 // Missing target-description entries remain isolated Reader unsupported results.
@@ -477,7 +486,7 @@ impl Engine {
                 }
                 if attempted
                     && sample.view == SampleView::SelectedFrame
-                    && self.snapshot.state == "STOPPED"
+                    && self.snapshot.state == state::STOPPED
                 {
                     let final_proof = self.selected_register_frame();
                     if final_proof.as_ref().ok() != frame_proof.as_ref() {
@@ -522,7 +531,7 @@ impl Engine {
             samples.push(sample);
             if self.register_context() != context
                 || self.snapshot.state != read_state
-                || (read_state == "RUNNING" && self.memory_context_epoch != read_epoch)
+                || (read_state == state::RUNNING && self.memory_context_epoch != read_epoch)
             {
                 break;
             }
@@ -530,9 +539,11 @@ impl Engine {
         self.check_register_read_cancelled()?;
         self.drain_memory_notices();
         for sample in &mut samples {
-            if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING")
-                || (read_state == "RUNNING" && self.memory_context_epoch != read_epoch)
-                || !sample.runtime_matches(self.snapshot.state == "STOPPED")
+            if !matches!(
+                self.snapshot.state.as_str(),
+                state::STOPPED | state::RUNNING
+            ) || (read_state == state::RUNNING && self.memory_context_epoch != read_epoch)
+                || !sample.runtime_matches(self.snapshot.state == state::STOPPED)
                 || !sample.applies(&self.register_context(), sample.owner.as_deref())
             {
                 sample.stale();
@@ -601,7 +612,7 @@ impl Engine {
         self.check_register_read_cancelled()
             .map_err(|error| (Reason::Unknown, error))?;
         self.register_value_access = None;
-        if self.snapshot.state == "RUNNING"
+        if self.snapshot.state == state::RUNNING
             && let Some(denial) = crate::registers::running::denial(
                 catalogue,
                 register,
@@ -830,7 +841,7 @@ impl Engine {
                     if self.project.registers.mmio_probe
                         && !crate::registers::stm::component(component)
                         && !self.snapshot.register_probe.as_ref().is_some_and(|probe| {
-                            self.snapshot.state == "STOPPED"
+                            self.snapshot.state == state::STOPPED
                                 && crate::registers::mmio_probe::applicable(
                                     probe,
                                     &self.register_context(),
@@ -1120,7 +1131,7 @@ mod tests {
             .insert("default".into(), "cpu0".into());
         let (events, _) = mpsc::sync_channel(512);
         let mut engine = Engine::new(project, events, Arc::new(AtomicBool::new(false)));
-        engine.snapshot.state = "STOPPED".into();
+        engine.snapshot.state = state::STOPPED.into();
         engine
     }
     fn server(response: &'static str) -> (String, thread::JoinHandle<String>) {
@@ -1160,7 +1171,7 @@ mod tests {
                 .read_registers(&json!({"ids":["sctlr"],"context":old}))
                 .is_err()
         );
-        engine.snapshot.state = "RUNNING".into();
+        engine.snapshot.state = state::RUNNING.into();
         let result = engine.read_registers(&json!({"ids":["sctlr"]})).unwrap();
         assert_eq!(result["samples"][0]["state"], "unavailable");
         assert_eq!(result["samples"][0]["reason"], "access_restricted");
@@ -1173,14 +1184,14 @@ mod tests {
         assert!(result["samples"][0]["value"].is_null());
         assert!(result["samples"][0]["provenance"]["access"].is_null());
         assert!(engine.register_value_access.is_none());
-        assert_eq!(engine.snapshot.state, "RUNNING");
-        engine.snapshot.state = "DISCONNECTED".into();
+        assert_eq!(engine.snapshot.state, state::RUNNING);
+        engine.snapshot.state = state::DISCONNECTED.into();
         assert!(engine.read_registers(&json!({"ids":["sctlr"]})).is_err());
     }
     #[test]
     fn register_display_preferences_require_no_gdb_and_validate_before_persistence() {
         let mut engine = engine();
-        engine.snapshot.state = "RUNNING".into();
+        engine.snapshot.state = state::RUNNING.into();
         let context = engine.register_context();
         let preferences = crate::registers::display::Preferences::default();
         assert_eq!(
@@ -1192,7 +1203,7 @@ mod tests {
                 .unwrap()["saved"],
             false
         );
-        assert_eq!(engine.snapshot.state, "RUNNING");
+        assert_eq!(engine.snapshot.state, state::RUNNING);
         assert_eq!(engine.register_context(), context);
         assert!(
             engine

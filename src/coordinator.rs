@@ -2,7 +2,7 @@
 use crate::{
     config::{ControlScope, Core, Project},
     logging::{Stamp, Trace},
-    session::{self, CoreStatus, EngineHandle, Event, Request, Snapshot},
+    session::{self, CoreStatus, EngineHandle, Event, Request, Snapshot, state},
     wake::{Doorbell, RingOnDrop},
 };
 
@@ -396,7 +396,7 @@ impl Coordinator {
     }
     fn start_live(&mut self) {
         let desired = (self.project.live_watch.is_some()
-            && self.engines[self.active].snapshot.state == "RUNNING")
+            && self.engines[self.active].snapshot.state == state::RUNNING)
             .then(|| {
                 (
                     self.active,
@@ -437,7 +437,7 @@ impl Coordinator {
             return;
         };
         if *core != self.active
-            || self.engines[*core].snapshot.state != "RUNNING"
+            || self.engines[*core].snapshot.state != state::RUNNING
             || *generation != self.active_generation()
         {
             return;
@@ -568,7 +568,7 @@ impl Coordinator {
         self.invalidate_shared_owners(i);
         if !self.exiting {
             self.engines[i].snapshot = Snapshot {
-                state: "FAULT".into(),
+                state: state::FAULT.into(),
                 ..Default::default()
             };
             self.log(
@@ -779,13 +779,16 @@ impl Coordinator {
                 // A partially resumed/reset group must not silently keep running.
                 b.recovering = true;
                 for (i, e) in self.engines.iter().enumerate() {
-                    if e.snapshot.state == "RUNNING" {
+                    if e.snapshot.state == state::RUNNING {
                         b.steps.push_back(Step::Core(i, "pause".into()));
                     }
                 }
                 if b.request.method == "restart" {
                     for (i, e) in self.engines.iter().enumerate() {
-                        if matches!(e.snapshot.state.as_str(), "READY" | "STOPPED" | "RUNNING") {
+                        if matches!(
+                            e.snapshot.state.as_str(),
+                            state::READY | state::STOPPED | state::RUNNING
+                        ) {
                             b.steps.push_back(Step::Core(i, "synchronize".into()));
                         }
                     }
@@ -823,7 +826,7 @@ impl Coordinator {
                 step = Step::Core(core, "break_apply".into());
             }
             if let Step::Resume(i) = step {
-                if self.group_stop.is_some() || self.engines[i].snapshot.state == "RUNNING" {
+                if self.group_stop.is_some() || self.engines[i].snapshot.state == state::RUNNING {
                     continue;
                 }
                 step = Step::Core(
@@ -852,8 +855,11 @@ impl Coordinator {
                         continue;
                     }
                     let active = &self.engines[self.active].snapshot;
-                    if active.state == "STOPPED"
-                        && !self.engines.iter().any(|e| e.snapshot.state == "RUNNING")
+                    if active.state == state::STOPPED
+                        && !self
+                            .engines
+                            .iter()
+                            .any(|e| e.snapshot.state == state::RUNNING)
                     {
                         b.last = json!({"reason":active.stop_reason,"frame":active.frame,"core":self.active,"cores":self.statuses()});
                         continue;
@@ -861,7 +867,7 @@ impl Coordinator {
                     b.steps.push_front(Step::WaitGroupStop(deadline));
                     if self.group_stop.is_some() {
                         for &i in self.order.iter().rev() {
-                            if self.engines[i].snapshot.state == "RUNNING" {
+                            if self.engines[i].snapshot.state == state::RUNNING {
                                 b.steps.push_front(Step::Core(i, "pause".into()));
                             }
                         }
@@ -955,15 +961,19 @@ impl Coordinator {
             match b.request.method.as_str() {
                 "connect" | "reconnect" => info["connected"] = json!(ok),
                 "run" | "continue" => {
-                    info["running"] =
-                        json!(ok && self.engines.iter().all(|e| e.snapshot.state == "RUNNING"))
-                }
-                "pause" => {
-                    info["stopped"] = json!(
+                    info["running"] = json!(
                         ok && self
                             .engines
                             .iter()
-                            .all(|e| matches!(e.snapshot.state.as_str(), "STOPPED" | "READY"))
+                            .all(|e| e.snapshot.state == state::RUNNING)
+                    )
+                }
+                "pause" => {
+                    info["stopped"] = json!(
+                        ok && self.engines.iter().all(|e| matches!(
+                            e.snapshot.state.as_str(),
+                            state::STOPPED | state::READY
+                        ))
                     )
                 }
                 "restart" => info["restarted"] = json!(ok),
@@ -1001,10 +1011,12 @@ impl Coordinator {
         }
         if self.multi()
             && req.method == "connect"
-            && self
-                .engines
-                .iter()
-                .any(|e| !matches!(e.snapshot.state.as_str(), "DISCONNECTED" | "FAULT"))
+            && self.engines.iter().any(|e| {
+                !matches!(
+                    e.snapshot.state.as_str(),
+                    state::DISCONNECTED | state::FAULT
+                )
+            })
         {
             self.reply(
                 req.id,
@@ -1070,10 +1082,12 @@ impl Coordinator {
         if task {
             self.live_watch = None;
             self.live_key = None;
-            let connected = self
-                .engines
-                .iter()
-                .any(|e| matches!(e.snapshot.state.as_str(), "READY" | "STOPPED" | "RUNNING"));
+            let connected = self.engines.iter().any(|e| {
+                matches!(
+                    e.snapshot.state.as_str(),
+                    state::READY | state::STOPPED | state::RUNNING
+                )
+            });
             for &i in self.order.iter().rev() {
                 steps.push_back(Step::Core(i, "disconnect".into()));
             }

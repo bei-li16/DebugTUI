@@ -463,10 +463,13 @@ impl App {
         if self.monitor.pending.is_some() {
             return false;
         }
-        if !matches!(self.snapshot.state.as_str(), "STOPPED" | "RUNNING") {
+        if !matches!(
+            self.snapshot.state.as_str(),
+            state::STOPPED | state::RUNNING
+        ) {
             return false;
         }
-        if self.snapshot.state == "RUNNING"
+        if self.snapshot.state == state::RUNNING
             && !self.project.memory_access.iter().any(|a| {
                 a.id == policy.channel
                     && a.while_running
@@ -548,7 +551,7 @@ impl App {
                     "watch_binding":if binding.binding_id.is_empty(){None}else{Some(&binding.binding_id)}}),
                 false,
             )
-        } else if self.snapshot.state == "STOPPED"
+        } else if self.snapshot.state == state::STOPPED
             && let Some((expression, path)) = &item.watch
         {
             (
@@ -649,11 +652,11 @@ impl App {
                 serde_json::from_value::<crate::registers::Context>(result["context"].clone());
             let binding = serde_json::from_value::<Binding>(result.clone()).and_then(|binding| {
                 if resolved_context.as_ref().is_ok_and(|c| *c == expected)
-                    && self.snapshot.state == "STOPPED"
+                    && self.snapshot.state == state::STOPPED
                     && result["selection_epoch"].as_u64() == Some(pending.epoch)
                     && !binding.binding_id.is_empty()
                     && result["source"] == "gdb_typed_address"
-                    && result["state"] == "STOPPED"
+                    && result["state"] == state::STOPPED
                     && result["thread"].as_str().is_some_and(|t| !t.is_empty())
                     && result["frame_address"]
                         .as_str()
@@ -780,7 +783,7 @@ impl App {
         false
     }
     pub(super) fn apply_live_watch(&mut self, live: crate::live_watch::LiveWatchSample) {
-        if self.snapshot.state != "RUNNING"
+        if self.snapshot.state != state::RUNNING
             || live.generation != self.snapshot.generation
             || live.core != self.snapshot.core.as_ref().map(|c| c.index)
             || !self
@@ -850,7 +853,7 @@ impl App {
             || sample.epoch != self.snapshot.memory_selection_epoch
             || (!sample.legacy
                 && sample.route_key != self.memory_route_fingerprint(&sample.channel))
-            || (sample.legacy && self.snapshot.state != "RUNNING")
+            || (sample.legacy && self.snapshot.state != state::RUNNING)
         {
             return None;
         }
@@ -881,7 +884,7 @@ impl App {
                 && s.generation == self.snapshot.generation
                 && s.session == self.snapshot.register_session
                 && s.frame == self.snapshot.frame.level
-                && (!s.legacy || self.snapshot.state == "RUNNING")
+                && (!s.legacy || self.snapshot.state == state::RUNNING)
                 && s.epoch == self.snapshot.memory_selection_epoch
                 && (s.legacy
                     || (s.route_key == self.memory_route_fingerprint(&s.channel)
@@ -898,7 +901,7 @@ impl App {
     }
     pub(super) fn manual_monitor(&mut self, engine: Option<&EngineHandle>, item: Item) -> bool {
         let policy = self.monitor_policy(&item);
-        if self.snapshot.state == "RUNNING"
+        if self.snapshot.state == state::RUNNING
             && !self.project.memory_access.iter().any(|a| {
                 a.id == policy.channel
                     && a.while_running
@@ -983,7 +986,7 @@ mod tests {
     use super::*;
     fn app() -> App {
         let mut a = App::new(Project::default(), false);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a.snapshot.watches = vec![Variable {
             name: "counter".into(),
             value: "1".into(),
@@ -1011,7 +1014,7 @@ mod tests {
     fn resolved(a: &mut App, id: u64) {
         let result = json!({"address":536870912,"bits":32,"little_endian":true,"signed":false,"float":false,
             "binding_id":"fixture-binding","selection_epoch":a.snapshot.memory_selection_epoch,
-            "context":a.register_context(),"thread":"1","frame_address":"0x100000008","source":"gdb_typed_address","state":"STOPPED"});
+            "context":a.register_context(),"thread":"1","frame_address":"0x100000008","source":"gdb_typed_address","state":state::STOPPED});
         assert!(a.monitor_response(id, &result, None));
     }
     #[test]
@@ -1031,7 +1034,7 @@ mod tests {
             let mut result = json!({"address":536870912,"bits":32,"little_endian":true,
                 "binding_id":"fixture-binding","selection_epoch":a.snapshot.memory_selection_epoch,
                 "context":a.register_context(),"thread":"1","frame_address":"0x100000008",
-                "source":"gdb_typed_address","state":"STOPPED"});
+                "source":"gdb_typed_address","state":state::STOPPED});
             match scenario {
                 "missing-context" => {
                     result.as_object_mut().unwrap().remove("context");
@@ -1040,7 +1043,7 @@ mod tests {
                     result["context"]["session"] = json!(a.snapshot.register_session + 1)
                 }
                 "no-thread" => result["thread"] = json!(""),
-                "running" => a.snapshot.state = "RUNNING".into(),
+                "running" => a.snapshot.state = state::RUNNING.into(),
                 "bad-width" => result["bits"] = json!(0),
                 _ => unreachable!(),
             }
@@ -1148,7 +1151,7 @@ mod tests {
         let result = memory_access::scalar_fixture(&a, &request, 1);
         a.monitor_response(request.id, &result, None);
         assert!(!a.ensure_monitors(Some(&engine))); // configured interval, no busy polling
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         a.monitor
             .samples
             .values_mut()
@@ -1217,7 +1220,7 @@ mod tests {
             index: 1,
             name: "core1".into(),
             endpoint: "1".into(),
-            state: "STOPPED".into(),
+            state: state::STOPPED.into(),
         });
         a.update(Event::Snapshot {
             snapshot: Box::new(snapshot),
@@ -1297,7 +1300,7 @@ mod tests {
             index: 1,
             name: "core1".into(),
             endpoint: "1".into(),
-            state: "STOPPED".into(),
+            state: state::STOPPED.into(),
         });
         assert_eq!(a.monitor_channels().len(), 2);
         a.project.ui.refresh.insert(
@@ -1349,7 +1352,7 @@ mod tests {
         let result = memory_access::scalar_fixture(&a, &read, 1);
         a.monitor_response(read.id, &result, None);
         let mut next = a.snapshot.clone();
-        next.state = "RUNNING".into();
+        next.state = state::RUNNING.into();
         next.generation += 1;
         a.update(Event::Snapshot {
             snapshot: Box::new(next),

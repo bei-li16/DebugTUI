@@ -176,7 +176,7 @@ impl Coordinator {
                 let e = &self.engines[i];
                 if e.exited
                     || e.unresponsive
-                    || !matches!(e.snapshot.state.as_str(), "READY" | "STOPPED")
+                    || !matches!(e.snapshot.state.as_str(), state::READY | state::STOPPED)
                 {
                     return Err(format!(
                         "[{}] Pause/connect every affected core before editing this breakpoint",
@@ -254,7 +254,7 @@ mod tests {
         let mut c = Coordinator::new(p, tx, Arc::new(AtomicBool::new(false)));
         c.active = 0;
         for e in &mut c.engines {
-            e.snapshot.state = "STOPPED".into();
+            e.snapshot.state = state::STOPPED.into();
         }
         c.engines[0].snapshot.breakpoints.push(Breakpoint {
             id: "4".into(),
@@ -281,7 +281,7 @@ mod tests {
             ));
             assert!(c.batch.is_none());
         }
-        c.engines[1].snapshot.state = "RUNNING".into();
+        c.engines[1].snapshot.state = state::RUNNING.into();
         c.begin(Request::new(
             3,
             "break_cores",

@@ -156,7 +156,7 @@ impl App {
                         .collect();
                 }
             }
-            if !matches!(self.snapshot.state.as_str(), "STOPPED" | "READY") {
+            if !matches!(self.snapshot.state.as_str(), state::STOPPED | state::READY) {
                 self.completion.hint = "Symbol completion available when stopped".into();
             }
             if !self.completion.items.is_empty() {
@@ -184,7 +184,7 @@ impl App {
             || !self.pending_commands.is_empty()
             || self.pending_view.is_some()
             || self.pending_task.is_some()
-            || !matches!(self.snapshot.state.as_str(), "READY" | "STOPPED")
+            || !matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED)
         {
             return changed;
         }
@@ -384,7 +384,7 @@ mod tests {
 
     fn app() -> App {
         let mut a = App::new(Project::default(), false);
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         a
     }
     fn type_text(a: &mut App, text: &str, engine: &EngineHandle) {
@@ -535,11 +535,11 @@ mod tests {
             assert!(a.completion.hits.iter().any(|(_, i)| *i == 63));
             assert!(a.completion.area.right() <= width && a.completion.area.bottom() <= height);
         }
-        a.snapshot.state = "RUNNING".into();
+        a.snapshot.state = state::RUNNING.into();
         ready(&mut a, &engine);
         assert!(requests.try_recv().is_err());
         assert!(a.completion.items.is_empty());
-        a.snapshot.state = "STOPPED".into();
+        a.snapshot.state = state::STOPPED.into();
         ready(&mut a, &engine);
         assert_eq!(requests.try_recv().unwrap().method, "complete");
     }

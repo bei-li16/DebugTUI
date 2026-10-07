@@ -7,7 +7,7 @@ use crate::registers::{
 use std::collections::BTreeMap;
 impl Engine {
     pub(super) fn effective_register_facts(&self) -> BTreeMap<String, u64> {
-        if self.snapshot.state == "STOPPED"
+        if self.snapshot.state == state::STOPPED
             && let Ok(Some((catalogue, _))) = &self.register_catalogue
         {
             return catalogue.observation_facts_for_owners(
@@ -21,7 +21,9 @@ impl Engine {
         self.snapshot
             .register_probe
             .as_ref()
-            .filter(|p| p.context == self.register_context() && self.snapshot.state == "STOPPED")
+            .filter(|p| {
+                p.context == self.register_context() && self.snapshot.state == state::STOPPED
+            })
             .map(|p| p.effective(&self.project.registers.facts))
             .unwrap_or_else(|| self.project.registers.facts.clone())
     }
@@ -199,7 +201,7 @@ impl Engine {
                 match result {
                     Ok(value)
                         if self.register_context() == context
-                            && self.snapshot.state == "STOPPED" =>
+                            && self.snapshot.state == state::STOPPED =>
                     {
                         sample.state = State::Valid;
                         sample.value = Some(value);
@@ -227,7 +229,7 @@ impl Engine {
             } else {
                 probe.decode();
             }
-            if self.register_context() != context || self.snapshot.state != "STOPPED" {
+            if self.register_context() != context || self.snapshot.state != state::STOPPED {
                 self.snapshot.register_probe = None;
                 return Err("Context changed; discarded capability probe".into());
             }
@@ -284,7 +286,7 @@ impl Engine {
             for lease in &mut leases {
                 lease.quarantine(&error);
             }
-            self.state("FAULT");
+            self.state(state::FAULT);
             return Err(format!("Capability channel faulted; reconnect: {error}"));
         }
         let final_thread = self.write_thread()?;
@@ -295,7 +297,7 @@ impl Engine {
                 .field("frame")
                 .is_none_or(|f| f.string("level") != "0")
             || self.register_context() != context
-            || self.snapshot.state != "STOPPED"
+            || self.snapshot.state != state::STOPPED
         {
             self.snapshot.register_probe = None;
             return Err("Physical GDB thread/frame changed; discarded capability probe".into());

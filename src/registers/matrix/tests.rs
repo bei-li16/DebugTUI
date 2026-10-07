@@ -82,7 +82,7 @@ fn report(cpu: &str) -> Report {
             gdb_core_endpoints: BTreeMap::new(),
             channels: vec![],
             channels_source: "configuration".into(),
-            target_state: "STOPPED".into(),
+            target_state: state::STOPPED.into(),
             access_fault: None,
         },
         probe: None,
@@ -270,11 +270,11 @@ fn matrix_current_receipts_and_retained_values_have_distinct_support_states() {
     assert_eq!(row(&inventory, "r0").support, Support::Error);
     assert_eq!(inventory.observations[0].value, original.value);
     assert!(inventory.observations[0].last_value_provenance.is_some());
-    inventory.environment.target_state = "RUNNING".into();
+    inventory.environment.target_state = state::RUNNING.into();
     inventory.refresh();
     assert_eq!(row(&inventory, "r0").support, Support::Stale);
     assert!(!row(&inventory, "r0").observation_context_current);
-    inventory.environment.target_state = "STOPPED".into();
+    inventory.environment.target_state = state::STOPPED.into();
     inventory.context.frame = 1;
     inventory.refresh();
     assert_eq!(row(&inventory, "r0").support, Support::Stale);

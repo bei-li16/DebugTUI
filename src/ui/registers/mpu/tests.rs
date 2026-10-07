@@ -6,7 +6,7 @@ fn m7_cache_popup_open_scroll_render_and_close_are_zero_io_and_read_is_explicit(
     let mut project = Project::default();
     project.registers.cpu = "cortex-m7".into();
     let mut app = App::new(project, false);
-    app.snapshot.state = "STOPPED".into();
+    app.snapshot.state = state::STOPPED.into();
     app.snapshot.register_session = 1;
     app.snapshot.generation = 2;
     let mut proof = super::tests::app().snapshot.register_probe.unwrap();
@@ -67,7 +67,7 @@ fn m7_cache_popup_open_scroll_render_and_close_are_zero_io_and_read_is_explicit(
     assert_eq!(req.method, "registers_cache");
     assert!(req.params.get("bank").is_none());
     app.register_response(req.id, &json!({}), None);
-    app.snapshot.state = "RUNNING".into();
+    app.snapshot.state = state::RUNNING.into();
     app.register_view.mpu_popup.as_mut().unwrap().scroll = 0;
     let text = render(&mut app, 112, 30);
     assert!(text.contains("Stale"));
@@ -93,7 +93,7 @@ fn m7_cache_popup_refuses_other_cpus_and_unknown_identity_without_requests() {
     let mut project = Project::default();
     project.registers.cpu = "cortex-m7".into();
     let mut app = App::new(project, false);
-    app.snapshot.state = "STOPPED".into();
+    app.snapshot.state = state::STOPPED.into();
     let (engine, requests) = engine();
     app.open_cache_view("");
     app.key(
@@ -116,7 +116,7 @@ fn m_mpu_overview_uses_explicit_read_and_shows_stale_raw_without_field_derivatio
     let mut project = Project::default();
     project.registers.cpu = "cortex-m3".into();
     let mut app = App::new(project, false);
-    app.snapshot.state = "STOPPED".into();
+    app.snapshot.state = state::STOPPED.into();
     app.snapshot.register_session = 1;
     app.snapshot.generation = 2;
     let mut proof = super::tests::app().snapshot.register_probe.unwrap();
@@ -163,7 +163,7 @@ fn m_mpu_overview_uses_explicit_read_and_shows_stale_raw_without_field_derivatio
     assert_eq!(request.method, "registers_mpu");
     assert_eq!(request.params["bank"], "m");
     app.register_response(request.id, &json!({}), None);
-    app.snapshot.state = "RUNNING".into();
+    app.snapshot.state = state::RUNNING.into();
     let text = render(&mut app, 112, 30);
     assert!(text.contains("Stale"));
     assert!(!text.contains("ENABLE="));
@@ -197,7 +197,7 @@ fn app() -> App {
     let mut project = Project::default();
     project.registers.cpu = "cortex-r52".into();
     let mut app = App::new(project, false);
-    app.snapshot.state = "STOPPED".into();
+    app.snapshot.state = state::STOPPED.into();
     app.snapshot.register_session = 1;
     app.snapshot.generation = 2;
     let mut probe = Probe {
@@ -338,7 +338,7 @@ fn mpu_switch_bank_and_stale_mair_do_not_mix_data_or_show_old_values_as_current(
     let (engine, requests) = engine();
     app.open_mpu_view("el1");
     render(&mut app, 112, 30);
-    app.snapshot.state = "RUNNING".into();
+    app.snapshot.state = state::RUNNING.into();
     let text = render(&mut app, 112, 30);
     assert!(text.contains("last-known"));
     assert!(text.contains("Stale"));
@@ -348,7 +348,7 @@ fn mpu_switch_bank_and_stale_mair_do_not_mix_data_or_show_old_values_as_current(
         Some(&engine),
     );
     assert!(requests.try_recv().is_err());
-    app.snapshot.state = "STOPPED".into();
+    app.snapshot.state = state::STOPPED.into();
     app.key(
         KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE),
         Some(&engine),
@@ -362,7 +362,7 @@ fn mpu_switch_bank_and_stale_mair_do_not_mix_data_or_show_old_values_as_current(
         index: 1,
         name: "core1".into(),
         endpoint: "localhost:3334".into(),
-        state: "STOPPED".into(),
+        state: state::STOPPED.into(),
     });
     app.sync_register_preferences();
     assert!(app.register_view.mpu_popup.is_none());

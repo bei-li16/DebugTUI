@@ -128,7 +128,7 @@ impl Engine {
             && let Err(error) = self.mi("-gdb-set may-call-functions on")
         {
             self.register_access_fault = Some(error.clone());
-            self.state("FAULT");
+            self.state(state::FAULT);
             return Err(format!(
                 "GDB function-call policy restoration failed: {error}; operation: {}",
                 result
@@ -247,7 +247,7 @@ impl Engine {
         let deleted = self.mi(&format!("-var-delete {}", mi::quote(&root)));
         if let Err(error) = &deleted {
             self.register_access_fault = Some(error.clone());
-            self.state("FAULT");
+            self.state(state::FAULT);
         }
         match (result, deleted) {
             (Ok(value), Ok(_)) => Ok(value),
@@ -400,7 +400,7 @@ impl Engine {
         };
         self.variable_value(&name, &metadata)?;
         self.bitfield_before(&metadata, &name, context)?;
-        if self.register_context() != *context || self.snapshot.state != "STOPPED" {
+        if self.register_context() != *context || self.snapshot.state != state::STOPPED {
             return Err("Variable context changed while resolving its type/storage".into());
         }
         Ok(metadata)
@@ -621,7 +621,7 @@ impl Engine {
                         ))?;
                         outcome = Outcome::Accepted;
                         if engine.register_context() != draft.context
-                            || engine.snapshot.state != "STOPPED"
+                            || engine.snapshot.state != state::STOPPED
                         {
                             return Err(
                                 "Assignment accepted but context changed before verification"
@@ -658,7 +658,7 @@ impl Engine {
                             true
                         };
                         if engine.register_context() != draft.context
-                            || engine.snapshot.state != "STOPPED"
+                            || engine.snapshot.state != state::STOPPED
                         {
                             return Err("Context changed during variable verification".into());
                         }
@@ -699,12 +699,12 @@ impl Engine {
             } else {
                 "verification_or_cleanup_unavailable"
             });
-            if outcome == Outcome::Unknown || self.snapshot.state == "FAULT" {
+            if outcome == Outcome::Unknown || self.snapshot.state == state::FAULT {
                 for lease in &mut leases {
                     lease.quarantine(&error);
                 }
                 self.register_access_fault = Some(error);
-                self.state("FAULT");
+                self.state(state::FAULT);
             }
         }
         result["outcome"] = json!(outcome);
