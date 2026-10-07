@@ -25,28 +25,28 @@ $null = Invoke-Headless 'missing-tools' @('--tools-dir', "$runRoot\missing-tools
 $null = Invoke-Headless 'refused-port' @('--connect', '127.0.0.1:3349') 1
 Write-Output 'PASS invalid inputs: missing ELF/tools and refused server return failure with cleanup.'
 
-# A real BAT-launched server is external to DebugTUI's process job.
-$bat = Join-Path $toolRoot 'start_server.bat'
-$server = Start-Process -FilePath $env:ComSpec -ArgumentList ('/d /s /c ""{0}""' -f $bat) -WindowStyle Hidden -RedirectStandardOutput "$runRoot\external-server.log" -RedirectStandardError "$runRoot\external-server.err" -PassThru
+# An OpenOCD started here is external to DebugTUI's process job.
+$openocd = Join-Path $toolRoot 'bin\openocd\bin\openocd.exe'
+$serverArgs = '-s "{0}" -f "{1}"' -f (Join-Path $toolRoot 'bin\openocd\scripts'), (Join-Path $toolRoot 'config\stm32f429-live.cfg')
+$server = Start-Process -FilePath $openocd -ArgumentList $serverArgs -WindowStyle Hidden -RedirectStandardOutput "$runRoot\external-server.log" -RedirectStandardError "$runRoot\external-server.err" -PassThru
 $null = $server.Handle
-$externalChildren = @()
 try {
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     do {
-        $ready = (Get-Content "$runRoot\external-server.log" -Raw -ErrorAction SilentlyContinue) -match 'Waiting for GDB connection|Connected to target'
-        if ($server.HasExited) { throw 'BAT server exited before ready' }
-        if ([DateTime]::UtcNow -gt $deadline) { throw 'BAT server startup timed out' }
+        # OpenOCD logs to stderr.
+        $ready = (Get-Content "$runRoot\external-server.err" -Raw -ErrorAction SilentlyContinue) -match 'Listening on port 3333 for gdb connections'
+        if ($server.HasExited) { throw 'External server exited before ready' }
+        if ([DateTime]::UtcNow -gt $deadline) { throw 'External server startup timed out' }
         if (-not $ready) { Start-Sleep -Milliseconds 50 }
     } until ($ready)
-    $externalChildren = @(Get-CimInstance Win32_Process -Filter "Name='JLinkGDBServerCL.exe'" | Where-Object ParentProcessId -eq $server.Id)
     $null = Invoke-Headless 'occupied-probe' @() 1
-    foreach ($child in $externalChildren) { if (-not (Get-Process -Id $child.ProcessId -ErrorAction SilentlyContinue)) { throw 'Failed managed connection killed the external server' } }
+    if ($server.HasExited) { throw 'Failed managed connection killed the external server' }
     $external = @(Invoke-Headless 'external' @('--connect', '127.0.0.1:3333') 0)
     if (-not ($external | Where-Object { $_.event -eq 'response' -and $_.id -eq 1 }).ok) { throw 'External connection failed' }
-    if (-not $server.WaitForExit(5000) -or $server.ExitCode -ne 0) { throw 'BAT single-run server did not close normally' }
-    Write-Output 'PASS external: BAT startup, occupied probe failure preserves external process, --connect works, server exits normally.'
+    # OpenOCD keeps serving after GDB detaches; DebugTUI must not have stopped it.
+    if ($server.HasExited) { throw 'External session terminated the external server' }
+    Write-Output 'PASS external: OpenOCD startup, occupied probe failure preserves external process, --connect works, server survives the session.'
 } finally {
-    foreach ($child in $externalChildren) { Get-Process -Id $child.ProcessId -ErrorAction SilentlyContinue | Stop-Process -Force }
     if (-not $server.HasExited) { $server.Kill() }
 }
 
@@ -73,7 +73,7 @@ try {
         if ([DateTime]::UtcNow -gt $deadline) { throw 'Forced-exit setup deadline exceeded' }
     } until ($event.event -eq 'response' -and $event.id -eq 1)
     if (-not $event.ok) { throw "Forced-exit connection: $($event.error)" }
-    $owned = @(Get-CimInstance Win32_Process -Filter "Name='JLinkGDBServerCL.exe' OR Name='arm-none-eabi-gdb.exe'" | Where-Object ParentProcessId -eq $app.Id)
+    $owned = @(Get-CimInstance Win32_Process -Filter "Name='openocd.exe' OR Name='arm-none-eabi-gdb.exe'" | Where-Object ParentProcessId -eq $app.Id)
     if ($owned.Count -ne 2) { throw 'Expected one owned GDB and one owned server' }
     $app.Kill()
     if (-not $app.WaitForExit(5000)) { throw 'Owned application did not terminate' }

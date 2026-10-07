@@ -124,7 +124,7 @@ debugtui --tools-dir ./tools --elf ./build/app.elf
 debugtui --environment ./tools/debug-env.toml --elf ./build/app.elf
 ~~~
 
-先用 tools/start_server.bat 启动服务后，可跳过 TUI 的服务启动：
+服务已在外部启动时（例如另一个终端运行 `./tools/bin/openocd/bin/openocd.exe -s ./tools/bin/openocd/scripts -f ./tools/config/stm32f429-live.cfg`），可跳过 TUI 的服务启动：
 
 ~~~powershell
 debugtui --environment ./tools/debug-env.toml --connect localhost:3333 --elf ./build/app.elf
@@ -147,7 +147,7 @@ debugtui --snapshot ./preview.txt
 |---|---|
 | 项目 debug.toml | ELF、源码根目录/映射、SVD、构建/固件下载命令、Watch/断点、使用哪些核心、组控制策略、退出策略、日志目录、UI 偏好、环境引用 |
 | tools/debug-env.toml | GDB/OpenOCD 路径、启动参数、工作目录/环境变量、服务就绪条件、连接方式/端口、工具通信超时、通用探针/芯片初始化命令 |
-| tools/examples/ | 外部 OpenOCD、RISC-V 环境模板；需按实际工具链配置 |
+| tools/examples/ | 外部 OpenOCD、RISC-V、自行安装的 SEGGER J-Link GDB Server 环境模板；需按实际工具链配置 |
 
 项目配置示例：
 
@@ -549,7 +549,7 @@ while_running = true
 
 TUI 只发送指定 target 的 `read_memory`，不执行全局 `targets` 切换。`soc.ahb` 对应哪个 DAP/AP、借哪个核、如何创建多个 CTI，均放在板级 OpenOCD 配置；AP1/AP3 不具备通用固定含义。多核示例见 [多核内存通道示例](https://github.com/bei-li16/DebugTUI/blob/main/tools/examples/multicore-access.md)。已有 `[live_watch]` 配置会直接更新 Watch；显式设置的逐项 Memory access / refresh 优先，包括手动或关闭设置。
 
-**STM32F429 参考环境**：[OpenOCD profile](https://github.com/bei-li16/DebugTUI/blob/main/tools/debug-env-openocd.toml) 使用 J-Link 探针 + OpenOCD，M4 与独立 `mem_ap` target 均使用该芯片的 AP0。选择该 profile 可获得 AHB 和 stopped-only Core 通道；J-Link GDB Server 的普通 profile 不提供 OpenOCD TCL 运行时通道。THA6206 的通道应以其板级 OpenOCD 配置为准，不要照搬 STM32 的 AP 编号。已有 STM32、THA6206 等验证记录及限制见 [测试记录](TESTING.md)，参考环境通过不代表所有通道和芯片组合都已验收。
+**STM32F429 参考环境**：[默认 profile](https://github.com/bei-li16/DebugTUI/blob/main/tools/debug-env.toml) 使用 J-Link 探针 + OpenOCD，M4 与独立 `mem_ap` target 均使用该芯片的 AP0。选择该 profile 可获得 AHB 和 stopped-only Core 通道；SEGGER J-Link GDB Server（不随附，模板见 tools/examples）不提供 OpenOCD TCL 运行时通道。THA6206 的通道应以其板级 OpenOCD 配置为准，不要照搬 STM32 的 AP 编号。已有 STM32、THA6206 等验证记录及限制见 [测试记录](TESTING.md)，参考环境通过不代表所有通道和芯片组合都已验收。
 
 ### 兼容的全局 Live Watch 配置
 

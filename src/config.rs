@@ -1546,7 +1546,7 @@ mod tests {
     #[test]
     fn environment_memory_channels_are_portable_and_validate_core_restrictions() {
         let p = Project::from_document(
-            toml::from_str("[tools]\nprofile='tools/debug-env-openocd.toml'").unwrap(),
+            toml::from_str("[tools]\nprofile='tools/debug-env.toml'").unwrap(),
             None,
             None,
         )

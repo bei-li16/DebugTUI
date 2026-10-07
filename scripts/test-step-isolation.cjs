@@ -1,5 +1,7 @@
 // Development-only test of the STM32 FreeRTOS fixture through GDB/MI directly.
 // Each mode/session uses fresh GDB + J-Link processes; no TUI or firmware download.
+// The SEGGER server is not bundled: DEBUGTUI_JLINK_SERVER names the installed
+// JLinkGDBServerCL.exe.
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -10,6 +12,8 @@ const cycles = Number(process.argv[3] || 100);
 const sessions = Number(process.argv[4] || 3);
 const modes = (process.argv[5] || 'next,step,stepi,monitor').split(',');
 const holdMs = Number(process.argv[6] || 0);
+const jlinkServer = process.env.DEBUGTUI_JLINK_SERVER || 'C:/Program Files/SEGGER/JLink/JLinkGDBServerCL.exe';
+if (!fs.existsSync(jlinkServer)) throw Error(`J-Link GDB Server not found: ${jlinkServer}; set DEBUGTUI_JLINK_SERVER`);
 const execution = { next: '-exec-next', step: '-exec-step', stepi: '-exec-step-instruction', monitor: '-interpreter-exec console "monitor step"' };
 const expected = { next: 0x080007e6, step: 0x080005fc, stepi: 0x080005f8, monitor: 0x080005f8 };
 if (!elf || !fs.existsSync(elf) || !Number.isInteger(cycles) || cycles < 1 || cycles > 1000 ||
@@ -73,7 +77,7 @@ async function test(mode, session) {
         if (regs.pc !== pc) throw Error(`Unexpected PC: 0x${regs.pc.toString(16)}; expected 0x${pc.toString(16)}`);
     }
     try {
-        server = spawn(path.join(root, 'tools/bin/jlink/JLinkGDBServerCL.exe'),
+        server = spawn(jlinkServer,
             ['-device', 'STM32F429IG', '-if', 'SWD', '-speed', '4000', '-port', '3333', '-select', 'USB', '-localhostonly', '-nogui', '-halt', '-singlerun'],
             { windowsHide: true });
         serverExit = new Promise(resolve => server.once('exit', resolve));

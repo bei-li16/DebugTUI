@@ -17,7 +17,7 @@ fs.mkdirSync(output, { recursive: true });
 const tomlPath = p => JSON.stringify(path.resolve(p).replaceAll('\\', '/'));
 const config = path.join(output, 'project.toml');
 fs.writeFileSync(config, `version=2\n[tools]\nprofile=${tomlPath(path.join(root, 'tools/debug-env.toml'))}\n[program]\nelf=${tomlPath(elf)}\n[session]\nlog_dir=${tomlPath(output)}\n`);
-if (speed) fs.appendFileSync(config, `\n[service]\nargs=["-device","STM32F429IG","-if","SWD","-speed","${speed}","-port","3333","-select","USB","-localhostonly","-nogui","-halt","-singlerun"]\n`);
+if (speed) fs.appendFileSync(config, `\n[service]\nargs=["-s",${tomlPath(path.join(root, 'tools/bin/openocd/scripts'))},"-f",${tomlPath(path.join(root, 'tools/config/stm32f429-live.cfg'))},"-c","adapter speed ${speed}"]\n`);
 const events = fs.createWriteStream(path.join(output, 'events.jsonl'));
 const timeline = [];
 const child = spawn(binary, ['--project', config, '--headless', '--stdio'], { windowsHide: true });

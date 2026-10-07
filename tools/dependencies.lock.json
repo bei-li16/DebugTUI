@@ -1,6 +1,6 @@
 {
   "format": 2,
-  "profile": "windows-x64-native-gdb-jlink-openocd",
+  "profile": "windows-x64-native-gdb-openocd",
   "files": {
     "bin/gdb/ST-about.html": {
       "bytes": 6606,
@@ -29,22 +29,6 @@
     "bin/gdb/x86_64-w64-mingw32/arm-none-eabi/lib/gdbinit": {
       "bytes": 73,
       "sha256": "4432f08f85f4209a55e9778f8a1e1e7c5b2473fd3c4fde96a3c0d77b4f346e2b"
-    },
-    "bin/jlink/Doc/LicenseIncGUI.txt": {
-      "bytes": 36963,
-      "sha256": "d33dfb36fd3d86fac76a9e61a3fb17a0b638b457cc96618a8133b26b2727035d"
-    },
-    "bin/jlink/JLinkGDBServerCL.exe": {
-      "bytes": 516248,
-      "sha256": "f93e8a80ad89e3bbf48451bbed1ee71a25bad1737eba3da9df8713fd13ac04a5"
-    },
-    "bin/jlink/JLink_x64.dll": {
-      "bytes": 22584992,
-      "sha256": "934fe2b55e45e5fb9cdec1da7b12f5e4e3ab6950963a7f3c45ed7b343d8c8162"
-    },
-    "bin/jlink/ST-about.html": {
-      "bytes": 6573,
-      "sha256": "f74c8ef44abba1202fabbad7162d0035c34446973a60d60f18b8b10687df376c"
     },
     "bin/openocd/bin/libftdi1.dll": {
       "bytes": 272504,

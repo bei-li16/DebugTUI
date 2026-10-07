@@ -118,6 +118,6 @@ if ($Download) {
     Write-Output 'PASS download: ELF written, reset, all six read-only sections match.'
 }
 
-$remaining = @(Get-CimInstance Win32_Process -Filter "Name='JLinkGDBServerCL.exe' OR Name='arm-none-eabi-gdb.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($Tools,[StringComparison]::OrdinalIgnoreCase) })
+$remaining = @(Get-CimInstance Win32_Process -Filter "Name='openocd.exe' OR Name='arm-none-eabi-gdb.exe'" | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($Tools,[StringComparison]::OrdinalIgnoreCase) })
 if ($remaining.Count) { throw 'Test left debug child processes running' }
 Write-Output "Hardware test artifacts: $runRoot"
