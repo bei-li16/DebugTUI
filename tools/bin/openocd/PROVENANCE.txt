@@ -2,6 +2,8 @@ xPack Open On-Chip Debugger 0.12.0-7 (win32-x64)
 Upstream: https://github.com/xpack-dev-tools/openocd-xpack/releases/tag/v0.12.0-7
 Version string: Open On-Chip Debugger 0.12.0+dev-02228-ge5888bda3-dirty (2025-10-04)
 Layout: bin/openocd.exe + bin/libusb-1.0.dll + bin/libftdi1.dll (libjaylink/hidapi statically linked)
-        scripts/ = upstream OpenOCD configuration scripts (interface/, target/, board/, ...)
+        scripts/ = upstream OpenOCD configuration scripts (interface/, target/, helpers)
 License: GNU GPL v2 (upstream OpenOCD) - see upstream README and distro-info of the release archive.
-Scripts are unmodified upstream files from the same release.
+Scripts are unmodified upstream files from the same release, trimmed to the
+        STM32 targets, J-Link/CMSIS-DAP/ST-Link interfaces and generic helpers
+        the bundled profiles need.

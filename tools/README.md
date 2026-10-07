@@ -9,6 +9,10 @@
 
 两者都使用 `bin/gdb` 的 ARM GDB 和 `bin/openocd` 的 OpenOCD；GDB 3333、TCL 6666 仅监听本机，telnet 关闭。GDB/Server 路径按 TOML 所在目录解析，`${profile_dir}` 用于环境自己的资源路径。复制 profile 可以建立不同板卡的配置；修改端口时同步修改板级 cfg 和 `target.endpoint`。TUI 无需重新编译。
 
+## OpenOCD 脚本
+
+`bin/openocd/scripts` 只保留随附 profile 和 STM32 系列需要的 36 个上游文件：26 个 `target/stm32*.cfg`，J-Link、CMSIS-DAP、ST-Link 接口，以及 `mem_helper.tcl`、`target/swj-dp.tcl` 等通用辅助脚本，内容未修改。其他芯片的 target/board 脚本从对应 OpenOCD 版本或芯片厂商获取，放到工程目录并用 `-s` 或 `-f` 引用；OpenOCD 在解析配置时就会报告缺失的文件，不会拖到连接之后。
+
 ## STM32F429 / J-Link
 
 `debug-env.toml` 使用 J-Link 探针、SWD 1000 kHz；`config/stm32f429-live.cfg` 同时建立 M4 CPU target 和 AP0 `mem_ap` target。

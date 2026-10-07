@@ -774,7 +774,7 @@ init = ["set remotetimeout 5", "set tcp connect-timeout 5"]
 核心追加 \code{-nx -q --interpreter=mi2}，关闭分页与交互确认，尝试开启 mi-async。GDB 自身资源或 DLL 问题应先在独立命令行复现；TUI 不补造目标能力。
 
 \subsection{OpenOCD 服务和目标动作}
-仓库分发为 xPack OpenOCD 0.12.0-7，实际版本串为 \code{0.12.0+dev-02228-ge5888bda3-dirty}（2025-10-04）。配套 libusb、libftdi DLL 与 upstream scripts 已纳入工具校验清单。
+仓库分发为 xPack OpenOCD 0.12.0-7，实际版本串为 \code{0.12.0+dev-02228-ge5888bda3-dirty}（2025-10-04）。配套 libusb、libftdi DLL 和精简后的 upstream scripts（STM32 系列 target、J-Link/CMSIS-DAP/ST-Link 接口与通用辅助脚本，共 36 个，内容未修改）已纳入工具校验清单。其他芯片的脚本需从对应 OpenOCD 版本或厂商获取。
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
 [service]
