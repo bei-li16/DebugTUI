@@ -2539,6 +2539,28 @@ mod tests {
         assert_eq!(a.palette_query, "zz");
     }
     #[test]
+    fn short_wide_and_tall_narrow_terminals_keep_source_and_variables_visible() {
+        let mut a = App::new(Project::default(), true);
+        // An editor's bottom panel: Source, inspector and Watch side by side.
+        render(&mut a, 200, 20);
+        assert!(a.source_rect.height > 0 && a.side_rect.height > 0);
+        assert!(a.view_rects[1].height > 0, "Watch is visible");
+        assert!(a.view_rects[1].x > a.side_rect.right(), "Watch is its own column");
+        // An editor's side panel: Source above, Watch below; the inspector
+        // replaces Watch below only while it has focus.
+        render(&mut a, 80, 44);
+        assert!(a.source_rect.height > 0);
+        assert!(a.view_rects[1].y > a.source_rect.bottom(), "Watch sits below Source");
+        a.select_pane(3);
+        render(&mut a, 80, 44);
+        assert!(a.source_rect.height > 0, "Source stays visible");
+        assert!(a.side_rect.y > a.source_rect.bottom() && a.view_rects[1].height == 0);
+        // Ordinary sizes keep their layouts.
+        a.select_pane(0);
+        render(&mut a, 80, 24);
+        assert_eq!(a.view_rects[1].height, 0, "80x24 still shows one group");
+    }
+    #[test]
     fn zoom_fills_the_body_with_the_focused_group_and_alt_keys_jump_to_views() {
         let mut a = App::new(Project::default(), true);
         let key = |a: &mut App, code, modifiers| a.key(KeyEvent::new(code, modifiers), None);

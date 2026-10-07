@@ -625,9 +625,11 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect, shared_actions: bool) {
     }
 }
 
-fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
+/// The inspector, with Watch/Locals below it (or instead of it when compact
+/// and focused) unless `variables` is false because they are drawn elsewhere.
+fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool, variables: bool) {
     theme::surface(f, rect, theme::PANEL);
-    if (compact || rect.height <= 12) && VARIABLE_PANES.contains(&a.pane) {
+    if variables && (compact || rect.height <= 12) && VARIABLE_PANES.contains(&a.pane) {
         variable_panel(f, a, rect);
         return;
     }
@@ -638,7 +640,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool) {
         1
     };
     let tab_height = wrapped_height(&labels, rect.width, button_height);
-    let local_height = if !compact && rect.height > 12 {
+    let local_height = if variables && !compact && rect.height > 12 {
         let height = (rect.height / 3).clamp(5, 12);
         // Reserve the input frame's two border rows without hiding Watch values.
         height + if height >= 8 { 2 } else { 0 } + button_height - 1
@@ -1610,8 +1612,23 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         if MAIN_PANES.contains(&a.pane) {
             main_panel(f, a, body[0], shared_actions);
         } else {
-            side_panel(f, a, body[0], true);
+            side_panel(f, a, body[0], true, true);
         }
+    } else if area.width >= 160 && body[0].height <= 16 {
+        // Wide and short, like an editor's bottom panel: three columns, so
+        // Watch/Locals stay visible beside Source and the inspector.
+        let columns = Layout::horizontal([
+            Constraint::Percentage(50),
+            Constraint::Length(1),
+            Constraint::Percentage(25),
+            Constraint::Length(1),
+            Constraint::Percentage(25),
+        ])
+        .split_cached(body[0]);
+        main_panel(f, a, columns[0], shared_actions);
+        side_panel(f, a, columns[2], true, false);
+        theme::surface(f, columns[4], theme::PANEL);
+        variable_panel(f, a, columns[4]);
     } else if area.width >= 100 {
         let columns = Layout::horizontal([
             Constraint::Percentage(68),
@@ -1620,11 +1637,27 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         ])
         .split_cached(body[0]);
         main_panel(f, a, columns[0], shared_actions);
-        side_panel(f, a, columns[2], false);
+        side_panel(f, a, columns[2], false, true);
+    } else if body[0].height >= 20 {
+        // Narrow and tall, like an editor's side panel: Source stays above;
+        // below shows the focused inspector, otherwise Watch/Locals.
+        let rows = Layout::vertical([
+            Constraint::Percentage(58),
+            Constraint::Length(1),
+            Constraint::Percentage(42),
+        ])
+        .split_cached(body[0]);
+        main_panel(f, a, rows[0], false);
+        if SIDE_PANES.contains(&a.pane) {
+            side_panel(f, a, rows[2], true, false);
+        } else {
+            theme::surface(f, rows[2], theme::PANEL);
+            variable_panel(f, a, rows[2]);
+        }
     } else if MAIN_PANES.contains(&a.pane) {
         main_panel(f, a, body[0], false);
     } else {
-        side_panel(f, a, body[0], true);
+        side_panel(f, a, body[0], true, true);
     }
     cores::tint(f, a, body[0]);
     console_panel(f, a, body[1]);
