@@ -140,8 +140,11 @@ def stage(args):
         shutil.copyfile(original, licenses / name)
     profiles = install / 'config'
     profiles.mkdir(exist_ok=True)
-    for name in ['stm32f429-live.cfg', 'stm32f429-dap.cfg']:
-        shutil.copyfile(HERE.parents[1] / 'tools' / 'config' / name, profiles / name)
+    profile_source = HERE.parents[1] / 'tools' / 'openocd'
+    for original in sorted(profile_source.rglob('*.cfg')):
+        destination = profiles / original.relative_to(profile_source)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(original, destination)
     for binary in [install / 'bin/openocd.exe'] + list((install / 'bin').glob('*.dll')):
         subprocess.run([args.cross + 'strip', '--strip-unneeded', str(binary)], check=True)
     dependencies = dll_closure(install / 'bin', args.cross + 'objdump', deps['system_dlls'])
@@ -157,8 +160,8 @@ def stage(args):
         for path in sorted(HERE.rglob('*')):
             if path.is_file() and '__pycache__' not in path.parts:
                 bundle.write(path, 'recipe/openocd-adapter/' + path.relative_to(HERE).as_posix())
-        for name in ['stm32f429-live.cfg', 'stm32f429-dap.cfg']:
-            bundle.write(HERE.parents[1] / 'tools' / 'config' / name, 'recipe/config/' + name)
+        for original in sorted(profile_source.rglob('*.cfg')):
+            bundle.write(original, 'recipe/config/' + original.relative_to(profile_source).as_posix())
         bundle.write(HERE.parents[1] / DRIVER_FIXTURE, DRIVER_FIXTURE)
     record = {
         'format': 1, 'target': deps['target'], 'board_tests_executed': False,
@@ -246,8 +249,9 @@ def verify(args):
         raise ValueError(f'Missing native probe drivers: {adapters}')
     (out / 'adapter-list.log').write_text(listed, encoding='utf-8')
     scripts = install / 'share/openocd/scripts'
-    cases = {name: ['-f', str(install / 'config' / name)] for name in
-             ['stm32f429-live.cfg', 'stm32f429-dap.cfg']}
+    cases = {f'stm32f429-{probe}': ['-f', str(install / 'config/probes' / f'{probe}.cfg'),
+                                  '-f', str(install / 'config/stm32f429.cfg')]
+             for probe in ['cmsis-dap', 'jlink', 'stlink']}
     cases['cmsis-dap-both-backends'] = ['-c', 'adapter driver cmsis-dap; cmsis-dap backend hid; cmsis-dap backend usb_bulk']
     for name, configuration in cases.items():
         # Explicit init in a future profile is also rejected before access.

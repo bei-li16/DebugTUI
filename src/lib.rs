@@ -1,3 +1,4 @@
+pub mod bundled_tools;
 pub mod cli;
 pub(crate) mod clipboard;
 pub mod config;

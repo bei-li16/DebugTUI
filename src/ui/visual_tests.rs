@@ -125,6 +125,97 @@ fn rounded_controls_keep_parent_background_during_hover_and_press_animation() {
 }
 
 #[test]
+fn search_and_watch_inputs_hover_without_focusing_editing_or_debug_requests() {
+    let (engine, requests) = session::test_channel();
+    for (width, height) in [(80, 24), (120, 36), (180, 50)] {
+        let mut a = App::new(Project::default(), true);
+        a.project.ui.animations = crate::config::Motion::Off;
+        a.fx.mode = crate::config::Motion::Off;
+        // Narrow/short terminals show only the selected panel group.
+        a.pane = pane::WATCH;
+        a.watch_input = "keep_watch_draft".into();
+        a.symbol_search.query = "keep_symbol_query".into();
+        let initial = terminal(&mut a, width, height);
+        for (name, rect) in [
+            ("symbols", a.symbol_search.bar),
+            ("watch", a.watch_input_rect),
+        ] {
+            assert!(
+                rect.width > 2 && rect.height > 0,
+                "{name} at {width}x{height}: {rect:?}"
+            );
+            let point = (rect.x + 1, rect.y + rect.height / 2);
+            let before = a.pointer;
+            a.mouse(
+                MouseEvent {
+                    kind: MouseEventKind::Moved,
+                    column: point.0,
+                    row: point.1,
+                    modifiers: KeyModifiers::NONE,
+                },
+                Some(&engine),
+            );
+            assert!(
+                !a.hover_unchanged(before),
+                "{name} must request an immediate redraw on entry"
+            );
+            let hovered = terminal(&mut a, width, height);
+            assert_eq!(hovered.backend().buffer()[point].bg, theme::HOVER);
+            assert_ne!(initial.backend().buffer()[point].bg, theme::HOVER);
+            assert_eq!(
+                hovered.backend().buffer()[(rect.x, rect.y + rect.height / 2)].fg,
+                theme::ACCENT
+            );
+            assert!(!a.editing && !a.watch_editing && !a.symbol_search.open);
+            assert_eq!(a.watch_input, "keep_watch_draft");
+            assert_eq!(a.symbol_search.query, "keep_symbol_query");
+            if width == 180
+                && let Ok(root) = std::env::var("DEBUGTUI_RENDER_DIR")
+            {
+                fs::create_dir_all(&root).unwrap();
+                capture(
+                    Path::new(&root),
+                    &format!("input-hover-{name}"),
+                    &mut a,
+                    width,
+                    height,
+                );
+            }
+            let before = a.pointer;
+            a.mouse(
+                MouseEvent {
+                    kind: MouseEventKind::Moved,
+                    column: 0,
+                    row: 0,
+                    modifiers: KeyModifiers::NONE,
+                },
+                Some(&engine),
+            );
+            assert!(!a.hover_unchanged(before));
+            let left = terminal(&mut a, width, height);
+            assert_eq!(
+                left.backend().buffer()[point].bg,
+                initial.backend().buffer()[point].bg
+            );
+        }
+        a.watch_editing = true;
+        a.pointer = None;
+        let focused = terminal(&mut a, width, height);
+        let input = a.watch_input_rect;
+        let point = (input.x + 1, input.y + input.height / 2);
+        a.pointer = Some((a.watch_input_rect.x + 1, a.watch_input_rect.y).into());
+        let focused_hover = terminal(&mut a, width, height);
+        // Focus decoration remains the same when the pointer enters the editor.
+        assert_eq!(
+            focused.backend().buffer()[point].bg,
+            focused_hover.backend().buffer()[point].bg
+        );
+        assert_ne!(focused_hover.backend().buffer()[point].bg, theme::HOVER);
+        assert!(requests.try_recv().is_err());
+    }
+}
+
+#[test]
 fn wide_workspace_aligns_project_core_search_and_shared_execution_toolbar() {
     let mut a = App::new(Project::default(), true);
     a.snapshot.cores = (0..2)

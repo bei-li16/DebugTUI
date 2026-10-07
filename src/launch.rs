@@ -23,13 +23,16 @@ mod choices;
 mod devices;
 pub(crate) mod registers;
 mod remap;
+mod scroll;
 use choices::{Choice, Picker};
 
-const LABELS: [&str; 18] = [
+const LABELS: [&str; 20] = [
     "Project",
     "Tools / profile",
+    "Probe",
     "Chip",
     "Debug cores",
+    "Chip config",
     "Program / ELF",
     "Source root",
     "Build command",
@@ -45,18 +48,20 @@ const LABELS: [&str; 18] = [
     "Start debugging",
     "Save config",
 ];
-const HINTS: [&str; 18] = [
-    "Project TOML stores launch settings, Watch and breakpoints. Selecting a file reloads all fields.\nRelative to the startup directory; default: ./debug.toml. F3: project list. F2: browse.\nEnter: type a file or directory. A directory uses its debug.toml; a missing file stays a draft until saved.",
-    "Profile stores tool defaults (GDB/OpenOCD); project fields override it.\nProject owns ELF/build/Watch/exit policy. Profiles are loaded, never rewritten.\nEdit shared tools in debug-env.toml. Tool parameters are edited in that file, outside Setup. F2: select profile.",
+const HINTS: [&str; 20] = [
+    "Project TOML stores ELF, Chip/Core, Probe and debugging preferences.\nStartup searches its working directory: debug.toml first, otherwise another project TOML.\nA minimal debug.toml is created when none exists. F3: project list. F2: browse.",
+    "Use builtin:arm-openocd for the tools shipped with DebugTUI, or a custom profile path.\nEnter: edit. F2: choose installed or external profiles; the list shows resolved installation paths.\nProject paths stay relative to Project; bundled resources follow the installed executable.",
+    "Enter / Left / Right: inherit profile, CMSIS-DAP, J-Link or ST-Link.\nSaved as [tools] probe; it selects an OpenOCD driver independently of Chip/Core.\nFor a legacy profile, choose the bundled profile in the offered list to apply this probe.",
     "Enter: choose a chip from the local device catalogue, or add a new chip.\nThe catalogue declares available core IDs and a backend; Tools / profile provides its tools.\nLegacy keeps existing single-core / [[cores]] settings. No hardware action until Start.",
     "Enter: select one or more core IDs supported by the chip.\nOne core creates one GDB session; multiple cores share the workspace coordinator.\nEndpoints and startup actions must be provided by the matching Tools / profile and project.",
+    "Optional chip settings TOML, relative to Project. Enter: edit. F2: browse.\nBlank uses user profiles/chips/<chip>.toml, then the built-in chip settings.\nKeep custom R52 board settings outside the npm package; use builtin: paths in extends.",
     "ELF / executable provides symbols for C source, variables and breakpoints. A HEX file has no debug symbols.\nExample: ./build/firmware.elf, relative to Project. F2: browse. Use the ELF matching the flashed firmware.\nOptional for remote attachment; needed for source debugging. Selecting it does not flash the device.",
     "Local source lookup root and working directory for Build / Download commands.\nExample: . or ./firmware, relative to Project; blank uses the project directory. F2: browse.\nEnable Source remap to map a directory recorded in the ELF to this root.",
     "Shell command used by the workspace Build action; runs in Source root, not the tools directory.\nExamples: .\\build.bat or cmake --build build. Quote paths containing spaces.\nOptional: blank uses legacy [build] if present. Starting debugging does not run this command.",
     "Shell command used by Download; runs in Source root. Example: .\\flash.bat or .\\scripts\\flash.ps1.\nOptional: blank uses the profile's actions.download; without either, Download is unavailable.\nBuild/Download release debug connections and owned services before running the command.",
     "Project policy: [session].on_exit; applies to every configured core on session cleanup.\ndetach: detach GDB. resume: resume and release GDB (remote disconnect / local detach).\ndisconnect: release the connection without resuming. Final target state depends on the server/board.",
     "Directory for GDB/MI and server diagnostic logs. Example: ./debug_log, relative to Project.\nBlank disables session file logging. Enable logs when reporting connection or multicore problems.\nLogs are written during a debug session; saving Setup only stores this path.",
-    "Optional CMSIS-SVD XML file describing peripheral registers and fields; it is not an ELF or source file.\nExample: ./.vscode/THA6206/tha6206.svd, relative to Project. F2: browse.\nChoose the device's matching SVD. Blank disables peripheral descriptions, not CPU debugging.",
+    "Optional CMSIS-SVD XML file describing peripheral registers and fields.\nEnter: edit. F2: choose a bundled SVD, external file, Automatic or Disabled.\nBundled files use builtin:svd/<file>; blank restores the chip default.",
     "Enter / Left / Right: enable or disable source path remapping for all cores.\nEnabling opens an offline ELF directory scan using the selected GDB; no board connection.\nNo disables ELF path prefix selection and editing; saved mapping rules are retained.",
     "Enter: choose an ELF directory to map to Source root. Available when Source remap is Yes.\nThe suffix below that directory is preserved. Preview shows covered files and local matches.\nSaved selection follows Source root changes. Manual [[source_map]] rules for other prefixes still apply first.",
     "Enter: choose a built-in or user CPU preset, Automatic, or the original GDB register list.\nA project catalogue file takes precedence over the CPU preset. Selection does not prove hardware or backend support.\nUser presets live in the local profiles/registers directory and are preserved during upgrades.",
@@ -67,26 +72,28 @@ const HINTS: [&str; 18] = [
 ];
 // Only project fields are editable. Tool defaults remain in the selected profile;
 // legacy project tool overrides are still loaded and preserved by Document.
-const CHIP: usize = 2;
-const CORES: usize = 3;
-const ELF: usize = 4;
-const SOURCE: usize = 5;
-const BUILD: usize = 6;
-const DOWNLOAD: usize = 7;
-const ON_EXIT: usize = 8;
-const LOG_DIR: usize = 9;
-const SVD: usize = 10;
-const SOURCE_REMAP: usize = 11;
-const ELF_PREFIX: usize = 12;
-const CPU: usize = 13;
-const CATALOGUE: usize = 14;
-const CHANNELS: usize = 15;
-const START: usize = 16;
-const SAVE: usize = 17;
-const WORKSPACE: usize = 18;
-const PROJECTS: usize = 19;
-const EXAMPLES: usize = 20;
-const EXIT: usize = 21;
+const PROBE: usize = 2;
+const CHIP_PROFILE: usize = 5;
+const CHIP: usize = 3;
+const CORES: usize = 4;
+const ELF: usize = 6;
+const SOURCE: usize = 7;
+const BUILD: usize = 8;
+const DOWNLOAD: usize = 9;
+const ON_EXIT: usize = 10;
+const LOG_DIR: usize = 11;
+const SVD: usize = 12;
+const SOURCE_REMAP: usize = 13;
+const ELF_PREFIX: usize = 14;
+const CPU: usize = 15;
+const CATALOGUE: usize = 16;
+const CHANNELS: usize = 17;
+const START: usize = 18;
+const SAVE: usize = 19;
+const WORKSPACE: usize = 20;
+const PROJECTS: usize = 21;
+const EXAMPLES: usize = 22;
+const EXIT: usize = 23;
 
 fn displayed_path(base: &Path, path: &Path) -> String {
     let value = relative_path(base, path);
@@ -184,6 +191,71 @@ pub struct Document {
     pub discovered: bool,
 }
 impl Document {
+    /// Interactive startup creates only a new minimal project, never replaces one.
+    pub fn startup(path: &Path, discover: bool) -> Result<Self, String> {
+        use std::io::Write;
+        let mut doc = Self::open(path)?;
+        if doc.path.exists() {
+            return Ok(doc);
+        }
+        if discover {
+            let picker = Picker::projects(doc.base())?;
+            if picker.choices.len() == 1
+                && let Choice::Project(path) = &picker.choices[0]
+            {
+                return Self::open(path);
+            }
+            if !picker.choices.is_empty() {
+                return Ok(doc);
+            }
+        }
+        let text = crate::bundled_tools::PROJECT_TEMPLATE;
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&doc.path)
+        {
+            Ok(mut file) => file
+                .write_all(text.as_bytes())
+                .and_then(|_| file.sync_all())
+                .map_err(|e| format!("Create project {}: {e}", doc.path.display()))?,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                return Self::open(&doc.path);
+            }
+            Err(e) => return Err(format!("Create project {}: {e}", doc.path.display())),
+        }
+        doc.raw = toml::from_str(text).map_err(|e| format!("Project template: {e}"))?;
+        doc.original = Some(doc.raw.clone());
+        doc.discovered = false;
+        Ok(doc)
+    }
+    pub(crate) fn incomplete_builtin(&self) -> bool {
+        self.raw
+            .get("tools")
+            .and_then(|t| t.get("profile"))
+            .and_then(toml::Value::as_str)
+            == Some(crate::bundled_tools::PROFILE)
+            && self
+                .raw
+                .get("debug")
+                .cloned()
+                .and_then(|d| d.try_into::<crate::devices::Selection>().ok())
+                .is_some_and(|s| s.chip.is_empty() && s.cores.is_empty())
+    }
+    fn validate_draft(&self) -> Result<(), String> {
+        if self.incomplete_builtin() {
+            let p: Project = self
+                .raw
+                .clone()
+                .try_into()
+                .map_err(|e| format!("Project: {e}"))?;
+            crate::bundled_tools::validate_probe(&p.tools.probe)?;
+            crate::bundled_tools::resolve_profile(&p.tools.profile, self.base())?;
+            Ok(())
+        } else {
+            self.project().map(|_| ())
+        }
+    }
     fn select_register_cpu(&mut self, id: Option<&str>) {
         if let Some(id) = id {
             self.set("registers", "cpu", id.into());
@@ -243,6 +315,16 @@ impl Document {
     pub fn base(&self) -> &Path {
         self.path.parent().unwrap_or(Path::new("."))
     }
+    pub(crate) fn raw_tools_missing(&self) -> bool {
+        self.raw.get("gdb").is_none()
+            && self.raw.get("tools").is_none_or(|t| {
+                ["profile", "root"].iter().all(|key| {
+                    t.get(key)
+                        .and_then(toml::Value::as_str)
+                        .is_none_or(str::is_empty)
+                })
+            })
+    }
     pub fn project(&self) -> Result<Project, String> {
         Project::from_document(self.raw.clone(), Some(self.path.clone()), None)
     }
@@ -276,6 +358,10 @@ impl Document {
             .unwrap()
             .insert("tools".into(), toml::Value::Table(toml::Table::new()));
         if !input.is_empty() {
+            if input.starts_with("builtin:") {
+                self.set("tools", "profile", input.into());
+                return;
+            }
             let path = absolute(self.base(), Path::new(input));
             let path = if path.is_dir() {
                 path.join("debug-env.toml")
@@ -285,8 +371,95 @@ impl Document {
             self.set_path("tools", "profile", &path);
         }
     }
+    fn supports_probe(&self) -> bool {
+        let tools: crate::config::Tools = self
+            .raw
+            .get("tools")
+            .cloned()
+            .and_then(|v| v.try_into().ok())
+            .unwrap_or_default();
+        if tools.profile == Path::new(crate::bundled_tools::PROFILE) {
+            return true;
+        }
+        let path = if !tools.profile.as_os_str().is_empty() {
+            absolute(self.base(), &tools.profile)
+        } else {
+            absolute(self.base(), &tools.root).join("debug-env.toml")
+        };
+        fs::read_to_string(path)
+            .ok()
+            .and_then(|text| {
+                toml::from_str::<toml::Value>(text.trim_start_matches('\u{feff}')).ok()
+            })
+            .is_some_and(|v| v.get("chip_profiles").is_some())
+    }
+    fn select_profile(&mut self, input: &str) {
+        let previous = self.raw.get("tools").cloned();
+        self.environment(input);
+        if input == crate::bundled_tools::PROFILE {
+            for key in ["probe", "chip_profile"] {
+                if let Some(value) = previous.as_ref().and_then(|p| p.get(key)) {
+                    self.set("tools", key, value.clone());
+                }
+            }
+            if self.raw.get("tools").and_then(|t| t.get("probe")).is_none() {
+                let previous_path = previous
+                    .as_ref()
+                    .and_then(|p| p.get("profile"))
+                    .and_then(toml::Value::as_str)
+                    .unwrap_or_default();
+                let probe = crate::bundled_tools::PROBES
+                    .iter()
+                    .find(|name| previous_path.contains(**name))
+                    .copied()
+                    .unwrap_or("cmsis-dap");
+                self.set("tools", "probe", probe.into());
+            }
+            // Migrate only an unmodified stock SVD. Customer content is retained.
+            if let Some(svd) = self
+                .raw
+                .get("program")
+                .and_then(|p| p.get("svd"))
+                .and_then(toml::Value::as_str)
+                && !svd.is_empty()
+                && !svd.starts_with("builtin:")
+                && let Some(name) = Path::new(svd).file_name()
+                && let Ok(root) = crate::bundled_tools::root()
+                && let (Ok(old), Ok(bundled)) = (
+                    fs::read(absolute(self.base(), Path::new(svd))),
+                    fs::read(root.join("svd").join(name)),
+                )
+                && old == bundled
+            {
+                self.set(
+                    "program",
+                    "svd",
+                    format!("builtin:svd/{}", name.to_string_lossy()).into(),
+                );
+            }
+        }
+    }
+    fn select_svd(&mut self, value: Option<&str>) -> Result<(), String> {
+        if let Some(value) = value {
+            if value.is_empty() || value.starts_with("builtin:") {
+                if !value.is_empty() {
+                    crate::bundled_tools::resolve_svd(Path::new(value), self.base())?;
+                }
+                self.set("program", "svd", value.into());
+            } else {
+                self.set_path("program", "svd", &absolute(self.base(), Path::new(value)));
+            }
+        } else if let Some(table) = self
+            .raw
+            .get_mut("program")
+            .and_then(toml::Value::as_table_mut)
+        {
+            table.remove("svd");
+        }
+        Ok(())
+    }
     pub fn save(&mut self) -> Result<(), String> {
-        self.project()?;
+        self.validate_draft()?;
         let _guard = crate::config::PREFERENCE_WRITE
             .lock()
             .map_err(|e| e.to_string())?;
@@ -491,6 +664,7 @@ pub struct Setup {
     register_observation: Option<registers::Observation>,
     action_hits: Vec<(Rect, usize)>,
     row_hits: Vec<(Rect, usize)>,
+    field_scroll: scroll::FieldScroll,
 }
 impl Setup {
     pub fn new(document: Document) -> Self {
@@ -513,6 +687,8 @@ impl Setup {
             "Choose a project TOML to load its settings, or Esc to keep the new debug.toml draft."
         } else if !document.path.exists() {
             "New project: choose Examples for a starting configuration, or enter your own settings."
+        } else if document.incomplete_builtin() {
+            "Choose Probe, Chip and Debug cores, then select the project ELF. Bundled tools need no project copy."
         } else {
             "Review the configuration. Projects switches TOML files; Start begins debugging."
         }
@@ -535,6 +711,7 @@ impl Setup {
             register_observation: None,
             action_hits: vec![],
             row_hits: vec![],
+            field_scroll: scroll::FieldScroll::default(),
         }
     }
     fn selection(&self) -> crate::devices::Selection {
@@ -636,19 +813,58 @@ impl Setup {
         vec![
             displayed_path(&self.working_directory, &self.document.path),
             profile,
+            if p.tools.probe.is_empty() {
+                "Inherit profile".into()
+            } else {
+                p.tools.probe
+            },
             self.selection().chip.clone(),
             if self.selection().chip.is_empty() {
                 "(select Chip first)".into()
             } else {
                 format!("{:?}", self.selection().cores)
             },
+            self.document
+                .raw
+                .get("tools")
+                .and_then(|t| t.get("chip_profile"))
+                .and_then(toml::Value::as_str)
+                .unwrap_or_default()
+                .into(),
             path(&p.program.elf),
             path(&p.program.source_root),
             p.tasks.build,
             p.tasks.download,
             p.session.on_exit,
             p.session.log_dir.as_deref().map(path).unwrap_or_default(),
-            path(&p.program.svd),
+            if let Some(value) = self
+                .document
+                .raw
+                .get("program")
+                .and_then(|p| p.get("svd"))
+                .and_then(toml::Value::as_str)
+                .filter(|v| v.starts_with("builtin:"))
+            {
+                value.into()
+            } else if self
+                .document
+                .raw
+                .get("program")
+                .and_then(|p| p.get("svd"))
+                .is_none()
+                && !p.program.svd.as_os_str().is_empty()
+            {
+                format!(
+                    "Chip default: {}",
+                    p.program
+                        .svd
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                )
+            } else {
+                path(&p.program.svd)
+            },
             if remap_enabled { "Yes" } else { "No" }.into(),
             if p.source_remap.from.is_empty() {
                 if p.source_map.is_empty() {
@@ -688,13 +904,40 @@ impl Setup {
             let doc = Document::open(&absolute(&self.working_directory, Path::new(value)))?;
             // Validate before replacing the draft, so a mistaken Cargo.toml or broken
             // profile cannot discard the configuration the user was editing.
-            doc.project()?;
+            doc.validate_draft()?;
             self.document = doc;
             return Ok(());
         }
         let mut doc = self.document.clone();
         match self.selected {
-            1 => doc.environment(value),
+            1 => doc.select_profile(value),
+            PROBE => {
+                let value = if value == "Inherit profile" {
+                    ""
+                } else {
+                    value
+                };
+                crate::bundled_tools::validate_probe(value)?;
+                if !value.is_empty() && !doc.supports_probe() {
+                    self.picker = Some(Picker::resources(&self.document, 1, Some(value))?);
+                    self.message = format!(
+                        "Select Bundled ARM / OpenOCD to use Probe {value}. Esc keeps the existing profile and probe."
+                    );
+                    return Ok(());
+                }
+                doc.set("tools", "probe", value.into());
+            }
+            CHIP_PROFILE => {
+                if value.is_empty() {
+                    doc.set("tools", "chip_profile", "".into());
+                } else {
+                    doc.set_path(
+                        "tools",
+                        "chip_profile",
+                        &absolute(doc.base(), Path::new(value)),
+                    );
+                }
+            }
             ELF | SOURCE => {
                 let key = if self.selected == ELF {
                     "elf"
@@ -732,12 +975,9 @@ impl Setup {
                     doc.set_path("session", "log_dir", &path);
                 }
             }
-            SVD | CATALOGUE => {
-                let (section, key) = if self.selected == SVD {
-                    ("program", "svd")
-                } else {
-                    ("registers", "catalogue")
-                };
+            SVD => doc.select_svd((!value.is_empty()).then_some(value))?,
+            CATALOGUE => {
+                let (section, key) = ("registers", "catalogue");
                 if value.is_empty() {
                     doc.set(section, key, "".into());
                 } else {
@@ -750,9 +990,9 @@ impl Setup {
         // Retain an invalid profile selection so its error is visible and can be corrected.
         if self.selected == 1 {
             self.document = doc;
-            self.document.project()?;
+            self.document.validate_draft()?;
         } else {
-            doc.project()?;
+            doc.validate_draft()?;
             self.document = doc;
         }
         Ok(())
@@ -795,6 +1035,7 @@ impl Setup {
             return Ok(());
         }
         let values: &[&str] = match self.selected {
+            PROBE => &["Inherit profile", "cmsis-dap", "jlink", "stlink"],
             ON_EXIT => &["detach", "resume", "disconnect"],
             _ => return Ok(()),
         };
@@ -829,6 +1070,7 @@ impl Setup {
         if self.pending || key.kind == KeyEventKind::Release {
             return None;
         }
+        self.field_scroll.keyboard();
         let result = self.handle_key(key);
         match result {
             Ok(launch) => launch,
@@ -896,12 +1138,15 @@ impl Setup {
                 KeyCode::End => picker.selected = picker.choices.len().saturating_sub(1),
                 KeyCode::Enter => self.apply_choice()?,
                 KeyCode::F(2) => {
-                    let cpu_picker = picker
-                        .choices
-                        .get(picker.selected)
-                        .is_some_and(|choice| matches!(choice, Choice::Cpu { .. }));
+                    let field = match picker.choices.get(picker.selected) {
+                        Some(Choice::Cpu { .. }) => CATALOGUE,
+                        Some(Choice::Resource { field, .. } | Choice::BrowseResource { field }) => {
+                            *field
+                        }
+                        _ => 0,
+                    };
                     self.picker = None;
-                    self.selected = if cpu_picker { CATALOGUE } else { 0 };
+                    self.selected = field;
                     self.open_browser()?;
                 }
                 _ => {}
@@ -974,10 +1219,13 @@ impl Setup {
             KeyCode::Down => self.move_selection(false, true),
             KeyCode::BackTab => self.move_selection(true, false),
             KeyCode::Tab => self.move_selection(false, false),
+            KeyCode::F(2) if matches!(self.selected, 1 | SVD) => {
+                self.picker = Some(Picker::resources(&self.document, self.selected, None)?);
+            }
             KeyCode::F(2)
                 if matches!(
                     self.selected,
-                    0 | 1 | ELF | SOURCE | LOG_DIR | SVD | CATALOGUE
+                    0 | 1 | CHIP_PROFILE | ELF | SOURCE | LOG_DIR | SVD | CATALOGUE
                 ) =>
             {
                 self.open_browser()?;
@@ -1000,14 +1248,25 @@ impl Setup {
                     self.document.raw.get("memory_access").is_some(),
                 ))
             }
-            KeyCode::Enter if matches!(self.selected, SOURCE_REMAP | ON_EXIT) => {
+            KeyCode::Enter if matches!(self.selected, SOURCE_REMAP | ON_EXIT | PROBE) => {
                 self.cycle(false)?
             }
             KeyCode::Enter if self.selected == ELF_PREFIX && self.field_enabled(ELF_PREFIX) => {
                 self.open_mapping()?
             }
             KeyCode::Enter if self.selected < START && self.field_enabled(self.selected) => {
-                self.editor = Some(Editor::new(self.values()[self.selected].clone()))
+                let text = if self.selected == SVD {
+                    self.document
+                        .raw
+                        .get("program")
+                        .and_then(|p| p.get("svd"))
+                        .and_then(toml::Value::as_str)
+                        .unwrap_or_default()
+                        .into()
+                } else {
+                    self.values()[self.selected].clone()
+                };
+                self.editor = Some(Editor::new(text))
             }
             KeyCode::Enter if self.selected == START => return self.start(),
             KeyCode::Enter if self.selected == SAVE => self.save_document()?,
@@ -1029,14 +1288,22 @@ impl Setup {
         } else {
             self.document.base()
         };
-        let path = absolute(base, Path::new(&value));
+        let path = match self.selected {
+            1 => crate::bundled_tools::resolve_profile(Path::new(&value), base)?,
+            SVD => self
+                .document
+                .project()
+                .map(|p| p.program.svd)
+                .unwrap_or(crate::bundled_tools::resolve_svd(Path::new(&value), base)?),
+            _ => absolute(base, Path::new(&value)),
+        };
         self.browser = Some(Browser::open(
             if path.exists() {
                 &path
             } else {
                 self.document.base()
             },
-            matches!(self.selected, 0 | 1 | CATALOGUE),
+            matches!(self.selected, 0 | 1 | CHIP_PROFILE | CATALOGUE),
         )?);
         Ok(())
     }
@@ -1100,10 +1367,15 @@ impl Setup {
         let Some(choice) = self.picker.as_ref().and_then(|p| p.choices.get(p.selected)) else {
             return Ok(());
         };
-        let selection = if matches!(choice, Choice::Cpu { .. }) {
-            CPU
-        } else {
-            0
+        if let Choice::BrowseResource { field } = choice {
+            self.selected = *field;
+            self.picker = None;
+            return self.open_browser();
+        }
+        let selection = match choice {
+            Choice::Cpu { .. } => CPU,
+            Choice::Resource { field, .. } => *field,
+            _ => 0,
         };
         let (document, message) = match choice {
             Choice::Project(path) => (
@@ -1148,8 +1420,29 @@ impl Setup {
                     "Register catalogue selection applied to draft. Start applies; Ctrl+S saves.",
                 )
             }
+            Choice::Resource {
+                field,
+                value,
+                probe,
+                ..
+            } => {
+                let mut document = self.document.clone();
+                if *field == 1 {
+                    document.select_profile(value.as_deref().unwrap_or_default());
+                    if let Some(probe) = probe {
+                        document.set("tools", "probe", probe.clone().into());
+                    }
+                } else {
+                    document.select_svd(value.as_deref())?;
+                }
+                (
+                    document,
+                    "Resource selected. Project settings retained; Ctrl+S saves. No hardware access.",
+                )
+            }
+            Choice::BrowseResource { .. } => unreachable!(),
         };
-        document.project()?;
+        document.validate_draft()?;
         self.document = document;
         self.message = message.into();
         self.picker = None;
@@ -1231,6 +1524,9 @@ impl Setup {
             return None;
         }
         let point = (mouse.column, mouse.row).into();
+        if self.browser.is_none() && self.picker.is_none() && self.field_scroll.mouse(mouse) {
+            return None;
+        }
         if matches!(
             mouse.kind,
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
@@ -1298,7 +1594,22 @@ impl Setup {
         Ok(())
     }
     fn choose_path(&mut self, path: &Path) -> Result<(), String> {
-        let value = if self.selected == 0 {
+        let resource = if matches!(self.selected, 1 | SVD) {
+            let path = if self.selected == 1 && path.is_dir() {
+                path.join("debug-env.toml")
+            } else {
+                path.to_owned()
+            };
+            crate::bundled_tools::reference(&path).filter(|r| {
+                (self.selected == 1 && r == crate::bundled_tools::PROFILE)
+                    || (self.selected == SVD && r.starts_with("builtin:svd/"))
+            })
+        } else {
+            None
+        };
+        let value = if let Some(resource) = resource {
+            resource
+        } else if self.selected == 0 {
             portable_path(path)
         } else {
             relative_path(self.document.base(), path)
@@ -1360,6 +1671,17 @@ impl Setup {
                 .unwrap_or_default();
         }
         match self.selected {
+            1 => {
+                let tools: crate::config::Tools = self.document.raw.get("tools").cloned()
+                    .and_then(|v| v.try_into().ok()).unwrap_or_default();
+                let path = if !tools.profile.as_os_str().is_empty() {
+                    crate::bundled_tools::resolve_profile(&tools.profile, self.document.base())
+                } else { Ok(absolute(self.document.base(), &tools.root).join("debug-env.toml")) };
+                format!("Tools / profile: builtin:arm-openocd or external. Enter edits; F2 selects.\nResolved file: {}\nBundled references follow the installed executable; Ctrl+S saves the project.",
+                    path.map(|p| portable_path(&p)).unwrap_or_else(|e| e))
+            }
+            SVD => format!("SVD: Enter edits; F2 chooses a bundled or external file, Automatic or Disabled.\nResolved file: {}\nAutomatic follows the selected chip; an explicit SVD selection stays fixed.",
+                self.document.project().map(|p| if p.program.svd.as_os_str().is_empty() { "(none)".into() } else { portable_path(&p.program.svd) }).unwrap_or_else(|e| e)),
             WORKSPACE => "Return to the workspace without restarting. Draft edits apply on Start; use Save to keep them on disk.".into(),
             PROJECTS => "Choose a project TOML in the selected project directory (F3). Its settings replace the displayed draft.\nF2 on Project browses other directories. Selecting a file never starts debugging or saves it.".into(),
             EXAMPLES => "Choose an example to fill the draft (F4), then adjust project paths and select Tools / profile.\nTemplates cover single-core, local and multicore projects; current tool settings are retained.\nApplying an example does not write files or start GDB; Save / Start controls persistence.".into(),
@@ -1370,6 +1692,7 @@ impl Setup {
     pub fn draw(&mut self, f: &mut Frame) {
         self.action_hits.clear();
         self.row_hits.clear();
+        self.field_scroll.clear_hits();
         if let Some(mut details) = self.register_details.take() {
             let key = self.catalogue_preview_key();
             if !details.matches(&key) {
@@ -1388,7 +1711,7 @@ impl Setup {
         let screen = f.area();
         f.render_widget(Block::default().style(theme::base()), screen);
         let width = screen.width.min(122);
-        let height = screen.height.min(30);
+        let height = screen.height.min(35);
         let area = Rect::new(
             screen.x + (screen.width - width) / 2,
             screen.y + (screen.height - height) / 2,
@@ -1631,12 +1954,19 @@ impl Setup {
             );
             f.render_widget(Paragraph::new(" Enter: open directory / select file   Space: select current directory\n Backspace: parent   Esc: cancel").wrap(Wrap { trim: false }), rows[3]);
         } else {
-            let height = rows[2].height.saturating_sub(2) as usize;
-            let start = if self.selected < START {
-                self.selected.saturating_sub(height.saturating_sub(1))
-            } else {
-                0
-            };
+            let block = theme::card(
+                if self.document.path.is_file() {
+                    "  ◇  Project configuration  "
+                } else {
+                    "  ◇  New project / unsaved draft  "
+                },
+                true,
+            );
+            self.field_scroll
+                .layout(block.inner(rows[2]), START, self.selected);
+            let inner = self.field_scroll.rect;
+            let start = self.field_scroll.top;
+            f.render_widget(block, rows[2]);
             let values = self.values();
             let prefix_enabled = self.field_enabled(ELF_PREFIX);
             let cores_enabled = self.field_enabled(CORES);
@@ -1672,9 +2002,12 @@ impl Setup {
                         value
                     };
                     let prefix = format!("{} {label:<18} ", if selected { "›" } else { " " });
-                    let available = rows[2].width.saturating_sub(
-                        unicode_width::UnicodeWidthStr::width(prefix.as_str()) as u16 + 2,
-                    ) as usize;
+                    let available =
+                        inner
+                            .width
+                            .saturating_sub(
+                                unicode_width::UnicodeWidthStr::width(prefix.as_str()) as u16
+                            ) as usize;
                     let shown = if let Some(e) = &self.editor
                         && i == self.selected
                     {
@@ -1718,17 +2051,8 @@ impl Setup {
                     .style(theme::selected(selected))
                 })
                 .collect::<Vec<_>>();
-            let block = theme::card(
-                if self.document.path.is_file() {
-                    "  ◇  Project configuration  "
-                } else {
-                    "  ◇  New project / unsaved draft  "
-                },
-                true,
-            );
-            let inner = block.inner(rows[2]);
-            f.render_widget(block, rows[2]);
             theme::lines(f, lines, inner);
+            self.field_scroll.draw(f);
             // Short terminals scroll the field list; say how many fields are
             // out of view on the card's own border instead of hiding them.
             let shown = (inner.height as usize).min(START - start);
@@ -2195,6 +2519,8 @@ mod tests {
         setup.document.set("target", "mode", "local".into());
         setup.selected = SVD;
         setup.key(key(KeyCode::F(2)));
+        assert!(setup.picker.is_some());
+        setup.key(key(KeyCode::F(2)));
         assert!(setup.browser.is_some());
         setup.key(key(KeyCode::Esc));
         setup.choose_path(&root.join("chip/test.svd")).unwrap();
@@ -2346,6 +2672,95 @@ mod tests {
         setup.selected = START - 1;
         let bottom = text(&mut setup);
         assert!(bottom.contains('▲') && !bottom.contains('▼'), "{bottom}");
+    }
+
+    #[test]
+    fn setup_adds_five_visible_rows_and_scrolling_preserves_selection_and_drafts() {
+        let fixture = Fixture::new();
+        let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+        let mut short = Terminal::new(TestBackend::new(140, 30)).unwrap();
+        short.draw(|f| setup.draw(f)).unwrap();
+        let old_height = setup.field_scroll.rect.height;
+        let mut tall = Terminal::new(TestBackend::new(140, 40)).unwrap();
+        tall.draw(|f| setup.draw(f)).unwrap();
+        assert_eq!(setup.field_scroll.rect.height, old_height + 5);
+        assert!(setup.field_scroll.rect.height as usize >= START);
+        assert_eq!(setup.field_scroll.bar, Rect::default());
+        let text: String = tall
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(text.contains("CPU registers") && text.contains("Memory channels"));
+        assert!(!text.contains("more"));
+        short.draw(|f| setup.draw(f)).unwrap();
+        let before = setup.document.raw.clone();
+        let bar = setup.field_scroll.bar;
+        let send = |setup: &mut Setup, kind, row| {
+            assert!(
+                setup
+                    .mouse(MouseEvent {
+                        kind,
+                        column: bar.x,
+                        row,
+                        modifiers: KeyModifiers::NONE
+                    })
+                    .is_none()
+            );
+        };
+        send(&mut setup, MouseEventKind::ScrollDown, bar.y);
+        short.draw(|f| setup.draw(f)).unwrap();
+        assert_eq!(setup.field_scroll.top, 3);
+        assert_eq!(setup.selected, 0); // Browsing must not choose or edit a field.
+        assert_eq!(setup.document.raw, before);
+        send(
+            &mut setup,
+            MouseEventKind::Down(MouseButton::Left),
+            bar.bottom() - 1,
+        );
+        short.draw(|f| setup.draw(f)).unwrap();
+        assert!(setup.row_hits.iter().any(|(_, id)| *id == CHANNELS));
+        send(&mut setup, MouseEventKind::Drag(MouseButton::Left), 0);
+        short.draw(|f| setup.draw(f)).unwrap();
+        assert_eq!(setup.field_scroll.top, 0);
+        send(&mut setup, MouseEventKind::Up(MouseButton::Left), 0);
+        send(
+            &mut setup,
+            MouseEventKind::Drag(MouseButton::Left),
+            u16::MAX,
+        );
+        assert_eq!(setup.field_scroll.top, 0); // Released drag stays released.
+        send(&mut setup, MouseEventKind::ScrollDown, bar.y);
+        setup.key(key(KeyCode::Down));
+        short.draw(|f| setup.draw(f)).unwrap();
+        assert!(setup.row_hits.iter().any(|(_, id)| *id == setup.selected));
+
+        setup.selected = ELF;
+        setup.editor = Some(Editor::new("draft.elf".into()));
+        let mut narrow = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        narrow.draw(|f| setup.draw(f)).unwrap();
+        let rect = setup.field_scroll.rect;
+        for _ in 0..20 {
+            setup.mouse(MouseEvent {
+                kind: MouseEventKind::ScrollDown,
+                column: rect.x,
+                row: rect.y,
+                modifiers: KeyModifiers::NONE,
+            });
+        }
+        narrow.draw(|f| setup.draw(f)).unwrap();
+        assert_eq!(setup.selected, ELF);
+        assert_eq!(setup.editor.as_ref().unwrap().text, "draft.elf");
+        setup.key(key(KeyCode::Char('x')));
+        narrow.draw(|f| setup.draw(f)).unwrap();
+        assert!(setup.row_hits.iter().any(|(_, id)| *id == ELF));
+        assert_eq!(setup.document.raw, before);
+        setup.picker = Some(Picker::examples(setup.document.base()));
+        narrow.draw(|f| setup.draw(f)).unwrap();
+        assert_eq!(setup.field_scroll.rect, Rect::default());
+        assert_eq!(setup.field_scroll.bar, Rect::default());
     }
 
     #[test]
@@ -2618,7 +3033,8 @@ mod tests {
         setup.key(key(KeyCode::F(4)));
         setup.key(key(KeyCode::Esc));
         assert!(setup.values()[ELF].is_empty());
-        let count = Picker::examples(setup.document.base()).choices.len();
+        // The final universal template intentionally waits for Chip/Core selection.
+        let count = Picker::examples(setup.document.base()).choices.len() - 1;
         for i in 0..count {
             setup.key(key(KeyCode::F(4)));
             setup.picker.as_mut().unwrap().selected = i;
@@ -2705,8 +3121,8 @@ mod tests {
                     .join("\n");
                 assert!(text.contains("Exit"));
                 if mode == "help" && width >= 120 {
-                    assert!(text.contains("project fields override it"));
-                    assert!(text.contains("Profiles are loaded, never rewritten"));
+                    assert!(text.contains("builtin:arm-openocd"));
+                    assert!(text.contains("Resolved file:"));
                 }
                 if let Some(directory) = env::var_os("DEBUGTUI_SETUP_SNAPSHOTS") {
                     let directory = PathBuf::from(directory);
@@ -2819,6 +3235,198 @@ mod tests {
             assert_eq!(setup.document.raw[key], original[key]);
         }
         assert_eq!(setup.document.project().unwrap().session.timeout_ms, 5432);
+    }
+
+    #[test]
+    fn startup_discovers_or_creates_and_probe_saves_without_touching_payload() {
+        let f = Fixture::new();
+        fs::write(f.0.join("Cargo.toml"), "[package]\nname='irrelevant'\n").unwrap();
+        fs::write(f.0.join("settings.toml"), "version=1\n").unwrap();
+        let doc = Document::startup(&f.0, true).unwrap();
+        assert!(doc.path.is_file());
+        assert_eq!(
+            doc.raw["tools"]["profile"].as_str(),
+            Some(crate::bundled_tools::PROFILE)
+        );
+        assert!(!f.0.join(".vscode").exists());
+        let mut setup = Setup::new(doc);
+        setup.selected = PROBE;
+        setup.key(key(KeyCode::Right));
+        assert_eq!(setup.values()[PROBE], "jlink");
+        setup.save_document().unwrap();
+        let saved = fs::read(&setup.document.path).unwrap();
+        assert!(String::from_utf8_lossy(&saved).contains("jlink"));
+        assert!(!setup.message.starts_with("Error:"), "{}", setup.message);
+        assert!(Document::startup(&f.0, true).unwrap().incomplete_builtin());
+        assert_eq!(saved, fs::read(&setup.document.path).unwrap());
+        assert!(setup.start().is_err());
+        let other = Fixture::new();
+        fs::write(
+            other.0.join("customer.toml"),
+            "version=2\n[program]\nelf='app.elf'\n",
+        )
+        .unwrap();
+        assert!(
+            Document::startup(&other.0, true)
+                .unwrap()
+                .path
+                .ends_with("customer.toml")
+        );
+        fs::write(
+            other.0.join("second.toml"),
+            "version=2\n[program]\nelf='second.elf'\n",
+        )
+        .unwrap();
+        let doc = Document::startup(&other.0, true).unwrap();
+        assert!(!doc.path.exists());
+        assert!(Setup::new(doc).picker.is_some());
+        fs::write(other.0.join("debug.toml"), "invalid = [").unwrap();
+        assert!(Document::startup(&other.0, true).is_err());
+        assert_eq!(
+            fs::read_to_string(other.0.join("debug.toml")).unwrap(),
+            "invalid = ["
+        );
+    }
+
+    #[test]
+    fn legacy_probe_picker_migrates_stock_resources_and_preserves_project_settings() {
+        let f = Fixture::new();
+        fs::create_dir(f.0.join(".vscode")).unwrap();
+        let root = crate::bundled_tools::root().unwrap();
+        fs::copy(
+            root.join("svd/STM32F429.svd"),
+            f.0.join(".vscode/STM32F429.svd"),
+        )
+        .unwrap();
+        let legacy =
+            "backend='stm32f4'\n[target]\nmode='extended-remote'\nendpoint='localhost:3333'\n";
+        fs::write(f.0.join(".vscode/debug-env-cmsis-dap.toml"), legacy).unwrap();
+        fs::write(f.0.join("debug.toml"), "version=3\nwatch=['counter']\n[tools]\nprofile='.vscode/debug-env-cmsis-dap.toml'\n[debug]\nchip='stm32f429'\ncores=[0]\n[program]\nelf='firmware.elf'\nsvd='.vscode/STM32F429.svd'\n[tasks]\nbuild='build.cmd'\n[session]\non_exit='detach'\n").unwrap();
+        let mut setup = Setup::new(Document::open(&f.0).unwrap());
+        let before = setup.document.raw.clone();
+        let disk = fs::read(&setup.document.path).unwrap();
+        setup.selected = PROBE;
+        setup.key(key(KeyCode::Right));
+        assert!(!setup.message.starts_with("Error:"), "{}", setup.message);
+        assert!(
+            setup.picker.as_ref().unwrap().choices[0]
+                .description()
+                .contains(&portable_path(&root.join("debug-env.toml")))
+        );
+        assert_eq!(setup.document.raw, before);
+        setup.key(key(KeyCode::Esc));
+        assert_eq!(setup.document.raw, before);
+        setup.key(key(KeyCode::Right));
+        setup.key(key(KeyCode::Enter));
+        assert!(setup.picker.is_none(), "{}", setup.message);
+        assert_eq!(setup.values()[1], crate::bundled_tools::PROFILE);
+        assert_eq!(setup.values()[PROBE], "cmsis-dap");
+        assert_eq!(setup.values()[SVD], "builtin:svd/STM32F429.svd");
+        for key in ["debug", "watch", "tasks", "session"] {
+            assert_eq!(setup.document.raw[key], before[key]);
+        }
+        assert_eq!(
+            setup.document.raw["program"]["elf"],
+            before["program"]["elf"]
+        );
+        assert_eq!(fs::read(&setup.document.path).unwrap(), disk);
+        setup.selected = PROBE;
+        for probe in ["jlink", "stlink", "Inherit profile", "cmsis-dap"] {
+            setup.key(key(KeyCode::Right));
+            assert_eq!(setup.values()[PROBE], probe, "{}", setup.message);
+            assert!(setup.picker.is_none());
+        }
+        setup.save_document().unwrap();
+        let saved = Document::open(&f.0).unwrap();
+        let project = saved.project().unwrap();
+        assert_eq!(
+            portable_path(&project.program.svd),
+            portable_path(&root.join("svd/STM32F429.svd"))
+        );
+        assert_eq!(
+            fs::read_to_string(f.0.join(".vscode/debug-env-cmsis-dap.toml")).unwrap(),
+            legacy
+        );
+    }
+
+    #[test]
+    fn resource_picker_preserves_custom_svd_and_supports_builtin_browse_auto_and_disable() {
+        let f = Fixture::new();
+        let root = crate::bundled_tools::root().unwrap();
+        fs::write(f.0.join("STM32F429.svd"), "customer data").unwrap();
+        let mut document = Document::startup(&f.0, true).unwrap();
+        document.select_svd(Some("STM32F429.svd")).unwrap();
+        document.select_profile(crate::bundled_tools::PROFILE);
+        assert_eq!(
+            document.raw["program"]["svd"].as_str(),
+            Some("STM32F429.svd")
+        );
+        document.set("debug", "chip", "stm32f429".into());
+        document.set("debug", "cores", toml::Value::Array(vec![0.into()]));
+        let mut setup = Setup::new(document);
+        setup.selected = SVD;
+        setup.key(key(KeyCode::F(2)));
+        let picker = setup.picker.as_mut().unwrap();
+        picker.selected = picker.choices.iter().position(|c| matches!(c, Choice::Resource { value: Some(v), .. } if v == "builtin:svd/STM32F429.svd")).unwrap();
+        setup.key(key(KeyCode::Enter));
+        assert_eq!(setup.values()[SVD], "builtin:svd/STM32F429.svd");
+        assert!(
+            setup
+                .help_text()
+                .contains(&portable_path(&root.join("svd/STM32F429.svd")))
+        );
+        setup.key(key(KeyCode::F(2)));
+        setup.key(key(KeyCode::F(2)));
+        assert_eq!(
+            fs::canonicalize(&setup.browser.as_ref().unwrap().directory).unwrap(),
+            fs::canonicalize(root.join("svd")).unwrap()
+        );
+        setup.choose_path(&root.join("svd/STM32F429.svd")).unwrap();
+        assert_eq!(
+            setup.document.raw["program"]["svd"].as_str(),
+            Some("builtin:svd/STM32F429.svd")
+        );
+        setup.key(key(KeyCode::F(2)));
+        setup.key(key(KeyCode::Enter)); // Automatic
+        assert!(setup.document.raw["program"].get("svd").is_none());
+        assert!(setup.values()[SVD].starts_with("Chip default:"));
+        setup.key(key(KeyCode::F(2)));
+        let picker = setup.picker.as_mut().unwrap();
+        picker.selected = picker
+            .choices
+            .iter()
+            .position(|c| matches!(c, Choice::Resource { value: Some(v), .. } if v.is_empty()))
+            .unwrap();
+        setup.key(key(KeyCode::Enter));
+        assert!(
+            setup
+                .document
+                .project()
+                .unwrap()
+                .program
+                .svd
+                .as_os_str()
+                .is_empty()
+        );
+        setup.selected = 1;
+        setup.key(key(KeyCode::F(2)));
+        let mut terminal = Terminal::new(TestBackend::new(140, 40)).unwrap();
+        terminal.draw(|f| setup.draw(f)).unwrap();
+        let text: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(text.contains("Bundled ARM / OpenOCD") && text.contains("Installed file:"));
+        setup.key(key(KeyCode::F(2)));
+        setup.choose_path(&root.join("debug-env.toml")).unwrap();
+        assert_eq!(setup.values()[1], crate::bundled_tools::PROFILE);
+        assert_eq!(
+            fs::read_to_string(f.0.join("STM32F429.svd")).unwrap(),
+            "customer data"
+        );
     }
 
     #[test]

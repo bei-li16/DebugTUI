@@ -1,3 +1,4 @@
+const {stm32ChipSelection} = require('./test-support/session.cjs');
 // Development-only real GDB + configurable TCL transport integration.
 // --hardware uses the connected STM32F429; never downloads firmware.
 const {spawn,execFileSync}=require('node:child_process');
@@ -15,7 +16,7 @@ const pause=ms=>new Promise(r=>setTimeout(r,ms));
     if(hardware){
       const firmware=process.env.DEBUGTUI_TEST_ELF;
       assert(firmware,'Set DEBUGTUI_TEST_ELF to the ELF matching the board firmware');
-      config=`version=2\n[tools]\nprofile=${quote(process.env.DEBUGTUI_TEST_PROFILE || path.join(root,'tools/debug-env.toml'))}\n[program]\nelf=${quote(firmware)}\n`;
+      config=`version=3\n[tools]\nprofile=${quote(process.env.DEBUGTUI_TEST_PROFILE || path.join(root,'tools/debug-env.toml'))}\n${stm32ChipSelection(process.env.DEBUGTUI_TEST_PROFILE || path.join(root,'tools/debug-env.toml'))}[program]\nelf=${quote(firmware)}\n`;
       if(!process.argv.includes('--own-service'))config+='[service]\nenabled=false\n';
     }else{
       fs.writeFileSync(path.join(out,'sample.c'),`#include <stdint.h>

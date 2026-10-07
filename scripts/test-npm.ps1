@@ -40,10 +40,10 @@ $psVersion = & "$prefix\debugtui.ps1" --version
 if ($LASTEXITCODE -ne 0 -or $psVersion -ne "debugtui $packageVersion") { throw 'PowerShell entry failed' }
 if ((Get-FileHash -LiteralPath $userConfig).Hash -ne $configHash) { throw 'Upgrade changed project configuration' }
 
-if (Test-Path -LiteralPath "$installedRoot\tools") { throw 'Standalone package contains tools' }
+if (-not (Test-Path -LiteralPath "$installedRoot\tools\bin\openocd\bin\openocd.exe")) { throw 'Package is missing bundled OpenOCD' }
 & "$prefix\debugtui.cmd" --snapshot "$runRoot\installed-ui.txt"
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$runRoot\installed-ui.txt")) { throw 'Installed renderer failed' }
-Write-Output "PASS npm: fixture install, upgrade to $packageName@$packageVersion, CMD/PowerShell entries, unchanged user configuration, no bundled environment, terminal renderer."
+Write-Output "PASS npm: fixture install, upgrade to $packageName@$packageVersion, CMD/PowerShell entries, unchanged user configuration, bundled environment, terminal renderer."
 
 # Exercise uninstall only inside this test's dedicated prefix, then restore it for hardware testing.
 & npm.cmd uninstall --global --prefix "$prefix" --ignore-scripts --no-audit --no-fund $packageName

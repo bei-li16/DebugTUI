@@ -1,3 +1,4 @@
+const {stm32ChipSelection} = require('./test-support/session.cjs');
 // Development-only regression with real GDB. --hardware uses STM32F429 without flashing.
 const {spawn,execFileSync}=require('node:child_process');
 const fs=require('node:fs'),path=require('node:path'),readline=require('node:readline'),assert=require('node:assert/strict');
@@ -9,7 +10,7 @@ let config,variable,location;
 if(hardware){
   assert(!multi,'Hardware test is for the available single-core STM32F429');
   assert(process.env.DEBUGTUI_TEST_ELF,'Set DEBUGTUI_TEST_ELF to the ELF currently on the target');
-  config=`version=2\n[tools]\nprofile=${quote(process.env.DEBUGTUI_TEST_PROFILE || path.join(root,'tools/debug-env.toml'))}\n[program]\nelf=${quote(process.env.DEBUGTUI_TEST_ELF)}\n`;
+  config=`version=3\n[tools]\nprofile=${quote(process.env.DEBUGTUI_TEST_PROFILE || path.join(root,'tools/debug-env.toml'))}\n${stm32ChipSelection(process.env.DEBUGTUI_TEST_PROFILE || path.join(root,'tools/debug-env.toml'))}[program]\nelf=${quote(process.env.DEBUGTUI_TEST_ELF)}\n`;
   variable='xTickCount';location='vTaskSwitchContext';
 }else{
   fs.writeFileSync(path.join(out,'sample.c'),`volatile unsigned int counter=0; volatile unsigned int observed;\n__attribute__((noinline)) void probe_tick(void) { counter++; observed=counter; }\nint main(void) { for(;;) { probe_tick(); } }\n`);

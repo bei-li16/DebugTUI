@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+pub(crate) mod chip_profiles;
 #[cfg(test)]
 mod core_register_tests;
 pub(crate) mod register_sources;
@@ -385,6 +386,8 @@ pub struct RefreshPolicy {
 pub struct Tools {
     pub root: PathBuf,
     pub profile: PathBuf,
+    pub probe: String,
+    pub chip_profile: PathBuf,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -556,7 +559,7 @@ impl Default for Tasks {
         }
     }
 }
-fn absolute(base: &Path, value: &Path) -> PathBuf {
+pub(crate) fn absolute(base: &Path, value: &Path) -> PathBuf {
     if value.is_absolute() {
         value.to_owned()
     } else {
@@ -571,6 +574,25 @@ fn read_toml(path: &Path) -> Result<toml::Value, String> {
     let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
     toml::from_str(text.trim_start_matches('\u{feff}'))
         .map_err(|e| format!("{}: {e}", path.display()))
+}
+/// A tools profile may provide a chip description, never the project's ELF or
+/// source tree. Apply the same rule before merging a selected backend.
+pub(crate) fn validate_environment_program(environment: &toml::Value) -> Result<(), String> {
+    if let Some(program) = environment.get("program") {
+        for key in program
+            .as_table()
+            .ok_or("Environment [program] must be a TOML table")?
+            .keys()
+        {
+            if key != "svd" {
+                return Err(format!("Unsupported environment program field: {key}"));
+            }
+        }
+        if program.get("svd").is_some_and(|value| !value.is_str()) {
+            return Err("Environment program.svd must be a string".into());
+        }
+    }
+    Ok(())
 }
 pub(crate) fn merge(base: &mut toml::Value, overlay: toml::Value) {
     if let (Some(dst), Some(src)) = (base.as_table_mut(), overlay.as_table()) {
@@ -713,9 +735,15 @@ impl Project {
             .map_err(|e| format!("tools: {e}"))?
             .unwrap_or_default();
         let selected = if let Some(p) = profile {
-            Some(absolute(&env::current_dir().map_err(|e| e.to_string())?, p))
+            Some(crate::bundled_tools::resolve_profile(
+                p,
+                &env::current_dir().map_err(|e| e.to_string())?,
+            )?)
         } else if !tools.profile.as_os_str().is_empty() {
-            Some(absolute(&base, &tools.profile))
+            Some(crate::bundled_tools::resolve_profile(
+                &tools.profile,
+                &base,
+            )?)
         } else if !tools.root.as_os_str().is_empty() {
             Some(absolute(&base, &tools.root).join("debug-env.toml"))
         } else {
@@ -748,27 +776,29 @@ impl Project {
                         | "backend"
                         | "backends"
                         | "core_targets"
+                        | "chip_profiles"
+                        | "probe"
                 ) {
                     return Err(format!("Unsupported environment section: {key}"));
                 }
             }
-            // Profiles may supply a chip description; ELF and source paths
-            // still belong to the project.
-            if let Some(program) = environment.get("program") {
-                for key in program
-                    .as_table()
-                    .ok_or("Environment [program] must be a TOML table")?
-                    .keys()
-                {
-                    if key != "svd" {
-                        return Err(format!("Unsupported environment program field: {key}"));
-                    }
-                }
-            }
+            validate_environment_program(&environment)?;
             selected_path = Some(p);
         }
+        crate::bundled_tools::apply_selection(
+            &mut environment,
+            &tools,
+            &raw,
+            &base,
+            selected_path.as_deref(),
+        )?;
         let root_registers = environment.get("registers").cloned();
-        let plan = crate::devices::resolve(&mut environment, &mut raw, catalogue)?;
+        let plan = crate::devices::resolve_with_profile(
+            &mut environment,
+            &mut raw,
+            catalogue,
+            selected_path.as_deref(),
+        )?;
         let mut register_sources = register_sources::Sources::default();
         let layers = plan
             .as_ref()
@@ -784,7 +814,7 @@ impl Project {
             });
         for layer in &layers {
             let chip_default = layer.section.starts_with("chip association:");
-            let source = if chip_default {
+            let source = if chip_default || layer.section.starts_with("chip profile:") {
                 layer.section.clone()
             } else {
                 format!(
@@ -816,7 +846,10 @@ impl Project {
                 .and_then(|section| section.get_mut("svd"))
                 && !svd.is_empty()
             {
-                *svd = portable_path(&absolute(directory, Path::new(svd)));
+                *svd = portable_path(&crate::bundled_tools::resolve_svd(
+                    Path::new(svd),
+                    directory,
+                )?);
             }
         }
         resolve_launch_paths(&mut raw, &base);
@@ -849,6 +882,9 @@ impl Project {
         if !p.debug.chip.is_empty() && p.version < 3 {
             return Err("Chip/core selection requires project version = 3".into());
         }
+        let chip_memory_source = plan
+            .as_ref()
+            .and_then(|plan| plan.memory_access_source.clone());
         if let Some(plan) = plan {
             plan.apply(&mut p)?;
         }
@@ -869,6 +905,8 @@ impl Project {
                     .map(portable_path)
                     .unwrap_or_else(|| "inline".into())
             )
+        } else if let Some(source) = chip_memory_source {
+            source
         } else if let Some(profile) = &selected_path {
             format!("profile:{}", portable_path(profile))
         } else {
@@ -883,7 +921,7 @@ impl Project {
         }
         p.program.source_root = absolute(&base, &p.program.source_root);
         if !p.program.svd.as_os_str().is_empty() {
-            p.program.svd = absolute(&base, &p.program.svd);
+            p.program.svd = crate::bundled_tools::resolve_svd(&p.program.svd, &base)?;
         }
         if let Some(live) = &mut p.live_watch {
             live.elf = absolute(&base, &live.elf);
@@ -1609,29 +1647,29 @@ mod tests {
         }
     }
     #[test]
-    fn bundled_stm32_profiles_stay_loadable_and_chip_description_parses() {
-        // DebugTUI 0.10.0 and earlier reject [program] in a profile, so the
-        // bundled profiles leave the SVD to the project; install.ps1 writes it.
+    fn bundled_common_profile_requires_chip_selection_and_svd_description_parses() {
         let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("tools");
-        for profile in [
-            "debug-env.toml",
-            "debug-env-cmsis-dap.toml",
-            "debug-env-stlink.toml",
-        ] {
-            let path = tools.join(profile);
-            let raw: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-            assert!(raw.get("program").is_none(), "{profile}");
-            let project = Project::load_with_environment(None, Some(&path)).unwrap();
-            assert!(project.program.svd.as_os_str().is_empty(), "{profile}");
-        }
-        let device = crate::svd::Device::load_shared(&tools.join("chip/STM32F429.svd")).unwrap();
+        let path = tools.join("debug-env.toml");
+        let raw: toml::Value = toml::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(raw.get("backends").is_none());
+        assert!(raw.get("program").is_none());
+        assert_eq!(
+            raw["chip_profiles"]["directory"].as_str(),
+            Some("./devices")
+        );
+        assert!(
+            Project::load_with_environment(None, Some(&path))
+                .unwrap_err()
+                .contains("select Chip")
+        );
+        let device = crate::svd::Device::load_shared(&tools.join("svd/STM32F429.svd")).unwrap();
         assert_eq!(device.name, "STM32F429");
         assert_eq!(device.peripherals.len(), 84);
     }
     #[test]
     fn environment_memory_channels_are_portable_and_validate_core_restrictions() {
         let p = Project::from_document(
-            toml::from_str("[tools]\nprofile='tools/debug-env.toml'").unwrap(),
+            toml::from_str("version=3\n[tools]\nprofile='tools/debug-env.toml'\n[debug]\nchip='stm32f429'\ncores=[0]").unwrap(),
             None,
             None,
         )

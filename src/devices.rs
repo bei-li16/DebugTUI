@@ -46,6 +46,7 @@ pub struct Plan {
     selection: Selection,
     targets: BTreeMap<String, Target>,
     pub(crate) register_layers: Vec<crate::config::register_sources::Layer>,
+    pub(crate) memory_access_source: Option<String>,
 }
 
 pub fn catalogue_path() -> Result<PathBuf, String> {
@@ -271,7 +272,7 @@ pub fn add(path: &Path, name: &str, mut device: Device) -> Result<(), String> {
     publish(path, &format!("{}\n{}", original.trim_end(), entries))
 }
 
-fn expand_selection(value: &mut toml::Value, selection: &Selection, device: &Device) {
+pub(crate) fn expand_selection(value: &mut toml::Value, selection: &Selection, device: &Device) {
     let mask = selection.cores.iter().fold(0u32, |m, id| m | (1u32 << id));
     let available_mask = device.cores.iter().fold(0u32, |m, id| m | (1u32 << id));
     let other_ids = device
@@ -327,6 +328,15 @@ pub fn resolve(
     raw: &mut toml::Value,
     catalogue: Option<&Catalogue>,
 ) -> Result<Option<Plan>, String> {
+    resolve_with_profile(environment, raw, catalogue, None)
+}
+
+pub(crate) fn resolve_with_profile(
+    environment: &mut toml::Value,
+    raw: &mut toml::Value,
+    catalogue: Option<&Catalogue>,
+    profile: Option<&Path>,
+) -> Result<Option<Plan>, String> {
     let mut register_layers = environment
         .get("registers")
         .cloned()
@@ -350,8 +360,24 @@ pub fn resolve(
         .remove("backend")
         .and_then(|v| v.as_str().map(str::to_owned));
     let backends = table.remove("backends");
+    let chip_profiles = table.remove("chip_profiles");
+    let probe = table.remove("probe");
+    if chip_profiles.is_some() && (backend.is_some() || backends.is_some()) {
+        return Err(
+            "Use either [chip_profiles] or inline backend/backends in a tools profile".into(),
+        );
+    }
+    if probe.is_some() && chip_profiles.is_none() {
+        return Err("[probe] requires [chip_profiles] in the tools profile".into());
+    }
     let root_targets = table.remove("core_targets");
     if selection.chip.is_empty() {
+        if chip_profiles.is_some() {
+            return Err(
+                "This profile loads chip descriptions; select Chip and Core IDs in Setup first"
+                    .into(),
+            );
+        }
         if !selection.cores.is_empty() {
             return Err("Select a chip before selecting core IDs".into());
         }
@@ -390,10 +416,30 @@ pub fn resolve(
         .as_ref()
         .map(|(cpu, _)| cpu.clone())
         .unwrap_or_default();
-    let group = backends
+    let external = chip_profiles
+        .map(|settings| {
+            crate::config::chip_profiles::load(
+                settings,
+                probe,
+                &selection,
+                device,
+                profile.ok_or("External chip descriptions require a tools profile file")?,
+            )
+        })
+        .transpose()?;
+    let external_group = external.is_some();
+    let memory_access_source = external
         .as_ref()
-        .and_then(|v| v.get(&device.backend))
-        .cloned();
+        .and_then(|loaded| loaded.memory_access_source.clone());
+    let group = if let Some(loaded) = external {
+        register_layers.extend(loaded.register_layers);
+        Some(loaded.value)
+    } else {
+        backends
+            .as_ref()
+            .and_then(|v| v.get(&device.backend))
+            .cloned()
+    };
     let mut group = if let Some(group) = group {
         group
     } else if backend.as_deref() == Some(&device.backend)
@@ -411,6 +457,7 @@ pub fn resolve(
         if !matches!(
             key.as_str(),
             "gdb"
+                | "program"
                 | "target"
                 | "service"
                 | "actions"
@@ -430,7 +477,11 @@ pub fn resolve(
         .transpose()
         .map_err(|e| format!("core_targets: {e}"))?
         .unwrap_or_default();
-    if let Some(values) = group.get("registers") {
+    crate::config::validate_environment_program(&group)
+        .map_err(|error| format!("backends.{}: {error}", device.backend))?;
+    if let Some(values) = group.get("registers")
+        && !external_group
+    {
         register_layers.push(crate::config::register_sources::Layer {
             section: format!("backends.{}.registers", device.backend),
             values: values.clone(),
@@ -480,6 +531,7 @@ pub fn resolve(
         selection,
         targets,
         register_layers,
+        memory_access_source,
     }))
 }
 
@@ -1077,6 +1129,212 @@ mod tests {
             load(&fixture.0, "tha6206", &[0, 1])
                 .unwrap_err()
                 .contains("Duplicate core endpoint")
+        );
+    }
+    #[test]
+    fn universal_tools_switch_chip_without_leaking_svd_channels_or_core_ports() {
+        let fixture = Fixture::new();
+        let catalogue = Catalogue::parse(DEFAULTS).unwrap();
+        let tools = Path::new(env!("CARGO_MANIFEST_DIR")).join("tools");
+        let profile = tools.join("debug-env.toml");
+        let original = fs::read(&profile).unwrap();
+        let mut raw: toml::Value = toml::from_str(include_str!("../tools/debug.toml")).unwrap();
+        raw["tools"]["profile"] = portable_path(&profile).into();
+        raw["program"]["elf"] = "build/${chip_upper}.elf".into();
+        for (chip, ids, mask) in [
+            ("stm32f429", vec![0], 1),
+            ("tha6206", vec![1], 2),
+            ("tha6206", vec![0, 1], 3),
+            ("tha6412", vec![1, 3], 10),
+            ("tha6412", vec![0, 1, 2, 3], 15),
+            ("stm32f429", vec![0], 1),
+        ] {
+            raw["debug"] = toml::Value::try_from(Selection {
+                chip: chip.into(),
+                cores: ids.clone(),
+            })
+            .unwrap();
+            let p = Project::from_document_with_catalogue(
+                raw.clone(),
+                Some(fixture.0.join("debug.toml")),
+                None,
+                Some(&catalogue),
+            )
+            .unwrap();
+            assert_eq!(p.cores.len(), ids.len());
+            for (core, id) in p.cores.iter().zip(&ids) {
+                assert_eq!(core.name, format!("core.{id}"));
+                assert_eq!(core.endpoint, format!("127.0.0.1:{}", 3333 + id));
+            }
+            let service = p.service.as_ref().unwrap();
+            assert_eq!(service.ready.len(), ids.len());
+            for (ready, id) in service.ready.iter().zip(&ids) {
+                assert_eq!(
+                    ready,
+                    &format!("Listening on port {} for gdb connections", 3333 + id)
+                );
+            }
+            assert_eq!(
+                fs::canonicalize(&p.gdb.executable).unwrap(),
+                fs::canonicalize(tools.join("bin/gdb/bin/arm-none-eabi-gdb.exe")).unwrap()
+            );
+            assert_eq!(
+                fs::canonicalize(&service.command).unwrap(),
+                fs::canonicalize(tools.join("bin/openocd/bin/openocd.exe")).unwrap()
+            );
+            assert_eq!(
+                p.program.elf,
+                fixture
+                    .0
+                    .join(format!("build/{}.elf", chip.to_ascii_uppercase()))
+            );
+            if chip == "stm32f429" {
+                assert!(
+                    service
+                        .args
+                        .last()
+                        .unwrap()
+                        .ends_with("/openocd/stm32f429.cfg")
+                );
+                assert_eq!(
+                    fs::canonicalize(&p.program.svd).unwrap(),
+                    fs::canonicalize(tools.join("svd/STM32F429.svd")).unwrap()
+                );
+                assert_eq!(p.registers.cpu, "cortex-m4");
+                assert_eq!(p.memory_access.len(), 2);
+                assert_eq!(p.memory_access[0].target, "stm32f4x.ahb");
+                assert!(p.registers.cp15_command.is_empty());
+                assert!(p.registers.targets.is_empty());
+                assert!(p.actions.restart.iter().any(|s| s == "monitor reset halt"));
+            } else {
+                assert!(
+                    service
+                        .args
+                        .last()
+                        .unwrap()
+                        .ends_with("/openocd/r52-template.cfg")
+                );
+                assert!(service.args.contains(&format!("set DEBUGCORE {mask}")));
+                assert_eq!(p.registers.cpu, "cortex-r52");
+                assert!(p.program.svd.as_os_str().is_empty());
+                assert!(p.memory_access.is_empty());
+                assert!(p.actions.restart.is_empty());
+                assert!(p.actions.download.is_empty());
+                assert!(p.actions.before_disconnect.is_empty());
+                assert_eq!(p.registers.cp15_command, "aarch64 r52_read");
+                assert!(p.registers.vfp_write_command.is_empty());
+                for id in ids {
+                    assert_eq!(
+                        p.registers.targets[&format!("core.{id}")],
+                        format!("core.{id}")
+                    );
+                }
+            }
+            // Resolution never materializes selected-chip defaults into the draft.
+            assert!(raw["program"].get("svd").is_none());
+            assert!(raw.get("cores").is_none());
+            assert_eq!(
+                raw["program"]["elf"].as_str(),
+                Some("build/${chip_upper}.elf")
+            );
+        }
+        raw["debug"]["cores"] = toml::Value::try_from(vec![1]).unwrap();
+        assert!(
+            Project::from_document_with_catalogue(
+                raw.clone(),
+                Some(fixture.0.join("debug.toml")),
+                None,
+                Some(&catalogue)
+            )
+            .unwrap_err()
+            .contains("supports core IDs")
+        );
+        raw.as_table_mut().unwrap().remove("debug");
+        assert!(
+            Project::from_document_with_catalogue(
+                raw,
+                Some(fixture.0.join("debug.toml")),
+                None,
+                Some(&catalogue)
+            )
+            .unwrap_err()
+            .contains("select Chip")
+        );
+        assert_eq!(fs::read(&profile).unwrap(), original);
+    }
+    #[test]
+    fn backend_svd_is_profile_relative_and_project_override_does_not_hide_bad_fields() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.0.join("shared tools/chip")).unwrap();
+        fs::create_dir_all(fixture.0.join("project/chip")).unwrap();
+        let profile = fixture.0.join("shared tools/debug-env.toml");
+        let project = fixture.0.join("project/debug.toml");
+        let catalogue = Catalogue::parse(DEFAULTS).unwrap();
+        let project_text = "version=3\n[tools]\nprofile='../shared tools/debug-env.toml'\n[debug]\nchip='stm32f429'\ncores=[0]\n";
+        let load_project = |override_text: &str| {
+            Project::from_document_with_catalogue(
+                toml::from_str(&format!("{project_text}{override_text}")).unwrap(),
+                Some(project.clone()),
+                None,
+                Some(&catalogue),
+            )
+        };
+        let environment =
+            "[backends.stm32f4.target]\nendpoint='localhost:3333'\n[backends.stm32f4.program]\n";
+        for path in [
+            "chip/${chip_upper}.svd",
+            "${profile_dir}/chip/${chip_upper}.svd",
+        ] {
+            fs::write(&profile, format!("{environment}svd='{path}'\n")).unwrap();
+            let p = load_project("").unwrap();
+            assert_eq!(
+                fs::canonicalize(p.program.svd.parent().unwrap()).unwrap(),
+                fs::canonicalize(fixture.0.join("shared tools/chip")).unwrap()
+            );
+            assert_eq!(p.program.svd.file_name().unwrap(), "STM32F429.svd");
+            let p = load_project("[program]\nsvd='chip/custom.svd'\n").unwrap();
+            assert_eq!(p.program.svd, fixture.0.join("project/chip/custom.svd"));
+            assert!(
+                load_project("[program]\nsvd=''\n")
+                    .unwrap()
+                    .program
+                    .svd
+                    .as_os_str()
+                    .is_empty()
+            );
+        }
+        for (bad, expected) in [
+            (
+                "elf='wrong.elf'",
+                "Unsupported environment program field: elf",
+            ),
+            (
+                "source_root='wrong'",
+                "Unsupported environment program field: source_root",
+            ),
+            (
+                "unknown='wrong'",
+                "Unsupported environment program field: unknown",
+            ),
+            ("svd=42", "program.svd must be a string"),
+        ] {
+            fs::write(&profile, format!("{environment}{bad}\n")).unwrap();
+            assert!(
+                load_project("[program]\nsvd=''\n")
+                    .unwrap_err()
+                    .contains(expected),
+                "{bad}"
+            );
+        }
+        fs::write(
+            &profile,
+            "[backends.stm32f4]\nprogram=42\n[target]\nendpoint='localhost:3333'\n",
+        )
+        .unwrap();
+        assert!(
+            load_project("[program]\nsvd=''\n")
+                .unwrap_err()
+                .contains("must be a TOML table")
         );
     }
     #[test]

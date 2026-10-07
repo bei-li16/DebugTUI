@@ -162,6 +162,13 @@ debugtui
 \end{minipage}\par
 仓库 PUBLISHING.md 描述了 GitHub Release URL 安装流程；本文不将本地包版本等同于远端 Latest。主程序包不包含 tools 和 SVD，交付时须分别准备。安装后用户芯片目录独立保存在用户配置区；若 npm 未执行 postinstall，可运行 \code{debugtui --init-profiles} 完成初始化，不必修改全局 npm 策略。已有目录会校验但不会覆盖，详见第\ref{sec:device-catalogue}节。
 
+\subsection{内置工具与工程发现（0.10.0-readonly.5）}
+npm 包和便携 ZIP 已内置 GDB/OpenOCD、芯片与探针配置、SVD。工程使用 \code{[tools] profile="builtin:arm-openocd"}；\code{probe="cmsis-dap"} 可在 Setup 的 Probe 字段改为 jlink、stlink 或继承默认值。Chip config 对应 \code{tools.chip\_profile}，可指定工程相对的自定义芯片 TOML。内置模式按工程指定文件、用户 \path{profiles/chips/<chip>.toml}、包内默认文件的顺序选择；用户文件不会写入 npm 安装目录。自定义继承可使用 \code{extends="builtin:devices/tha6206.toml"}，板级 cfg/SVD 相对该文件。
+
+Tools / profile 和 SVD file 按 F2 可选择包内文件或浏览外部文件，列表显示实际安装路径。内置 SVD 引用为 \code{builtin:svd/STM32F429.svd}；Automatic 跟随芯片，Disabled 显式禁用。旧 profile 下切换 Probe 会提供兼容工具选择，选择内置 profile 后应用，Esc 取消保留原配置。切换时只迁移与包内文件完全相同的原始 SVD 副本；客户修改保留，Ctrl+S 才保存工程。
+
+无参数启动从工作目录优先加载 \path{debug.toml}，否则检索调试工程 TOML；唯一候选直接加载，多个候选显示列表，无候选则创建最简通用配置并进入 Setup。\code{--init-project} 只查找或创建配置后退出。已有工程保持其原配置，旧的外部 profile 与 \path{.vscode} 方式继续兼容。新工程无需复制工具或写入 npm 安装路径。
+
 \subsection{首次启动}
 无参数执行 \code{debugtui} 进入 Setup，不启动 GDB 或占用探针。依次检查 Project、Tools/profile、Program/ELF、Source root、SVD、Build/Download 和退出策略。GDB、目标连接、服务启动及工具超时在引用的 debug-env.toml 中维护。默认聚焦 Project；上下箭头只在可用配置项之间循环，跳过禁用项和顶部按钮。Tab、Shift+Tab 或鼠标可选择顶部按钮；点击 Start debugging，或使用 Ctrl+R、Ctrl+Enter、F5 启动。Save 只保存；Workspace/Esc 回到原工作区并保留草稿。\textbf{首页可直接点击 Exit 或按 Ctrl+Q 退出，无需先启动调试}；已有会话仍按正常退出流程清理。
 
@@ -214,7 +221,7 @@ Project 字段以\textbf{启动工作目录}为相对路径基准。例如 \path
 \toprule 字段 & 示例或入口 & 用途与填写规则\\\midrule\endfirsthead
 \toprule 字段 & 示例或入口 & 用途与填写规则\\\midrule\endhead
 Project & \code{./debug.toml}；F2/F3 & 项目配置的读写目标，按启动目录解析。选择已有文件会更新整张配置表；新路径在保存前只是草稿。\\
-Tools / profile & \code{tools/debug-env.toml}；F2 & 引用工具/服务/动作配置，相对项目目录。留空使用独立 GDB 配置，不自动获得芯片复位和下载能力。\\
+Tools / profile & \code{.vscode/debug-env.toml}；F2 & 引用工具/服务/动作配置，相对项目目录。留空使用独立 GDB 配置，不自动获得芯片复位和下载能力。\\
 Chip & Enter；目录选择 & 本地芯片能力声明；选择型号或新增客户型号。Legacy 保留原配置模式。\\
 Debug cores & Enter；核心复选 & 选择该芯片支持的物理核心子集；至少一个。未选择 Chip 时灰显。配置示例见第\ref{sec:device-catalogue}节。\\
 Program / ELF & \code{build/firmware.elf}；F2 & 与目标固件匹配的符号文件，相对项目目录；不是自动烧录命令。无有效调试信息时无法完整进行 C 源码调试。\\
@@ -229,7 +236,7 @@ ELF path prefix & Enter & 选择 ELF 中与 Source root 对应的目录层级；
 \bottomrule
 \end{longtable}}
 
-\textbf{配置职责：}debug.toml 保存程序、源码映射、任务、SVD、Watch/断点、逐核映射、组策略和 \code{session.on_exit}；debug-env.toml 保存 GDB、OpenOCD/服务、连接默认值、板级动作和 \code{session.timeout_ms}，也可通过 \code{[program] svd} 提供芯片 SVD 默认值，其路径相对于 profile 所在目录。工程中的 SVD 配置优先，空字符串表示禁用；ELF 和源码路径仍由工程配置。0.10.0-readonly.1 及更早版本会拒绝含 \code{[program]} 的 profile，随附 profile 因此暂不设置，由 \path{tools/install.ps1} 把 SVD 写入工程。后者默认 8000 ms 是单条工具命令等待时间，不是工程退出策略。Setup 已移除六个工具编辑项，Tools/profile 只选择引用，On exit 仍是工程字段。旧工程内嵌工具覆盖继续有效；保存不展开环境值、不改共享 profile，并保留单核/多核的后台偏好。
+\textbf{配置职责：}debug.toml 保存程序、源码映射、任务、SVD、Watch/断点、逐核映射、组策略和 \code{session.on_exit}；debug-env.toml 保存 GDB、OpenOCD/服务、连接默认值、板级动作和 \code{session.timeout_ms}，也可通过 \code{[program] svd} 提供芯片 SVD 默认值，其路径相对于 profile 所在目录。工程中的 SVD 配置优先，空字符串表示禁用；ELF 和源码路径仍由工程配置。随附工具需要 0.10.0-readonly.3 或更新版本；\path{tools/install.ps1} 将 \path{tools/debug.toml} 安装到工程根目录、其余工具资源安装到 \path{.vscode/}（旧工程兼容方式）；新工程直接使用 npm 包内工具。SVD 由芯片描述提供，工程不固定覆盖。\code{session.timeout_ms} 默认 8000 ms 是单条工具命令等待时间，不是工程退出策略。Setup 已移除六个工具编辑项，Tools/profile 只选择引用，On exit 仍是工程字段。旧工程内嵌工具覆盖继续有效；保存不展开环境值、不改共享 profile，并保留单核/多核的后台偏好。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{42mm}Y@{}}\toprule
 Setup 中的按键/按钮 & 行为\\\midrule
@@ -498,7 +505,7 @@ channel 为空代表默认 GDB；interval\_ms 为 0 关闭循环。多核键由 
 \end{tabularx}
 
 MI 是 GDB 的主机接口，RSP 是 GDB 与 Server 的远程接口，CMSIS-DAP 是探针接口，三者不可互换。OpenOCD 的 TCL 是额外控制入口，不是 MI 或 telnet。\href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/GDB_002fMI.html}{GDB/MI 官方说明}、\href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/Overview.html}{RSP 概览}和\href{https://openocd.org/doc/html/Tcl-Scripting-API.html}{TCL RPC 文档}给出各层语义。
-\src{\path{src/session.rs}: connect\_inner；\path{src/live_watch.rs}: transact；三个 tools/debug-env*.toml。}
+\src{\path{src/session.rs}: connect\_inner；\path{src/live_watch.rs}: transact；tools/debug-env.toml 与 tools/devices/ 芯片描述。}
 
 \newsection{探针、软硬件协议与物理连接}\label{sec:probe}
 \subsection{先区分产品、主机协议和目标接口}
@@ -534,7 +541,7 @@ CMSIS-DAP v1 通常使用 USB HID 报告，Windows 可利用通用 HID 驱动；
 OpenOCD 的 \code{cmsis-dap backend auto/hid/usb_bulk} 决定主机后端，\code{transport select swd} 决定目标侧传输；\code{adapter speed 1000} 请求的是目标调试时钟，单位 kHz，不是 USB 速率或 CPU 主频。最新上游文档可能还包含本地分发未验证的其他后端，不应直接抄入项目。参考 \href{https://arm-software.github.io/CMSIS_5/5.7.0/DAP/html/group__DAP__ConfigUSB__gr.html}{Arm USB 配置说明}和 \href{https://openocd.org/doc/html/Debug-Adapter-Configuration.html}{OpenOCD adapter 文档}。
 
 本机曾因 J-Link 接口绑定为 WinUSB/libwdi 而让 SEGGER Server 报 \code{Could not connect to J-Link}。这是\emph{启动阶段无法打开探针}的问题，和第\ref{sec:jlink-duration}节“已经工作约 53 秒后失效”的问题应分开记录。核对设备管理器中的接口、驱动提供者、探针序号与 Server 输出，避免多个服务同时占用同一探针。若是复合 USB 设备，还需辨认调试接口与串口接口。
-\src{\path{tools/bin/openocd/PROVENANCE.txt}；三个 \path{tools/debug-env*.toml}；本地 0.8.0 驱动诊断及 DAP 实板报告。}
+\src{\path{tools/bin/openocd/PROVENANCE.txt}；\path{tools/debug-env.toml} 与 \path{tools/devices/} 芯片描述；本地 0.8.0 驱动诊断及 DAP 实板报告。}
 
 \subsection{SWD、JTAG 与复位信号}
 SWD 通过一次请求选择 DP/AP、读写方向和寄存器地址，再进行总线方向切换、ACK 与数据传输；Server/探针处理 OK、WAIT、FAULT 等响应、重试和协议错误。WAIT 不等于目标必然死机，FAULT 也不必然表示 USB 已断。实际故障需与电源、地址、访问权限及 DP 错误状态一起解释。
@@ -620,7 +627,7 @@ JTAG-AP & 由 DAP 转到芯片内部 JTAG 结构 & 内部 TAP、链路控制和�
 \end{tabularx}
 
 名称相似也不能直接等同：STM32 的 RCC/GPIO 等外设可能位于系统 APB 总线上，但外部调试可由 AHB-AP 经 AHB-to-APB 桥到达。\textbf{“读取 APB 外设”不意味着必须存在独立 APB-AP}。在本地配置中再创建一个名为 \code{stm32f4x.apb} 的软件 target，也不会凭空增加硬件端口。
-\src{\href{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/how-to-debug-coresight-basics-part-2}{Arm CoreSight basics Part 2}；\path{tools/config/stm32f429-dap.cfg}。}
+\src{\href{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/how-to-debug-coresight-basics-part-2}{Arm CoreSight basics Part 2}；\path{tools/openocd/stm32f429.cfg}。}
 
 \subsection{一次内存访问在 DP/AP 内部如何完成}
 以 ADIv5 MEM-AP 的概念流程说明：Server 首先识别 DP，并确认调试/系统电源请求得到响应；选择正确 AP 与寄存器 bank；设置 \code{CSW} 中的访问尺寸等属性，把目标地址写入 \code{TAR}，再通过 \code{DRW} 发起数据传输。AP 读存在流水/延后返回语义，需要按协议完成后续取数，例如通过 DP 的 \code{RDBUFF} 获取最终读结果；不能把“发出 AP 读请求”当作已经拿到该地址的值。
@@ -663,7 +670,7 @@ DWT 可以同时承担观察点与追踪事件相关任务，因此资源配置�
 因此，\code{channel="ahb"} 是 TUI 命名通道到 OpenOCD target 的映射，不是“切换到第二颗 CPU”。读取 RCC 外设走 AHB-AP 到芯片总线，读取 RAM 也走同一实际 AP；是否能在运行中访问、读到的数据是否一致，仍由目标状态和总线系统决定。\code{while_running=true} 只声明并开放已有能力，不会解除芯片保护或给 AP 上电。
 
 \code{targets stm32f4x.cpu} 在本地脚本初始化时设置默认 CPU；实时读取使用 \code{stm32f4x.ahb read_memory ...}，不不断切换全局 target。CPU 与 MEM-AP 访问共享物理资源，故高频轮询可能增加总线和探针负载。对更复杂的 A/R 多核 SoC，核内缓存、MMU、调试 APB、电源域和独立 AP 还会增加限制，不能直接套用 F429 的地址与 AP0。
-\src{\path{tools/config/stm32f429-dap.cfg}、\path{tools/config/stm32f429-live.cfg}；\path{tools/debug-env-cmsis-dap.toml}；\path{src/live_watch.rs}: transact。}
+\src{\path{tools/openocd/stm32f429.cfg} 和 \path{tools/openocd/probes/}；\path{tools/debug-env.toml}；\path{src/live_watch.rs}: transact。}
 
 \subsection{CTI、CTM 与硬件交叉触发}\label{sec:cti}
 CTI（Cross Trigger Interface）把本地触发输入映射到触发通道，再把选中的通道映射到本地输出；CTM（Cross Trigger Matrix）在多个 CTI 之间传播通道事件。ECT（Embedded Cross Trigger）是这套交叉触发设施的统称。例如核 0 进入调试态，经路由请求核 1 停止，或令 Trace 采集器在某个事件附近保留数据窗口。
@@ -744,7 +751,7 @@ SWO / ETM / RTT & 当前没有专用采集/解码 UI。RTT 是目标 RAM 缓冲�
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{31mm}Y Y Y@{}}\toprule
 项目 & OpenOCD/J-Link & OpenOCD/CMSIS-DAP & OpenOCD/ST-Link\\\midrule
-profile 文件 & \path{debug-env.toml} & \path{debug-env-cmsis-dap.toml} & \path{debug-env-stlink.toml}\\
+profile 文件 & \path{debug-env.toml} & \path{debug-env.toml} & \path{debug-env.toml}\\
 服务程序 & openocd & openocd & openocd\\
 探针驱动 & OpenOCD jlink & OpenOCD cmsis-dap & OpenOCD st-link（dapdirect）\\
 芯片/接口 & stm32f4x / SWD & stm32f4x / SWD & stm32f4x / SWD\\
@@ -778,9 +785,10 @@ init = ["set remotetimeout 5", "set tcp connect-timeout 5"]
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
 [service]
-command = "./bin/openocd/bin/openocd.exe"
-args = ["-s", "${profile_dir}/bin/openocd/scripts",
-        "-f", "${profile_dir}/config/stm32f429-dap.cfg"]
+command = "${tools_dir}/bin/openocd/bin/openocd.exe"
+args = ["-s", "${tools_dir}/bin/openocd/scripts",
+        "-f", "${probe_config}",
+        "-f", "${tools_dir}/openocd/stm32f429.cfg"]
 ready = ["Listening on port 3333 for gdb connections"]
 timeout_ms = 15000
 
@@ -801,7 +809,7 @@ before_disconnect = ["monitor resume"]
 on_exit = "detach"
 \end{lstlisting}
 \end{minipage}\par
-这是 CMSIS-DAP profile 中对应片段；J-Link/OpenOCD 只将板级文件换成 \code{stm32f429-live.cfg}。ready 是输出子串就绪条件，不代表符号已加载或应用完成启动；之后仍需 GDB 连接和实际状态查询。
+这是 STM32 芯片描述的配置示意；公共入口为 \path{.vscode/debug-env.toml}，芯片参数放在 \path{.vscode/devices/stm32f429.toml}。三种探针共用 \path{.vscode/openocd/stm32f429.cfg}，只修改公共入口的 \code{probe.config} 选择 \path{openocd/probes/} 下的驱动。实际逐核端口和 ready 由芯片描述的 core\_targets 提供。ready 是输出子串就绪条件，不代表符号已加载或应用完成启动；之后仍需 GDB 连接和实际状态查询。
 
 \subsection{自行安装的 J-Link Server}\label{sec:jlink-server}
 tools 不再包含 SEGGER J-Link 软件：其许可证要求每次再分发都事先取得 SEGGER 书面授权。需要 SEGGER Server 时，从 SEGGER 安装 J-Link Software，把 \path{docs/examples/jlink-gdb-server.toml} 复制到 tools 目录，并把 \code{service.command} 改为本机安装路径。该 Server 没有 OpenOCD TCL 端口，Memory access、Live refresh 和寄存器专用读取不可用。
@@ -823,18 +831,20 @@ timeout_ms = 15000
 \subsection{手动启动与所有权}
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
-# Repository root, terminal 1:
-./tools/bin/openocd/bin/openocd.exe `
-  -s ./tools/bin/openocd/scripts `
-  -f ./tools/config/stm32f429-dap.cfg
+# Installed project root, terminal 1:
+./.vscode/bin/openocd/bin/openocd.exe `
+  -s ./.vscode/bin/openocd/scripts `
+  -f ./.vscode/openocd/probes/cmsis-dap.cfg `
+  -f ./.vscode/openocd/stm32f429.cfg
 
 # Terminal 2, retaining this profile's GDB arguments and actions:
-debugtui --environment ./tools/debug-env-cmsis-dap.toml `
+debugtui --environment ./.vscode/debug-env.toml `
+  --chip stm32f429 --cores 0 `
   --connect 127.0.0.1:3333 --elf <matching.elf>
 \end{lstlisting}
 \end{minipage}\par
 外部启动的服务由启动者管理。TUI 的工作区重建、任务执行或退出只终止自己启动的服务/GDB/子任务。OpenOCD 在 GDB 断开后继续运行，由启动者用 Ctrl+C 结束。
-\src{\path{tools/debug-env.toml}；\path{tools/debug-env-cmsis-dap.toml}；\path{docs/examples/jlink-gdb-server.toml}；\path{tools/bin/openocd/PROVENANCE.txt}；\path{tools/dependencies.lock.json}。}
+\src{\path{tools/debug-env.toml}；\path{tools/devices/stm32f429.toml}；\path{docs/examples/jlink-gdb-server.toml}；\path{tools/bin/openocd/PROVENANCE.txt}。}
 
 \newsection{STM32F429 本地实板配置与操作}\label{sec:f429}
 \subsection{确认本机实际型号和固件}
@@ -854,19 +864,22 @@ RTOS 配置 & FreeRTOS 抢占式；tick 1000 Hz，heap 配置 15360 字节。\\
 芯片系列概况参\href{https://www.st.com/en/microcontrollers-microprocessors/stm32f429ig.html}{ST STM32F429IG 产品资料}；本表容量取自本地链接脚本和历史设备识别，不将系列“最大容量”误写为此板容量。主 SRAM 与 CCM 应分别看待，不应把它们当作从 0x20000000 开始连续的 256 KiB。
 
 \subsection{可复制的项目配置}
-以下配置以本机 FreeRTOS\_Project 目录为根，使用当前 CMSIS-DAP profile。与磁盘实际配置相比，将用户临时源码行断点替换为便于说明的 main，保留其目录关系；这是手册示例，本文未改写用户工程。
+以下配置以固件工程目录为根，先安装工具到 \path{.vscode}，在公共入口选择 CMSIS-DAP。芯片选择为 STM32F429/Core0；这是手册示例，本文未改写用户工程。
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
-version = 2
+version = 3
 watch = ["xTickCount", "uwTick"]
 breakpoints = ["main"]
 
 [tools]
-profile = "../../../DebugTUI/tools/debug-env-cmsis-dap.toml"
+profile = "./.vscode/debug-env.toml"
+[debug]
+chip = "stm32f429"
+cores = [0]
 [program]
 elf = "build/FreeRTOS_STM32F429.elf"
 source_root = "."
-svd = "../../../DebugTUI/resources/svd/stm32/STM32F429.svd"
+# SVD follows Chip from .vscode/svd/; no fixed project override.
 [tasks]
 build = "mingw32-make -j8"
 download = ""
@@ -880,14 +893,13 @@ timeout_ms = 8000
 \code{download = ""} 使下载回退至 profile 的 GDB action。旧工程如果仍保留启动 J-Link 的外部下载命令，它会优先于新的 CMSIS-DAP profile，必须检查清楚。Build 依赖工程自己的 GCC/make 和 PATH；tools 的最小包只含调试器/Server，不包含完整固件构建工具链。该 Makefile 使用 which、ls 等工具查找 GCC，构建环境还需提供对应命令或适配工程脚本。
 
 \subsection{板级 OpenOCD 脚本}
-以下是本地 \code{stm32f429-dap.cfg} 的实际有效配置：
+以下为共用 \path{.vscode/openocd/stm32f429.cfg}；探针驱动先由独立的 \path{openocd/probes/*.cfg} 加载：
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
 bindto 127.0.0.1
 gdb port 3333
 tcl port 6666
 telnet port disabled
-source [find interface/cmsis-dap.cfg]
 transport select swd
 source [find target/stm32f4x.cfg]
 adapter speed 1000
@@ -2071,10 +2083,10 @@ v0.8.3 初版源码 & 137 项单元测试、1 项 CLI 集成测试通过，0 失
 401=122+75+70+93+41，是请求数而非独立功能数。历史实板报告的源码 SHA 为 \path{8c74f72e4139d62cc3b3034266d22bbfe1a2a14e}，与当前文档基线不同；本次以源码确认相关实现，不能声称历史二进制就是当前重新构建的 EXE。
 
 \subsection{分发和许可证}
-package.json 的 files 目前包含 EXE、profiles、说明与许可证，\textbf{不包含 docs、resources/svd 或 tools}。本次手册放入 docs 不会自动进入 npm 包；如需发行附带手册，另更新打包清单。TUI 以 Apache-2.0 分发；GDB、OpenOCD、SEGGER 工具及 SVD 遵从各自许可证，不能用应用许可证替代第三方条款。
+package.json 的 files 包含 EXE、profiles、docs、内置 tools、说明与许可证，开发脚本及构建缓存不进入 npm 包。TUI 以 Apache-2.0 分发；GDB、OpenOCD、SEGGER 工具及 SVD 遵从各自许可证，不能用应用许可证替代第三方条款。
 
-\code{scripts/package.ps1} 核对 npm/EXE 版本并拒绝开发/工具依赖泄入 TUI 包；\code{tools/package.ps1} 验证 dependencies.lock.json 的文件 SHA-256，拒绝清单外的 \path{bin/} 文件，再生成只含运行文件的 \path{debugtui-tools-arm-win-x64.zip}；\path{openocd-adapter/} 源码不进入该包。\code{-UpdateLock} 按当前 \path{bin/} 重新生成清单。
-\src{\path{Cargo.toml}、\path{Cargo.lock}、\path{package.json}；\path{scripts/}；\path{tools/package.ps1}；\path{NOTICE}、\path{THIRD_PARTY_NOTICES.md}、\path{licenses/}。}
+\code{scripts/package.ps1} 核对 npm/EXE 版本并拒绝开发/工具依赖泄入 TUI 包；\code{scripts/package-tools.ps1} 检查 GDB/OpenOCD 主程序存在，按实际 \path{bin/} 内容与配置目录生成 \path{debugtui-tools-arm-win-x64.zip}；\path{openocd-adapter/} 源码不进入该包。安装器同样按实际工具目录复制，无需依赖清单。
+\src{\path{Cargo.toml}、\path{Cargo.lock}、\path{package.json}；\path{scripts/}；\path{scripts/package-tools.ps1}；\path{NOTICE}、\path{THIRD_PARTY_NOTICES.md}、\path{licenses/}。}
 
 \newsection{已知问题、实现限制与维护建议}\label{sec:limits}
 环境侧另有尚未关闭的 J-Link 长会话故障，见第\ref{sec:jlink-duration}节。它与下述已确认的 UI/解析实现问题分开管理；当前手册未把“疑似 clone”作为已证实的软件定时限制，也没有以其他探针的通过记录关闭该故障。

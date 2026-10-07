@@ -1,0 +1,19 @@
+# Project configuration. Tool resources are provided by the installed DebugTUI.
+version = 3
+
+[tools]
+profile = "builtin:arm-openocd"
+probe = "cmsis-dap"
+
+[debug]
+chip = ""
+cores = []
+# Select Chip and Debug cores in Setup before Start; e.g. stm32f429 + [0].
+
+[program]
+elf = ""
+source_root = "."
+
+[session]
+on_exit = "detach"
+log_dir = "debug-logs"

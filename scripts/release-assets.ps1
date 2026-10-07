@@ -38,7 +38,9 @@ foreach ($required in @('profiles/install.cjs','profiles/devices.toml','profiles
         throw "ZIP register catalogue/profile asset differs or is missing: $required"
     }
 }
-if (Test-Path -LiteralPath "$verified\tools") { throw 'Environment tools leaked into standalone ZIP' }
+foreach ($entry in $package.files | Where-Object { $_.path -like 'tools/*' }) {
+    if ((Get-FileHash -LiteralPath (Join-Path $verified $entry.path)).Hash -ne (Get-FileHash -LiteralPath (Join-Path $projectRoot $entry.path)).Hash) { throw "ZIP bundled tool differs: $($entry.path)" }
+}
 if ((& $exe --version) -ne "debugtui $version") { throw 'ZIP version check failed' }
 & $exe --snapshot "$artifactRoot\release-demo.txt"
 if ($LASTEXITCODE -ne 0) { throw 'ZIP renderer check failed' }
@@ -53,11 +55,11 @@ Copy-Item -LiteralPath (Join-Path $projectRoot 'bin/debugtui.exe') -Destination 
 if ((Get-FileHash -LiteralPath $exePath).Hash -ne (Get-FileHash -LiteralPath $exe).Hash) { throw 'Direct EXE asset differs from verified ZIP' }
 $assets = @($zipPath, $exePath, $tgzPath, $stableTgzPath)
 if ($IncludeTools) {
-    & "$projectRoot\tools\package.ps1" -OutputDirectory $artifactRoot
+    & "$PSScriptRoot\package-tools.ps1" -OutputDirectory $artifactRoot
     $assets += Join-Path $artifactRoot 'debugtui-tools-arm-win-x64.zip'
 }
 $hashes = @($assets | ForEach-Object { ((Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()) + '  ' + (Split-Path $_ -Leaf) })
 [IO.File]::WriteAllText((Join-Path $artifactRoot 'SHA256SUMS.txt'), ($hashes -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
 @{version=$version;zip=$zipPath;exe=$exePath;tgz=$tgzPath;stableTgz=$stableTgzPath;assets=$assets;sha256sums=(Join-Path $artifactRoot 'SHA256SUMS.txt');verifiedDirectory=$verified} | ConvertTo-Json | Set-Content "$artifactRoot\release-assets.json" -Encoding utf8
-Write-Output 'PASS standalone ZIP: executable, no bundled tools, version and TUI renderer.'
+Write-Output 'PASS portable ZIP: executable, bundled tools, version and TUI renderer.'
 $assets | ForEach-Object { $file = Get-Item -LiteralPath $_; Write-Output "$($file.Name): $($file.Length) bytes" }

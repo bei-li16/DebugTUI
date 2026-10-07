@@ -1,0 +1,61 @@
+backend = "tha6"
+
+# Shared R52 settings. Supply a custom Chip config and board cfg before connecting.
+# core.N uses port 3333+N, including a non-contiguous selection such as [1,3].
+# These target names are a template contract, not discovered hardware facts.
+[gdb]
+init = ["set remotetimeout 10", "set tcp connect-timeout 5"]
+registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr", "pc", "cpsr"]
+[service]
+args = [
+  "-s", "${tools_dir}/bin/openocd/scripts",
+  "-f", "${probe_config}",
+  "-c", "set CHIPNAME ${chip}",
+  "-c", "set DEBUGCORE ${core_mask}",
+  "-c", "set AVAILABLECORE ${available_core_mask}",
+  "-f", "${tools_dir}/openocd/r52-template.cfg"
+]
+cwd = "${tools_dir}/openocd"
+[program]
+# No R52 SVD is bundled. Set a reviewed path here when it is available.
+svd = ""
+[target]
+after_connect = ["monitor halt", "maintenance flush register-cache"]
+[actions]
+run = ["-exec-continue"]
+# Reset, download and resuming unselected helper cores are board/firmware policy.
+# Add them only after supplying the board cfg and the appropriate project task.
+restart = []
+download = []
+before_disconnect = []
+[core_targets."0"]
+endpoint = "127.0.0.1:3333"
+ready = "Listening on port 3333 for gdb connections"
+[core_targets."1"]
+endpoint = "127.0.0.1:3334"
+ready = "Listening on port 3334 for gdb connections"
+[core_targets."2"]
+endpoint = "127.0.0.1:3335"
+ready = "Listening on port 3335 for gdb connections"
+[core_targets."3"]
+endpoint = "127.0.0.1:3336"
+ready = "Listening on port 3336 for gdb connections"
+
+# Independent readonly adapter opt-ins for the pinned OpenOCD in the installed tools/bin.
+# No writer is enabled. Actual identity/current Debug permission is still checked.
+[registers]
+cpu = "cortex-r52"
+tcl_endpoint = "127.0.0.1:6666"
+cp15_command = "aarch64 r52_read"
+selector_command = "aarch64 r52_select"
+isb_command = ""
+banked_command = "aarch64 banked"
+vfp_command = "aarch64 vfp"
+timer_command = "aarch64 timer"
+pmu_command = "aarch64 pmu"
+gic_command = "aarch64 gic"
+[registers.targets]
+"core.0" = "core.0"
+"core.1" = "core.1"
+"core.2" = "core.2"
+"core.3" = "core.3"

@@ -118,4 +118,10 @@ class Session {
   }
 }
 
-module.exports = {root, quote, delay, hash, outputDirectory, parseOptions, Cases, Session};
+// STM32 hardware fixtures also accept older standalone profiles. Only the
+// shared directory-based profile needs explicit Chip/Core selection.
+function stm32ChipSelection(profile) {
+  return /^\s*\[chip_profiles\]\s*(?:#.*)?$/m.test(fs.readFileSync(profile, 'utf8'))
+    ? '[debug]\nchip="stm32f429"\ncores=[0]\n' : '';
+}
+module.exports = {root, quote, delay, hash, outputDirectory, parseOptions, Cases, Session, stm32ChipSelection};

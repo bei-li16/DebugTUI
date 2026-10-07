@@ -1,3 +1,4 @@
+const {stm32ChipSelection} = require('./test-support/session.cjs');
 // Development-only STM32 fixture test; no JavaScript runtime is needed by DebugTUI.
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
@@ -16,8 +17,13 @@ const output = path.join(root, 'artifacts', 'step-hardware-' + new Date().toISOS
 fs.mkdirSync(output, { recursive: true });
 const tomlPath = p => JSON.stringify(path.resolve(p).replaceAll('\\', '/'));
 const config = path.join(output, 'project.toml');
-fs.writeFileSync(config, `version=2\n[tools]\nprofile=${tomlPath(path.join(root, 'tools/debug-env.toml'))}\n[program]\nelf=${tomlPath(elf)}\n[session]\nlog_dir=${tomlPath(output)}\n`);
-if (speed) fs.appendFileSync(config, `\n[service]\nargs=["-s",${tomlPath(path.join(root, 'tools/bin/openocd/scripts'))},"-f",${tomlPath(path.join(root, 'tools/config/stm32f429-live.cfg'))},"-c","adapter speed ${speed}"]\n`);
+fs.writeFileSync(config, `version=3\n[tools]\nprofile=${tomlPath(path.join(root, 'tools/debug-env.toml'))}\n${stm32ChipSelection(path.join(root, 'tools/debug-env.toml'))}[program]\nelf=${tomlPath(elf)}\n[session]\nlog_dir=${tomlPath(output)}\n`);
+if (speed) {
+  const match = fs.readFileSync(path.join(root, 'tools/debug-env.toml'), 'utf8').match(/^config\s*=\s*"([^"]+)"/m);
+  if (!match) throw Error('Missing probe.config in common tools profile');
+  const probe = path.resolve(root, 'tools', match[1]);
+  fs.appendFileSync(config, `\n[service]\nargs=["-s",${tomlPath(path.join(root, 'tools/bin/openocd/scripts'))},"-f",${tomlPath(probe)},"-f",${tomlPath(path.join(root, 'tools/openocd/stm32f429.cfg'))},"-c","adapter speed ${speed}"]\n`);
+}
 const events = fs.createWriteStream(path.join(output, 'events.jsonl'));
 const timeline = [];
 const child = spawn(binary, ['--project', config, '--headless', '--stdio'], { windowsHide: true });

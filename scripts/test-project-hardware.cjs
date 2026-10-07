@@ -1,3 +1,4 @@
+const {stm32ChipSelection} = require('./test-support/session.cjs');
 // STM32F429 / FreeRTOS acceptance with an isolated project and an existing ELF.
 // Reset/download are opt-in. No application build is performed.
 const {spawnSync} = require('node:child_process');
@@ -8,7 +9,7 @@ assert(options.elf && options.profile && options['source-root'], 'Required: --el
 assert(!options['allow-download'] || options['allow-reset'], '--allow-download also requires --allow-reset');
 const binary = path.resolve(options.binary || path.join(root, 'target/debug/debugtui.exe'));
 const elf = path.resolve(options.elf), profile = path.resolve(options.profile), source = path.resolve(options['source-root']);
-const svd = path.resolve(options.svd || path.join(root, 'resources/svd/stm32/STM32F429.svd'));
+const svd = path.resolve(options.svd || path.join(root, 'tools/svd/STM32F429.svd'));
 const protectedFiles = [elf, profile, svd, ...(options.project ? [path.resolve(options.project)] : [])];
 for (const file of protectedFiles) assert(fs.existsSync(file), `Missing input: ${file}`);
 if (process.platform === 'win32') {
@@ -23,7 +24,7 @@ const beforeHashes = Object.fromEntries(protectedFiles.map(file => [file, hash(f
 const project = path.join(out, 'project.toml');
 const breakLocation = options['break-location'] || 'BSP/USER_TASK/Src/user_task.c:41';
 const expectedFunction = options.function || 'Task100ms';
-fs.writeFileSync(project, `version=2\nwatch=['xTickCount','Log_Tx_En','g_w25q_jedec_id']\nbreakpoints=[]\n[tools]\nprofile=${quote(profile)}\n[program]\nelf=${quote(elf)}\nsource_root=${quote(source)}\nsvd=${quote(svd)}\n[session]\non_exit='detach'\nlog_dir=${quote(out)}\n`);
+fs.writeFileSync(project, `version=3\nwatch=['xTickCount','Log_Tx_En','g_w25q_jedec_id']\nbreakpoints=[]\n[tools]\nprofile=${quote(profile)}\n${stm32ChipSelection(profile)}[program]\nelf=${quote(elf)}\nsource_root=${quote(source)}\nsvd=${quote(svd)}\n[session]\non_exit='detach'\nlog_dir=${quote(out)}\n`);
 let session, connected = false, matched = false, binding, originalWatches, functionLocation;
 const ownedProcesses = new Set();
 function collectOwnedProcesses() {

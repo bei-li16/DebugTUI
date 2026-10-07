@@ -5,7 +5,7 @@
 param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
 $ErrorActionPreference = 'Stop'
 $tools = $PSScriptRoot
-$profiles = @{ 'jlink' = 'debug-env.toml'; 'cmsis-dap' = 'debug-env-cmsis-dap.toml'; 'stlink' = 'debug-env-stlink.toml' }
+$profileName = 'debug-env.toml'
 
 # cmd.exe does not treat single quotes as quoting and splits 'C:\my project'
 # at the space; rejoin such pieces, and accept "path" as well as 'path'.
@@ -20,7 +20,7 @@ for ($i = 0; $i -lt $Arguments.Count; $i++) {
     }
     $values.Add($value.Trim().Trim("'"))
 }
-if ($values.Count -lt 1 -or $values.Count -gt 3) { throw 'Usage: install.bat PROJECT_DIR [auto|jlink|cmsis-dap|stlink] [ELF]' }
+if ($values.Count -lt 1 -or $values.Count -gt 3) { throw 'Usage: install.ps1 PROJECT_DIR [auto|jlink|cmsis-dap|stlink] [ELF]' }
 $Project = $values[0]
 $Probe = if ($values.Count -gt 1) { $values[1] } else { 'auto' }
 $Elf = if ($values.Count -gt 2) { $values[2] } else { $null }
@@ -31,10 +31,13 @@ $target = Join-Path $projectRoot '.vscode'
 
 function Get-ProjectPath([string]$Path) {
     $full = [IO.Path]::GetFullPath($Path)
-    if ($full.StartsWith($projectRoot + '\', [StringComparison]::OrdinalIgnoreCase)) {
-        return './' + $full.Substring($projectRoot.Length + 1).Replace('\', '/')
+    if (-not [string]::Equals([IO.Path]::GetPathRoot($full), [IO.Path]::GetPathRoot($projectRoot), [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'ELF must be on the same drive/share as the project to use a relative path. Copy it into the project first.'
     }
-    return $full.Replace('\', '/')
+    $baseUri = [Uri]::new($projectRoot + '\')
+    $relative = [Uri]::UnescapeDataString($baseUri.MakeRelativeUri([Uri]::new($full)).ToString())
+    if ($relative.StartsWith('../')) { return $relative }
+    return './' + $relative
 }
 
 function Get-FileSha256([string]$Path) {
@@ -56,7 +59,8 @@ function Get-TomlString([string[]]$Lines, [string]$Table, [string]$Key) {
 
 # Set KEY = "VALUE" inside [TABLE], adding the key or the table when missing.
 function Set-TomlString([string[]]$Lines, [string]$Table, [string]$Key, [string]$Value) {
-    $entry = $Key + ' = "' + $Value + '"'
+    $escaped = $Value.Replace('\', '\\').Replace('"', '\"').Replace("`r", '\r').Replace("`n", '\n').Replace("`t", '\t')
+    $entry = $Key + ' = "' + $escaped + '"'
     $result = [Collections.Generic.List[string]]::new()
     $inTable = $false
     $done = $false
@@ -81,6 +85,29 @@ function Set-TomlString([string[]]$Lines, [string]$Table, [string]$Key, [string]
     return , $result.ToArray()
 }
 
+function Remove-TomlKey([string[]]$Lines, [string]$Table, [string]$Key) {
+    $inTable = $false
+    $result = foreach ($line in $Lines) {
+        if ($line -match '^\s*\[') { $inTable = $line -match ('^\s*\[' + [regex]::Escape($Table) + '\]\s*(#.*)?$') }
+        if (-not ($inTable -and $line -match ('^\s*' + [regex]::Escape($Key) + '\s*='))) { $line }
+    }
+    return , @($result)
+}
+
+function Get-InstallPath([string]$Name) {
+    $full = [IO.Path]::GetFullPath((Join-Path $target $Name))
+    if (-not $full.StartsWith($target + '\', [StringComparison]::OrdinalIgnoreCase)) { throw "Invalid installed path: $Name" }
+    return $full
+}
+
+# Validate an explicitly supplied ELF before changing any project files.
+$elfValue = $null
+if ($Elf) {
+    $elfPath = if ([IO.Path]::IsPathRooted($Elf)) { $Elf } else { Join-Path $projectRoot $Elf }
+    $elfValue = Get-ProjectPath $elfPath
+    if (-not (Test-Path -LiteralPath $elfPath -PathType Leaf)) { Write-Warning "ELF not found yet: $elfPath" }
+}
+
 # Probe: from the argument, or from the USB devices present.
 if ($Probe -eq 'auto') {
     $devices = @(Get-CimInstance Win32_PnPEntity -ErrorAction SilentlyContinue | Where-Object { $_.DeviceID -like 'USB\VID_*' })
@@ -101,42 +128,39 @@ if ($Probe -eq 'auto') {
         $Probe = $found[0]
         Write-Output "Detected probe: $Probe"
     } else {
-        $Probe = 'jlink'
-        $why = if ($found.Count) { "Several probe types are connected ($($found -join ', '))" } else { 'No debug probe detected' }
-        Write-Output "$why; using jlink. Pass jlink, cmsis-dap or stlink as the second argument to choose."
-    }
-}
-
-# The binaries must match the lock before anything is copied.
-$lockPath = Join-Path $tools 'dependencies.lock.json'
-$lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
-$binaries = @($lock.files.PSObject.Properties | ForEach-Object { $_.Name })
-foreach ($entry in $lock.files.PSObject.Properties) {
-    $source = Join-Path $tools $entry.Name
-    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing tool file: $($entry.Name)" }
-    if ((Get-FileSha256 $source) -ne $entry.Value.sha256) { throw "Tool checksum mismatch: $($entry.Name)" }
-}
-
-# A previous install's lock lists what it copied; drop files this version no longer has.
-$installedLock = Join-Path $target 'dependencies.lock.json'
-if (Test-Path -LiteralPath $installedLock) {
-    $previous = Get-Content -LiteralPath $installedLock -Raw | ConvertFrom-Json
-    foreach ($name in @($previous.files.PSObject.Properties | ForEach-Object { $_.Name })) {
-        $stale = Join-Path $target $name
-        if ($binaries -notcontains $name -and (Test-Path -LiteralPath $stale -PathType Leaf)) {
-            Remove-Item -LiteralPath $stale -Force
+        $Probe = 'cmsis-dap'
+        $existingProfile = Join-Path $target $profileName
+        if (Test-Path -LiteralPath $existingProfile -PathType Leaf) {
+            $previousProbe = Get-TomlString ([IO.File]::ReadAllLines($existingProfile)) 'probe' 'config'
+            if ($previousProbe -match '(?:^|/)(cmsis-dap|jlink|stlink)\.cfg$') { $Probe = $Matches[1] }
         }
+        $why = if ($found.Count) { "Several probe types are connected ($($found -join ', '))" } else { 'No debug probe detected' }
+        Write-Output "$why; using $Probe. Pass jlink, cmsis-dap or stlink as the second argument to choose."
     }
 }
+
+# Discover the bundled tools directly; no installation manifest is required.
+foreach ($name in @('bin/gdb/bin/arm-none-eabi-gdb.exe', 'bin/openocd/bin/openocd.exe', 'debug.toml', $profileName)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $tools $name) -PathType Leaf)) { throw "Missing tool file: $name" }
+}
+$binRoot = Join-Path $tools 'bin'
+$binaries = @(Get-ChildItem -LiteralPath $binRoot -File -Recurse -Force | ForEach-Object { 'bin/' + $_.FullName.Substring($binRoot.Length + 1).Replace('\', '/') })
 
 # Copy with the same layout as tools/, so every relative path in the profiles holds.
-$settings = @($profiles.Values) + @(Get-ChildItem -LiteralPath (Join-Path $tools 'config') -File | ForEach-Object { 'config/' + $_.Name })
-$chipRoot = Join-Path $tools 'chip'
-$chipFiles = @(Get-ChildItem -LiteralPath $chipRoot -File -Recurse | ForEach-Object { 'chip/' + $_.FullName.Substring($chipRoot.Length + 1).Replace('\', '/') })
-foreach ($name in $binaries + $settings + $chipFiles + @('dependencies.lock.json')) {
+$settings = @($profileName)
+foreach ($directory in @('devices', 'openocd')) {
+    $settings += @(Get-ChildItem -LiteralPath (Join-Path $tools $directory) -File -Recurse | ForEach-Object { $_.FullName.Substring($tools.Length + 1).Replace('\', '/') })
+}
+$svdRoot = Join-Path $tools 'svd'
+$svdFiles = @(Get-ChildItem -LiteralPath $svdRoot -File -Recurse | ForEach-Object { 'svd/' + $_.FullName.Substring($svdRoot.Length + 1).Replace('\', '/') })
+foreach ($name in $binaries + $settings + $svdFiles) {
     $source = Join-Path $tools $name
-    $destination = Join-Path $target $name
+    $destination = Get-InstallPath $name
     New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+    if ($svdFiles -contains $name -and (Test-Path -LiteralPath $destination -PathType Leaf) -and (Get-FileSha256 $destination) -ne (Get-FileSha256 $source)) {
+        Write-Output "Preserved your edited $name"
+        continue
+    }
     # Keep a copy of a profile or board config the user edited.
     if ($settings -contains $name -and (Test-Path -LiteralPath $destination) -and (Get-FileSha256 $destination) -ne (Get-FileSha256 $source)) {
         Copy-Item -LiteralPath $destination -Destination ($destination + '.bak') -Force
@@ -144,32 +168,15 @@ foreach ($name in $binaries + $settings + $chipFiles + @('dependencies.lock.json
     }
     Copy-Item -LiteralPath $source -Destination $destination -Force
 }
-foreach ($entry in $lock.files.PSObject.Properties) {
-    if ((Get-FileSha256 (Join-Path $target $entry.Name)) -ne $entry.Value.sha256) { throw "Installed file differs from the lock: $($entry.Name)" }
-}
 
-# The chip description the project uses: the one the selected profile names
-# relative to itself, or else the only .svd in chip/, seen from the project
-# under .vscode. The bundled profiles leave it out, since DebugTUI 0.10.0 and
-# earlier reject [program] in a profile.
-$svdValue = $null
-$profileSvd = Get-TomlString ([IO.File]::ReadAllLines((Join-Path $target $profiles[$Probe]))) 'program' 'svd'
-if ($profileSvd -and $profileSvd -match '^(\./|\$\{profile_dir\}/)') {
-    $svdValue = './.vscode/' + ($profileSvd -replace '^(\./|\$\{profile_dir\}/)', '')
-} elseif (-not $profileSvd) {
-    $chipSvds = @(Get-ChildItem -LiteralPath (Join-Path $target 'chip') -Filter '*.svd' -File -ErrorAction SilentlyContinue)
-    if ($chipSvds.Count -eq 1) { $svdValue = './.vscode/chip/' + $chipSvds[0].Name }
-}
-if ($svdValue -and -not (Test-Path -LiteralPath (Join-Path $projectRoot $svdValue) -PathType Leaf)) { $svdValue = $null }
+# Every probe uses the same entry and STM32 board script.
+$installedProfile = Join-Path $target $profileName
+$profileLines = Set-TomlString ([IO.File]::ReadAllLines($installedProfile)) 'probe' 'config' "./openocd/probes/$Probe.cfg"
+[IO.File]::WriteAllText($installedProfile, ($profileLines -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
 
 # ELF: from the argument or, for a new debug.toml, the newest one built in the project.
 $debugToml = Join-Path $projectRoot 'debug.toml'
-$elfValue = $null
-if ($Elf) {
-    $elfPath = if ([IO.Path]::IsPathRooted($Elf)) { $Elf } else { Join-Path $projectRoot $Elf }
-    if (-not (Test-Path -LiteralPath $elfPath -PathType Leaf)) { Write-Warning "ELF not found yet: $elfPath" }
-    $elfValue = Get-ProjectPath $elfPath
-} elseif (-not (Test-Path -LiteralPath $debugToml)) {
+if (-not $Elf -and -not (Test-Path -LiteralPath $debugToml)) {
     $candidates = @(Get-ChildItem -LiteralPath $projectRoot -Filter '*.elf' -File -Recurse -Depth 4 -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch '\\(\.vscode|\.git|node_modules)\\' } |
         Sort-Object LastWriteTime -Descending)
@@ -185,14 +192,13 @@ if ($Elf) {
 }
 
 # debug.toml: create it, or point an existing one at the installed profile.
-$profileValue = './.vscode/' + $profiles[$Probe]
+$profileValue = './.vscode/' + $profileName
 $utf8 = [Text.UTF8Encoding]::new($false)
 if (-not (Test-Path -LiteralPath $debugToml)) {
-    $lines = @('version = 2', 'watch = []', '', '[tools]', ('profile = "' + $profileValue + '"'), '', '[program]')
-    if ($elfValue) { $lines += 'elf = "' + $elfValue + '"' }
-    $lines += 'source_root = "."'
-    if ($svdValue) { $lines += 'svd = "' + $svdValue + '"' }
-    $lines += @('', '[session]', 'on_exit = "detach"')
+    $lines = [IO.File]::ReadAllLines((Join-Path $tools 'debug.toml'))
+    $lines = Set-TomlString $lines 'tools' 'profile' $profileValue
+    $lines = Set-TomlString $lines 'tools' 'probe' $Probe
+    if ($elfValue) { $lines = Set-TomlString $lines 'program' 'elf' $elfValue }
     [IO.File]::WriteAllText($debugToml, ($lines -join "`n") + "`n", $utf8)
     Write-Output "Created $debugToml"
 } else {
@@ -200,25 +206,34 @@ if (-not (Test-Path -LiteralPath $debugToml)) {
     if ($text -match '(?m)^\s*\[gdb\]') {
         Write-Warning "debug.toml has its own [gdb] section, which takes precedence over a tools profile; left unchanged. Remove [gdb] and set [tools] profile = `"$profileValue`" to use these tools."
     } else {
+        # Upgrade only the root format version; retain existing chip/core and preferences.
+        $firstTable = [regex]::Match($text, '(?m)^[ \t]*\[')
+        $rootLength = if ($firstTable.Success) { $firstTable.Index } else { $text.Length }
+        $rootText = $text.Substring(0, $rootLength)
+        $versionPattern = '(?m)^([ \t]*version[ \t]*=[ \t]*)[012]([ \t]*(?:#.*)?\r?$)'
+        if ($rootText -match $versionPattern) {
+            $rootText = [regex]::Replace($rootText, $versionPattern, '${1}3${2}')
+        } elseif ($rootText -notmatch '(?m)^[ \t]*version[ \t]*=') {
+            $rootText = "version = 3`n" + $rootText
+        }
+        $text = $rootText + $text.Substring($rootLength)
         $lines = $text -split "`r?`n"
         if ($lines.Count -and $lines[$lines.Count - 1] -eq '') { $lines = $lines[0..($lines.Count - 2)] }
         $lines = Set-TomlString $lines 'tools' 'profile' $profileValue
         if ($Elf) { $lines = Set-TomlString $lines 'program' 'elf' $elfValue }
-        # An SVD that is this chip description kept elsewhere (for example in
-        # the DebugTUI checkout) now uses the .vscode copy. Other SVDs and an
-        # empty value, which disables SVD, stay as they are.
+        # Remove only a known generated SVD override whose content is still stock.
+        # Custom paths, modified files and explicit empty values are preserved.
         $currentSvd = Get-TomlString $lines 'program' 'svd'
-        if ($svdValue -and $currentSvd -and $currentSvd -ne $svdValue) {
-            $currentPath = if ([IO.Path]::IsPathRooted($currentSvd)) { $currentSvd } else { Join-Path $projectRoot $currentSvd }
-            $same = if (Test-Path -LiteralPath $currentPath -PathType Leaf) {
-                (Get-FileSha256 $currentPath) -eq (Get-FileSha256 (Join-Path $projectRoot $svdValue))
-            } else {
-                [IO.Path]::GetFileName($currentSvd) -eq [IO.Path]::GetFileName($svdValue)
+        if ($currentSvd -and $currentSvd.Replace('\','/') -match '^\./\.vscode/(chip|svd)/([^/]+\.svd)$') {
+            $bundledSvd = Join-Path $svdRoot $Matches[2]
+            $currentPath = Join-Path $projectRoot $currentSvd
+            if ((Test-Path -LiteralPath $currentPath -PathType Leaf) -and (Test-Path -LiteralPath $bundledSvd -PathType Leaf) -and (Get-FileSha256 $currentPath) -eq (Get-FileSha256 $bundledSvd)) {
+                $lines = Remove-TomlKey $lines 'program' 'svd'
+                Write-Output 'Removed the generated stock SVD override; SVD now follows Chip.'
             }
-            if ($same) { $lines = Set-TomlString $lines 'program' 'svd' $svdValue }
         }
         $updated = ($lines -join "`n") + "`n"
-        if ($updated -ne ($text -replace "`r`n", "`n")) {
+        if ($updated -ne ([IO.File]::ReadAllText($debugToml).TrimStart([char]0xFEFF) -replace "`r`n", "`n")) {
             # The first backup holds the project's own version; later runs keep it.
             $backup = $debugToml + '.bak'
             if (-not (Test-Path -LiteralPath $backup)) { Copy-Item -LiteralPath $debugToml -Destination $backup }
@@ -230,22 +245,12 @@ if (-not (Test-Path -LiteralPath $debugToml)) {
     }
 }
 
-# Earlier installs copied the SVD to .vscode\svd. Drop files identical to the
-# chip/ copies once debug.toml no longer refers to that folder.
-$oldSvd = Join-Path $target 'svd'
-$projectText = if (Test-Path -LiteralPath $debugToml) { [IO.File]::ReadAllText($debugToml) } else { '' }
-if ((Test-Path -LiteralPath $oldSvd -PathType Container) -and $projectText -notmatch '\.vscode/svd/') {
-    $chipFiles = @(Get-ChildItem -LiteralPath (Join-Path $target 'chip') -File -Recurse -ErrorAction SilentlyContinue)
-    foreach ($old in @(Get-ChildItem -LiteralPath $oldSvd -File)) {
-        $hash = Get-FileSha256 $old.FullName
-        if ($chipFiles | Where-Object { $_.Name -eq $old.Name -and (Get-FileSha256 $_.FullName) -eq $hash }) {
-            Remove-Item -LiteralPath $old.FullName -Force
-        }
-    }
-    if (-not @(Get-ChildItem -LiteralPath $oldSvd -Force)) { Remove-Item -LiteralPath $oldSvd -Force }
-}
+# Remove only the obsolete manifest left by an earlier installer.
+$obsoleteManifest = Get-InstallPath 'dependencies.lock.json'
+if (Test-Path -LiteralPath $obsoleteManifest -PathType Leaf) { Remove-Item -LiteralPath $obsoleteManifest -Force }
 
 Write-Output "Installed DebugTUI tools for $Probe into $target"
+Write-Output 'Select Chip and Debug cores in Setup before Start; the installer does not guess the board.'
 Write-Output "Start debugging: cd `"$projectRoot`"; debugtui   (Setup opens with this project; press F5)"
-Write-Output "             or: debugtui --project `"$projectRoot`"   (connects immediately)"
+Write-Output "             or: debugtui --project `"$projectRoot`" --setup"
 Write-Output 'The .vscode\bin folder holds about 15 MB of binaries; add .vscode/bin/ to .gitignore if it should stay out of git.'

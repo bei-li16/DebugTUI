@@ -1,3 +1,4 @@
+const {stm32ChipSelection} = require('./test-support/session.cjs');
 // Development-only GDB integration checks. The installed TUI needs no Node runtime.
 const { spawn, execFileSync } = require('node:child_process');
 const fs = require('node:fs');
@@ -12,7 +13,7 @@ fs.mkdirSync(output, { recursive: true });
 const portable = p => JSON.stringify(path.resolve(p).replaceAll('\\', '/'));
 let project;
 if (hardware) {
-  project = `version=2\n[tools]\nprofile=${portable(path.join(root,'tools/debug-env.toml'))}\n`;
+  project = `version=3\n[tools]\nprofile=${portable(path.join(root,'tools/debug-env.toml'))}\n${stm32ChipSelection(path.join(root,'tools/debug-env.toml'))}`;
 } else {
   fs.writeFileSync(path.join(output, 'sample.c'), 'volatile unsigned int counter = 0x12345678;\nint main(void) { for (;;) { counter += 0; } }\n');
   execFileSync(process.env.DEBUGTUI_TEST_CC || 'gcc', ['-g','-O0',path.join(output,'sample.c'),'-o',path.join(output,'sample.exe')]);

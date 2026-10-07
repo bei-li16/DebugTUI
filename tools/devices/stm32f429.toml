@@ -1,0 +1,29 @@
+# STM32F429 chip settings; the common profile selects the probe independently.
+backend = "stm32f4"
+
+[service]
+args = ["-s", "${tools_dir}/bin/openocd/scripts", "-f", "${probe_config}", "-f", "${tools_dir}/openocd/stm32f429.cfg"]
+[program]
+svd = "../svd/${chip_upper}.svd"
+[target]
+after_connect = ["monitor halt", "maintenance flush register-cache"]
+[core_targets."0"]
+endpoint = "127.0.0.1:3333"
+ready = "Listening on port 3333 for gdb connections"
+[actions]
+restart = ["monitor reset halt", "maintenance flush register-cache"]
+run = ["monitor reset halt", "maintenance flush register-cache", "-exec-continue"]
+download = ["-target-download", "monitor reset halt", "maintenance flush register-cache"]
+before_disconnect = ["monitor resume"]
+[[memory_access]]
+id = "ahb"
+label = "AHB MEM-AP 0"
+tcl_endpoint = "127.0.0.1:6666"
+target = "stm32f4x.ahb"
+while_running = true
+[[memory_access]]
+id = "core-tcl"
+label = "Core target (stopped)"
+tcl_endpoint = "127.0.0.1:6666"
+target = "stm32f4x.cpu"
+while_running = false

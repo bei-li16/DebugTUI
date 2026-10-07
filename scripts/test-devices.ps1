@@ -68,22 +68,22 @@ endpoint='local.1'
         $terminal.Send("${esc}[B")
         Wait-Screen ('\u203a '+[regex]::Escape($field)) | Out-Null
     }
-    $terminal.Send(("`t"*2)+"`r") # Project -> Chip
+    $terminal.Send(("`t"*3)+"`r") # Project -> Tools / profile -> Probe -> Chip
     Wait-Screen 'Choose chip' | Out-Null
     $terminal.Send("`r")
     Wait-Screen 'core\.1' | Out-Null
     $terminal.Send('n'+"${esc}[B"+' '+"`r") # core1 only
     Wait-Screen 'Debug cores\s+\[1\]' | Out-Null
     $terminal.Send([string][char]19)
-    Wait-Screen 'Saved ' | Out-Null
+    Wait-Screen 'Saved (?:[A-Za-z]:|\\\\)' | Out-Null
     $terminal.Screen() | Set-Content -LiteralPath (Join-Path $out 'core1.screen.txt')
     Close-Terminal
     $terminal=[DebugTuiTerminal]::new($Binary,'--setup',$out,120,36)
     Wait-Screen 'Debug cores\s+\[1\]' | Out-Null
-    $terminal.Send(("`t"*2)+"`r`r"+'a'+"`r")
+    $terminal.Send(("`t"*3)+"`r`r"+'a'+"`r")
     Wait-Screen 'Debug cores\s+\[0, 1\]' | Out-Null
     $terminal.Send([string][char]19)
-    Wait-Screen 'Saved ' | Out-Null
+    Wait-Screen 'Saved (?:[A-Za-z]:|\\\\)' | Out-Null
     $terminal.Screen() | Set-Content -LiteralPath (Join-Path $out 'dual.screen.txt')
     $terminal.Send("${esc}[A`rn") # Core IDs -> Chip -> Add
     Wait-Screen 'Add chip' | Out-Null
@@ -92,7 +92,7 @@ endpoint='local.1'
     $terminal.Send("`r`r")
     Wait-Screen 'Chip\s+s32k144' | Out-Null
     $terminal.Send([string][char]19)
-    Wait-Screen 'Saved ' | Out-Null
+    Wait-Screen 'Saved (?:[A-Za-z]:|\\\\)' | Out-Null
     $terminal.Screen() | Set-Content -LiteralPath (Join-Path $out 's32k144.screen.txt')
     Close-Terminal
     $profile=Join-Path $env:DEBUGTUI_CONFIG_DIR 'profiles/devices.toml'

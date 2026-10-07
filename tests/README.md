@@ -1,5 +1,9 @@
 # DebugTUI 功能测试
 
+内置工具与启动配置：`node scripts/test-bundled-tools.cjs --binary <npm或便携ZIP内的EXE>` 检查真实 GDB/OpenOCD 资源、自动创建/发现工程、Probe、R52 物理核、自定义芯片优先级及工程移动，不连接硬件。`node scripts/test-register-distribution.cjs --binary target/release/debugtui.exe` 验证实际打包与隔离 npm 安装/升级。`scripts/test-chip-profiles.cjs` 保留旧 `.vscode` 工具复制流程的兼容回归。
+
+内置文件选择与旧 Probe 回归：`./scripts/test-resource-picker.ps1 -Binary <EXE>` 在真实 Windows ConPTY 中复现旧 `.vscode` 工程，检查 Probe 的兼容 profile 选择、取消、包内文件路径、F2 浏览、SVD 选择及保存保留，七项流程均不启动 GDB/OpenOCD。对应断言和延后硬件用例见 [芯片配置用例](cases/chip-profiles.md)。
+
 本版只读系统寄存器的 [用例与入口清单](cases/registers-readonly-release.md) 关联 M3/M4/M7、多核、R52 core/MPU/selector 和生命周期的软件证据与延后硬件步骤。`node scripts/test-register-readonly-readiness.cjs --binary <EXE绝对路径>` 离线检查两份配置模板及八个驱动的默认 SKIPPED/零连接边界；不传 `--run`、不执行上板。当前完成数以 [冻结账本](../docs/registers-readonly-goal.md) 为准，下列旧批次数量保留为历史记录。
 
 绑定与面板来源：新增七项单元、两项 MI 集成，覆盖四核策略优先级、selection_epoch、Continue revision、芯片外设路线、旧来源/时间、错误 receipt 和 64 位精确 raw；原四核集成增加实际绑定读取及跨 worker 句柄拒绝。`node scripts/test-bus-provenance-fixture.cjs target/debug/debugtui.exe` 可重跑四核实际二进制＋MI/Tcl 模型的五阶段；`node scripts/test-bus-provenance-hardware.cjs` 默认只生成三项 skipped，不连接。原生 Memory 的 20 次运行采样携带停止绑定；[软件范围](../docs/bus-read-provenance.md)、[case/模板与执行命令](cases/bus-provenance.md) 不代替完整 BUS-T/H 或上板验收。
@@ -124,7 +128,7 @@ Files 的正向筛选/键鼠打开由既有 `ui::search::tests` 和 `test-search
 ```powershell
 node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --hardware `
   --elf G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project/build/FreeRTOS_STM32F429.elf `
-  --profile G:/Data/GitFiles/DebugTUI/tools/debug-env-cmsis-dap.toml `
+  --profile G:/Data/GitFiles/DebugTUI/tools/debug-env.toml `
   --source-root G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project `
   --project G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project/debug.toml
 ```

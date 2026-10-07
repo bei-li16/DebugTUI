@@ -1,0 +1,3 @@
+# tha6104 board template. Available physical core IDs come from the device catalogue.
+extends = "families/cortex-r52.toml"
+# Put this chip's reviewed service/actions/SVD overrides here when available.

@@ -1,14 +1,17 @@
 DebugTUI source code uses the Apache License 2.0 supplied by the upstream
 bei-li16/debugtui repository. See LICENSE.
 
-The standalone DebugTUI package contains no GDB, probe server, or probe DLL.
-Its bundled third-party software retains its own licenses and notices:
+The npm package and portable ZIP include ARM GDB and OpenOCD under tools/.
+Bundled third-party software retains its own licenses and notices:
 - Rust dependencies: THIRD_PARTY_NOTICES.md
 - Rust standard library: licenses/rust/COPYRIGHT-library.html
+- GDB: tools/bin/gdb/license.txt and ST-about.html
+- OpenOCD and its libraries: tools/bin/openocd/COPYING.txt, licenses/,
+  PROVENANCE.txt and PROVENANCE.json (including corresponding source details)
+- STM32F429 SVD: tools/svd/README.md and licenses/Apache-2.0.txt
 - CMSIS-Core register facts: ARM-software/CMSIS_6, Apache-2.0;
   pinned headers and original notices in third_party/cmsis-core/.
 
 The DebugTUI source license does not replace these third-party terms.
 
-Optional environment tools distributed separately under tools/ retain their
-GDB and probe-vendor licenses. See that environment's README and notices.
+The optional separate tools archive carries the same environment notices.

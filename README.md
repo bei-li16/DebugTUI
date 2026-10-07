@@ -4,7 +4,7 @@
 
 DebugTUI 是基于 GDB/MI 的终端调试工作台，可在 PowerShell、Windows Terminal 或 VS Code 终端中使用。支持源码断点、单步、Watch、寄存器与 SVD 外设查看、单核/多核调试，以及调用工程的 Build / Download 命令。
 
-本分支版本 **0.10.0-readonly.1**，用于非主分支只读系统寄存器预发布，支持 **Windows x64**。正式版安装地址仍指向最新正式 Release。M3/M4/M7、多核与 R52 当前 Debug EL2 的范围见 [只读指南](docs/registers-readonly-guide.md)；硬件用例尚未执行。调试时无需 VS Code、Python 或 Node 常驻进程；GDB、调试服务和下载工具由工程提供。
+当前版本 **1.0.0**，支持 **Windows x64**。npm/完整 ZIP 内置 ARM GDB、OpenOCD、芯片/探针配置和 STM32F429 SVD；调试时无需 Node、Python 或 VS Code 常驻。工程保存一份 `debug.toml`，通过 Probe、Chip 和 Debug cores 选择目标。更新详情、升级方法与 STM32/R52 上手说明见 [1.0.0 发布说明](docs/release-1.0.0.md)。M/R 核的系统寄存器范围见 [只读指南](docs/registers-readonly-guide.md)，R52 板级模板需补齐，相关实板验证尚未完成。
 
 ## 怎么用
 
@@ -21,9 +21,11 @@ debugtui --version
 
 ### 2. 准备工程
 
-准备与目标匹配的 GDB、调试服务（如 OpenOCD 或 J-Link GDB Server），以及与板上固件对应的带调试信息的 ELF。工具路径、端口和服务参数放在工程配套的 `debug-env.toml`；已有工程直接复用其配置。
+准备与板上固件匹配、带调试信息的 ELF。内置 ARM/OpenOCD 配置可直接选择 CMSIS-DAP、J-Link 或 ST-Link 探针；固件编译器、探针驱动及自定义板级配置按工程准备。已有外部 GDB/调试服务配置可继续通过 Tools / profile 使用。
 
 首次配置见 [使用指南](USER_GUIDE.md#首次配置与启动)；THA6 MCAL 的工具部署见 [THA6 配置方法](USER_GUIDE.md#tha6-mcal-工程)。
+
+希望 STM32 与多核 R52 共用 Project 格式和 Tools / profile 时，使用 [tools 通用配置说明](tools/README.md)：工具随 npm 包安装，由 Probe、Chip 和 Debug cores 选择探针和板级设置，工程仅保存 debug.toml。随附 STM32F429 配置及待补充的 R52 模板。
 
 ### 3. 开始调试
 
@@ -34,7 +36,9 @@ cd D:\path\to\your-project
 debugtui
 ```
 
-在 Setup 中确认 **Project**、**Tools / profile**、**Program / ELF** 和 **Source root**；使用芯片选择配置时，再选择 **Chip / Debug cores**。点击 **Start debugging**，配置会保存到项目 TOML。
+没有工程 TOML 时自动生成最简 `debug.toml`：Tools / profile 为 `builtin:arm-openocd`、Probe 为 `cmsis-dap`，Chip/Core/ELF 留空。选择 **Chip / Debug cores**、**Program / ELF** 和 **Source root**；STM32F429 选择 `stm32f429` 与 `[0]`。点击 **Start debugging** 前校验并保存配置，Ctrl+S 可只保存。
+
+Tools / profile 和 SVD file 按 **F2** 可选择内置资源或外部文件，列表显示实际安装路径。Setup 最多增加 5 行字段容量，溢出可用滚轮、右侧滚动条点击或拖动；Symbols、Watch expression 和 Console 输入框均有悬停反馈。
 
 点击源码行号设置断点；**F5** 继续、**F6** 暂停、**F10/F11** 单步；选中变量后用 **Add to Watch** 观察。多核用 **Scope All / Core** 选择控制范围，**F2** 返回配置，**Ctrl+Q** 退出。
 

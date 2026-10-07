@@ -30,11 +30,19 @@ function Test-Case([string]$Id, [string]$Description, [scriptblock]$Body) {
     catch { $cases.Add(@{id=$Id;description=$Description;status='failed';error=$_.Exception.Message}); throw }
 }
 try {
-    Test-Case 'PKG-01' 'Package contains the tested EXE and notices, with no bundled debugger tools' {
+    Test-Case 'PKG-01' 'Package contains the tested EXE, bundled debugger tools and notices' {
         Copy-Item -LiteralPath $Binary -Destination "$stage/bin/debugtui.exe"
         Copy-Item -LiteralPath (Join-Path $root 'package.json') -Destination "$stage/package.json"
         foreach ($entry in $metadata.files) {
             if ($entry -eq 'bin/') { continue }
+            if ($entry -eq 'docs/*.md') {
+                $docsDestination=Join-Path $stage 'docs'
+                New-Item -ItemType Directory -Path $docsDestination -Force | Out-Null
+                Get-ChildItem -LiteralPath (Join-Path $root 'docs') -File -Filter '*.md' | ForEach-Object {
+                    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $docsDestination $_.Name)
+                }
+                continue
+            }
             $source = Join-Path $root $entry
             if (Test-Path -LiteralPath $source) {
                 $destination = Join-Path $stage $entry.TrimEnd('/','\')
@@ -46,7 +54,9 @@ try {
         $script:packageFile = Join-Path $out $packed[0].filename
         $files = @($packed[0].files | ForEach-Object path)
         if ($files -notcontains 'bin/debugtui.exe' -or $files -notcontains 'LICENSE' -or $files -notcontains 'THIRD_PARTY_NOTICES.md') { throw 'Required executable/license files missing' }
-        if ($files | Where-Object { $_ -cne 'tests/README.md' -and $_ -cnotmatch '^tests/cases/[^/]+\.md$' -and $_ -match '^(tools|tests|scripts|target|\.dev)/' }) { throw 'Development/environment files leaked into package' }
+        if ($files | Where-Object { $_ -cne 'tests/README.md' -and $_ -cnotmatch '^tests/cases/[^/]+\.md$' -and $_ -match '^(tests|scripts|target|\.dev)/' }) { throw 'Development/environment files leaked into package' }
+        if ($files -notcontains 'tools/bin/openocd/bin/openocd.exe' -or $files -notcontains 'tools/bin/gdb/bin/arm-none-eabi-gdb.exe') { throw 'Bundled debugger tools missing' }
+        if ($files -notcontains 'docs/registers-readonly-guide.md' -or ($files | Where-Object { $_ -like 'docs/*' -and $_ -notlike '*.md' })) { throw 'Current Markdown documentation missing or unrelated document leaked' }
     }
     Test-Case 'PKG-02' 'Install an old package fixture inside a private prefix' {
         Copy-Item -LiteralPath $Binary -Destination "$fixture/bin/debugtui.exe"
@@ -75,10 +85,10 @@ try {
         & "$prefix/debugtui.cmd" --snapshot "$out/installed-ui.txt"
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath "$out/installed-ui.txt")) { throw 'Installed renderer failed' }
     }
-    Test-Case 'PKG-05' 'Repeated install is idempotent and retains the tool separation boundary' {
+    Test-Case 'PKG-05' 'Repeated install is idempotent and retains bundled tools' {
         Invoke-Npm @('install','--global','--prefix',$prefix,'--no-audit','--no-fund',$packageFile)
         if ((Get-FileHash -LiteralPath $deviceCatalogue).Hash -ne $deviceHash) { throw 'Upgrade changed customer chip catalogue' }
-        if (Test-Path -LiteralPath "$installedRoot/tools") { throw 'Bundled tools were installed' }
+        if (-not (Test-Path -LiteralPath "$installedRoot/tools/debug-env.toml")) { throw 'Bundled tools were not installed' }
         if ((Get-FileHash -LiteralPath "$installedRoot/bin/debugtui.exe").Hash -ne $expectedHash) { throw 'Repeated install changed executable' }
     }
     Test-Case 'PKG-06' 'Private-prefix uninstall removes launcher but preserves user config' {

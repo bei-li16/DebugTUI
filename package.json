@@ -1,16 +1,53 @@
 {
   "name": "@debugtui/cli",
-  "version": "0.10.0-readonly.1",
+  "version": "1.0.0",
   "description": "Lightweight native terminal debugger powered by a configurable GDB/MI environment",
-  "repository": { "type": "git", "url": "git+https://github.com/bei-li16/debugtui.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bei-li16/debugtui.git"
+  },
   "homepage": "https://github.com/bei-li16/debugtui#readme",
-  "bugs": { "url": "https://github.com/bei-li16/debugtui/issues" },
-  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
-  "os": ["win32"],
-  "cpu": ["x64"],
+  "bugs": {
+    "url": "https://github.com/bei-li16/debugtui/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
   "license": "SEE LICENSE IN LICENSE",
-  "bin": { "debugtui": "bin/debugtui.exe" },
-  "files": ["bin/", "profiles/", "docs/", "tests/cases/", "tests/README.md", "licenses/", "THIRD_PARTY_NOTICES.md", "README.md", "USER_GUIDE.md", "ARCHITECTURE.md", "TESTING.md", "PUBLISHING.md", "LICENSE", "NOTICE", "debug.toml.example"],
+  "bin": {
+    "debugtui": "bin/debugtui.exe"
+  },
+  "files": [
+    "bin/",
+    "profiles/",
+    "docs/*.md",
+    "tests/cases/",
+    "tests/README.md",
+    "licenses/",
+    "THIRD_PARTY_NOTICES.md",
+    "README.md",
+    "USER_GUIDE.md",
+    "ARCHITECTURE.md",
+    "TESTING.md",
+    "PUBLISHING.md",
+    "LICENSE",
+    "NOTICE",
+    "debug.toml.example",
+    "tools/bin/",
+    "tools/devices/",
+    "tools/openocd/",
+    "tools/svd/",
+    "tools/debug-env.toml",
+    "tools/debug.toml",
+    "tools/README.md"
+  ],
   "scripts": {
     "postinstall": "node profiles/install.cjs",
     "build": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Release",

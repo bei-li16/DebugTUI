@@ -885,7 +885,10 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
             a.watch_input_rect,
             "Watch expression",
             &a.watch_input,
-            a.watch_editing,
+            InputState {
+                focused: a.watch_editing,
+                hovered: hovered(a, a.watch_input_rect),
+            },
             "Variable / expression...",
             "Tab complete · Enter add",
         );
@@ -908,18 +911,25 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
 
 /// Give editable fields a visible boundary even before they receive focus.
 /// A one-row version keeps all controls usable in small terminals.
+pub(super) struct InputState {
+    pub focused: bool,
+    pub hovered: bool,
+}
+
 pub(super) fn input_box(
     f: &mut UiFrame,
     area: Rect,
     label: &str,
     text: &str,
-    focused: bool,
+    state: InputState,
     placeholder: &str,
     hint: &str,
 ) {
     let full = area.height >= 3;
-    let background = if focused {
+    let background = if state.focused {
         theme::SELECTED
+    } else if state.hovered {
+        theme::HOVER
     } else {
         theme::RAISED
     };
@@ -930,7 +940,11 @@ pub(super) fn input_box(
         } else {
             Borders::LEFT | Borders::RIGHT
         })
-        .border_style(Style::default().fg(if focused { theme::ACCENT } else { theme::MUTED }))
+        .border_style(Style::default().fg(if state.focused || state.hovered {
+            theme::ACCENT
+        } else {
+            theme::MUTED
+        }))
         // As with buttons, leave the frame on the parent surface and apply the
         // field background only inside the rounded border.
         .style(Style::default());
@@ -948,7 +962,7 @@ pub(super) fn input_box(
     } else {
         format!(" {label}{} ", if label.contains(':') { "" } else { ":" })
     };
-    input_line(f, inner, &prefix, text, focused, placeholder, hint);
+    input_line(f, inner, &prefix, text, state.focused, placeholder, hint);
     // Keep hints legible and distinguish the input surface from the surrounding panel.
     for y in inner.y..inner.bottom() {
         for x in inner.x..inner.right() {

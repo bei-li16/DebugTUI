@@ -7,6 +7,9 @@ fn bitfield_fixture(label: &str, flags: &[(&str, &str)], little: bool) -> (Proje
             ("DEBUGTUI_TEST_VARIABLE_ADDRESS", "0x100000000"),
         ],
     );
+    // This fixture checks bitfield policy, not process startup deadlines. A
+    // full Windows suite can take over one second to start the Node MI model.
+    project.session.timeout_ms = 5000;
     for (key, value) in flags {
         project.gdb.env.insert((*key).into(), (*value).into());
     }

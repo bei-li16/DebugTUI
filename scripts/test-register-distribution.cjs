@@ -110,6 +110,12 @@ function copyProject(destination) {
   fs.copyFileSync(binary,path.join(destination,'target','release','debugtui.exe'));
   fs.copyFileSync(path.join(root,'package.json'),path.join(destination,'package.json'));
   for(const item of metadata.files) if(item!=='bin/') {
+    if(item==='docs/*.md') {
+      fs.mkdirSync(path.join(destination,'docs'),{recursive:true});
+      for(const file of fs.readdirSync(path.join(root,'docs'),{withFileTypes:true}))
+        if(file.isFile()&&file.name.endsWith('.md')) copyTree(path.join(root,'docs',file.name),path.join(destination,'docs',file.name));
+      continue;
+    }
     const relative=item.replace(/[\\/]+$/,'');
     copyTree(path.join(root,relative),path.join(destination,relative));
   }
@@ -127,13 +133,14 @@ function assertPreserved() { assert.deepEqual(snapshot(config),preserved,'Instal
       for(const file of required) assert.equal(hash(path.join(packed,file)),hash(path.join(root,file)));
       assert.equal(hash(path.join(packed,'bin/debugtui.exe')),hash(binary));
       for(const file of assets.assets) assert(fs.readFileSync(assets.sha256sums,'utf8').includes(hash(file)+'  '+path.basename(file)));
-      assert(!fs.existsSync(path.join(packed,'tools')));
+      assert.equal(hash(path.join(packed,'tools/bin/openocd/bin/openocd.exe')),hash(path.join(root,'tools/bin/openocd/bin/openocd.exe')));
+      assert(!fs.existsSync(path.join(packed,'tools/install.ps1')));
       return {assets:assets.assets,sha256sums:assets.sha256sums};
     });
     await suite.test('REG-PKG-OMITTED','Production packer rejects missing payloads and executable tests',async()=>{
       const rejected=[];
-      for(const omitted of ['profiles/','docs/','tests/cases/']) {
-        const bad=path.join(out,'omitted '+omitted.replaceAll('/','-'));copyProject(bad);
+      for(const omitted of ['profiles/','docs/*.md','tests/cases/']) {
+        const bad=path.join(out,'omitted '+omitted.replace(/[^a-z0-9-]/gi,'-'));copyProject(bad);
         const wrong={...metadata,files:metadata.files.filter(item=>item!==omitted)};
         fs.writeFileSync(path.join(bad,'package.json'),JSON.stringify(wrong));
         const result=powershell(path.join(bad,'scripts/package.ps1'),['-SkipBuild']);

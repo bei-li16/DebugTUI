@@ -62,6 +62,8 @@ try {
     }
     Test-Case 'TERM-04' 'F2 opens Setup, F3 Projects and F4 Examples; Esc returns to workbench' {
         $terminal.Send("${esc}OQ"); Wait-Screen 'Tools / profile'
+        Wait-Screen 'Memory channels'
+        if ($terminal.Screen() -match '\d+ more') { throw 'Roomy Setup unexpectedly hides fields' }
         $terminal.Send("${esc}OR"); Wait-Screen 'Projects / select'; $terminal.Send([string][char]27)
         Start-Sleep -Milliseconds 100
         $terminal.Send("${esc}OS"); Wait-Screen 'Examples / choose'; $terminal.Send([string][char]27)
@@ -75,6 +77,9 @@ try {
     Test-Case 'TERM-06' 'Resize renders a compact 80 by 24 workbench' {
         $terminal.Resize(80,24); Wait-Screen 'DebugTUI'; Wait-Screen 'Continue'
         if ($terminal.Screen().Split("`n").Length -ne 25) { throw 'Incorrect screen dimensions' }
+        $terminal.Send("${esc}OQ"); Wait-Screen 'Tools / profile'; Wait-Screen '\d+ more'; Wait-Screen '┃'
+        $terminal.Screen() | Set-Content -LiteralPath (Join-Path $out 'setup-compact-scrollbar.screen.txt') -Encoding utf8
+        $terminal.Send([string][char]27); Wait-Screen 'DEMO.*STOPPED'
     }
     Test-Case 'TERM-07' 'Narrow 45 by 12 terminal remains interactive' {
         $terminal.Resize(45,12); Wait-Screen 'DebugTUI'

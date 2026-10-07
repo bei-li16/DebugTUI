@@ -2295,6 +2295,7 @@ pub fn run(
     .map_err(|e| e.to_string())?;
     let (mut project, error) = match document.project() {
         Ok(project) => (project, initial_error),
+        Err(_) if document.incomplete_builtin() => (Project::default(), initial_error),
         Err(e) => (Project::default(), Some(e)),
     };
     if !document.path.is_file() {

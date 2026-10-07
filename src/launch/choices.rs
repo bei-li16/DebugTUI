@@ -13,6 +13,16 @@ pub(super) enum Choice {
         label: String,
         description: String,
     },
+    Resource {
+        field: usize,
+        value: Option<String>,
+        probe: Option<String>,
+        label: String,
+        description: String,
+    },
+    BrowseResource {
+        field: usize,
+    },
 }
 
 impl Choice {
@@ -23,8 +33,10 @@ impl Choice {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into(),
-            Self::Example { label, .. } => label.clone(),
-            Self::Cpu { label, .. } => label.clone(),
+            Self::Example { label, .. }
+            | Self::Cpu { label, .. }
+            | Self::Resource { label, .. } => label.clone(),
+            Self::BrowseResource { .. } => "Browse another file...".into(),
         }
     }
 
@@ -40,6 +52,10 @@ impl Choice {
             Self::Cpu { description, .. } => format!(
                 "{description}\nApplies to the project draft. Save config or Start persists it; no hardware access."
             ),
+            Self::Resource { description, .. } => format!(
+                "{description}\nEnter: select. F2: browse files. Esc: keep current settings. Ctrl+S saves after selection."
+            ),
+            Self::BrowseResource { .. } => "Enter / F2: browse an external file or the installed tools directory.\nInstalled profile/SVD selections are saved as portable builtin: references.\nEsc: keep current settings; no hardware access.".into(),
         }
     }
 }
@@ -51,6 +67,127 @@ pub(super) struct Picker {
 }
 
 impl Picker {
+    pub fn resources(
+        document: &Document,
+        field: usize,
+        probe: Option<&str>,
+    ) -> Result<Self, String> {
+        let root = crate::bundled_tools::root()?;
+        let mut choices = Vec::new();
+        let mut add =
+            |value: Option<String>, label: String, description: String, probe: Option<String>| {
+                choices.push(Choice::Resource {
+                    field,
+                    value,
+                    probe,
+                    label,
+                    description,
+                });
+            };
+        if field == 1 {
+            add(
+                Some(crate::bundled_tools::PROFILE.into()),
+                "Bundled ARM / OpenOCD - debug-env.toml".into(),
+                format!(
+                    "Installed file: {}\nSelect the bundled profile; project ELF, tasks and debugging preferences are retained.",
+                    portable_path(&root.join("debug-env.toml"))
+                ),
+                probe.map(str::to_owned),
+            );
+            let tools: crate::config::Tools = document
+                .raw
+                .get("tools")
+                .cloned()
+                .map(toml::Value::try_into)
+                .transpose()
+                .map_err(|e| format!("Tools: {e}"))?
+                .unwrap_or_default();
+            let current = if !tools.profile.as_os_str().is_empty() {
+                tools.profile
+            } else if !tools.root.as_os_str().is_empty() {
+                tools.root.join("debug-env.toml")
+            } else {
+                PathBuf::new()
+            };
+            if !current.as_os_str().is_empty()
+                && current != Path::new(crate::bundled_tools::PROFILE)
+            {
+                add(
+                    Some(portable_path(&current)),
+                    format!("Current profile: {}", portable_path(&current)),
+                    format!(
+                        "File: {}\nKeep this external profile. Independent Probe selection requires [chip_profiles].",
+                        portable_path(&absolute(document.base(), &current))
+                    ),
+                    None,
+                );
+            }
+        } else {
+            add(
+                None,
+                "Automatic / follow selected chip".into(),
+                "Remove the project's SVD override and use the chip's default SVD.".into(),
+                None,
+            );
+            let current = document
+                .raw
+                .get("program")
+                .and_then(|p| p.get("svd"))
+                .and_then(toml::Value::as_str);
+            if let Some(current) = current.filter(|s| !s.is_empty() && !s.starts_with("builtin:")) {
+                add(
+                    Some(current.into()),
+                    format!("Current SVD: {current}"),
+                    format!(
+                        "File: {}",
+                        portable_path(&absolute(document.base(), Path::new(current)))
+                    ),
+                    None,
+                );
+            }
+            let mut files = fs::read_dir(root.join("svd"))
+                .map_err(|e| format!("Bundled SVD directory: {e}"))?
+                .filter_map(Result::ok)
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.is_file()
+                        && p.extension().is_some_and(|e| {
+                            e.eq_ignore_ascii_case("svd") || e.eq_ignore_ascii_case("xml")
+                        })
+                })
+                .collect::<Vec<_>>();
+            files.sort();
+            for file in files {
+                let name = file.file_name().unwrap().to_string_lossy();
+                add(
+                    Some(format!("builtin:svd/{name}")),
+                    format!("Bundled SVD: {name}"),
+                    format!(
+                        "Installed file: {}\nThis explicit SVD selection is retained when switching chips; use Automatic to follow Chip.",
+                        portable_path(&file)
+                    ),
+                    None,
+                );
+            }
+            add(
+                Some(String::new()),
+                "Disabled / no SVD".into(),
+                "Save an explicit empty SVD override.".into(),
+                None,
+            );
+        }
+        choices.push(Choice::BrowseResource { field });
+        Ok(Self {
+            title: if field == 1 {
+                "Tools / installed and external profiles"
+            } else {
+                "SVD / installed and external files"
+            },
+            choices,
+            selected: 0,
+        })
+    }
+
     pub fn cpus() -> Result<Self, String> {
         Self::cpus_in(
             &crate::devices::catalogue_path()?
@@ -198,6 +335,11 @@ impl Picker {
                 raw,
             });
         }
+        choices.push(Choice::Example {
+            label: "Universal ARM / bundled OpenOCD".into(),
+            description: "Minimal project using the installed tools. Choose Probe, Chip and Debug cores; no project tool copies.".into(),
+            raw: toml::from_str(crate::bundled_tools::PROJECT_TEMPLATE).expect("bundled project template"),
+        });
         Self {
             title: "Examples / choose a starting configuration",
             choices,
@@ -258,7 +400,7 @@ fn is_project_file(path: &Path) -> bool {
             ]
             .iter()
             .any(|key| raw.get(key).is_some())
-                || raw.get("version").is_some_and(toml::Value::is_integer)
+                || raw.get("debug").and_then(|v| v.get("chip")).is_some()
         })
 }
 

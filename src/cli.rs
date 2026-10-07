@@ -9,6 +9,7 @@ pub struct Options {
     pub help: bool,
     pub version: bool,
     pub init_profiles: bool,
+    pub init_project: bool,
     pub headless: bool,
     pub script: Option<String>,
     pub demo: bool,
@@ -27,6 +28,7 @@ impl Options {
                 "--help" | "-h" => options.help = true,
                 "--version" | "-V" => options.version = true,
                 "--init-profiles" => options.init_profiles = true,
+                "--init-project" => options.init_project = true,
                 "--headless" | "--stdio" => options.headless = true,
                 "--demo" => options.demo = true,
                 "--setup" => options.setup = true,
@@ -36,7 +38,7 @@ impl Options {
                 }
                 "--project" | "--tools-dir" | "--environment" | "--elf" | "--gdb" | "--gdb-arg"
                 | "--connect" | "--target-mode" | "--log-dir" | "--script" | "--snapshot"
-                | "--svd" | "--chip" | "--cores" => {
+                | "--svd" | "--chip" | "--cores" | "--probe" | "--chip-profile" => {
                     let value = args
                         .next()
                         .ok_or_else(|| format!("{arg} requires a value"))?;
@@ -81,7 +83,16 @@ impl Options {
         }
     }
     pub fn document(&self) -> Result<Document, String> {
-        let mut doc = Document::open(&self.project_path())?;
+        let mut doc = if self.init_project
+            || (!self.headless && !self.demo && (!self.explicit_launch || self.setup))
+        {
+            Document::startup(
+                &self.project_path(),
+                self.project.is_none() || self.project.as_ref().is_some_and(|p| p.is_dir()),
+            )?
+        } else {
+            Document::open(&self.project_path())?
+        };
         if doc.discovered
             && ((self.project.is_none() && self.explicit_launch)
                 || self.values.iter().any(|(key, _)| key == "--gdb"))
@@ -99,6 +110,10 @@ impl Options {
         };
         for (key, value) in &self.values {
             if key == "--environment" || key == "--tools-dir" {
+                if key == "--environment" && value.starts_with("builtin:") {
+                    doc.environment(value);
+                    continue;
+                }
                 let path = absolute(value);
                 let path = if key == "--tools-dir" {
                     path.join("debug-env.toml")
@@ -109,8 +124,22 @@ impl Options {
             }
         }
         let mut extra_args = vec![];
+        if doc.raw_tools_missing()
+            && self
+                .values
+                .iter()
+                .any(|(key, _)| key == "--chip" || key == "--probe")
+            && !self.values.iter().any(|(key, _)| key == "--gdb")
+        {
+            doc.environment(crate::bundled_tools::PROFILE);
+        }
         for (key, value) in &self.values {
             match key.as_str() {
+                "--probe" => {
+                    crate::bundled_tools::validate_probe(value)?;
+                    doc.set("tools", "probe", value.clone().into());
+                }
+                "--chip-profile" => doc.set_path("tools", "chip_profile", &absolute(value)),
                 "--chip" => {
                     doc.enable_device_selection();
                     doc.set("debug", "chip", value.clone().into());
@@ -125,6 +154,10 @@ impl Options {
                     );
                 }
                 "--elf" => doc.set_path("program", "elf", &absolute(value)),
+                "--svd" if value.starts_with("builtin:") => {
+                    crate::bundled_tools::resolve_svd(Path::new(value), doc.base())?;
+                    doc.set("program", "svd", value.clone().into());
+                }
                 "--svd" => doc.set_path("program", "svd", &absolute(value)),
                 "--gdb" if value.contains(['/', '\\']) => {
                     doc.set_path("gdb", "executable", &absolute(value))

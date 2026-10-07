@@ -1,6 +1,6 @@
 # Third-party notices
 
-License inventory for the locked Windows GNU Cargo dependency graph, including build-time dependencies. Original notices are reproduced below. Rust standard-library notices are in licenses/rust/. Optional GDB and probe servers are distributed separately with their environment notices.
+License inventory for the locked Windows GNU Cargo dependency graph, including build-time dependencies. Original notices are reproduced below. Rust standard-library notices are in licenses/rust/. Bundled GDB, OpenOCD and SVD resources retain their notices under tools/bin/gdb/, tools/bin/openocd/ and tools/svd/; see NOTICE for the inventory.
 
 ## aho-corasick 1.1.5
 

@@ -469,7 +469,10 @@ pub(super) fn file_bar(f: &mut UiFrame, a: &mut App, rect: Rect) {
         rect,
         "Find: files",
         &a.file_search.query,
-        a.file_search.editing,
+        super::render::InputState {
+            focused: a.file_search.editing,
+            hovered: a.pointer_over(rect),
+        },
         "Ctrl+F / click: file name or path...",
         "Up/Down select · Enter open · Ctrl+U clear",
     );
@@ -482,7 +485,10 @@ pub(super) fn symbol_bar(f: &mut UiFrame, a: &mut App, rect: Rect) {
         rect,
         "Symbols",
         &a.symbol_search.query,
-        false,
+        super::render::InputState {
+            focused: false,
+            hovered: a.pointer_over(rect),
+        },
         "Ctrl+K / click: function, variable, type...",
         "Ctrl+K  Search",
     );
@@ -515,7 +521,10 @@ pub(super) fn draw_symbols(f: &mut UiFrame, a: &mut App) {
         rows[0],
         "Find: symbols",
         &a.symbol_search.query,
-        true,
+        super::render::InputState {
+            focused: true,
+            hovered: a.pointer_over(rows[0]),
+        },
         "Name contains / fuzzy matches...",
         "Ctrl+U clear",
     );

@@ -1,3 +1,4 @@
+const {stm32ChipSelection} = require('./test-support/session.cjs');
 // Development-only stress test. No Node dependency is shipped in the TUI runtime.
 const { spawn } = require('node:child_process');
 const fs = require('node:fs');
@@ -14,7 +15,7 @@ const output = path.join(root, 'artifacts', 'pause-hardware-' + new Date().toISO
 fs.mkdirSync(output, { recursive: true });
 const tomlPath = p => JSON.stringify(path.resolve(p).replaceAll('\\', '/'));
 const config = path.join(output, 'project.toml');
-fs.writeFileSync(config, `version=2\n[tools]\nprofile=${tomlPath(path.join(root, 'tools/debug-env.toml'))}\n[program]\nelf=${tomlPath(elf)}\n[session]\nlog_dir=${tomlPath(output)}\n`);
+fs.writeFileSync(config, `version=3\n[tools]\nprofile=${tomlPath(path.join(root, 'tools/debug-env.toml'))}\n${stm32ChipSelection(path.join(root, 'tools/debug-env.toml'))}[program]\nelf=${tomlPath(elf)}\n[session]\nlog_dir=${tomlPath(output)}\n`);
 const events = fs.createWriteStream(path.join(output, 'events.jsonl'));
 const child = spawn(binary, ['--project', config, '--headless', '--stdio'], { windowsHide: true });
 let id = 0;

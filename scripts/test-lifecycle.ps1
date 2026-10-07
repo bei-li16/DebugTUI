@@ -9,7 +9,7 @@ $Elf = (Resolve-Path -LiteralPath $Elf).Path
 '{"id":1,"method":"connect"}' | Set-Content "$runRoot\connect.jsonl" -Encoding utf8
 
 function Invoke-Headless([string]$Name, [string[]]$Extra, [int]$ExpectedExit) {
-    & $binary --tools-dir $toolRoot --elf $Elf --script "$runRoot\connect.jsonl" @Extra > "$runRoot\$Name.events.jsonl" 2> "$runRoot\$Name.errors.txt"
+    & $binary --tools-dir $toolRoot --chip stm32f429 --cores 0 --elf $Elf --script "$runRoot\connect.jsonl" @Extra > "$runRoot\$Name.events.jsonl" 2> "$runRoot\$Name.errors.txt"
     if ($LASTEXITCODE -ne $ExpectedExit) { throw "$Name returned $LASTEXITCODE instead of $ExpectedExit" }
     $events = @(Get-Content "$runRoot\$Name.events.jsonl" | ForEach-Object { $_ | ConvertFrom-Json })
     # Invalid environment files fail before a session or child process is created.
@@ -27,7 +27,9 @@ Write-Output 'PASS invalid inputs: missing ELF/tools and refused server return f
 
 # An OpenOCD started here is external to DebugTUI's process job.
 $openocd = Join-Path $toolRoot 'bin\openocd\bin\openocd.exe'
-$serverArgs = '-s "{0}" -f "{1}"' -f (Join-Path $toolRoot 'bin\openocd\scripts'), (Join-Path $toolRoot 'config\stm32f429-live.cfg')
+$probe = [regex]::Match((Get-Content -LiteralPath (Join-Path $toolRoot 'debug-env.toml') -Raw), '(?m)^config\s*=\s*"([^"]+)"')
+if (-not $probe.Success) { throw 'Missing probe.config in common tools profile' }
+$serverArgs = '-s "{0}" -f "{1}" -f "{2}"' -f (Join-Path $toolRoot 'bin\openocd\scripts'), (Join-Path $toolRoot $probe.Groups[1].Value), (Join-Path $toolRoot 'openocd\stm32f429.cfg')
 $server = Start-Process -FilePath $openocd -ArgumentList $serverArgs -WindowStyle Hidden -RedirectStandardOutput "$runRoot\external-server.log" -RedirectStandardError "$runRoot\external-server.err" -PassThru
 $null = $server.Handle
 try {
@@ -56,7 +58,7 @@ $info.CreateNoWindow = $true
 $info.RedirectStandardInput = $true
 $info.RedirectStandardOutput = $true
 $info.RedirectStandardError = $true
-$info.Arguments = '--tools-dir "{0}" --elf "{1}" --headless --stdio' -f $toolRoot,$Elf
+$info.Arguments = '--tools-dir "{0}" --chip stm32f429 --cores 0 --elf "{1}" --headless --stdio' -f $toolRoot,$Elf
 $app = [System.Diagnostics.Process]::Start($info)
 $errors = $app.StandardError.ReadToEndAsync()
 $output = [System.Collections.Generic.List[string]]::new()

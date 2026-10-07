@@ -1,5 +1,94 @@
 # DebugTUI 验证记录
 
+## 1.0.0 正式发布软件验证（2026-10-08）
+
+Cargo、lockfile 和 npm 版本统一为 **1.0.0**，从 `claude/optimizations` 发布。更新细节、首次启动默认配置、STM32/R52 操作与迁移说明见 [发布说明](docs/release-1.0.0.md) 和 [使用指南](USER_GUIDE.md)。历史 PDF/TeX、个人审计提示词与本地参考资料不进入运行包，包内文档使用 `docs/*.md`。
+
+- Release 编译通过（2 分 30 秒），沿用既有 target，两个编译任务、关闭增量缓存。日志：`artifacts/release-1.0.0-build.log`。
+- 完整功能运行记录：`artifacts/functional-1791389900591-e3057e31/report.json`。24 个套件中 22 个首次通过，包含 CLI、终端、本机 GDB、变量/位域写入、断点、内存、SVD、日志及多核。首次失败记录保留，下面两项复验补足验收，未将失败原报告改写为通过。
+- Cargo 首次统计 790 通过、1 失败、2 ignored。失败发生在位域 Node MI 夹具的 1 秒启动期限，尚未处理首条 MI 初始化命令；降低并发后仍有相同失败。该测试用于验证位域策略而非启动耗时，将此夹具预算调整为 5 秒后，整个 `write_access` **42/42** 通过（默认并发），对应 `artifacts/release-1.0.0-write-access-final.log`。合计 **791 个不同 Rust 测试通过、2 ignored**；doc tests 通过（0 个示例），没有修改生产通信超时。
+- `test-devices.ps1` 更新 Project→Tools/profile→Probe→Chip 的导航路径，并要求真正的 Saved 路径消息；芯片选择、core1/双核保存重载、自定义芯片及用户目录保留复验通过：`artifacts/devices-tui-5bb9dfe7e4dd4709abcec896dec2ac6f/report.json`。
+- Rust 格式及严格全 target Clippy 通过：`artifacts/release-1.0.0-clippy.log`。生产 npm/ZIP 与真实 postinstall 的隔离分发检查 **14/14** 通过：`artifacts/register-distribution-1791390075996-d4cf107d/report.json`；此处升级基线为明确标注的离线 fixture。公网验收脚本改为在独立用户目录执行真实安装钩子，发布后使用实际 v0.9.3 完成升级/重装/卸载检查。
+- 已下载 v0.9.3 历史包并与其 Release 的 SHA256SUMS 核对；所附 OpenOCD、DLL 与对应源码包均符合 PROVENANCE，记录在 `artifacts/release-1.0.0-inputs/verified.json`。Release 提供 `software-validation-1.0.0.json` 与全附件 SHA256。
+
+本次没有连接物理探针、复位、烧录或执行实板测试；已有硬件 case 继续保留其待执行状态。
+
+## Setup 滚动与输入框悬停（2026-10-07，0.10.0-readonly.6）
+
+Setup 最大高度从 30 行调整为 35 行，字段区域增加 5 行容量；溢出时显示可点击、拖动的右侧滚动条，字段区支持滚轮。滚动不会选择字段或提交编辑草稿，键盘操作将当前字段滚回视野。Symbols、Watch expression 及共用的搜索输入控件增加悬停底色与边框反馈，不改变编辑焦点，不发出调试请求。
+
+- 单元测试 **530 通过、2 ignored**，严格 Clippy 通过。日志：`artifacts/setup-scroll-hover-unit-final.log`、`artifacts/setup-scroll-hover-clippy.log`。覆盖五行扩容、全部字段显示、小窗口滚轮/点击/拖动/释放、草稿保留、弹窗隔离、键盘回显，以及三种窗口尺寸的悬停/离开/焦点保持。初轮悬停测试补正了紧凑布局需选择 Watch 面板和已有焦点装饰的预期。
+- 实际 Ratatui 单元格已导出并检查：[Symbols 悬停](artifacts/setup-scroll-hover-preview/input-hover-symbols.png)、[Watch 悬停](artifacts/setup-scroll-hover-preview/input-hover-watch.png)。这两张图来自测试渲染，原始单元格 JSON 同目录保留。
+- 首次生成的配置仍直接使用 `tools/debug.toml`：内置 ARM/OpenOCD、CMSIS-DAP、空 Chip/Core/ELF、源码根目录 `.`、detach 和 debug-logs；没有新增默认 STM32/R52 选择。使用指南补充生成值及滚动操作。
+- Release 编译通过（2 分 39 秒），使用既有 target、两个构建任务、关闭增量缓存。真实 Windows ConPTY 的 [8 项工作区检查](artifacts/terminal-20261007-235934-3e26217a/report.json) 和 [7 项配置选择检查](artifacts/resource-picker-f989eeffb6364814aad36d12d3bc3153/report.json) 全部通过；包含大窗口完整字段及小窗口滚动条。鼠标交互通过 App/Setup 事件测试验证，ConPTY 检查键盘和终端布局。本轮没有执行实板调试。
+
+## 内置文件选择与旧 profile 的 Probe 修复（2026-10-07，0.10.0-readonly.5）
+
+Tools / profile 与 SVD 的 F2 列表直接提供安装目录内的资源和外部文件入口，显示解析后的真实路径；选择包内文件保存为可迁移的 `builtin:` 引用。旧 profile 下切换 Probe 会提供兼容工具选择，取消不修改草稿，接受后应用请求的探针并保留工程字段。显式切换内置 profile 时，只迁移字节完全匹配的旧原始 SVD 副本；自定义 SVD 保留。SVD 支持内置引用、Automatic 和 Disabled，浏览器选择包内资源也使用逻辑引用。
+
+- 完整单元测试528通过、2 ignored；严格 Clippy 与 release 构建通过。日志：`artifacts/resource-picker-unit-final.log`、`artifacts/resource-picker-clippy.log`、`artifacts/resource-picker-build.log`。初轮失败为两处旧界面预期，按新选择入口及路径提示更新后复验通过。
+- 真实 Windows ConPTY 的7项 Setup 操作通过：[终端报告](artifacts/resource-picker-1d63e74d19cd40689400e039f4ef43b9/report.json)。包含旧工程加载、Probe 提示/取消/应用、内置资源浏览、SVD 选择、保存保持 ELF/Watch/任务以及退出；屏幕文本与原始终端输出随报告保留。
+- 完整便携 ZIP 的14项配置/工具检查通过：[报告](artifacts/bundled-tools-1791386558885-0db9800d/report.json)。新增 SVD 逻辑路径保存和路径越界拒绝；同时验证工程移动、三种 Probe 和 R52 核选择。
+- 旧配置兼容19项：[报告](artifacts/chip-profiles-1791386530054-a804c4e7/report.json)；CLI 12项：[报告](artifacts/cli-1791386550975-d97015cf/report.json)。生产 npm/ZIP 逐项内容与摘要检查通过。
+
+本轮全部为离线软件检查；没有连接探针、复位、下载或访问物理芯片。终端测试只操作隔离工程的配置页。
+
+## 内置工具、Probe 参数与启动目录发现（2026-10-07，0.10.0-readonly.4）
+
+npm 与便携 ZIP 包含 `tools/bin`、`devices`、`openocd`、`svd` 和公共模板。新工程使用 `builtin:arm-openocd`，按可执行文件安装位置定位资源，不复制到工程 `.vscode`，也不保存安装绝对路径。启动目录优先读取 `debug.toml`，否则检索有效工程候选；无候选才排他创建最简配置，多候选显示列表，损坏文件保留并报错。Setup 增加 Probe 和 Chip config；工程指定芯片文件优先于用户同名文件，再使用内置默认。R52 模板仍要求补齐真实板级参数。
+
+本轮软件验证全部通过：
+
+- `cargo test --locked --lib --jobs 2`：526 通过、2 ignored；严格 Clippy `--all-targets -- -D warnings` 与 release 编译通过。日志：`artifacts/bundled-tools-unit.log`、`artifacts/bundled-tools-clippy.log`、`artifacts/bundled-tools-build.log`。
+- 完整便携 ZIP 的13项工具/启动/探针/多核/路径检查：[报告](artifacts/bundled-tools-1791385203282-a9b71f87/report.json)。真实运行随附 GDB，并让 OpenOCD 解析后 `shutdown`；不执行 `init`。验证默认新建、重复启动、工程移动、用户及工程芯片覆盖、非法 Probe 和损坏 TOML 保留。
+- 旧工程安装器兼容19项：[报告](artifacts/chip-profiles-1791385161757-4f459752/report.json)。保留既有 ELF/Watch、自定义 SVD、配置备份和相对路径逻辑。
+- CLI 实际进程12项：[报告](artifacts/cli-1791385205834-c84aafe6/report.json)。
+- npm/ZIP 生产打包与隔离安装14项：[报告](artifacts/register-distribution-1791385201481-6f821854/report.json)。覆盖真实安装钩子、同版重装、卸载重装、客户配置保留、失败钩子和资源逐项一致性；升级基线为明确标注的离线合成包，不作为历史 Release 升级证明。
+
+本轮未连接物理探针或板卡；STM32/R52 的配置解析通过不代表实板调试通过。上板用例见 [芯片配置用例](tests/cases/chip-profiles.md)。后面的 `.vscode` 安装记录为旧版历史与兼容用途，当前默认布局见 [tools/README.md](tools/README.md)。
+
+## 移除工具依赖清单（2026-10-07）
+
+按用户要求删除 `tools/dependencies.lock.json`。安装与打包直接枚举 `bin/`，不再读取、生成或分发该清单，移除 `-UpdateLock`。重新安装时仅删除目标 `.vscode` 下遗留的同名清单，不再依据旧清单删除其他工具文件。配置备份与修改过的 SVD 保留逻辑继续使用文件内容比较。
+
+19项离线检查通过：[报告](artifacts/chip-profiles-1791382155438-1651074c/report.json)。包括无清单安装、全部工具文件复制一致性、旧清单移除、STM32/R52 配置、工程移动和既有配置保留。新工具包 `artifacts/tools-no-lock-20261007/debugtui-tools-arm-win-x64.zip` 含81个文件，无依赖清单，逐项摘要与源文件一致。PowerShell/JavaScript 语法检查和 `git diff --check` 通过；未连接硬件。
+
+## 工程内相对路径布局与单一安装入口（2026-10-07）
+
+`tools/debug-project.toml.example` 改为 `tools/debug.toml`，安装到工程根目录；工具配置、芯片描述、OpenOCD、SVD 与二进制安装到工程 `.vscode/`，不增加 `tools/` 子层。工程通过 `./.vscode/debug-env.toml` 引用公共配置，其余资源使用相对路径或目录变量。安装器从随附模板创建新工程，不再另行拼装或向 `.vscode` 复制工程模板。`tools` 仅保留 `install.ps1`，移除 BAT 包装，发布打包移至 `scripts/package-tools.ps1`，同步更新发布入口和说明。
+
+12项设备/配置单元测试通过；实际已安装 `0.10.0-readonly.3` 的19项离线检查通过，报告：[CLI 检查](artifacts/chip-profiles-1791381761805-0cdd1d1e/report.json)。覆盖 Windows PowerShell 5/PowerShell 7 安装、完整工程移动后的相对引用、不同工作目录、中文/空格路径、STM32三种探针和R52多核、同盘工程内外 ELF 路径转换、跨盘 ELF 修改前拒绝、既有配置备份及自定义 SVD 保留。没有执行上板测试。
+
+新工具包82个文件，唯一脚本为 `tools/install.ps1`，包含新命名的 `tools/debug.toml`，逐项 SHA-256 均与源文件一致：[布局与打包检查](artifacts/tools-project-layout-20261007/report.json)。PowerShell/JavaScript 语法检查及 `git diff --check` 通过。后续旧路径记录仅保留为历史证据，当前安装布局见 [tools/README.md](tools/README.md)。
+
+## 工具目录精简与统一命名（2026-10-07）
+
+公共入口统一为 `tools/debug-env.toml`；移除重复的 `debug-env-universal.toml`、两个探针专属 profile 和三个旧 STM32 板级脚本。原 `chips/` 改为 `devices/`，原 `chip/` 改为 `svd/`，板级脚本及探针统一到 `openocd/`。STM32F429 只保留一个 `openocd/stm32f429.cfg`，三种探针共用。以下早期记录的旧路径仅用于历史追溯，当前布局以此条和 tools/README.md 为准。
+
+安装器统一写入公共 profile 和独立 probe 选择，新工程使用 version 3 并由用户选择 Chip/Core。升级保留原工程偏好及版本行格式，只移除仍为原始内容的自动生成 SVD 覆盖；自定义 SVD 内容和路径保留。硬件脚本与 OpenOCD 构建配方的路径已同步更新并通过语法检查，未运行上板或重编译后端。
+
+32项配置、12项设备/Setup单元测试通过。已安装的 `0.10.0-readonly.3` 实际执行16项工具布局、探针/R52配置、OpenOCD离线解析和安装迁移检查全部通过，报告：`artifacts/chip-profiles-1791380707923-81a05dc3/report.json`。硬件测试配置辅助函数已做无硬件检查。最终工具包83个文件，仅一个公共profile、一个STM32板级cfg，无旧目录，每个包内文件摘要均与源文件一致；SVD原始SHA-256保持不变。打包结果：`artifacts/tools-layout-cleanup-20261007/report.json`。本轮调整可由已安装程序直接使用，无需升版重编译TUI；没有修改固件工程副本或连接硬件。
+
+## 公共工具与芯片/探针配置拆分（2026-10-07，0.10.0-readonly.3）
+
+`tools/debug-env-universal.toml` 仅保留工具路径、芯片目录和独立探针选择。新增 `tools/chips/<chip>.toml`、R52 共用家族模板、`tools/probes/*.cfg` 和不绑定探针的 STM32F429 板级 cfg。按 Chip 查找外部文件，支持最多8层 `extends`；路径按声明文件解析，保留工程优先/显式空值、寄存器配置来源和物理核身份，旧内嵌 backend 与单芯片 profile 继续兼容。打包和安装脚本包含新目录。
+
+验证通过：配置相关32项、设备/Setup相关12项单元测试；新增4项文件配置测试涵盖继承、中文/空格路径、优先级、配置来源、缺文件/非法字段/backend不匹配/循环/深度限制、新增芯片不改公共入口、探针独立选择。`cargo fmt --all --check`、严格Clippy、`git diff --check` 通过。Release 编译通过，用时2分33秒，沿用既有 target。
+
+`node scripts/test-chip-profiles.cjs --binary target/release/debugtui.exe` 的16项实际程序检查通过：Windows PowerShell 5安装到隔离的中文/空格目录，STM32三种探针、R52单核/双核/非连续核/四核、OpenOCD拆分脚本离线解析、R52未配置拒绝、三个旧profile加载。报告：`artifacts/chip-profiles-1791379547445-6433c4c3/report.json`。测试子进程隔离PowerShell模块路径，并分别检查旧单核与新多核协议结构。
+
+`node scripts/test-register-configuration.cjs --binary target/release/debugtui.exe` 的16项既有实际程序回归通过，报告：`artifacts/register-configuration-1791379559282-3af0591b/report.json`。独立工具包89个文件与源文件摘要全部一致，记录：`artifacts/chip-profiles-build-20261007/tools-package-final.json`。所有CLI检查仅查询配置/状态；OpenOCD仅解析后shutdown。没有连接硬件。延后上板用例与复验入口见 [芯片配置用例](tests/cases/chip-profiles.md)。
+
+## 通用 Project / Tools profile（2026-10-07）
+
+新增 `tools/debug-env-universal.toml`、`tools/debug-project.toml.example` 和待填写的 `tools/config/r52-template.cfg`。沿用既有 Chip → backend / Debug cores 解析，允许选中 backend 提供严格校验的 `[program] svd`，保持 profile 相对路径、工程覆盖和显式空值语义。ELF/source_root 仍不能放入工具 profile。
+
+针对本次改动的验证：设备相关 12 项、配置相关 28 项单元测试通过；新增用例覆盖 STM32 → R52 → STM32 的 SVD/内存通道/寄存器路由隔离、core1 固定3334、多核/非连续 `[1,3]`、未选 Chip/非法 Core 拒绝、工程 SVD 覆盖/禁用和 backend 非法字段拒绝。`cargo fmt --all --check`、`cargo clippy --locked --lib --bin debugtui -- -D warnings`、`git diff --check` 通过，实际 Debug EXE 构建成功。沿用一个 target，关闭增量及调试信息；本次没有重复完整软件回归。
+
+实际 EXE 在隔离用户配置下仅执行 `status` 后 EOF，STM32单核及R52单核/双核/非连续核/四核5种组合均保持 DISCONNECTED，核心名称与端口符合物理编号。随附 OpenOCD 离线解析3种既有STM32探针cfg均成功，未填写R52模板按预期报错；均未执行 `init`。共9项软件入口/配置检查通过，命令、结果与摘要保留在 `artifacts/universal-tools-20261007/report.json`。工具包检查确认包含通用 profile、Project 模板、R52 cfg 与 F429 SVD；安装脚本语法检查通过，未对用户工程执行安装。
+
+本次未连接探针或板卡，也未验证任何实际 R52 DAP/AP/CTI/复位配置；R52模板由用户后续补充。旧v0.9.3和原v0.10.0-readonly.1二进制不能使用新backend SVD字段，需本次源码构建；旧单芯片profile保持兼容。
+
 ## 最小 tools 集与补丁版 OpenOCD（2026-10-07，claude/tools-minimal）
 
 `tools/` 跟踪的文件从 1090 个、38.6 MiB 减到 102 个、15.0 MiB；运行包 `debugtui-tools-arm-win-x64.zip` 为 74 个文件、6.9 MB，此前发布的 tools ZIP 约 14.5 MB。移除 SEGGER J-Link（许可证要求每次再分发事先取得 SEGGER 书面授权）及其 BAT 入口，默认 `debug-env.toml` 改为 OpenOCD + J-Link；OpenOCD 换为 openocd-adapter 补丁构建（上游 d3ebb8d），`openocd.exe` 与 `source.lock.json` 的 Windows 候选摘要一致，随附文件均与构建的 PROVENANCE.json 一致；脚本保留 40 个；新增 ST-Link profile。
