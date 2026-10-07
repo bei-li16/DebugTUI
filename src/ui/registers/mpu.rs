@@ -41,7 +41,7 @@ impl App {
             "" => {
                 if self
                     .register_view
-                    .register_index(self.selected(3))
+                    .register_index(self.selected(pane::REGS))
                     .is_some_and(|i| {
                         self.register_view.catalogue.as_ref().unwrap().registers[i].group
                             == "mpu_el2"

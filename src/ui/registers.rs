@@ -378,8 +378,8 @@ impl App {
                 request.cancel_read();
             }
             self.register_view = RegisterView::load_config(&config);
-            self.selections[3] = 0;
-            if self.pane == 3 {
+            self.selections[pane::REGS] = 0;
+            if self.pane == pane::REGS {
                 self.selection = 0;
             }
         }
@@ -497,11 +497,11 @@ impl App {
         if self.register_view.runtime_absent != absent {
             self.register_view.runtime_absent = absent;
             self.register_view.rebuild();
-            self.selections[3] = self
-                .selected(3)
+            self.selections[pane::REGS] = self
+                .selected(pane::REGS)
                 .min(self.register_view.rows.len().saturating_sub(1));
-            if self.pane == 3 {
-                self.selection = self.selections[3];
+            if self.pane == pane::REGS {
+                self.selection = self.selections[pane::REGS];
             }
         }
     }
@@ -688,9 +688,9 @@ impl App {
             self.formats.popup = None;
         }
         self.register_view.rebuild();
-        self.view_tops[3] = 0;
-        self.selections[3] = 0;
-        if self.pane == 3 {
+        self.view_tops[pane::REGS] = 0;
+        self.selections[pane::REGS] = 0;
+        if self.pane == pane::REGS {
             self.selection = 0;
         }
     }
@@ -764,7 +764,7 @@ impl App {
         {
             return;
         }
-        let Some(index) = self.register_view.register_index(self.selected(3)) else {
+        let Some(index) = self.register_view.register_index(self.selected(pane::REGS)) else {
             return;
         };
         let id = &self.register_view.catalogue.as_ref().unwrap().registers[index].id;
@@ -836,11 +836,11 @@ impl App {
                 sample.stale();
             }
             self.register_view.rebuild();
-            self.selections[3] = self
-                .selected(3)
+            self.selections[pane::REGS] = self
+                .selected(pane::REGS)
                 .min(self.register_view.rows.len().saturating_sub(1));
-            if self.pane == 3 {
-                self.selection = self.selections[3];
+            if self.pane == pane::REGS {
+                self.selection = self.selections[pane::REGS];
             }
         }
         let context = self.register_context();
@@ -989,7 +989,7 @@ impl App {
         if !self.register_view.enabled() {
             return;
         }
-        self.select_pane(3);
+        self.select_pane(pane::REGS);
         self.register_view.search_original = self.register_view.query.clone();
         self.register_view.searching = true;
     }
@@ -997,14 +997,14 @@ impl App {
         self.register_view.filter = (self.register_view.filter + 1) % 4;
         self.register_view.rebuild();
         self.selection = 0;
-        self.view_tops[3] = 0;
+        self.view_tops[pane::REGS] = 0;
         self.save_register_preferences(engine);
     }
     pub(super) fn toggle_register_definitions(&mut self, engine: Option<&EngineHandle>) {
         self.register_view.all_definitions = !self.register_view.all_definitions;
         self.register_view.rebuild();
         self.selection = 0;
-        self.view_tops[3] = 0;
+        self.view_tops[pane::REGS] = 0;
         self.save_register_preferences(engine);
     }
     pub(super) fn register_key(&mut self, key: KeyEvent, engine: Option<&EngineHandle>) -> bool {
@@ -1034,7 +1034,7 @@ impl App {
             }
             self.register_view.rebuild();
             self.selection = 0;
-            self.view_tops[3] = 0;
+            self.view_tops[pane::REGS] = 0;
             return true;
         }
         if !key.modifiers.is_empty() {
@@ -1044,10 +1044,18 @@ impl App {
         match key.code {
             KeyCode::Esc if self.cancel_register_read() => {}
             KeyCode::Enter | KeyCode::Char(' ') => {
-                changed = self.register_view.toggle(self.selected(3), None);
+                changed = self.register_view.toggle(self.selected(pane::REGS), None);
             }
-            KeyCode::Left => changed = self.register_view.toggle(self.selected(3), Some(false)),
-            KeyCode::Right => changed = self.register_view.toggle(self.selected(3), Some(true)),
+            KeyCode::Left => {
+                changed = self
+                    .register_view
+                    .toggle(self.selected(pane::REGS), Some(false))
+            }
+            KeyCode::Right => {
+                changed = self
+                    .register_view
+                    .toggle(self.selected(pane::REGS), Some(true))
+            }
             KeyCode::Char('r') => {
                 self.refresh_register(engine);
             }
@@ -1070,21 +1078,21 @@ impl App {
         mouse: MouseEvent,
         engine: Option<&EngineHandle>,
     ) -> bool {
-        let rect = self.view_rects[3];
-        if self.side_pane != 3
+        let rect = self.view_rects[pane::REGS];
+        if self.side_pane != pane::REGS
             || !self.register_view.enabled()
             || !rect.contains((mouse.column, mouse.row).into())
             || mouse.kind != MouseEventKind::Down(event::MouseButton::Left)
         {
             return false;
         }
-        let row = self.view_tops[3] + usize::from(mouse.row - rect.y);
+        let row = self.view_tops[pane::REGS] + usize::from(mouse.row - rect.y);
         if row >= self.register_view.rows.len() {
             return false;
         }
-        self.select_pane(3);
+        self.select_pane(pane::REGS);
         self.selection = row;
-        self.selections[3] = row;
+        self.selections[pane::REGS] = row;
         let depth = match self.register_view.rows[row] {
             Row::Group(_, d) | Row::Register(_, d) | Row::Field(_, _, d) => d,
         };
@@ -1134,7 +1142,7 @@ impl App {
         true
     }
     pub(super) fn refresh_register(&mut self, engine: Option<&EngineHandle>) -> bool {
-        let Some(index) = self.register_view.register_index(self.selected(3)) else {
+        let Some(index) = self.register_view.register_index(self.selected(pane::REGS)) else {
             self.notice = "Select a register or field to read.".into();
             return false;
         };
@@ -1146,13 +1154,13 @@ impl App {
     pub(super) fn ensure_registers(&mut self, engine: Option<&EngineHandle>) -> bool {
         self.sync_register_sample_validity();
         self.sync_register_absence();
-        if self.side_pane != 3
+        if self.side_pane != pane::REGS
             || self.register_view.mpu_popup.is_some()
             || self.register_view.status_popup.is_some()
             || !self.register_view.enabled()
             || self.register_view.pending.is_some()
             || self.register_view.probe_pending.is_some()
-            || self.view_rects[3].height == 0
+            || self.view_rects[pane::REGS].height == 0
         {
             return false;
         }
@@ -1162,7 +1170,9 @@ impl App {
         let context = self.register_context();
         let mut ids = BTreeSet::new();
         let runtime_config = self.active_register_config();
-        for row in self.view_tops[3]..self.view_tops[3] + usize::from(self.view_rects[3].height) {
+        for row in self.view_tops[pane::REGS]
+            ..self.view_tops[pane::REGS] + usize::from(self.view_rects[pane::REGS].height)
+        {
             let Some(index) = self.register_view.register_index(row) else {
                 continue;
             };
@@ -1414,7 +1424,7 @@ impl App {
                 field: field_name.is_some(),
             }),
             rect: Rect::default(),
-            pane: 3,
+            pane: pane::REGS,
             row,
             key: format!(
                 "register:{}:{}:{}:{}",
@@ -1478,14 +1488,14 @@ impl App {
         let height = rect
             .height
             .saturating_sub(1 + summary_height + details_height);
-        self.view_rects[3] = Rect::new(rect.x, rows_y, rect.width, height);
+        self.view_rects[pane::REGS] = Rect::new(rect.x, rows_y, rect.width, height);
         let mut lines = Vec::new();
         for (row_index, row) in self
             .register_view
             .rows
             .iter()
             .enumerate()
-            .skip(self.view_tops[3])
+            .skip(self.view_tops[pane::REGS])
             .take(height as usize)
         {
             let (text, color) = match row {
@@ -1588,7 +1598,7 @@ impl App {
                         let prefix_width = shown_name_width + 3;
                         item.rect = Rect::new(
                             rect.x.saturating_add(prefix_width as u16),
-                            rows_y + (row_index - self.view_tops[3]) as u16,
+                            rows_y + (row_index - self.view_tops[pane::REGS]) as u16,
                             shown_value_width as u16,
                             1,
                         );
@@ -1654,7 +1664,7 @@ impl App {
                     )
                 }
             };
-            let style = if row_index == self.selected(3) && self.pane == 3 {
+            let style = if row_index == self.selected(pane::REGS) && self.pane == pane::REGS {
                 Style::default().fg(color).bg(theme::SELECTED)
             } else {
                 Style::default().fg(color)
@@ -1666,7 +1676,9 @@ impl App {
             Rect::new(rect.x, rows_y, rect.width, height),
         );
         if details_height > 0 {
-            let detail = if let Some(index) = self.register_view.register_index(self.selected(3)) {
+            let detail = if let Some(index) =
+                self.register_view.register_index(self.selected(pane::REGS))
+            {
                 let register = &catalogue.registers[index];
                 let owner = self
                     .register_view
@@ -1674,14 +1686,14 @@ impl App {
                     .unwrap_or_else(|| "Unknown owner".into());
                 let sample = self.register_view.sample(&self.project, &context, index);
                 let description = if let Some(Row::Field(_, field, _)) =
-                    self.register_view.rows.get(self.selected(3))
+                    self.register_view.rows.get(self.selected(pane::REGS))
                 {
                     register.fields[*field].description.as_str()
                 } else {
                     register.description.as_str()
                 };
                 let (bits, access) = if let Some(Row::Field(_, field, _)) =
-                    self.register_view.rows.get(self.selected(3))
+                    self.register_view.rows.get(self.selected(pane::REGS))
                 {
                     let field = &register.fields[*field];
                     (
@@ -1751,8 +1763,8 @@ mod tests {
         app.snapshot.state = "STOPPED".into();
         app.snapshot.register_session = 17;
         app.snapshot.generation = 3;
-        app.select_pane(3);
-        app.view_rects[3] = Rect::new(0, 0, 80, 5);
+        app.select_pane(pane::REGS);
+        app.view_rects[pane::REGS] = Rect::new(0, 0, 80, 5);
         app
     }
     pub(super) fn engine() -> (EngineHandle, mpsc::Receiver<Request>) {
@@ -1809,7 +1821,7 @@ mod tests {
                     }
                     let mut app = App::new(project, false);
                     app.snapshot.state = "STOPPED".into();
-                    app.select_pane(3);
+                    app.select_pane(pane::REGS);
                     app.register_view.query = name.into();
                     app.register_view.rebuild();
                     app.selection = (0..app.register_view.rows.len())
@@ -2463,7 +2475,7 @@ mod tests {
         let mut app = app();
         let cpsr=app.register_view.rows.iter().position(|row|matches!(row,Row::Register(index,_) if app.register_view.catalogue.as_ref().unwrap().registers[*index].id=="cpsr")).unwrap();
         app.register_view.toggle(cpsr, Some(true));
-        app.view_tops[3] = cpsr;
+        app.view_tops[pane::REGS] = cpsr;
         let value = sample(&app, "cpsr", "0x20000013");
         app.register_view.values.insert(
             ("core:default".into(), "cpsr".into(), "default".into()),

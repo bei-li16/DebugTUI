@@ -216,7 +216,7 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         "Core {} / frame {} / stop {} / session {}",
         context.core, context.frame, context.generation, context.session
     ));
-    if let Some(index) = app.register_view.register_index(app.selected(3)) {
+    if let Some(index) = app.register_view.register_index(app.selected(pane::REGS)) {
         let register = &app.register_view.catalogue.as_ref().unwrap().registers[index];
         let category = app.register_view.category(
             &app.project,
@@ -392,7 +392,8 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
                 text.extend(nvic.notes.iter().cloned());
             }
         }
-        if let Some(Row::Field(_, field, _)) = app.register_view.rows.get(app.selected(3)) {
+        if let Some(Row::Field(_, field, _)) = app.register_view.rows.get(app.selected(pane::REGS))
+        {
             let field = &register.fields[*field];
             text.push(register.description.clone());
             text.push(format!("Field {}: {}", field.name, field.description));

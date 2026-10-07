@@ -355,7 +355,13 @@ pub(super) fn paint(f: &mut UiFrame, a: &mut App) {
     }
     let running = a.snapshot.state == "RUNNING";
     if running {
-        for pane in [1, 3, 4, 9, 10] {
+        for pane in [
+            pane::WATCH,
+            pane::REGS,
+            pane::MEMORY,
+            pane::LOCALS,
+            pane::PERIPHERALS,
+        ] {
             let r = a.view_rects[pane];
             for y in r.y..r.bottom() {
                 for x in r.x..r.right() {
@@ -365,8 +371,8 @@ pub(super) fn paint(f: &mut UiFrame, a: &mut App) {
         }
     }
     let source = a.source_rect;
-    let current =
-        a.main_pane == 0 && a.source_key(&a.source_file) == a.source_key(&a.snapshot.frame.file);
+    let current = a.main_pane == pane::SOURCE
+        && a.source_key(&a.source_file) == a.source_key(&a.snapshot.frame.file);
     if current {
         let line = a.snapshot.frame.line.saturating_sub(1) as usize;
         if line >= a.source_top && line < a.source_top + source.height as usize {
@@ -403,7 +409,7 @@ pub(super) fn paint(f: &mut UiFrame, a: &mut App) {
             }
         }
     }
-    if a.main_pane == 0 && a.project.ui.animations == Motion::Full && a.fx.focused {
+    if a.main_pane == pane::SOURCE && a.project.ui.animations == Motion::Full && a.fx.focused {
         for (file, line, at) in &a.fx.traces {
             let index = line.saturating_sub(1) as usize;
             if a.source_key(file) == a.source_key(&a.source_file)
@@ -498,7 +504,7 @@ pub(super) fn paint(f: &mut UiFrame, a: &mut App) {
     }
     let p = a.fx.amount("watch-added");
     if p > 0.0
-        && let Some(last) = a.formats.hits.iter().rev().find(|i| i.pane == 1)
+        && let Some(last) = a.formats.hits.iter().rev().find(|i| i.pane == pane::WATCH)
     {
         wash(f, last.rect, theme::GREEN, p * 0.2);
     }

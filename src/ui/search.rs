@@ -116,13 +116,17 @@ impl App {
 
     fn filter_changed(&mut self) {
         self.selection = 0;
-        self.selections[7] = 0;
-        self.view_tops[7] = 0;
+        self.selections[pane::FILES] = 0;
+        self.view_tops[pane::FILES] = 0;
         self.scroll_drag = None;
     }
 
     pub(super) fn file_search_key(&mut self, key: KeyEvent) -> bool {
-        if self.pane != 7 || self.editing || self.watch_editing || self.console_view.focused {
+        if self.pane != pane::FILES
+            || self.editing
+            || self.watch_editing
+            || self.console_view.focused
+        {
             return false;
         }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -318,7 +322,7 @@ impl App {
         self.source_line = (symbol.line as usize - 1).min(self.source.len().saturating_sub(1));
         self.source_top = self.source_line.saturating_sub(8);
         self.source_text.reset(self.source_line);
-        self.select_pane(0);
+        self.select_pane(pane::SOURCE);
         self.symbol_search.open = false;
         self.notice = format!("{} · {}:{}", symbol.name, symbol.file, symbol.line);
     }
@@ -442,7 +446,7 @@ impl App {
             }
             self.file_search.editing = self.file_search.area.contains(point);
             if self.file_search.editing {
-                self.select_pane(7);
+                self.select_pane(pane::FILES);
                 self.editing = false;
                 self.watch_editing = false;
                 self.console_view.focused = false;

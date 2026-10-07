@@ -231,7 +231,7 @@ impl App {
             return;
         }
         if self.set_memory_range(range, self.memory_channel(), engine) {
-            self.select_pane(4);
+            self.select_pane(pane::MEMORY);
             self.request_memory_dump(engine, true);
         }
     }
@@ -354,8 +354,8 @@ impl App {
         true
     }
     pub(super) fn ensure_memory_dump(&mut self, engine: Option<&EngineHandle>) -> bool {
-        if self.side_pane != 4
-            || self.view_rects[4].height == 0
+        if self.side_pane != pane::MEMORY
+            || self.view_rects[pane::MEMORY].height == 0
             || self.demo
             || self.setup.is_some()
             || self.quitting
@@ -422,7 +422,7 @@ impl App {
             epoch,
             route_key,
         });
-        self.view_tops[4] = 0;
+        self.view_tops[pane::MEMORY] = 0;
         self.submit(Some(engine), "memory_dump", json!({"address":range.address,"count":range.count,"channel":channel,"context":context,"selection_epoch":epoch}));
         true
     }
@@ -671,8 +671,8 @@ mod tests {
         app.snapshot.state = "STOPPED".into();
         app.snapshot.register_session = 91;
         app.project.debug.chip = "chip-a".into();
-        app.select_pane(4);
-        app.view_rects[4] = Rect::new(0, 0, 40, 8);
+        app.select_pane(pane::MEMORY);
+        app.view_rects[pane::MEMORY] = Rect::new(0, 0, 40, 8);
         app.project.memory_access.push(crate::config::MemoryAccess {
             id: "ap".into(),
             target: "soc.bus".into(),

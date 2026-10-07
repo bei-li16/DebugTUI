@@ -117,7 +117,7 @@ fn tha6206_source_selection_to_real_watch() {
             }
             assert!(a.snapshot.watches.is_empty(), "Watch must be per-core");
             a.load_source(&source.to_string_lossy());
-            a.select_pane(0);
+            a.select_pane(pane::SOURCE);
             let row = a
                 .source
                 .iter()

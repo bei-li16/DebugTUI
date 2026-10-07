@@ -35,8 +35,8 @@ fn app() -> App {
     app.snapshot.state = "RUNNING".into();
     app.snapshot.register_session = 17;
     app.snapshot.generation = 3;
-    app.select_pane(3);
-    app.view_rects[3] = Rect::new(0, 0, 80, 4);
+    app.select_pane(pane::REGS);
+    app.view_rects[pane::REGS] = Rect::new(0, 0, 80, 4);
     app.register_view.rows = ["scb.cpuid", "scb.ccr", "r0", "dcb.dhcsr"]
         .into_iter()
         .map(|id| Row::Register(index(&app, id), 1))
@@ -196,7 +196,7 @@ fn running_status_displays_recorded_ap_interval_raw_and_view_in_narrow_and_wide_
             .values
             .insert(("core:default".into(), s.id.clone(), "default".into()), s);
         app.register_view.rows = vec![Row::Register(index(&app, "scb.cpuid"), 1)];
-        app.selections[3] = 0;
+        app.selections[pane::REGS] = 0;
         let (engine, requests) = engine();
         app.open_register_status();
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();

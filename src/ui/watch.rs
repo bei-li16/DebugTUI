@@ -153,7 +153,7 @@ pub(super) fn rows(watches: &[Variable]) -> Vec<WatchRow<'_>> {
 
 impl App {
     pub(super) fn variable_edit_candidate(&self, pane: usize) -> Result<writes::Candidate, String> {
-        let values = if pane == 1 {
+        let values = if pane == pane::WATCH {
             &self.snapshot.watches
         } else {
             &self.snapshot.locals
@@ -169,7 +169,7 @@ impl App {
             .as_ref()
             .map(|t| t.type_name.clone())
             .unwrap_or_default();
-        let channel = if pane == 1 {
+        let channel = if pane == pane::WATCH {
             self.project
                 .ui
                 .refresh
@@ -186,11 +186,15 @@ impl App {
             String::new()
         };
         Ok(writes::Candidate {
-            target: json!({"kind":"variable","pane":if pane==1{"watch"}else{"locals"},"expression":node.root,"path":node.path,"channel":channel,"type_hint":type_hint}),
+            target: json!({"kind":"variable","pane":if pane==pane::WATCH{"watch"}else{"locals"},"expression":node.root,"path":node.path,"channel":channel,"type_hint":type_hint}),
             selection: crate::writes::Selection::Register,
             title: format!(
                 "{} · {}",
-                if pane == 1 { "Watch" } else { "Locals" },
+                if pane == pane::WATCH {
+                    "Watch"
+                } else {
+                    "Locals"
+                },
                 node.value.name
             ),
             bits: 0,
@@ -207,7 +211,7 @@ impl App {
         engine: Option<&EngineHandle>,
     ) -> bool {
         let nodes = rows(&self.snapshot.locals);
-        let Some(node) = nodes.get(self.selected(9)) else {
+        let Some(node) = nodes.get(self.selected(pane::LOCALS)) else {
             return false;
         };
         let Some(tree) = &node.value.tree else {
@@ -241,11 +245,11 @@ impl App {
     }
 
     pub(super) fn reconcile_watch_selection(&mut self, next: &Snapshot) {
-        self.reconcile_variable_selection(1, &next.watches);
-        self.reconcile_variable_selection(9, &next.locals);
+        self.reconcile_variable_selection(pane::WATCH, &next.watches);
+        self.reconcile_variable_selection(pane::LOCALS, &next.locals);
     }
     fn reconcile_variable_selection(&mut self, pane: usize, next: &[Variable]) {
-        let old = rows(if pane == 1 {
+        let old = rows(if pane == pane::WATCH {
             &self.snapshot.watches
         } else {
             &self.snapshot.locals
@@ -288,7 +292,7 @@ impl App {
         }
         // A deleted expression must not leave a second, stale selected highlight.
         if self.formats.selected.as_ref().is_some_and(|key| {
-            if pane == 1 {
+            if pane == pane::WATCH {
                 key.starts_with("watch:") || key.starts_with("watch-child:")
             } else {
                 key.starts_with("local:")
@@ -299,7 +303,7 @@ impl App {
     }
     pub(super) fn remove_selected_watch(&mut self, engine: Option<&EngineHandle>) {
         if let Some(value) = rows(&self.snapshot.watches)
-            .get(self.selected(1))
+            .get(self.selected(pane::WATCH))
             .filter(|v| v.removable())
         {
             let name = value.root.to_owned();
@@ -310,7 +314,7 @@ impl App {
     }
     pub(super) fn watch_removable(&self) -> bool {
         rows(&self.snapshot.watches)
-            .get(self.selected(1))
+            .get(self.selected(pane::WATCH))
             .is_some_and(WatchRow::removable)
     }
     /// Returns false for scalar rows so Enter can still focus the input.
@@ -320,7 +324,7 @@ impl App {
         engine: Option<&EngineHandle>,
     ) -> bool {
         let nodes = rows(&self.snapshot.watches);
-        let Some(node) = nodes.get(self.selected(1)) else {
+        let Some(node) = nodes.get(self.selected(pane::WATCH)) else {
             return false;
         };
         let Some(tree) = &node.value.tree else {
@@ -339,10 +343,10 @@ impl App {
         true
     }
     pub(super) fn watch_item(&self, row: usize) -> Option<formats::Item> {
-        self.variable_item(1, row)
+        self.variable_item(pane::WATCH, row)
     }
     pub(super) fn variable_item(&self, pane: usize, row: usize) -> Option<formats::Item> {
-        let nodes = rows(if pane == 1 {
+        let nodes = rows(if pane == pane::WATCH {
             &self.snapshot.watches
         } else {
             &self.snapshot.locals
@@ -353,15 +357,19 @@ impl App {
             rect: Rect::default(),
             pane,
             row,
-            key: if pane == 1 {
+            key: if pane == pane::WATCH {
                 node.key()
             } else if node.path.is_empty() {
-                self.numeric_key(9, node.root)
+                self.numeric_key(pane::LOCALS, node.root)
             } else {
-                format!("{}:{}", self.numeric_key(9, node.root), json!(node.path))
+                format!(
+                    "{}:{}",
+                    self.numeric_key(pane::LOCALS, node.root),
+                    json!(node.path)
+                )
             },
             name: node.value.name.clone(),
-            raw: (pane == 1)
+            raw: (pane == pane::WATCH)
                 .then(|| self.watch_sample(&node.key()))
                 .flatten()
                 .map(|s| s.0)
@@ -373,7 +381,7 @@ impl App {
     /// every frame, which cost more than drawing it.
     fn watch_line(&self, pane: usize, node: &WatchRow) -> WatchLine {
         let key = node.key();
-        let (raw, changed, error) = (pane == 1)
+        let (raw, changed, error) = (pane == pane::WATCH)
             .then(|| self.watch_sample(&key))
             .flatten()
             .unwrap_or_else(|| {
@@ -385,12 +393,16 @@ impl App {
             });
         let tree = node.value.tree.as_ref();
         WatchLine {
-            format_key: if pane == 1 {
+            format_key: if pane == pane::WATCH {
                 key.clone()
             } else if node.path.is_empty() {
-                self.numeric_key(9, node.root)
+                self.numeric_key(pane::LOCALS, node.root)
             } else {
-                format!("{}:{}", self.numeric_key(9, node.root), json!(node.path))
+                format!(
+                    "{}:{}",
+                    self.numeric_key(pane::LOCALS, node.root),
+                    json!(node.path)
+                )
             },
             key,
             root: node.root.into(),
@@ -404,7 +416,7 @@ impl App {
             type_name: tree.map(|t| t.type_name.clone()),
             expandable: tree.is_some_and(|t| {
                 t.child_count > 0
-                    || (pane == 9
+                    || (pane == pane::LOCALS
                         && (t.type_name.contains("struct ")
                             || t.type_name.contains("union ")
                             || t.type_name.contains("class ")
@@ -418,7 +430,7 @@ impl App {
     pub(super) fn watch_numeric_view(&mut self, f: &mut UiFrame, pane: usize, rect: Rect) {
         let start = self.view_tops[pane];
         let lines: Vec<WatchLine> = {
-            let nodes = rows(if pane == 1 {
+            let nodes = rows(if pane == pane::WATCH {
                 &self.snapshot.watches
             } else {
                 &self.snapshot.locals
@@ -443,7 +455,7 @@ impl App {
             .clamp(6, (rect.width as usize * 45 / 100).max(6));
         for (offset, line) in lines.into_iter().enumerate() {
             let row = start + offset;
-            let close_width = if pane == 1 && line.removable && rect.width >= 8 {
+            let close_width = if pane == pane::WATCH && line.removable && rect.width >= 8 {
                 3
             } else {
                 0
@@ -523,7 +535,7 @@ impl App {
                         1,
                     )
                 };
-                if pane == 1 {
+                if pane == pane::WATCH {
                     self.watch.expand_hits.push((arrow, line.key));
                 } else {
                     self.watch.local_expand_hits.push((arrow, line.key));
@@ -565,7 +577,9 @@ impl App {
         }
     }
     pub(super) fn watch_mouse(&mut self, mouse: MouseEvent, engine: Option<&EngineHandle>) -> bool {
-        if self.variable_pane == 9 && mouse.kind == MouseEventKind::Down(event::MouseButton::Left) {
+        if self.variable_pane == pane::LOCALS
+            && mouse.kind == MouseEventKind::Down(event::MouseButton::Left)
+        {
             let point = (mouse.column, mouse.row).into();
             if let Some((_, key)) = self
                 .watch
@@ -577,7 +591,7 @@ impl App {
                     .iter()
                     .position(|v| v.key() == *key);
                 if let Some(index) = index {
-                    self.select_pane(9);
+                    self.select_pane(pane::LOCALS);
                     self.selection = index;
                     self.editing = false;
                     self.watch_editing = false;
@@ -587,7 +601,9 @@ impl App {
                 return true;
             }
         }
-        if self.variable_pane != 1 || mouse.kind != MouseEventKind::Down(event::MouseButton::Left) {
+        if self.variable_pane != pane::WATCH
+            || mouse.kind != MouseEventKind::Down(event::MouseButton::Left)
+        {
             return false;
         }
         let point = (mouse.column, mouse.row).into();
@@ -606,7 +622,7 @@ impl App {
                 .iter()
                 .position(|v| v.key() == *key);
             if let Some(index) = index {
-                self.select_pane(1);
+                self.select_pane(pane::WATCH);
                 self.selection = index;
                 self.editing = false;
                 self.watch_editing = false;
@@ -629,7 +645,7 @@ impl App {
             else {
                 return true;
             };
-            self.select_pane(1);
+            self.select_pane(pane::WATCH);
             self.selection = index;
         } else if !self.watch.remove_rect.contains(point) {
             return false;
@@ -637,7 +653,7 @@ impl App {
         self.editing = false;
         self.watch_editing = false;
         self.completion.invalidate();
-        self.select_pane(1);
+        self.select_pane(pane::WATCH);
         self.remove_selected_watch(engine);
         true
     }
@@ -658,7 +674,7 @@ mod tests {
                 ..Default::default()
             })
             .collect();
-        a.select_pane(1);
+        a.select_pane(pane::WATCH);
         a
     }
     fn key(a: &mut App, code: KeyCode, engine: &EngineHandle) {
@@ -691,7 +707,7 @@ mod tests {
         key(&mut a, KeyCode::Delete, &engine);
         assert!(requests.try_recv().is_err());
         assert_eq!(a.selection, 0);
-        assert_eq!(a.view_tops[1], 0);
+        assert_eq!(a.view_tops[pane::WATCH], 0);
     }
     #[test]
     fn watch_selection_follows_expression_when_an_earlier_item_is_removed() {
@@ -702,14 +718,14 @@ mod tests {
             &mut a,
             &Request::new(15, "unwatch", json!({"expression":"first"})),
         );
-        assert_eq!(a.snapshot.watches[a.selected(1)].name, "middle");
-        a.select_pane(0);
+        assert_eq!(a.snapshot.watches[a.selected(pane::WATCH)].name, "middle");
+        a.select_pane(pane::SOURCE);
         removed(
             &mut a,
             &Request::new(16, "unwatch", json!({"expression":"last"})),
         );
-        a.select_pane(1);
-        assert_eq!(a.selected(1), 0);
+        a.select_pane(pane::WATCH);
+        assert_eq!(a.selected(pane::WATCH), 0);
         key(&mut a, KeyCode::Delete, &engine);
     }
     #[test]
@@ -749,20 +765,20 @@ mod tests {
             let mut a = app(&refs);
             a.fx.mode = crate::config::Motion::Off;
             render(&mut a);
-            a.set_view_top(1, 30);
+            a.set_view_top(pane::WATCH, 30);
             render(&mut a);
             let row = 30;
             let hit = a
                 .formats
                 .hits
                 .iter()
-                .find(|item| item.pane == 1 && item.row == row)
+                .find(|item| item.pane == pane::WATCH && item.row == row)
                 .unwrap()
                 .rect;
             click(&mut a, hit, &engine);
             let t = render(&mut a);
             assert_eq!(
-                t.backend().buffer()[(a.view_rects[1].x, a.view_rects[1].y)].bg,
+                t.backend().buffer()[(a.view_rects[pane::WATCH].x, a.view_rects[pane::WATCH].y)].bg,
                 theme::SELECTED
             );
             if by_button {
@@ -839,7 +855,7 @@ mod tests {
         assert!(requests.try_recv().is_err());
         a.palette = false;
         assert_eq!(a.snapshot.watches[0].name, "first");
-        a.select_pane(9);
+        a.select_pane(pane::LOCALS);
         // Ignore the old button hit rectangle before the next frame redraws Locals.
         click(&mut a, button, &engine);
         assert!(requests.try_recv().is_err());
@@ -948,11 +964,11 @@ mod tests {
         click(&mut a, add, &engine);
         click(&mut a, close, &engine);
         a.help = false;
-        a.select_pane(9);
+        a.select_pane(pane::LOCALS);
         click(&mut a, add, &engine);
         click(&mut a, close, &engine);
         assert!(requests.try_recv().is_err());
-        a.select_pane(1);
+        a.select_pane(pane::WATCH);
         a.snapshot.state = "RUNNING".into();
         click(&mut a, add, &engine);
         assert_eq!(requests.try_recv().unwrap().method, "watch");
@@ -975,17 +991,17 @@ mod tests {
             assert!(a.watch.add_rect.width > 0 && a.watch.add_rect.height > 0);
             assert_eq!(a.watch_input_rect.right(), a.watch.add_rect.x);
             assert!(a.watch_input_rect.width >= 10);
-            a.set_view_top(1, 30);
+            a.set_view_top(pane::WATCH, 30);
             t.draw(|f| draw(f, &mut a)).unwrap();
             let (close, name) = a.watch.remove_hits.first().unwrap().clone();
             assert_eq!(name, "counter_30");
-            assert_eq!(close.y, a.view_rects[1].y);
-            assert!(close.right() <= a.scrollbars[1].x);
+            assert_eq!(close.y, a.view_rects[pane::WATCH].y);
+            assert!(close.right() <= a.scrollbars[pane::WATCH].x);
             assert!(
                 a.formats
                     .hits
                     .iter()
-                    .filter(|i| i.pane == 1)
+                    .filter(|i| i.pane == pane::WATCH)
                     .all(|i| i.rect.right() <= close.x)
             );
             click(&mut a, close, &engine);
@@ -1072,12 +1088,12 @@ mod tests {
         let (engine, requests) = session::test_channel();
         let mut a = tree_app();
         a.selection = 2;
-        let candidate = a.variable_edit_candidate(1).unwrap();
+        let candidate = a.variable_edit_candidate(pane::WATCH).unwrap();
         assert_eq!(candidate.target["expression"], "outer");
         assert_eq!(candidate.target["path"], json!([0, 0]));
         a.snapshot.locals = a.snapshot.watches.clone();
         a.snapshot.frame.level = 2;
-        a.select_pane(9);
+        a.select_pane(pane::LOCALS);
         a.selection = 2;
         key(&mut a, KeyCode::Char('e'), &engine);
         assert!(a.write_editor.modal());
@@ -1097,7 +1113,7 @@ mod tests {
         let (engine, requests) = session::test_channel();
         let mut a = tree_app();
         a.snapshot.locals = a.snapshot.watches.clone();
-        a.select_pane(9);
+        a.select_pane(pane::LOCALS);
         for (width, height) in [(45, 12), (80, 24), (160, 42)] {
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
             terminal.draw(|f| draw(f, &mut a)).unwrap();
@@ -1179,7 +1195,7 @@ mod tests {
             snapshot: Box::new(snapshot),
         });
         assert_eq!(a.selection, 0); // Closest visible ancestor.
-        assert_eq!(a.view_len(1), 2);
+        assert_eq!(a.view_len(pane::WATCH), 2);
         a.selection = 1;
         let expanded = tree_app().snapshot;
         a.update(Event::Snapshot {
@@ -1239,13 +1255,13 @@ mod tests {
         for (width, height) in [(45, 12), (80, 24), (160, 55)] {
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
             terminal.draw(|f| draw(f, &mut a)).unwrap();
-            a.set_view_top(1, 10);
+            a.set_view_top(pane::WATCH, 10);
             terminal.draw(|f| draw(f, &mut a)).unwrap();
             assert!(
                 a.watch
                     .expand_hits
                     .iter()
-                    .all(|(r, _)| r.right() <= a.view_rects[1].right())
+                    .all(|(r, _)| r.right() <= a.view_rects[pane::WATCH].right())
             );
             assert!(
                 a.watch

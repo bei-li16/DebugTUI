@@ -13,7 +13,7 @@ fn app(lines: &[&str]) -> App {
     a.source_comments = highlight::comment_starts(&a.source);
     a.snapshot.state = "STOPPED".into();
     a.fx.mode = crate::config::Motion::Off;
-    a.select_pane(0);
+    a.select_pane(pane::SOURCE);
     render(&mut a);
     a
 }
@@ -116,7 +116,7 @@ fn copy_requires_source_focus_and_selection_and_f6_always_pauses() {
     assert!(requests.try_recv().is_err());
     key(&mut a, KeyCode::F(6), KeyModifiers::NONE, Some(&engine));
     assert_eq!(requests.try_recv().unwrap().method, "pause");
-    a.select_pane(3);
+    a.select_pane(pane::REGS);
     key(
         &mut a,
         KeyCode::Char('c'),
@@ -145,7 +145,7 @@ fn watch_button_reuses_normal_request_and_preserves_failed_expression() {
     let request = requests.try_recv().unwrap();
     assert_eq!(request.method, "watch");
     assert_eq!(request.params["expression"], "platform.cpu_num");
-    assert_eq!(a.pane, 1);
+    assert_eq!(a.pane, pane::WATCH);
     a.update(Event::Response {
         id: request.id,
         ok: false,
@@ -153,7 +153,7 @@ fn watch_button_reuses_normal_request_and_preserves_failed_expression() {
         error: Some("No symbol platform".into()),
     });
     assert_eq!(a.watch_input, "platform.cpu_num");
-    a.select_pane(0);
+    a.select_pane(pane::SOURCE);
     a.source_text.anchor = Some(Position::default());
     a.source_text.caret = Position { row: 1, byte: 8 };
     key(&mut a, KeyCode::Enter, KeyModifiers::CONTROL, Some(&engine));
@@ -259,7 +259,7 @@ fn keyboard_collapse_find_and_hidden_source_do_not_reuse_stale_selection() {
     key(&mut a, KeyCode::Enter, KeyModifiers::CONTROL, Some(&engine));
     assert!(requests.try_recv().is_err());
     a.help = false;
-    a.main_pane = 8;
+    a.main_pane = pane::LOG;
     render(&mut a);
     assert!(a.source_text.area.is_empty());
     assert!(a.source_text.buttons.is_empty());

@@ -43,7 +43,7 @@ impl Breaks {
 
 impl App {
     pub(super) fn selected_break(&self) -> Option<&crate::session::Breakpoint> {
-        self.snapshot.breakpoints.get(self.selected(6))
+        self.snapshot.breakpoints.get(self.selected(pane::BREAKS))
     }
     pub(super) fn break_action_enabled(&self, action: &str) -> bool {
         if self.breaks.pending.is_some()
@@ -122,7 +122,7 @@ impl App {
         self.watch_editing = false;
         self.console_view.focused = false;
         self.completion.invalidate();
-        self.select_pane(6);
+        self.select_pane(pane::BREAKS);
         self.breaks.editor = Some(Editor {
             number,
             ignore: options.ignore_count.to_string(),
@@ -154,11 +154,11 @@ impl App {
         } else {
             selected
                 .and_then(|id| snapshot.breakpoints.iter().position(|b| b.id == id))
-                .unwrap_or(self.selected(6))
+                .unwrap_or(self.selected(pane::BREAKS))
                 .min(snapshot.breakpoints.len().saturating_sub(1))
         };
-        self.selections[6] = index;
-        if self.pane == 6 {
+        self.selections[pane::BREAKS] = index;
+        if self.pane == pane::BREAKS {
             self.selection = index;
         }
     }
@@ -227,11 +227,11 @@ impl App {
         mouse: MouseEvent,
         engine: Option<&EngineHandle>,
     ) -> bool {
-        let rect = self.view_rects[6];
+        let rect = self.view_rects[pane::BREAKS];
         if !rect.contains((mouse.column, mouse.row).into()) {
             return false;
         }
-        let index = self.view_tops[6] + mouse.row.saturating_sub(rect.y) as usize;
+        let index = self.view_tops[pane::BREAKS] + mouse.row.saturating_sub(rect.y) as usize;
         if index >= self.snapshot.breakpoints.len() {
             return false;
         }
@@ -242,7 +242,7 @@ impl App {
             self.editing = false;
             self.watch_editing = false;
             self.completion.invalidate();
-            self.select_pane(6);
+            self.select_pane(pane::BREAKS);
             self.selection = index;
             if mouse.kind == MouseEventKind::Down(event::MouseButton::Right) {
                 self.open_break_editor(false, true);
@@ -453,7 +453,7 @@ pub(super) fn rows(a: &App, start: usize, height: usize) -> Vec<Line<'static>> {
                 ),
                 Span::styled(info, Style::default().fg(theme::AMBER)),
             ])
-            .style(theme::selected(i == a.selected(6)))
+            .style(theme::selected(i == a.selected(pane::BREAKS)))
         })
         .collect()
 }
@@ -650,7 +650,7 @@ mod tests {
             enabled: true,
             ..Default::default()
         }];
-        a.select_pane(6);
+        a.select_pane(pane::BREAKS);
         a
     }
     fn render(a: &mut App, w: u16, h: u16) -> Terminal<TestBackend> {
@@ -666,7 +666,7 @@ mod tests {
         let (engine, rx) = session::test_channel();
         let mut a = fixture();
         render(&mut a, 140, 40);
-        let r = a.view_rects[6];
+        let r = a.view_rects[pane::BREAKS];
         a.mouse(
             MouseEvent {
                 kind: MouseEventKind::Down(event::MouseButton::Left),
@@ -746,7 +746,7 @@ mod tests {
         let mut a = fixture();
         for (w, h) in [(45, 12), (80, 24), (140, 40)] {
             render(&mut a, w, h);
-            assert!(a.view_rects[6].height > 0);
+            assert!(a.view_rects[pane::BREAKS].height > 0);
             if h >= 24 {
                 assert!(
                     a.action_hits

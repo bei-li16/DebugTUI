@@ -183,7 +183,7 @@ mod tests {
                     45,
                 );
             }
-            a.select_pane(5);
+            a.select_pane(pane::ASM);
             t.draw(|f| super::super::draw(f, &mut a)).unwrap();
             assert!(
                 t.backend()
@@ -197,7 +197,7 @@ mod tests {
                     .join(" ")
                     .contains(&format!("core{index}: mov"))
             );
-            a.select_pane(0);
+            a.select_pane(pane::SOURCE);
         }
         assert_ne!(colors[0], colors[1]);
     }

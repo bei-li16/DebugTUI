@@ -5,7 +5,6 @@ use std::{
     sync::{Arc, mpsc},
 };
 
-pub(super) const PANE: usize = 10;
 type RegisterKey = (usize, usize);
 #[derive(Clone, Copy)]
 enum Row {
@@ -24,9 +23,9 @@ mod tests {
             Device::parse(include_str!("../../tests/fixtures/peripherals.svd")).unwrap(),
         ));
         a.peripherals.rebuild();
-        a.select_pane(PANE);
-        a.view_rects[PANE] = Rect::new(0, 0, 70, 5);
-        a.side_rect = a.view_rects[PANE];
+        a.select_pane(pane::PERIPHERALS);
+        a.view_rects[pane::PERIPHERALS] = Rect::new(0, 0, 70, 5);
+        a.side_rect = a.view_rects[pane::PERIPHERALS];
         a
     }
     #[test]
@@ -42,7 +41,7 @@ mod tests {
             loading: Some(loading),
             ..Default::default()
         };
-        a.select_pane(PANE);
+        a.select_pane(pane::PERIPHERALS);
         let mut t = Terminal::new(TestBackend::new(120, 36)).unwrap();
         t.draw(|f| draw(f, &mut a)).unwrap();
         let text: String = t
@@ -109,14 +108,14 @@ mod tests {
             .formats
             .hits
             .iter()
-            .find(|i| i.pane == PANE && i.row == 2)
+            .find(|i| i.pane == pane::PERIPHERALS && i.row == 2)
             .unwrap()
             .clone();
         let register = a
             .formats
             .hits
             .iter()
-            .find(|i| i.pane == PANE && i.row == 1)
+            .find(|i| i.pane == pane::PERIPHERALS && i.row == 1)
             .unwrap()
             .clone();
         a.open_format(Some(field.clone()));
@@ -156,9 +155,9 @@ mod tests {
         // Other visible rows are write-only or have read side effects.
         assert!(!a.ensure_visible_data(Some(&engine)));
         a.snapshot.generation += 1;
-        a.select_pane(3);
+        a.select_pane(pane::REGS);
         assert!(!a.ensure_visible_data(Some(&engine)));
-        a.select_pane(PANE);
+        a.select_pane(pane::PERIPHERALS);
         a.snapshot.state = "RUNNING".into();
         assert!(!a.ensure_visible_data(Some(&engine)));
         a.snapshot.state = "STOPPED".into();
@@ -247,7 +246,7 @@ mod tests {
         for (w, h) in [(180, 44), (80, 24), (45, 12)] {
             let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
             t.draw(|f| draw(f, &mut a)).unwrap();
-            assert!(a.scrollbars[PANE].height > 0);
+            assert!(a.scrollbars[pane::PERIPHERALS].height > 0);
             let button = a
                 .action_hits
                 .iter()
@@ -316,7 +315,10 @@ mod tests {
         assert_eq!(request.params["context"]["generation"], 7);
         assert_eq!(request.params["selection_epoch"], 5);
         response(&mut a, &request, Some(43));
-        assert!(a.access_caption(PANE, 1).contains("sampled: bus → soc.bus"));
+        assert!(
+            a.access_caption(pane::PERIPHERALS, 1)
+                .contains("sampled: bus → soc.bus")
+        );
         a.refresh_peripheral(Some(&engine));
         let request = requests.recv().unwrap();
         let mut forged = memory_access::scalar_fixture(&a, &request, 99);
@@ -328,7 +330,7 @@ mod tests {
             error: None,
         });
         assert_eq!(a.peripherals.values[&(0, 0)].value, Some(43));
-        let caption = a.access_caption(PANE, 1);
+        let caption = a.access_caption(pane::PERIPHERALS, 1);
         assert!(
             caption.contains("retained / stale: bus → soc.bus")
                 && caption.contains("profile:chip-a.toml")
@@ -347,7 +349,10 @@ mod tests {
             snapshot: Box::new(next),
         });
         assert_eq!(a.peripherals.values[&(0, 0)].value, Some(44));
-        assert!(a.access_caption(PANE, 1).contains("retained / stale"));
+        assert!(
+            a.access_caption(pane::PERIPHERALS, 1)
+                .contains("retained / stale")
+        );
         let mut next = a.snapshot.clone();
         next.state = "STOPPED".into();
         next.generation += 1;
@@ -370,7 +375,7 @@ mod tests {
             7
         );
         assert!(
-            a.access_caption(PANE, 1)
+            a.access_caption(pane::PERIPHERALS, 1)
                 .contains("retained / stale: bus → soc.bus")
         );
         a.project.memory_access[0].target = "soc.changed".into();
@@ -392,7 +397,7 @@ mod tests {
         a.peripherals = Peripherals::load(
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/svd/stm32/STM32F429.svd"),
         );
-        a.select_pane(PANE);
+        a.select_pane(pane::PERIPHERALS);
         let p = a
             .peripherals
             .device
@@ -404,7 +409,7 @@ mod tests {
             .unwrap();
         a.selection = p;
         a.toggle_peripheral(Some(true));
-        a.view_tops[PANE] = p;
+        a.view_tops[pane::PERIPHERALS] = p;
         a.selection = p + 1;
         a.toggle_peripheral(Some(true));
         a.peripherals.values.insert(
@@ -569,7 +574,7 @@ impl App {
             .device
             .as_ref()
             .ok_or("Load an SVD before editing")?;
-        let row = self.selected(PANE);
+        let row = self.selected(pane::PERIPHERALS);
         let (p, r) = self
             .peripherals
             .selected_register(row)
@@ -626,11 +631,13 @@ impl App {
         })
     }
     pub(super) fn visible_peripheral_monitors(&self) -> Vec<monitor::Item> {
-        if self.side_pane != PANE || self.view_rects[PANE].height == 0 {
+        if self.side_pane != pane::PERIPHERALS || self.view_rects[pane::PERIPHERALS].height == 0 {
             return vec![];
         }
         let mut seen = HashSet::new();
-        (self.view_tops[PANE]..self.view_tops[PANE] + self.view_rects[PANE].height as usize)
+        (self.view_tops[pane::PERIPHERALS]
+            ..self.view_tops[pane::PERIPHERALS]
+                + self.view_rects[pane::PERIPHERALS].height as usize)
             .filter_map(|i| self.peripheral_monitor_item(i))
             .filter(|i| seen.insert(i.key.clone()))
             .collect()
@@ -696,7 +703,7 @@ impl App {
         Some(formats::Item {
             register: None,
             rect: Rect::default(),
-            pane: PANE,
+            pane: pane::PERIPHERALS,
             row,
             key: format!("svd:{}:{name}", device.name),
             name,
@@ -707,7 +714,7 @@ impl App {
         })
     }
     pub(super) fn toggle_peripheral(&mut self, expand: Option<bool>) {
-        let selected = self.selected(PANE);
+        let selected = self.selected(pane::PERIPHERALS);
         let Some(row) = self.peripherals.rows.get(selected).copied() else {
             return;
         };
@@ -734,7 +741,10 @@ impl App {
         self.selection = selected.min(self.peripherals.len().saturating_sub(1));
     }
     pub(super) fn refresh_peripheral(&mut self, engine: Option<&EngineHandle>) {
-        let Some(key) = self.peripherals.selected_register(self.selected(PANE)) else {
+        let Some(key) = self
+            .peripherals
+            .selected_register(self.selected(pane::PERIPHERALS))
+        else {
             self.notice = "Select a peripheral register, then click Refresh or press r.".into();
             return;
         };
@@ -756,7 +766,7 @@ impl App {
         false
     }
     pub(super) fn ensure_peripherals(&mut self, engine: Option<&EngineHandle>) -> bool {
-        if self.side_pane != PANE || self.view_rects[PANE].height == 0 {
+        if self.side_pane != pane::PERIPHERALS || self.view_rects[pane::PERIPHERALS].height == 0 {
             return false;
         }
         let stamp = self.view_stamp();
@@ -770,8 +780,8 @@ impl App {
             .peripherals
             .rows
             .iter()
-            .skip(self.view_tops[PANE])
-            .take(self.view_rects[PANE].height as usize)
+            .skip(self.view_tops[pane::PERIPHERALS])
+            .take(self.view_rects[pane::PERIPHERALS].height as usize)
             .filter_map(|row| match row {
                 Row::Register(p, r) | Row::Field(p, r, _) => Some((*p, *r)),
                 _ => None,
@@ -809,13 +819,13 @@ impl App {
             );
             return;
         };
-        let selected = self.selected(PANE);
+        let selected = self.selected(pane::PERIPHERALS);
         let rows: Vec<_> = self
             .peripherals
             .rows
             .iter()
             .enumerate()
-            .skip(self.view_tops[PANE])
+            .skip(self.view_tops[pane::PERIPHERALS])
             .take(rect.height as usize)
             .map(|(index, row)| {
                 let (label, value, changed, bad, stale) = match *row {
@@ -940,7 +950,7 @@ impl App {
                 let item = formats::Item {
                     register: None,
                     rect: hit,
-                    pane: PANE,
+                    pane: pane::PERIPHERALS,
                     row: index,
                     key,
                     name: label.trim().into(),

@@ -158,8 +158,18 @@ fn wide_workspace_aligns_project_core_search_and_shared_execution_toolbar() {
                 .filter(|(_, command)| !matches!(*command, "watch-access" | "edit-value"))
                 .all(|(hit, _)| hit.bottom() <= a.source_rect.y)
         );
-        let source_tab = a.pane_hits.iter().find(|(_, pane)| *pane == 0).unwrap().0;
-        let register_tab = a.pane_hits.iter().find(|(_, pane)| *pane == 3).unwrap().0;
+        let source_tab = a
+            .pane_hits
+            .iter()
+            .find(|(_, pane)| *pane == pane::SOURCE)
+            .unwrap()
+            .0;
+        let register_tab = a
+            .pane_hits
+            .iter()
+            .find(|(_, pane)| *pane == pane::REGS)
+            .unwrap()
+            .0;
         assert_eq!(source_tab.y, register_tab.y);
         assert!(a.source_rect.height >= 20);
     }
@@ -221,7 +231,7 @@ fn export_color_previews_when_requested() {
     a.open_source_list();
     capture(root, "files", &mut a, 120, 36);
     a.sources.list_open = false;
-    a.select_pane(5);
+    a.select_pane(pane::ASM);
     capture(root, "assembly", &mut a, 160, 42);
     a.open_setup();
     capture(root, "setup", &mut a, 140, 40);
@@ -230,7 +240,7 @@ fn export_color_previews_when_requested() {
     a.setup = None;
     a.project.ui.animations = crate::config::Motion::Full;
     a.fx.mode = crate::config::Motion::Full;
-    a.select_pane(0);
+    a.select_pane(pane::SOURCE);
     a.activate_source(0);
     a.source_top = 8;
     a.fx.request(400, "step");
@@ -258,7 +268,13 @@ fn export_color_previews_when_requested() {
     a.formats.appearance = true;
     capture(root, "appearance", &mut a, 100, 25);
     a.formats.appearance = false;
-    let item = a.formats.hits.iter().find(|i| i.pane == 1).unwrap().clone();
+    let item = a
+        .formats
+        .hits
+        .iter()
+        .find(|i| i.pane == pane::WATCH)
+        .unwrap()
+        .clone();
     a.open_format(Some(item));
     a.formats.index = 0;
     capture(root, "format-menu", &mut a, 110, 28);

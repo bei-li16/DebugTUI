@@ -36,7 +36,7 @@ impl App {
         self.watch_editing = false;
         self.console_view.focused = false;
         self.completion.invalidate();
-        self.select_pane(6);
+        self.select_pane(pane::BREAKS);
     }
     fn apply_break_cores(&mut self, engine: Option<&EngineHandle>) {
         let Some(e) = &self.breaks.core_editor else {
@@ -227,7 +227,7 @@ mod tests {
             enabled: true,
             ..Default::default()
         });
-        a.select_pane(6);
+        a.select_pane(pane::BREAKS);
         a
     }
     #[test]

@@ -142,7 +142,7 @@ impl App {
         }
         // Reuse the normal Watch path: selected core, current frame, persistence and errors.
         self.watch_input = expression.into();
-        self.select_pane(1);
+        self.select_pane(pane::WATCH);
         self.add_watch_input(engine);
     }
     fn source_action(&mut self, watch: bool, engine: Option<&EngineHandle>) {
@@ -173,7 +173,10 @@ impl App {
             }
             return true;
         }
-        if self.pane != 0 || self.main_pane != 0 || self.input_active() || self.console_view.focused
+        if self.pane != pane::SOURCE
+            || self.main_pane != pane::SOURCE
+            || self.input_active()
+            || self.console_view.focused
         {
             return false;
         }
@@ -421,7 +424,7 @@ impl App {
                 _ => {}
             }
         }
-        if self.main_pane != 0 || self.source.is_empty() {
+        if self.main_pane != pane::SOURCE || self.source.is_empty() {
             return false;
         }
         if !self.source_text.area.contains(point) {
@@ -434,7 +437,7 @@ impl App {
         if !matches!(mouse.kind, MouseEventKind::Down(Left | Right)) {
             return false;
         }
-        self.select_pane(0);
+        self.select_pane(pane::SOURCE);
         self.editing = false;
         self.watch_editing = false;
         self.console_view.focused = false;
@@ -474,7 +477,7 @@ impl App {
 }
 
 pub(super) fn button_width(a: &App, rect: Rect) -> u16 {
-    if a.main_pane == 0 && rect.width >= 62 {
+    if a.main_pane == pane::SOURCE && rect.width >= 62 {
         27
     } else {
         0

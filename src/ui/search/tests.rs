@@ -66,7 +66,7 @@ fn files_filter_uses_matched_indices_for_keyboard_mouse_and_scrolling() {
     ]
     .map(str::to_owned)
     .into();
-    a.select_pane(7);
+    a.select_pane(pane::FILES);
     render(&mut a, 120, 36);
     let area = a.file_search.area;
     click(&mut a, area);
@@ -78,14 +78,14 @@ fn files_filter_uses_matched_indices_for_keyboard_mouse_and_scrolling() {
         assert!(text.contains(file));
     }
     assert!(!text.contains("main.c"));
-    assert_eq!(a.view_len(7), 4);
+    assert_eq!(a.view_len(pane::FILES), 4);
     key(&mut a, KeyCode::Down);
     key(&mut a, KeyCode::Enter);
     assert_eq!(a.source_file, "drivers/Spi_Irq.c");
-    assert_eq!(a.pane, 0);
-    a.select_pane(7);
+    assert_eq!(a.pane, pane::SOURCE);
+    a.select_pane(pane::FILES);
     render(&mut a, 120, 36);
-    let rows = a.view_rects[7];
+    let rows = a.view_rects[pane::FILES];
     click(
         &mut a,
         Rect {
@@ -94,7 +94,7 @@ fn files_filter_uses_matched_indices_for_keyboard_mouse_and_scrolling() {
         },
     );
     assert_eq!(a.source_file, "drivers/espi_std.c");
-    a.select_pane(7);
+    a.select_pane(pane::FILES);
     a.key(
         KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
         None,
@@ -108,7 +108,7 @@ fn files_filter_uses_matched_indices_for_keyboard_mouse_and_scrolling() {
     a.search_paste("unmatched\nvalue");
     assert!(render(&mut a, 120, 36).contains("No matching files"));
     key(&mut a, KeyCode::Enter);
-    assert_eq!(a.pane, 7);
+    assert_eq!(a.pane, pane::FILES);
     assert_eq!(a.source_file, "drivers/espi_std.c");
 }
 
@@ -116,7 +116,7 @@ fn files_filter_uses_matched_indices_for_keyboard_mouse_and_scrolling() {
 fn filtering_does_not_dispatch_letter_shortcuts_and_leaving_restores_input() {
     let (engine, requests) = session::test_channel();
     let mut a = App::new(Project::default(), false);
-    a.select_pane(7);
+    a.select_pane(pane::FILES);
     a.key(
         KeyEvent::new(KeyCode::Char('f'), KeyModifiers::CONTROL),
         Some(&engine),
@@ -132,7 +132,7 @@ fn filtering_does_not_dispatch_letter_shortcuts_and_leaving_restores_input() {
     assert!(requests.try_recv().is_err());
     key(&mut a, KeyCode::Tab);
     assert!(!a.file_search.editing);
-    assert_ne!(a.pane, 7);
+    assert_ne!(a.pane, pane::FILES);
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn long_ci_paths_keep_the_matching_filename_visible() {
         "long-workspace/".repeat(14)
     )]
     .into();
-    a.select_pane(7);
+    a.select_pane(pane::FILES);
     a.file_search.query = "spi".into();
     assert!(render(&mut a, 80, 24).contains("Spi_Irq.c"));
     key(&mut a, KeyCode::Enter);
@@ -153,7 +153,7 @@ fn long_ci_paths_keep_the_matching_filename_visible() {
 #[test]
 fn other_dialogs_own_paste_when_file_search_was_focused() {
     let mut a = App::new(Project::default(), false);
-    a.select_pane(7);
+    a.select_pane(pane::FILES);
     a.file_search.editing = true;
     a.open_help(false);
     assert!(!a.search_paste("unrelated command"));
@@ -283,8 +283,8 @@ fn files_load_from_ready_elf_without_requesting_target_memory_or_registers() {
     let (engine, requests) = session::test_channel();
     let mut a = App::new(Project::default(), false);
     a.snapshot.state = "READY".into();
-    a.select_pane(7);
-    a.side_pane = 4;
+    a.select_pane(pane::FILES);
+    a.side_pane = pane::MEMORY;
     render(&mut a, 120, 36);
     assert!(a.ensure_visible_data(Some(&engine)));
     assert_eq!(requests.try_recv().unwrap().method, "files");
@@ -304,7 +304,7 @@ fn search_layout_supports_narrow_terminals_and_exports_previews() {
     .map(str::to_owned)
     .into();
     for (w, h) in [(45, 12), (80, 24), (120, 36)] {
-        a.select_pane(7);
+        a.select_pane(pane::FILES);
         a.file_search.query = "spi".into();
         let files = render(&mut a, w, h);
         assert!(files.contains("Find:"));

@@ -116,8 +116,8 @@ impl App {
     }
     pub(super) fn numeric_key(&self, pane: usize, name: &str) -> String {
         match pane {
-            1 => format!("watch:{name}"),
-            9 => {
+            pane::WATCH => format!("watch:{name}"),
+            pane::LOCALS => {
                 let mut file = crate::config::portable_path(Path::new(&self.snapshot.frame.file));
                 let mut root = crate::config::portable_path(&self.project.program.source_root);
                 if cfg!(windows) {
@@ -149,7 +149,10 @@ impl App {
         }
     }
     pub(super) fn open_format(&mut self, item: Option<Item>) {
-        if item.is_none() && self.pane == 1 && self.watch_item(self.selected(1)).is_none() {
+        if item.is_none()
+            && self.pane == pane::WATCH
+            && self.watch_item(self.selected(pane::WATCH)).is_none()
+        {
             self.notice = "Select a Watch value to change its display format.".into();
             return;
         }
@@ -193,16 +196,16 @@ impl App {
     fn selected_numeric_item(&self) -> Option<Item> {
         let pane = self.pane;
         let row = self.selected(pane);
-        if matches!(pane, 1 | 9) {
+        if matches!(pane, pane::WATCH | pane::LOCALS) {
             return self.variable_item(pane, row);
         }
-        if pane == 3 && self.register_view.enabled() {
+        if pane == pane::REGS && self.register_view.enabled() {
             return self.register_format_item(row);
         }
-        if pane == 10 {
+        if pane == pane::PERIPHERALS {
             return self.peripheral_format_item(row);
         }
-        if pane == 4 {
+        if pane == pane::MEMORY {
             let (address, raw) = self
                 .memory_tokens()
                 .nth(row * self.memory_columns())
@@ -219,9 +222,9 @@ impl App {
             });
         }
         let vars = match pane {
-            1 => &self.snapshot.watches,
-            9 => &self.snapshot.locals,
-            3 => &self.snapshot.registers,
+            pane::WATCH => &self.snapshot.watches,
+            pane::LOCALS => &self.snapshot.locals,
+            pane::REGS => &self.snapshot.registers,
             _ => return None,
         };
         let v = vars.get(row)?;
@@ -233,7 +236,7 @@ impl App {
             key: self.numeric_key(pane, &v.name),
             name: v.name.clone(),
             raw: v.value.clone(),
-            default: if pane == 3 {
+            default: if pane == pane::REGS {
                 Radix::Hex
             } else {
                 Radix::Decimal
@@ -373,7 +376,7 @@ impl App {
                 return true;
             }
             // Peripheral left-click keeps expansion; other numeric cells simply select.
-            if item.pane != 10 {
+            if item.pane != pane::PERIPHERALS {
                 self.editing = false;
                 self.watch_editing = false;
                 self.completion.invalidate();
@@ -440,7 +443,7 @@ impl App {
         spans
     }
     pub(super) fn numeric_view(&mut self, f: &mut UiFrame, pane: usize, rect: Rect) {
-        if matches!(pane, 1 | 9) {
+        if matches!(pane, pane::WATCH | pane::LOCALS) {
             self.watch_numeric_view(f, pane, rect);
             return;
         }
@@ -489,7 +492,7 @@ impl App {
         }
     }
     pub(super) fn memory_columns(&self) -> usize {
-        (self.view_rects[4].width.saturating_sub(12) as usize / 12).clamp(1, 16)
+        (self.view_rects[pane::MEMORY].width.saturating_sub(12) as usize / 12).clamp(1, 16)
     }
     /// Address and hex digits of each sampled byte, borrowed from the sample.
     fn memory_tokens(&self) -> impl Iterator<Item = (u64, &str)> + '_ {
@@ -511,7 +514,7 @@ impl App {
     }
     pub(super) fn memory_view(&mut self, f: &mut UiFrame, rect: Rect) {
         let cols = self.memory_columns();
-        let top = self.view_tops[4];
+        let top = self.view_tops[pane::MEMORY];
         // Format only the visible rows of the sample.
         let bytes: Vec<(u64, String)> = self
             .memory_tokens()
@@ -535,7 +538,7 @@ impl App {
                 let item = Item {
                     register: None,
                     rect: Rect::new(x, y, 12.min(rect.right() - x), 1),
-                    pane: 4,
+                    pane: pane::MEMORY,
                     row,
                     key: format!("memory:{address:x}"),
                     name: format!("Byte at 0x{address:x}"),
@@ -630,7 +633,7 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
             a.formats.menu_hits.push((hit, i));
         }
         a.formats.refresh_rect = Rect::default();
-        if matches!(item.pane, 1 | 10) {
+        if matches!(item.pane, pane::WATCH | pane::PERIPHERALS) {
             let hit = Rect::new(inner.x + 1, inner.y + 6, inner.width.saturating_sub(2), 1);
             f.render_widget(
                 Paragraph::new("r  Memory access / Live refresh…")
@@ -726,14 +729,14 @@ mod tests {
     fn per_item_menu_defaults_scope_and_keyboard_do_not_send_debug_commands() {
         let (engine, requests) = session::test_channel();
         let mut a = App::new(Project::default(), true);
-        a.select_pane(3);
+        a.select_pane(pane::REGS);
         a.key(
             KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE),
             Some(&engine),
         );
         assert_eq!(a.formats.popup.as_ref().unwrap().name, "pc"); // No rendered hit regions yet.
         a.formats.popup = None;
-        a.select_pane(0);
+        a.select_pane(pane::SOURCE);
         let text = render(&mut a, 160, 42);
         assert!(text.contains("15679512")); // Watch checksum default decimal.
         assert!(text.contains("0x800068c")); // Register PC default hex.
@@ -770,7 +773,7 @@ mod tests {
         assert_eq!(a.snapshot.watches[0].value, original.watches[0].value);
         assert_eq!(a.base_for("watch:flag", Radix::Decimal), Radix::Decimal);
         assert!(render(&mut a, 160, 42).contains("0x3039"));
-        a.select_pane(3);
+        a.select_pane(pane::REGS);
         a.selection = 0;
         a.formats.selected = None;
         a.key(
@@ -818,7 +821,7 @@ mod tests {
     #[test]
     fn memory_byte_formats_and_long_values_have_accessible_preview() {
         let mut a = App::new(Project::default(), true);
-        a.select_pane(4);
+        a.select_pane(pane::MEMORY);
         a.snapshot.memory =
             vec!["20000000  ff 08 00 01 7f 80 09 aa bb cc dd ee 22 33 44 55".into()];
         render(&mut a, 160, 42);
@@ -833,10 +836,16 @@ mod tests {
         a.formats.index = 0;
         a.apply_format(None);
         assert!(render(&mut a, 160, 42).contains("0b1000"));
-        a.select_pane(3);
+        a.select_pane(pane::REGS);
         a.snapshot.registers[0].value = u128::MAX.to_string();
         render(&mut a, 160, 42);
-        let item = a.formats.hits.iter().find(|i| i.pane == 3).unwrap().clone();
+        let item = a
+            .formats
+            .hits
+            .iter()
+            .find(|i| i.pane == pane::REGS)
+            .unwrap()
+            .clone();
         a.open_format(Some(item));
         a.formats.index = 0;
         let text = render(&mut a, 100, 24);

@@ -74,8 +74,8 @@ fn pane_label(pane: usize, width: u16) -> &'static str {
     // Keep all Inspector tabs on one row in the ordinary 160-column layout.
     // The section title below still spells out the selected view's full name.
     match pane {
-        3 if width < 60 => "Regs",
-        10 if width < 60 => "Periph",
+        pane::REGS if width < 60 => "Regs",
+        pane::PERIPHERALS if width < 60 => "Periph",
         _ => PANES[pane],
     }
 }
@@ -189,7 +189,7 @@ fn scrollbar(f: &mut UiFrame, a: &App, pane: usize) {
 fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
     let rect = viewport(a, pane, rect);
     let max = a.view_len(pane).saturating_sub(rect.height as usize);
-    a.view_tops[pane] = if pane == 8 && a.log_follow {
+    a.view_tops[pane] = if pane == pane::LOG && a.log_follow {
         max
     } else {
         a.view_tops[pane].min(max)
@@ -197,11 +197,11 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
     let selection = a.selected(pane);
     let start = a.view_tops[pane];
     scrollbar(f, a, pane);
-    if pane == peripherals::PANE {
+    if pane == pane::PERIPHERALS {
         a.draw_peripherals(f, rect);
         return;
     }
-    if pane == 3 && a.register_view.enabled() {
+    if pane == pane::REGS && a.register_view.enabled() {
         a.draw_registers(f, rect);
         return;
     }
@@ -216,37 +216,37 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
     }
     if a.view_len(pane) == 0 {
         let (title, hint) = match pane {
-            1 => (
+            pane::WATCH => (
                 "No watches yet",
                 "Enter a variable below, then click + Add.",
             ),
-            9 => (
+            pane::LOCALS => (
                 "No locals in this frame",
                 "Select a stopped frame to inspect its variables.",
             ),
-            6 => ("No breakpoints", "+ Code / + Data above, or F9 in Source"),
-            7 if !a.snapshot.files.is_empty() => (
+            pane::BREAKS => ("No breakpoints", "+ Code / + Data above, or F9 in Source"),
+            pane::FILES if !a.snapshot.files.is_empty() => (
                 "No matching files",
                 "Edit Find above; Ctrl+U clears the filter.",
             ),
-            7 => (
+            pane::FILES => (
                 "Source files",
                 "Connect to GDB to load the source file list.",
             ),
-            2 => ("Call stack", "Pause the target to inspect its frames."),
-            3 => ("Registers", "Connect and pause to inspect register values."),
-            4 => (
+            pane::STACK => ("Call stack", "Pause the target to inspect its frames."),
+            pane::REGS => ("Registers", "Connect and pause to inspect register values."),
+            pane::MEMORY => (
                 "Memory range",
                 "Memory access selects the range and channel; Read obtains a sample.",
             ),
-            5 if a.snapshot.state == "RUNNING" => {
+            pane::ASM if a.snapshot.state == "RUNNING" => {
                 ("Target running", "Pause the target to load this view.")
             }
-            5 if a.snapshot.state == "STOPPED" => (
+            pane::ASM if a.snapshot.state == "STOPPED" => (
                 "Reading from GDB…",
                 "The view will update when the request completes.",
             ),
-            5 => (
+            pane::ASM => (
                 "Waiting for target",
                 "Connect and stop the target to load this view.",
             ),
@@ -255,16 +255,16 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
         theme::empty(f, rect, title, hint);
         return;
     }
-    if matches!(pane, 1 | 3 | 9) {
+    if matches!(pane, pane::WATCH | pane::REGS | pane::LOCALS) {
         a.numeric_view(f, pane, rect);
         return;
     }
-    if pane == 4 {
+    if pane == pane::MEMORY {
         a.memory_view(f, rect);
         return;
     }
     let lines: Vec<Line> = match pane {
-        2 => a
+        pane::STACK => a
             .snapshot
             .stack
             .iter()
@@ -284,8 +284,8 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                 )
             })
             .collect(),
-        4 | 5 => {
-            let values = if pane == 4 {
+        pane::MEMORY | pane::ASM => {
+            let values = if pane == pane::MEMORY {
                 &a.snapshot.memory
             } else {
                 &a.snapshot.assembly
@@ -305,7 +305,7 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                     .skip(start)
                     .take(rect.height as usize)
                     .map(|s| {
-                        let current = pane == 5
+                        let current = pane == pane::ASM
                             && s.split_whitespace().next().is_some_and(|address| {
                                 u64::from_str_radix(address.trim_start_matches("0x"), 16)
                                     .ok()
@@ -318,13 +318,13 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                                     )
                                     .is_some_and(|(left, right)| left == right)
                             });
-                        data_line(s, current, pane == 5)
+                        data_line(s, current, pane == pane::ASM)
                     })
                     .collect()
             }
         }
-        6 => breakpoints::rows(a, start, rect.height as usize),
-        7 => a
+        pane::BREAKS => breakpoints::rows(a, start, rect.height as usize),
+        pane::FILES => a
             .filtered_files()
             .iter()
             .copied()
@@ -357,7 +357,7 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
 }
 
 fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
-    a.source_rect = viewport(a, 0, rect);
+    a.source_rect = viewport(a, pane::SOURCE, rect);
     let max = a.source.len().saturating_sub(rect.height as usize);
     a.source_top = a.source_top.min(max);
     if rect.height > 0 {
@@ -371,7 +371,7 @@ fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
         }
     }
     if a.source.is_empty() {
-        scrollbar(f, a, 0);
+        scrollbar(f, a, pane::SOURCE);
         let message = if a.sources.active.is_some() {
             "This source file is empty.".into()
         } else if a.snapshot.state == "STOPPED"
@@ -484,7 +484,7 @@ fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
             .scroll((0, a.source_text.left.min(u16::MAX as usize) as u16)),
             text_rect,
         );
-        if a.pane == 0
+        if a.pane == pane::SOURCE
             && !a.input_active()
             && !a.console_view.focused
             && range.is_none()
@@ -497,7 +497,7 @@ fn source(f: &mut UiFrame, a: &mut App, rect: Rect) {
             }
         }
     }
-    scrollbar(f, a, 0);
+    scrollbar(f, a, pane::SOURCE);
 }
 
 fn execution_actions(a: &App, short: bool) -> Vec<(&'static str, &'static str)> {
@@ -580,9 +580,9 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect, shared_actions: bool) {
     }
     source_text::buttons(f, a, rows[0]);
     let title = match a.main_pane {
-        0 => String::new(),
-        5 => " Assembly · follows $pc · :disasm ADDRESS ".into(),
-        7 => format!(
+        pane::SOURCE => String::new(),
+        pane::ASM => " Assembly · follows $pc · :disasm ADDRESS ".into(),
+        pane::FILES => format!(
             " Files · {} / {} · Enter opens ",
             a.filtered_files().len(),
             a.snapshot.files.len()
@@ -603,7 +603,7 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect, shared_actions: bool) {
     ));
     let inner = block.inner(rows[2]);
     f.render_widget(block, rows[2]);
-    if a.main_pane == 0 {
+    if a.main_pane == pane::SOURCE {
         source_tabs::draw_tabs(
             f,
             a,
@@ -613,13 +613,13 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect, shared_actions: bool) {
             },
         );
         source(f, a, inner);
-    } else if a.main_pane == 7 {
+    } else if a.main_pane == pane::FILES {
         let height = if inner.height >= 10 { 3 } else { 1 };
         let rows =
             Layout::vertical([Constraint::Length(height), Constraint::Min(0)]).split_cached(inner);
         search::file_bar(f, a, rows[0]);
-        view(f, a, 7, rows[1]);
-        a.source_rect = a.view_rects[7];
+        view(f, a, pane::FILES, rows[1]);
+        a.source_rect = a.view_rects[pane::FILES];
     } else {
         view(f, a, a.main_pane, inner);
         a.source_rect = a.view_rects[a.main_pane];
@@ -646,7 +646,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool, variables
         // Reserve the input frame's two border rows without hiding Watch values.
         height + if height >= 8 { 2 } else { 0 } + button_height - 1
             + u16::from(button_height == 3)
-            + u16::from(a.variable_pane == 1)
+            + u16::from(a.variable_pane == pane::WATCH)
     } else {
         0
     };
@@ -658,12 +658,12 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool, variables
     .split_cached(rect);
     tabs(f, a, rows[0], &SIDE_PANES, a.side_pane, button_height);
     let title = match a.side_pane {
-        2 => " Stack · click / Enter selects frame ",
-        3 => " System registers ",
-        4 => " Memory ",
+        pane::STACK => " Stack · click / Enter selects frame ",
+        pane::REGS => " System registers ",
+        pane::MEMORY => " Memory ",
         _ => " Breakpoints · Space toggle · e edit ",
     };
-    let title = if a.side_pane == peripherals::PANE {
+    let title = if a.side_pane == pane::PERIPHERALS {
         a.peripheral_title()
     } else {
         title.to_owned()
@@ -677,7 +677,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool, variables
     ));
     let mut inner = block.inner(rows[1]);
     f.render_widget(block, rows[1]);
-    if a.side_pane == 4 && inner.height > 0 {
+    if a.side_pane == pane::MEMORY && inner.height > 0 {
         let access = if inner.width < 27 {
             "Access"
         } else {
@@ -709,7 +709,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool, variables
         inner.y += detail_height;
         inner.height -= detail_height;
     }
-    if a.side_pane == 6 && inner.height > 2 {
+    if a.side_pane == pane::BREAKS && inner.height > 2 {
         let labels: Vec<_> = breakpoints::ACTIONS
             .iter()
             .map(|(label, _)| *label)
@@ -733,7 +733,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool, variables
         );
         inner.height -= 1;
     }
-    if a.side_pane == peripherals::PANE && inner.height > 1 {
+    if a.side_pane == pane::PERIPHERALS && inner.height > 1 {
         let height = wrapped_height(
             &["Memory access", "↻ Read", "Edit value"],
             inner.width,
@@ -742,7 +742,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool, variables
         .min(inner.height.saturating_sub(1));
         a.write_editor.entry_hits.push((
             Rect::new(inner.x, inner.y, inner.width, height),
-            peripherals::PANE,
+            pane::PERIPHERALS,
         ));
         toolbar(
             f,
@@ -758,21 +758,21 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool, variables
         inner.y += height;
         inner.height -= height;
     }
-    if a.side_pane == peripherals::PANE && inner.height > 1 {
-        let selected = if a.pane == peripherals::PANE {
+    if a.side_pane == pane::PERIPHERALS && inner.height > 1 {
+        let selected = if a.pane == pane::PERIPHERALS {
             a.selection
         } else {
-            a.selections[peripherals::PANE]
+            a.selections[pane::PERIPHERALS]
         };
         f.render_widget(
-            Paragraph::new(a.access_caption(peripherals::PANE, selected))
+            Paragraph::new(a.access_caption(pane::PERIPHERALS, selected))
                 .style(Style::default().fg(theme::MUTED)),
             Rect::new(inner.x, inner.y, inner.width, 1),
         );
         inner.y += 1;
         inner.height -= 1;
     }
-    if a.side_pane == 3 && a.register_view.enabled() && inner.height > 2 {
+    if a.side_pane == pane::REGS && a.register_view.enabled() && inner.height > 2 {
         let height = wrapped_height(&a.register_action_labels(), inner.width, 1)
             .min(inner.height.saturating_sub(2));
         a.write_editor
@@ -800,7 +800,7 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     let divider = section("");
     let inner = divider.inner(rect);
     f.render_widget(divider, rect);
-    let watch = a.variable_pane == 1;
+    let watch = a.variable_pane == pane::WATCH;
     let tab_height = if inner.height >= 11 + u16::from(watch) {
         control_height(f)
     } else {
@@ -855,13 +855,14 @@ fn variable_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
             ],
             1,
         );
-        let selected = if a.pane == 1 {
+        let selected = if a.pane == pane::WATCH {
             a.selection
         } else {
-            a.selections[1]
+            a.selections[pane::WATCH]
         };
         f.render_widget(
-            Paragraph::new(a.access_caption(1, selected)).style(Style::default().fg(theme::MUTED)),
+            Paragraph::new(a.access_caption(pane::WATCH, selected))
+                .style(Style::default().fg(theme::MUTED)),
             Rect::new(
                 rows[1].x + width,
                 rows[1].y,

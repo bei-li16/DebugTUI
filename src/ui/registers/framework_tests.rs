@@ -412,7 +412,9 @@ fn native_selector_failures_keep_distinct_reasons_and_the_original_debug_proof()
                     theme::MUTED
                 );
                 if width == 100 {
-                    assert!(row_text(&terminal, app.view_rects[3].y).contains("0x2001001b"));
+                    assert!(
+                        row_text(&terminal, app.view_rects[pane::REGS].y).contains("0x2001001b")
+                    );
                 }
                 save_render(&format!("native-selector-{reason:?}-{width}"), &terminal);
             }
@@ -449,7 +451,7 @@ fn register_columns_keep_size_access_and_value_hits_visible_for_long_names_and_1
             let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
             terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
             save_render(&format!("register-columns-{bits}-{width}"), &terminal);
-            let y = app.view_rects[3].y;
+            let y = app.view_rects[pane::REGS].y;
             let rendered = row_text(&terminal, y);
             assert!(rendered.contains("客户"), "{rendered}");
             assert!(rendered.contains(" = 0x"), "{rendered}");
@@ -495,7 +497,7 @@ fn register_field_columns_and_details_use_the_field_width_and_access_override() 
         );
         let mut terminal = Terminal::new(TestBackend::new(width, 12)).unwrap();
         terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
-        let y = app.view_rects[3].y;
+        let y = app.view_rects[pane::REGS].y;
         assert!(row_text(&terminal, y).contains("0x13"));
         assert!(text(&terminal).contains("5 bits RO"));
         assert!(!text(&terminal).contains("32 bits RW"));
@@ -606,7 +608,7 @@ fn register_change_highlight_compares_same_owner_and_field_bits_only_after_valid
             Row::Field(cpsr, c, 2),
         ];
         app.selection = 0;
-        app.view_tops[3] = 0;
+        app.view_tops[pane::REGS] = 0;
         assert!(app.request_registers(Some(&engine), vec!["cpsr".into()], true));
         let request = requests.try_recv().unwrap();
         assert_eq!(request.method, "registers_read");
@@ -615,7 +617,7 @@ fn register_change_highlight_compares_same_owner_and_field_bits_only_after_valid
         assert!(app.register_response(request.id, &json!({"samples":[next]}), None));
         terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
         let buffer = terminal.backend().buffer();
-        let y = app.view_rects[3].y;
+        let y = app.view_rects[pane::REGS].y;
         assert_eq!(buffer[(6, y)].fg, expected, "step {step}");
         assert_eq!(buffer[(6, y + 1)].fg, expected, "N at step {step}");
         assert_eq!(
@@ -629,7 +631,7 @@ fn register_change_highlight_compares_same_owner_and_field_bits_only_after_valid
     app.snapshot.state = "RUNNING".into();
     terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
     assert_eq!(
-        terminal.backend().buffer()[(6, app.view_rects[3].y)].fg,
+        terminal.backend().buffer()[(6, app.view_rects[pane::REGS].y)].fg,
         theme::MUTED
     );
     assert_eq!(
@@ -665,25 +667,25 @@ fn register_tree_keyboard_mouse_scroll_and_description_filters_only_save_prefere
     terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
     let before = app.selection;
     key(&mut app, KeyCode::PageDown, &engine);
-    assert!(app.selection > before && app.view_tops[3] > 0);
+    assert!(app.selection > before && app.view_tops[pane::REGS] > 0);
     app.mouse(
         MouseEvent {
             kind: MouseEventKind::ScrollUp,
             column: 1,
-            row: app.view_rects[3].y,
+            row: app.view_rects[pane::REGS].y,
             modifiers: KeyModifiers::NONE,
         },
         Some(&engine),
     );
-    assert!(app.view_tops[3] < app.selection);
+    assert!(app.view_tops[pane::REGS] < app.selection);
     let quad = group_row(&app, "quad");
-    app.view_tops[3] = quad;
+    app.view_tops[pane::REGS] = quad;
     terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
     app.mouse(
         MouseEvent {
             kind: MouseEventKind::Down(event::MouseButton::Left),
             column: 2,
-            row: app.view_rects[3].y,
+            row: app.view_rects[pane::REGS].y,
             modifiers: KeyModifiers::NONE,
         },
         Some(&engine),

@@ -47,6 +47,20 @@ const PANES: [&str; 11] = [
     "Locals",
     "Peripherals",
 ];
+/// Panel indices into `PANES` and every per-panel array.
+mod pane {
+    pub(super) const SOURCE: usize = 0;
+    pub(super) const WATCH: usize = 1;
+    pub(super) const STACK: usize = 2;
+    pub(super) const REGS: usize = 3;
+    pub(super) const MEMORY: usize = 4;
+    pub(super) const ASM: usize = 5;
+    pub(super) const BREAKS: usize = 6;
+    pub(super) const FILES: usize = 7;
+    pub(super) const LOG: usize = 8;
+    pub(super) const LOCALS: usize = 9;
+    pub(super) const PERIPHERALS: usize = 10;
+}
 mod breakpoints;
 mod completion;
 mod console;
@@ -73,11 +87,29 @@ pub use render::draw;
 use source_tabs::SourceTabs;
 use theme::section;
 
-const MAIN_PANES: [usize; 4] = [0, 5, 7, 8];
-const SIDE_PANES: [usize; 5] = [3, 10, 2, 4, 6];
-const VARIABLE_PANES: [usize; 2] = [1, 9];
+const MAIN_PANES: [usize; 4] = [pane::SOURCE, pane::ASM, pane::FILES, pane::LOG];
+const SIDE_PANES: [usize; 5] = [
+    pane::REGS,
+    pane::PERIPHERALS,
+    pane::STACK,
+    pane::MEMORY,
+    pane::BREAKS,
+];
+const VARIABLE_PANES: [usize; 2] = [pane::WATCH, pane::LOCALS];
 /// Tab order; Alt+1..9, Alt+0 and Alt+- jump to these views directly.
-const PANE_ORDER: [usize; 11] = [0, 5, 7, 8, 3, 10, 2, 4, 6, 1, 9];
+const PANE_ORDER: [usize; 11] = [
+    pane::SOURCE,
+    pane::ASM,
+    pane::FILES,
+    pane::LOG,
+    pane::REGS,
+    pane::PERIPHERALS,
+    pane::STACK,
+    pane::MEMORY,
+    pane::BREAKS,
+    pane::WATCH,
+    pane::LOCALS,
+];
 fn pane_shortcut(key: &KeyEvent) -> Option<usize> {
     if key.modifiers != KeyModifiers::ALT {
         return None;
@@ -346,10 +378,10 @@ impl App {
             register_view: registers::RegisterView::load(&project),
             project,
             snapshot: Snapshot::default(),
-            pane: 0,
-            main_pane: 0,
-            side_pane: 3,
-            variable_pane: 1,
+            pane: pane::SOURCE,
+            main_pane: pane::SOURCE,
+            side_pane: pane::REGS,
+            variable_pane: pane::WATCH,
             selections: [0; 11],
             selection: 0,
             source: vec![],
@@ -553,7 +585,7 @@ impl App {
         }
         if self.logs.len() >= 1000 {
             self.logs.pop_front();
-            self.view_tops[8] = self.view_tops[8].saturating_sub(1);
+            self.view_tops[pane::LOG] = self.view_tops[pane::LOG].saturating_sub(1);
         }
         self.logs.push_back(text);
     }
@@ -711,9 +743,9 @@ impl App {
                     }
                     if ok {
                         let bottom = self
-                            .view_len(1)
-                            .saturating_sub(self.view_rects[1].height as usize);
-                        self.set_view_top(1, bottom);
+                            .view_len(pane::WATCH)
+                            .saturating_sub(self.view_rects[pane::WATCH].height as usize);
+                        self.set_view_top(pane::WATCH, bottom);
                     }
                 }
                 let background_view = self.pending_view.is_some_and(|(pending, _)| pending == id);
@@ -731,7 +763,7 @@ impl App {
                 if let Some((pending, pane)) = self.pending_view
                     && pending == id
                 {
-                    self.view_errors[pane] = if ok || pane == peripherals::PANE {
+                    self.view_errors[pane] = if ok || pane == pane::PERIPHERALS {
                         None
                     } else {
                         error.clone()
@@ -889,10 +921,10 @@ impl App {
                 self.submit(engine, name, json!({}))
             }
             "peripheral-refresh" => self.refresh_peripheral(engine),
-            "watch-access" => { self.select_pane(1); self.open_monitor(1, self.selection); }
-            "peripheral-access" => { self.select_pane(peripherals::PANE); self.open_monitor(peripherals::PANE, self.selection); }
-            "memory-access" => { self.select_pane(4); self.open_memory_access(); }
-            "memory-refresh" => { self.select_pane(4); self.request_memory_dump(engine, true); }
+            "watch-access" => { self.select_pane(pane::WATCH); self.open_monitor(pane::WATCH, self.selection); }
+            "peripheral-access" => { self.select_pane(pane::PERIPHERALS); self.open_monitor(pane::PERIPHERALS, self.selection); }
+            "memory-access" => { self.select_pane(pane::MEMORY); self.open_memory_access(); }
+            "memory-refresh" => { self.select_pane(pane::MEMORY); self.request_memory_dump(engine, true); }
             "select_core" | "core" => {
                 let params = match arg.parse::<usize>() {
                     Ok(index) => json!({"index":index}),
@@ -926,20 +958,20 @@ impl App {
                 self.memory_command(engine, arg);
             }
             "disasm" => {
-                self.select_pane(5);
-                self.view_stamps[5] = Some(self.view_stamp());
+                self.select_pane(pane::ASM);
+                self.view_stamps[pane::ASM] = Some(self.view_stamp());
                 self.submit(engine, "disassemble", json!({"address":arg}));
             }
             "symbols" => self.open_symbol_search(),
             "files" => {
-                self.select_pane(7);
-                self.view_stamps[7] = Some("files".into());
+                self.select_pane(pane::FILES);
+                self.view_stamps[pane::FILES] = Some("files".into());
                 self.submit(engine, "files", json!({}));
             }
             "open" => {
                 let path = unquote(arg);
                 self.load_source(&path);
-                self.select_pane(0);
+                self.select_pane(pane::SOURCE);
             }
             "find" => {
                 if !arg.is_empty() {
@@ -951,7 +983,7 @@ impl App {
                         self.source_line = index;
                         self.source_top = index.saturating_sub(4);
                         self.source_text.reset(index);
-                        self.select_pane(0);
+                        self.select_pane(pane::SOURCE);
                         self.notice = format!("Found {arg} at line {}", index + 1);
                     } else {
                         self.notice = format!("No match: {arg}");
@@ -1001,7 +1033,7 @@ impl App {
     fn move_selection(&mut self, delta: isize) {
         self.formats.selected = None;
         self.fx.trigger(format!("scroll:{}", self.pane), 650);
-        if self.pane == 0 {
+        if self.pane == pane::SOURCE {
             self.source_line = self
                 .source_line
                 .saturating_add_signed(delta)
@@ -1013,7 +1045,17 @@ impl App {
             if self.source_line >= self.source_top + height {
                 self.source_top = self.source_line + 1 - height;
             }
-        } else if matches!(self.pane, 1 | 2 | 3 | 4 | 6 | 7 | 9 | 10) {
+        } else if matches!(
+            self.pane,
+            pane::WATCH
+                | pane::STACK
+                | pane::REGS
+                | pane::MEMORY
+                | pane::BREAKS
+                | pane::FILES
+                | pane::LOCALS
+                | pane::PERIPHERALS
+        ) {
             let max = self.view_len(self.pane);
             self.selection = self
                 .selection
@@ -1155,7 +1197,7 @@ impl App {
                     self.cycle_source(1);
                     return false;
                 }
-                KeyCode::Char('w') if self.main_pane == 0 => {
+                KeyCode::Char('w') if self.main_pane == pane::SOURCE => {
                     if let Some(index) = self.sources.active {
                         self.close_source(index);
                     }
@@ -1178,10 +1220,13 @@ impl App {
             self.input_key(key, engine);
             return false;
         }
-        if self.pane == 6 && !self.console_view.focused && self.break_panel_key(key, engine) {
+        if self.pane == pane::BREAKS
+            && !self.console_view.focused
+            && self.break_panel_key(key, engine)
+        {
             return false;
         }
-        if self.pane == 3 && !self.console_view.focused && self.register_key(key, engine) {
+        if self.pane == pane::REGS && !self.console_view.focused && self.register_key(key, engine) {
             return false;
         }
         if let Some(pane) = pane_shortcut(&key) {
@@ -1195,7 +1240,11 @@ impl App {
             KeyCode::Char('z') if key.modifiers.is_empty() => self.zoom = !self.zoom,
             KeyCode::Char('f') if key.modifiers.is_empty() => self.open_format(None),
             KeyCode::Char('e')
-                if key.modifiers.is_empty() && matches!(self.pane, 1 | 3 | 4 | 9 | 10) =>
+                if key.modifiers.is_empty()
+                    && matches!(
+                        self.pane,
+                        pane::WATCH | pane::REGS | pane::MEMORY | pane::LOCALS | pane::PERIPHERALS
+                    ) =>
             {
                 self.open_edit_value()
             }
@@ -1246,19 +1295,19 @@ impl App {
                 self.cycle_pane(-1);
             }
             KeyCode::Down => self.move_selection(1),
-            KeyCode::Char('r') if self.pane == peripherals::PANE => self.refresh_peripheral(engine),
-            KeyCode::Left if self.pane == peripherals::PANE => self.toggle_peripheral(Some(false)),
-            KeyCode::Right if self.pane == peripherals::PANE => self.toggle_peripheral(Some(true)),
-            KeyCode::Left if self.pane == 1 => {
+            KeyCode::Char('r') if self.pane == pane::PERIPHERALS => self.refresh_peripheral(engine),
+            KeyCode::Left if self.pane == pane::PERIPHERALS => self.toggle_peripheral(Some(false)),
+            KeyCode::Right if self.pane == pane::PERIPHERALS => self.toggle_peripheral(Some(true)),
+            KeyCode::Left if self.pane == pane::WATCH => {
                 self.toggle_watch(Some(false), engine);
             }
-            KeyCode::Right if self.pane == 1 => {
+            KeyCode::Right if self.pane == pane::WATCH => {
                 self.toggle_watch(Some(true), engine);
             }
-            KeyCode::Left if self.pane == 9 => {
+            KeyCode::Left if self.pane == pane::LOCALS => {
                 self.toggle_local(Some(false), engine);
             }
-            KeyCode::Right if self.pane == 9 => {
+            KeyCode::Right if self.pane == pane::LOCALS => {
                 self.toggle_local(Some(true), engine);
             }
             KeyCode::Up => self.move_selection(-1),
@@ -1267,22 +1316,22 @@ impl App {
             KeyCode::Home => {
                 self.selection = 0;
                 self.set_view_top(self.pane, 0);
-                if self.pane == 8 {
+                if self.pane == pane::LOG {
                     self.log_follow = false;
                 }
-                if self.pane == 0 {
+                if self.pane == pane::SOURCE {
                     self.source_line = 0;
                     self.source_top = 0;
                 }
             }
             KeyCode::End => self.move_selection(isize::MAX),
             KeyCode::Enter => {
-                if self.pane == peripherals::PANE {
+                if self.pane == pane::PERIPHERALS {
                     self.toggle_peripheral(None);
-                } else if (self.pane == 1 && self.toggle_watch(None, engine))
-                    || (self.pane == 9 && self.toggle_local(None, engine))
+                } else if (self.pane == pane::WATCH && self.toggle_watch(None, engine))
+                    || (self.pane == pane::LOCALS && self.toggle_local(None, engine))
                 {
-                } else if self.pane == 7 {
+                } else if self.pane == pane::FILES {
                     if let Some(file) = self
                         .filtered_files()
                         .get(self.selection)
@@ -1290,26 +1339,26 @@ impl App {
                         .cloned()
                     {
                         self.load_source(&file);
-                        self.select_pane(0);
+                        self.select_pane(pane::SOURCE);
                     }
-                } else if self.pane == 2
+                } else if self.pane == pane::STACK
                     && let Some(frame) = self.snapshot.stack.get(self.selection)
                 {
                     let level = frame.level;
                     self.submit(engine, "frame", json!({"level":level}));
-                } else if !matches!(self.pane, 2 | 7) {
-                    self.focus_input(self.pane == 1);
+                } else if !matches!(self.pane, pane::STACK | pane::FILES) {
+                    self.focus_input(self.pane == pane::WATCH);
                 }
             }
             KeyCode::Delete
-                if self.pane == 6
+                if self.pane == pane::BREAKS
                     && !self.console_view.focused
                     && key.kind == KeyEventKind::Press =>
             {
                 self.remove_selected_break(engine);
             }
             KeyCode::Delete
-                if self.pane == 1
+                if self.pane == pane::WATCH
                     && !self.console_view.focused
                     && key.kind == KeyEventKind::Press =>
             {
@@ -1320,7 +1369,7 @@ impl App {
         false
     }
     fn select_pane(&mut self, pane: usize) {
-        if pane != 7 {
+        if pane != pane::FILES {
             self.file_search.editing = false;
         }
         self.console_view.focused = false;
@@ -1411,8 +1460,8 @@ impl App {
             || self.symbol_search.busy()
             || !self.pending_commands.is_empty()
             || (self.snapshot.state != "STOPPED"
-                && !(self.snapshot.state == "RUNNING" && self.side_pane == 3)
-                && !(self.snapshot.state == "READY" && self.main_pane == 7))
+                && !(self.snapshot.state == "RUNNING" && self.side_pane == pane::REGS)
+                && !(self.snapshot.state == "READY" && self.main_pane == pane::FILES))
         {
             return false;
         }
@@ -1432,15 +1481,15 @@ impl App {
             panes.push(self.side_pane);
         }
         for pane in panes {
-            if self.snapshot.state != "STOPPED" && pane != 7 {
+            if self.snapshot.state != "STOPPED" && pane != pane::FILES {
                 continue;
             }
             let (method, params) = match pane {
-                5 => ("disassemble", json!({"address":"$pc"})),
-                7 => ("files", json!({})),
+                pane::ASM => ("disassemble", json!({"address":"$pc"})),
+                pane::FILES => ("files", json!({})),
                 _ => continue,
             };
-            let stamp = if pane == 7 {
+            let stamp = if pane == pane::FILES {
                 "files".into()
             } else {
                 self.view_stamp()
@@ -1450,9 +1499,9 @@ impl App {
             }
             self.view_stamps[pane] = Some(stamp);
             self.view_errors[pane] = None;
-            if pane == 5 {
+            if pane == pane::ASM {
                 self.snapshot.assembly.clear();
-                self.view_tops[5] = 0;
+                self.view_tops[pane::ASM] = 0;
             }
             self.pending_view = Some((self.next_id, pane));
             self.submit(engine, method, params);
@@ -1553,7 +1602,10 @@ impl App {
                 };
         }
         match command {
-            "edit-value" => matches!(self.pane, 1 | 3 | 4 | 9 | 10),
+            "edit-value" => matches!(
+                self.pane,
+                pane::WATCH | pane::REGS | pane::MEMORY | pane::LOCALS | pane::PERIPHERALS
+            ),
             "commandlist" | "quit" | "setup" => true,
             "watch-access" => !self.snapshot.watches.is_empty(),
             "memory-access" => true,
@@ -1562,7 +1614,7 @@ impl App {
                     && !self.memory_panel.busy()
             }
             "peripheral-access" => self
-                .peripheral_monitor_item(self.selections[peripherals::PANE])
+                .peripheral_monitor_item(self.selections[pane::PERIPHERALS])
                 .is_some(),
             "build" => {
                 self.project.has_build()
@@ -1601,7 +1653,7 @@ impl App {
                     && self.pending_commands.is_empty()
             }
             "peripheral-refresh" => {
-                self.side_pane == peripherals::PANE
+                self.side_pane == pane::PERIPHERALS
                     && self.snapshot.state == "STOPPED"
                     && self.pending_commands.is_empty()
             }
@@ -1617,17 +1669,17 @@ impl App {
     }
     fn view_len(&self, pane: usize) -> usize {
         match pane {
-            0 => self.source.len(),
-            1 => watch::row_count(&self.snapshot.watches),
-            2 => self.snapshot.stack.len(),
-            3 if self.register_view.enabled() => self.register_view.rows.len(),
-            3 => self.snapshot.registers.len(),
-            4 => self.memory_byte_count().div_ceil(self.memory_columns()),
-            5 => self.snapshot.assembly.len(),
-            6 => self.snapshot.breakpoints.len(),
-            7 => self.filtered_files().len(),
-            8 => self.logs.len(),
-            10 => self.peripherals.len(),
+            pane::SOURCE => self.source.len(),
+            pane::WATCH => watch::row_count(&self.snapshot.watches),
+            pane::STACK => self.snapshot.stack.len(),
+            pane::REGS if self.register_view.enabled() => self.register_view.rows.len(),
+            pane::REGS => self.snapshot.registers.len(),
+            pane::MEMORY => self.memory_byte_count().div_ceil(self.memory_columns()),
+            pane::ASM => self.snapshot.assembly.len(),
+            pane::BREAKS => self.snapshot.breakpoints.len(),
+            pane::FILES => self.filtered_files().len(),
+            pane::LOG => self.logs.len(),
+            pane::PERIPHERALS => self.peripherals.len(),
             _ => watch::row_count(&self.snapshot.locals),
         }
     }
@@ -1637,14 +1689,24 @@ impl App {
         let len = self.view_len(pane);
         let max = len.saturating_sub(visible);
         let top = top.min(max);
-        if pane == 0 {
+        if pane == pane::SOURCE {
             self.source_top = top;
             self.source_line = self
                 .source_line
                 .clamp(top, (top + visible - 1).min(len.saturating_sub(1)));
         } else {
             self.view_tops[pane] = top;
-            if matches!(pane, 1 | 2 | 3 | 4 | 6 | 7 | 9 | 10) {
+            if matches!(
+                pane,
+                pane::WATCH
+                    | pane::STACK
+                    | pane::REGS
+                    | pane::MEMORY
+                    | pane::BREAKS
+                    | pane::FILES
+                    | pane::LOCALS
+                    | pane::PERIPHERALS
+            ) {
                 let selected = self
                     .selected(pane)
                     .clamp(top, (top + visible - 1).min(len.saturating_sub(1)));
@@ -1653,7 +1715,7 @@ impl App {
                     self.selection = selected;
                 }
             }
-            if pane == 8 {
+            if pane == pane::LOG {
                 self.log_follow = top == max;
             }
         }
@@ -1665,7 +1727,7 @@ impl App {
         let max = len.saturating_sub(visible);
         let thumb = (height * visible / len.max(1)).clamp(1, height.max(1));
         let travel = height.saturating_sub(thumb);
-        let position = if pane == 0 {
+        let position = if pane == pane::SOURCE {
             self.source_top
         } else {
             self.view_tops[pane]
@@ -1858,7 +1920,7 @@ impl App {
                     self.view_rects[pane].contains(point) || self.scrollbars[pane].contains(point)
                 }) {
                     self.select_pane(pane);
-                    let top = if pane == 0 {
+                    let top = if pane == pane::SOURCE {
                         self.source_top
                     } else {
                         self.view_tops[pane]
@@ -1923,7 +1985,7 @@ impl App {
                 {
                     self.select_pane(pane);
                     let rect = self.view_rects[pane];
-                    if pane == 0 {
+                    if pane == pane::SOURCE {
                         self.source_line = (self.source_top
                             + mouse.row.saturating_sub(self.source_rect.y) as usize)
                             .min(self.source.len().saturating_sub(1));
@@ -1933,14 +1995,24 @@ impl App {
                         {
                             self.toggle_break(engine);
                         }
-                    } else if matches!(pane, 1 | 2 | 3 | 4 | 6 | 7 | 9 | 10) {
+                    } else if matches!(
+                        pane,
+                        pane::WATCH
+                            | pane::STACK
+                            | pane::REGS
+                            | pane::MEMORY
+                            | pane::BREAKS
+                            | pane::FILES
+                            | pane::LOCALS
+                            | pane::PERIPHERALS
+                    ) {
                         let clicked =
                             self.view_tops[pane] + mouse.row.saturating_sub(rect.y) as usize;
                         if clicked >= self.view_len(pane) {
                             return;
                         }
                         self.selection = clicked;
-                        if matches!(pane, 2 | 7 | 10) {
+                        if matches!(pane, pane::STACK | pane::FILES | pane::PERIPHERALS) {
                             self.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), engine);
                         }
                     }
@@ -2490,10 +2562,10 @@ mod tests {
         }];
         a.source = vec!["int main(void) {}".into()];
         a.source_file = "old/main.c".into();
-        a.pane = 1;
-        a.side_pane = 10;
-        a.selections[1] = 3;
-        a.view_tops[8] = 5;
+        a.pane = pane::WATCH;
+        a.side_pane = pane::PERIPHERALS;
+        a.selections[pane::WATCH] = 3;
+        a.view_tops[pane::LOG] = 5;
         a.watch_editing = true;
         a.watch_input = "old_draft".into();
         a.pending_commands.insert(7);
@@ -2524,8 +2596,11 @@ mod tests {
         assert_eq!(a.snapshot.state, "DISCONNECTED");
         assert!(a.snapshot.watches.is_empty());
         assert!(a.source.is_empty() && a.source_file.is_empty());
-        assert_eq!((a.pane, a.main_pane, a.side_pane), (0, 0, 3));
-        assert_eq!(a.variable_pane, 1);
+        assert_eq!(
+            (a.pane, a.main_pane, a.side_pane),
+            (pane::SOURCE, pane::SOURCE, pane::REGS)
+        );
+        assert_eq!(a.variable_pane, pane::WATCH);
         assert!(a.selections.iter().chain(&a.view_tops).all(|&v| v == 0));
         assert!(!a.watch_editing && a.watch_input.is_empty());
         assert!(a.pending_commands.is_empty() && a.pending_task.is_none());
@@ -2597,9 +2672,9 @@ mod tests {
         // An editor's bottom panel: Source, inspector and Watch side by side.
         render(&mut a, 200, 20);
         assert!(a.source_rect.height > 0 && a.side_rect.height > 0);
-        assert!(a.view_rects[1].height > 0, "Watch is visible");
+        assert!(a.view_rects[pane::WATCH].height > 0, "Watch is visible");
         assert!(
-            a.view_rects[1].x > a.side_rect.right(),
+            a.view_rects[pane::WATCH].x > a.side_rect.right(),
             "Watch is its own column"
         );
         // An editor's side panel: Source above, Watch below; the inspector
@@ -2607,17 +2682,21 @@ mod tests {
         render(&mut a, 80, 44);
         assert!(a.source_rect.height > 0);
         assert!(
-            a.view_rects[1].y > a.source_rect.bottom(),
+            a.view_rects[pane::WATCH].y > a.source_rect.bottom(),
             "Watch sits below Source"
         );
-        a.select_pane(3);
+        a.select_pane(pane::REGS);
         render(&mut a, 80, 44);
         assert!(a.source_rect.height > 0, "Source stays visible");
-        assert!(a.side_rect.y > a.source_rect.bottom() && a.view_rects[1].height == 0);
+        assert!(a.side_rect.y > a.source_rect.bottom() && a.view_rects[pane::WATCH].height == 0);
         // Ordinary sizes keep their layouts.
-        a.select_pane(0);
+        a.select_pane(pane::SOURCE);
         render(&mut a, 80, 24);
-        assert_eq!(a.view_rects[1].height, 0, "80x24 still shows one group");
+        assert_eq!(
+            a.view_rects[pane::WATCH].height,
+            0,
+            "80x24 still shows one group"
+        );
     }
     #[test]
     fn zoom_fills_the_body_with_the_focused_group_and_alt_keys_jump_to_views() {
@@ -2631,14 +2710,21 @@ mod tests {
         assert!(a.source_rect.width > normal.width, "Source fills the body");
         assert_eq!(a.side_rect.width, 0, "the inspector is hidden while zoomed");
         key(&mut a, KeyCode::Char('0'), KeyModifiers::ALT);
-        assert_eq!(a.pane, 1, "Alt+0 focuses Watch");
+        assert_eq!(a.pane, pane::WATCH, "Alt+0 focuses Watch");
         render(&mut a, 120, 36);
         assert_eq!(a.source_rect.width, 0, "the zoomed body follows focus");
-        assert!(a.view_rects[1].width > normal.width);
+        assert!(a.view_rects[pane::WATCH].width > normal.width);
         key(&mut a, KeyCode::Char('z'), KeyModifiers::NONE);
         render(&mut a, 120, 36);
         assert!(a.side_rect.width > 0 && a.source_rect.width > 0);
-        for (ch, pane) in [('1', 0), ('2', 5), ('4', 8), ('5', 3), ('9', 6), ('-', 9)] {
+        for (ch, pane) in [
+            ('1', pane::SOURCE),
+            ('2', pane::ASM),
+            ('4', pane::LOG),
+            ('5', pane::REGS),
+            ('9', pane::BREAKS),
+            ('-', pane::LOCALS),
+        ] {
             key(&mut a, KeyCode::Char(ch), KeyModifiers::ALT);
             assert_eq!(a.pane, pane, "Alt+{ch}");
         }
@@ -2693,7 +2779,7 @@ mod tests {
                 None,
             );
             let text = render(&mut a, 160, 45);
-            assert_eq!(a.main_pane, 0);
+            assert_eq!(a.main_pane, pane::SOURCE);
             assert_eq!(a.side_pane, pane);
             assert!(text.contains("counter++;"));
             assert!(!text.contains("Call Stack"));
@@ -2722,14 +2808,14 @@ mod tests {
         let text = render(&mut a, 160, 45);
         assert!(text.contains("process_items\\n"));
         assert!(!text.contains("12345"));
-        assert_eq!(a.side_pane, 3);
-        assert_eq!(a.main_pane, 0);
-        assert!(a.view_rects[9].height > 0);
-        assert_eq!(a.view_rects[1].height, 0);
+        assert_eq!(a.side_pane, pane::REGS);
+        assert_eq!(a.main_pane, pane::SOURCE);
+        assert!(a.view_rects[pane::LOCALS].height > 0);
+        assert_eq!(a.view_rects[pane::WATCH].height, 0);
         // A short or narrow terminal must still let Tab reach the variables.
         for (w, h) in [(80, 24), (120, 12)] {
             render(&mut a, w, h);
-            assert!(a.view_rects[9].height > 0);
+            assert!(a.view_rects[pane::LOCALS].height > 0);
             assert!(a.console_input_rect.height > 0);
         }
     }
@@ -2786,17 +2872,17 @@ mod tests {
             let top = a.view_tops[pane];
             mouse_at(&mut a, MouseEventKind::ScrollUp, bar.x, bar.y, None);
             assert_eq!(a.view_tops[pane], top - 3);
-            a.select_pane(0);
+            a.select_pane(pane::SOURCE);
             render(&mut a, 140, 40);
             a.select_pane(pane);
             render(&mut a, 140, 40);
             assert_eq!(a.view_tops[pane], top - 3);
             assert_eq!(a.source_top, source_top); // browsing other views never moves source
         }
-        a.select_pane(7);
+        a.select_pane(pane::FILES);
         let text = render(&mut a, 140, 40);
-        let rect = a.view_rects[7];
-        let clicked = a.view_tops[7] + 2;
+        let rect = a.view_rects[pane::FILES];
+        let clicked = a.view_tops[pane::FILES] + 2;
         assert!(text.contains(&format!("file-{clicked:03}.c")));
         mouse_at(
             &mut a,
@@ -2806,13 +2892,13 @@ mod tests {
             None,
         );
         assert_eq!(a.source_file, format!("file-{clicked:03}.c"));
-        assert_eq!(a.main_pane, 0);
+        assert_eq!(a.main_pane, pane::SOURCE);
     }
     #[test]
     fn log_scrollback_stays_put_until_end_resumes_following() {
         let mut a = App::new(Project::default(), true);
         a.logs = (0..1000).map(|i| format!("record-{i:04}")).collect();
-        a.select_pane(8);
+        a.select_pane(pane::LOG);
         assert!(render(&mut a, 120, 36).contains("record-0999"));
         a.key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), None);
         assert!(render(&mut a, 120, 36).contains("record-0000"));
@@ -2937,7 +3023,7 @@ mod tests {
         a.source_top = 0;
         a.source_line = 0;
         render(&mut a, 140, 40);
-        let bar = a.scrollbars[0];
+        let bar = a.scrollbars[pane::SOURCE];
         let max = a.source.len() - a.source_rect.height as usize;
         mouse_at(
             &mut a,
@@ -3294,7 +3380,7 @@ mod tests {
         a.snapshot.frame.address = "0x08000000".into();
         render(&mut a, 120, 36);
         assert!(!a.ensure_visible_data(Some(&engine)));
-        a.select_pane(5);
+        a.select_pane(pane::ASM);
         render(&mut a, 120, 36);
         assert!(a.ensure_visible_data(Some(&engine)));
         let request = commands.try_recv().unwrap();
@@ -3330,7 +3416,7 @@ mod tests {
         let mut a = App::new(Project::default(), false);
         a.project.actions.restart = vec!["monitor reset".into()];
         a.snapshot.state = "STOPPED".into();
-        a.select_pane(5);
+        a.select_pane(pane::ASM);
         render(&mut a, 120, 36);
         a.command(Some(&engine), ":restart");
         let reset = commands.try_recv().unwrap();
@@ -3352,7 +3438,7 @@ mod tests {
         let mut a = App::new(Project::default(), true);
         a.demo = false;
         a.snapshot.state = "STOPPED".into();
-        a.select_pane(2);
+        a.select_pane(pane::STACK);
         render(&mut a, 140, 40);
         let side = a.side_rect;
         mouse_at(
@@ -3365,7 +3451,7 @@ mod tests {
         let request = commands.try_recv().unwrap();
         assert_eq!(request.method, "frame");
         assert_eq!(request.params["level"], 1);
-        assert_eq!(a.main_pane, 0);
+        assert_eq!(a.main_pane, pane::SOURCE);
         assert!(commands.try_recv().is_err());
     }
     #[test]

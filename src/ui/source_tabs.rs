@@ -201,7 +201,7 @@ impl App {
             (i as isize + delta).rem_euclid(count as isize) as usize
         });
         self.activate_source(index);
-        self.select_pane(0);
+        self.select_pane(pane::SOURCE);
     }
 
     pub(super) fn source_is_frame(&self) -> bool {
@@ -251,7 +251,7 @@ impl App {
             KeyCode::Enter => {
                 if let Some(&index) = filtered.get(self.sources.list_index) {
                     self.activate_source(index);
-                    self.select_pane(0);
+                    self.select_pane(pane::SOURCE);
                     self.sources.list_open = false;
                 }
             }
@@ -297,7 +297,7 @@ impl App {
                         .find(|(rect, _)| rect.contains(point))
                     {
                         self.activate_source(index);
-                        self.select_pane(0);
+                        self.select_pane(pane::SOURCE);
                         self.sources.list_open = false;
                     }
                 }
@@ -341,7 +341,7 @@ impl App {
                     .find(|(rect, _)| rect.contains(point))
                 {
                     self.activate_source(index);
-                    self.select_pane(0);
+                    self.select_pane(pane::SOURCE);
                 } else if self.sources.list_button.contains(point) {
                     self.open_source_list();
                 } else if self.sources.previous.contains(point) {
@@ -708,7 +708,7 @@ mod tests {
         assert!(text.contains("two/main.c"));
         assert!(!a.source_is_frame());
         a.snapshot.files = vec![second.clone()].into();
-        a.select_pane(7);
+        a.select_pane(pane::FILES);
         a.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE), None);
         assert_eq!(a.source_file, second);
         assert_eq!((a.source_line, a.source_top), (9, 1));
@@ -874,7 +874,12 @@ mod tests {
             terminal.backend().buffer()[(close.x, close.y)].symbol(),
             "×"
         );
-        let watch = a.pane_hits.iter().find(|(_, pane)| *pane == 1).unwrap().0;
+        let watch = a
+            .pane_hits
+            .iter()
+            .find(|(_, pane)| *pane == pane::WATCH)
+            .unwrap()
+            .0;
         for x in watch.x..120 {
             assert_eq!(terminal.backend().buffer()[(x, watch.y - 1)].symbol(), "─");
         }

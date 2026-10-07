@@ -69,7 +69,10 @@ impl Editor {
 }
 impl App {
     pub(super) fn open_edit_value(&mut self) {
-        if !matches!(self.pane, 1 | 3 | 4 | 9 | 10) {
+        if !matches!(
+            self.pane,
+            pane::WATCH | pane::REGS | pane::MEMORY | pane::LOCALS | pane::PERIPHERALS
+        ) {
             self.notice =
                 "Select a Watch, Locals, System Regs, Memory or Peripherals object before editing."
                     .into();
@@ -80,12 +83,12 @@ impl App {
             return;
         }
         let candidate = match match self.pane {
-            1 | 9 => self.variable_edit_candidate(self.pane),
-            4 => Ok(self.memory_edit_candidate()),
-            10 => self.peripheral_edit_candidate(),
+            pane::WATCH | pane::LOCALS => self.variable_edit_candidate(self.pane),
+            pane::MEMORY => Ok(self.memory_edit_candidate()),
+            pane::PERIPHERALS => self.peripheral_edit_candidate(),
             _ => self
                 .register_view
-                .edit_candidate(self.selected(3), &self.register_context()),
+                .edit_candidate(self.selected(pane::REGS), &self.register_context()),
         } {
             Ok(c) => c,
             Err(error) => {
@@ -554,7 +557,7 @@ mod tests {
         app.snapshot.state = "STOPPED".into();
         app.snapshot.register_session = 73;
         app.snapshot.generation = 9;
-        app.select_pane(3);
+        app.select_pane(pane::REGS);
         app.selection = (0..app.register_view.rows.len())
             .find(|i| {
                 app.register_view
@@ -582,11 +585,11 @@ mod tests {
                 }),
                 ..Default::default()
             }];
-            app.select_pane(9);
+            app.select_pane(pane::LOCALS);
             // Compact layouts show the focused pane; the wide layout shows
             // Locals alongside Source and must route its button independently.
             if width >= 160 {
-                app.select_pane(0);
+                app.select_pane(pane::SOURCE);
             }
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
             terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
@@ -594,7 +597,7 @@ mod tests {
                 .write_editor
                 .entry_hits
                 .iter()
-                .find(|(_, pane)| *pane == 9)
+                .find(|(_, pane)| *pane == pane::LOCALS)
                 .unwrap()
                 .0;
             let hit = app
@@ -612,7 +615,7 @@ mod tests {
                 },
                 Some(&engine),
             );
-            assert_eq!(app.pane, 9);
+            assert_eq!(app.pane, pane::LOCALS);
             assert_eq!(
                 app.write_editor.popup.as_ref().unwrap().candidate.target["pane"],
                 "locals"
@@ -747,7 +750,8 @@ mod tests {
         let (engine, requests) = session::test_channel();
         let mut app = app();
         assert_ne!(
-            app.selection, app.selections[3],
+            app.selection,
+            app.selections[pane::REGS],
             "fixture keeps the inactive saved row different"
         );
         app.key(
@@ -819,7 +823,7 @@ mod tests {
     #[test]
     fn memory_editor_edits_literal_address_count_and_address_order_bytes_on_nonzero_frame() {
         let mut app = app();
-        app.select_pane(4);
+        app.select_pane(pane::MEMORY);
         app.snapshot.frame.level = 2;
         let (engine, requests) = session::test_channel();
         app.open_edit_value();

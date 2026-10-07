@@ -147,7 +147,7 @@ fn register_status_reports_manual_sources_inheritance_and_unknown_reset_without_
     );
     let selected = index(&app, "edprsr");
     app.register_view.rows = vec![Row::Register(selected, 0)];
-    app.selections[3] = 0;
+    app.selections[pane::REGS] = 0;
     let before = serde_json::to_value(&app.register_view.catalogue).unwrap();
     let (engine, requests) = engine();
     for (width, height) in [(45, 12), (80, 24), (120, 36)] {
@@ -201,7 +201,7 @@ fn m_cpacr_field_status_shows_permission_enums_and_manual_pages_without_io() {
                     Some(crate::registers::Catalogue::builtin(cpu).unwrap());
                 let selected = index(&app, "scb.cpacr");
                 app.register_view.rows = vec![Row::Field(selected, field, 2)];
-                app.selections[3] = 0;
+                app.selections[pane::REGS] = 0;
                 let mut value = sample(&app, "scb.cpacr", "0x00900000");
                 value.view = crate::registers::SampleView::PhysicalCore;
                 app.register_view.values.insert(
@@ -251,7 +251,7 @@ fn nvic_status_shows_priority_source_irq_names_conflict_and_unknown_without_io()
     app.register_view.catalogue = Some(crate::registers::Catalogue::builtin("cortex-m4").unwrap());
     let selected = index(&app, "nvic.ipr31");
     app.register_view.rows = vec![Row::Register(selected, 0)];
-    app.selections[3] = 0;
+    app.selections[pane::REGS] = 0;
     let context = app.register_context();
     let nvic = crate::registers::m_profile::Nvic {
         catalogue_cpu: "cortex-m4".into(),
@@ -344,7 +344,7 @@ fn register_status_preserves_current_latest_and_retained_condition_sources_witho
         .insert("fixture.count".into(), 1);
     app.register_view.facts = app.project.registers.facts.clone();
     app.register_view.rows = vec![Row::Register(selected, 0)];
-    app.selections[3] = 0;
+    app.selections[pane::REGS] = 0;
     let context = app.register_context();
     let catalogue = app.register_view.catalogue.as_ref().unwrap();
     let register = &catalogue.registers[selected];

@@ -182,9 +182,9 @@ impl App {
     /// tree once rather than once per visible row.
     fn visible_monitor_items(&self) -> Vec<Item> {
         let mut items = self.visible_peripheral_monitors();
-        if self.variable_pane == 1 && self.view_rects[1].height > 0 {
-            let start = self.view_tops[1];
-            let end = self.view_tops[1] + self.view_rects[1].height as usize;
+        if self.variable_pane == pane::WATCH && self.view_rects[pane::WATCH].height > 0 {
+            let start = self.view_tops[pane::WATCH];
+            let end = self.view_tops[pane::WATCH] + self.view_rects[pane::WATCH].height as usize;
             items.extend(
                 watch::rows(&self.snapshot.watches)
                     .iter()
@@ -204,8 +204,8 @@ impl App {
     }
     pub(super) fn open_monitor(&mut self, pane: usize, row: usize) {
         let item = match pane {
-            1 => self.watch_monitor_item(row),
-            10 => self.peripheral_monitor_item(row),
+            pane::WATCH => self.watch_monitor_item(row),
+            pane::PERIPHERALS => self.peripheral_monitor_item(row),
             _ => None,
         };
         let Some(item) = item else {
@@ -269,8 +269,8 @@ impl App {
     }
     pub(super) fn access_caption(&self, pane: usize, row: usize) -> String {
         let item = match pane {
-            1 => self.watch_monitor_item(row),
-            10 => self.peripheral_monitor_item(row),
+            pane::WATCH => self.watch_monitor_item(row),
+            pane::PERIPHERALS => self.peripheral_monitor_item(row),
             _ => None,
         };
         let configured = self.memory_access_description(
@@ -989,8 +989,8 @@ mod tests {
             value: "1".into(),
             ..Default::default()
         }];
-        a.variable_pane = 1;
-        a.view_rects[1] = Rect::new(0, 0, 40, 10);
+        a.variable_pane = pane::WATCH;
+        a.view_rects[pane::WATCH] = Rect::new(0, 0, 40, 10);
         a.project.memory_access.push(crate::config::MemoryAccess {
             id: "bus".into(),
             label: "AHB".into(),
@@ -1165,13 +1165,13 @@ mod tests {
         );
         assert!(a.monitor_fresh("watch:counter"));
         assert_eq!(a.snapshot.watches[0].value, "1"); // preserve the stopped snapshot
-        a.variable_pane = 9;
+        a.variable_pane = pane::LOCALS;
         a.monitor
             .samples
             .values_mut()
             .for_each(|s| s.due = Instant::now());
         assert!(!a.ensure_monitors(Some(&engine)));
-        a.variable_pane = 1;
+        a.variable_pane = pane::WATCH;
         a.project
             .ui
             .refresh
@@ -1235,7 +1235,7 @@ mod tests {
     #[test]
     fn refresh_popup_preserves_interval_validates_and_can_render_at_small_sizes() {
         let mut a = app();
-        a.open_monitor(1, 0);
+        a.open_monitor(pane::WATCH, 0);
         assert_eq!(a.monitor.popup.as_ref().unwrap().interval, "100");
         for (w, h) in [(45, 12), (80, 24), (180, 50)] {
             let mut t = Terminal::new(TestBackend::new(w, h)).unwrap();
@@ -1264,7 +1264,7 @@ mod tests {
         a.monitor_apply(None, false);
         assert!(!a.monitor.modal());
         assert_eq!(a.project.ui.refresh["single|watch:counter"].interval_ms, 75);
-        a.open_monitor(1, 0);
+        a.open_monitor(pane::WATCH, 0);
         a.monitor.popup.as_mut().unwrap().item.safe_auto = false;
         a.monitor_apply(None, false);
         assert!(a.monitor.modal());
@@ -1329,7 +1329,7 @@ mod tests {
             if deleted {
                 a.snapshot.watches.clear();
             } else {
-                a.variable_pane = 9;
+                a.variable_pane = pane::LOCALS;
             }
             resolved(&mut a, request.id);
             assert!(!a.ensure_monitors(Some(&engine)));
@@ -1378,7 +1378,7 @@ mod tests {
                 .contains("2 (stale)")
         );
         assert!(
-            a.access_caption(1, 0)
+            a.access_caption(pane::WATCH, 0)
                 .contains("retained / stale: bus → soc.bus")
         );
         a.project.memory_access[0].target = "soc.changed".into();

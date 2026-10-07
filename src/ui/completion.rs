@@ -273,7 +273,7 @@ impl App {
         self.editing = !watch;
         self.watch_editing = watch;
         if watch {
-            self.select_pane(1);
+            self.select_pane(pane::WATCH);
         } else {
             self.history_index = self.history.len();
         }
