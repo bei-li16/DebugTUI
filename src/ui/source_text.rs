@@ -494,12 +494,7 @@ pub(super) fn buttons(f: &mut UiFrame, a: &mut App, rect: Rect) {
             f,
             hit,
             label.trim(),
-            theme::control(
-                active,
-                false,
-                a.pointer_over(hit),
-                theme::TEXT,
-            ),
+            theme::control(active, false, a.pointer_over(hit), theme::TEXT),
         );
         a.source_text.buttons.push((hit, watch));
         x += hit.width + 1;

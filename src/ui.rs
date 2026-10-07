@@ -1372,7 +1372,8 @@ impl App {
     /// True when moving the pointer from `before` changed no hover state drawn
     /// in the last frame.
     fn hover_unchanged(&self, before: Option<ratatui::layout::Position>) -> bool {
-        let inside = |p: Option<ratatui::layout::Position>, r: &Rect| p.is_some_and(|p| r.contains(p));
+        let inside =
+            |p: Option<ratatui::layout::Position>, r: &Rect| p.is_some_and(|p| r.contains(p));
         self.hover_probes
             .borrow()
             .iter()
@@ -2597,12 +2598,18 @@ mod tests {
         render(&mut a, 200, 20);
         assert!(a.source_rect.height > 0 && a.side_rect.height > 0);
         assert!(a.view_rects[1].height > 0, "Watch is visible");
-        assert!(a.view_rects[1].x > a.side_rect.right(), "Watch is its own column");
+        assert!(
+            a.view_rects[1].x > a.side_rect.right(),
+            "Watch is its own column"
+        );
         // An editor's side panel: Source above, Watch below; the inspector
         // replaces Watch below only while it has focus.
         render(&mut a, 80, 44);
         assert!(a.source_rect.height > 0);
-        assert!(a.view_rects[1].y > a.source_rect.bottom(), "Watch sits below Source");
+        assert!(
+            a.view_rects[1].y > a.source_rect.bottom(),
+            "Watch sits below Source"
+        );
         a.select_pane(3);
         render(&mut a, 80, 44);
         assert!(a.source_rect.height > 0, "Source stays visible");
@@ -2649,7 +2656,10 @@ mod tests {
         render(&mut a, 120, 36);
         let before = a.pointer;
         mouse_at(&mut a, MouseEventKind::Moved, x + 3, y + 1, None);
-        assert!(a.hover_unchanged(before), "moving over source text draws nothing new");
+        assert!(
+            a.hover_unchanged(before),
+            "moving over source text draws nothing new"
+        );
         let button = a
             .action_hits
             .iter()
@@ -2657,11 +2667,17 @@ mod tests {
             .unwrap()
             .0;
         mouse_at(&mut a, MouseEventKind::Moved, button.x, button.y, None);
-        assert!(!a.hover_unchanged(before), "entering a button changes its style");
+        assert!(
+            !a.hover_unchanged(before),
+            "entering a button changes its style"
+        );
         render(&mut a, 120, 36);
         let on_button = a.pointer;
         mouse_at(&mut a, MouseEventKind::Moved, button.x + 1, button.y, None);
-        assert!(a.hover_unchanged(on_button), "moving within one button is invisible");
+        assert!(
+            a.hover_unchanged(on_button),
+            "moving within one button is invisible"
+        );
     }
     #[test]
     fn inspector_tabs_keep_source_visible_without_duplicate_stack() {

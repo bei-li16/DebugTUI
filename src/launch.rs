@@ -1734,7 +1734,11 @@ impl Setup {
             let shown = (inner.height as usize).min(START - start);
             for (count, y, arrow) in [
                 (start, rows[2].y, "▲"),
-                (START - start - shown, rows[2].bottom().saturating_sub(1), "▼"),
+                (
+                    START - start - shown,
+                    rows[2].bottom().saturating_sub(1),
+                    "▼",
+                ),
             ] {
                 let label = format!(" {arrow} {count} more ");
                 let width = unicode_width::UnicodeWidthStr::width(label.as_str()) as u16;
@@ -2335,7 +2339,10 @@ mod tests {
         };
         setup.selected = 0;
         let top = text(&mut setup);
-        assert!(top.contains("more") && top.contains('▼') && !top.contains('▲'), "{top}");
+        assert!(
+            top.contains("more") && top.contains('▼') && !top.contains('▲'),
+            "{top}"
+        );
         setup.selected = START - 1;
         let bottom = text(&mut setup);
         assert!(bottom.contains('▲') && !bottom.contains('▼'), "{bottom}");

@@ -542,12 +542,7 @@ pub(super) fn draw_tabs(f: &mut UiFrame, a: &mut App, rect: Rect) {
                 f,
                 hit,
                 text.trim(),
-                theme::control(
-                    enabled,
-                    false,
-                    a.pointer_over(hit),
-                    theme::TEXT,
-                ),
+                theme::control(enabled, false, a.pointer_over(hit), theme::TEXT),
             );
         }
     }

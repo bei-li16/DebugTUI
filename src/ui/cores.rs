@@ -71,12 +71,7 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App, rect: Rect) {
     // of a wide terminal. Leave gaps between outlined controls.
     let next_x = (rect.x + 11 + count.min(slots) as u16 * 18).min(rect.right() - 3);
     let next = Rect::new(next_x, rect.y, 3, rect.height);
-    theme::button(
-        f,
-        next,
-        "›",
-        theme::chip(false, a.pointer_over(next)),
-    );
+    theme::button(f, next, "›", theme::chip(false, a.pointer_over(next)));
     a.core_hits.push((next, (active + 1) % count));
     let start = active
         .saturating_sub(slots / 2)
@@ -96,12 +91,7 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App, rect: Rect) {
         let label = format!("{} · {badge}", core.name);
         let hit = Rect::new(x, rect.y, width, rect.height);
         let selected = core.index == active;
-        let mut style = theme::control(
-            true,
-            selected,
-            a.pointer_over(hit),
-            color(core.index),
-        );
+        let mut style = theme::control(true, selected, a.pointer_over(hit), color(core.index));
         if selected {
             style = style.fg(theme::CANVAS).bg(color(core.index));
         }

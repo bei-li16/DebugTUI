@@ -45,9 +45,18 @@ mod tests {
         a.select_pane(PANE);
         let mut t = Terminal::new(TestBackend::new(120, 36)).unwrap();
         t.draw(|f| draw(f, &mut a)).unwrap();
-        let text: String = t.backend().buffer().content().iter().map(|c| c.symbol()).collect();
+        let text: String = t
+            .backend()
+            .buffer()
+            .content()
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
         assert!(text.contains("Loading SVD"), "{text}");
-        assert!(!a.peripherals.poll(), "nothing installed before the parse ends");
+        assert!(
+            !a.peripherals.poll(),
+            "nothing installed before the parse ends"
+        );
         done.send(Device::load_shared(&path)).unwrap();
         assert!(a.peripherals.poll());
         assert!(!a.peripherals.loading());
@@ -58,7 +67,10 @@ mod tests {
         let mut view = Peripherals::load_in_background(&path);
         let deadline = Instant::now() + Duration::from_secs(10);
         while !view.poll() {
-            assert!(Instant::now() < deadline, "background SVD load never finished");
+            assert!(
+                Instant::now() < deadline,
+                "background SVD load never finished"
+            );
             std::thread::sleep(Duration::from_millis(1));
         }
         assert!(Arc::ptr_eq(view.device.as_ref().unwrap(), &shared));

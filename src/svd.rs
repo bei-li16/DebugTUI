@@ -117,7 +117,10 @@ impl Device {
         let file = (stamp.0 >= DISK_CACHE_MIN_BYTES)
             .then(|| disk_cache_file(source))
             .flatten();
-        if let Some(device) = file.as_deref().and_then(|f| read_disk_cache(f, source, stamp)) {
+        if let Some(device) = file
+            .as_deref()
+            .and_then(|f| read_disk_cache(f, source, stamp))
+        {
             return Ok(device);
         }
         let device = Self::load(path)?;

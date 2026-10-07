@@ -615,7 +615,8 @@ fn main_panel(f: &mut UiFrame, a: &mut App, rect: Rect, shared_actions: bool) {
         source(f, a, inner);
     } else if a.main_pane == 7 {
         let height = if inner.height >= 10 { 3 } else { 1 };
-        let rows = Layout::vertical([Constraint::Length(height), Constraint::Min(0)]).split_cached(inner);
+        let rows =
+            Layout::vertical([Constraint::Length(height), Constraint::Min(0)]).split_cached(inner);
         search::file_bar(f, a, rows[0]);
         view(f, a, 7, rows[1]);
         a.source_rect = a.view_rects[7];
@@ -1091,8 +1092,8 @@ fn console_panel(f: &mut UiFrame, a: &mut App, rect: Rect) {
     let inner = block.inner(rect);
     f.render_widget(block, rect);
     let input_height = if rect.height >= 6 { 3 } else { 1 };
-    let rows =
-        Layout::vertical([Constraint::Min(0), Constraint::Length(input_height)]).split_cached(inner);
+    let rows = Layout::vertical([Constraint::Min(0), Constraint::Length(input_height)])
+        .split_cached(inner);
     a.console_view.layout(rows[0], a.console.len());
     let latest = if a.console_view.follow {
         " LIVE · Latest ".into()
@@ -1605,8 +1606,8 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     // Tiny terminals retain the one-row field and the existing minimum layout.
     let console_height =
         (((rows[1].height + search_height) / 4 + 1).clamp(3, 10) - search_height).max(2);
-    let body =
-        Layout::vertical([Constraint::Min(3), Constraint::Length(console_height)]).split_cached(rows[1]);
+    let body = Layout::vertical([Constraint::Min(3), Constraint::Length(console_height)])
+        .split_cached(rows[1]);
     if a.zoom {
         // The focused group alone: Source group, or Inspector / Variables.
         if MAIN_PANES.contains(&a.pane) {
