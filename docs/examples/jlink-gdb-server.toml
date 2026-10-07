@@ -1,8 +1,8 @@
 backend = "stm32f4"
 
 # SEGGER J-Link GDB Server template. The J-Link software is not bundled:
-# install it from SEGGER, copy this file next to debug-env.toml (paths are
-# relative to the copied file) and point service.command at the installed
+# install it from SEGGER, copy this file into tools/ next to debug-env.toml
+# (paths are relative to the copied file) and point service.command at the installed
 # JLinkGDBServerCL.exe. This server has no OpenOCD TCL port, so Memory
 # access, Live refresh and register-specific readers are unavailable.
 [gdb]

@@ -34,7 +34,7 @@ THA6206 等 R52 工程可以在其环境 profile 中把 `service.command` 指向
 debugtui --tools-dir ./tools --elf ./build/app.elf
 ~~~
 
-F2 选择该 profile，Watch/外设右键 → Memory access / Live refresh，即可选择默认 GDB、暂停时 Core target 或运行时 AHB MEM-AP 0。打开实时刷新前，Watch 需要在暂停时完成地址解析。无需 Python，也没有增加 TUI 常驻进程。多核板卡可参考 [examples/multicore-access.md](examples/multicore-access.md)，不能照搬 F429 的 AP0 配置。
+F2 选择该 profile，Watch/外设右键 → Memory access / Live refresh，即可选择默认 GDB、暂停时 Core target 或运行时 AHB MEM-AP 0。打开实时刷新前，Watch 需要在暂停时完成地址解析。无需 Python，也没有增加 TUI 常驻进程。多核板卡可参考 [docs/examples/multicore-access.md](../docs/examples/multicore-access.md)，不能照搬 F429 的 AP0 配置。
 
 OpenOCD 通过 libusb 访问 J-Link。Windows 上该探针接口需要绑定 WinUSB 兼容驱动；绑定后 SEGGER 自己的软件可能无法打开探针，两者切换时需要改驱动，本机记录见用户手册。
 
@@ -54,7 +54,7 @@ debugtui --project <工程目录> --environment ./tools/debug-env-cmsis-dap.toml
 
 ## SEGGER J-Link GDB Server（不随附）
 
-此目录不包含 SEGGER J-Link 软件：其许可证要求每次再分发都事先取得 SEGGER 书面授权。需要 SEGGER Server 时，从 SEGGER 官网安装 J-Link Software，把 [examples/jlink-gdb-server.toml](examples/jlink-gdb-server.toml) 复制到本目录，并把 `service.command` 改为本机安装路径。
+此目录不包含 SEGGER J-Link 软件：其许可证要求每次再分发都事先取得 SEGGER 书面授权。需要 SEGGER Server 时，从 SEGGER 官网安装 J-Link Software，把 [docs/examples/jlink-gdb-server.toml](../docs/examples/jlink-gdb-server.toml) 复制到本目录，并把 `service.command` 改为本机安装路径。
 
 该 Server 没有 OpenOCD 的 TCL 端口，Memory access / Live refresh、寄存器专用读取和多核 CTI 同步都不可用；本地曾记录约 52–53 秒后长会话访问失效，使用前阅读用户手册的对应案例。
 
@@ -70,7 +70,6 @@ debugtui --environment ./tools/debug-env.toml --connect 127.0.0.1:3333 --elf ./b
 
 默认配置在退出前发送 `monitor resume`，再 detach，目标继续运行。若需要保持暂停，不要退出该环境会话；其他服务可使用不同的 `before_disconnect` 与 `session.on_exit` 策略。
 
-`examples/openocd.toml`、`examples/riscv-external.toml` 是外部服务模板，需自行提供匹配的 GDB/服务。模板不代表完成对应实板验证。
 
 ## 独立打包
 
@@ -78,6 +77,6 @@ debugtui --environment ./tools/debug-env.toml --connect 127.0.0.1:3333 --elf ./b
 ./tools/package.ps1
 ~~~
 
-生成 `artifacts/debugtui-tools-arm-win-x64.zip`，解压后得到 tools 目录。包中只有运行所需的 profile、板级配置、模板和 `bin/`；`openocd-adapter/` 是随附 OpenOCD 的补丁源码，留在仓库里。打包前校验 `dependencies.lock.json`，`bin/` 下有清单外的文件时拒绝打包；`bin/` 下的文件变化后运行 `./tools/package.ps1 -UpdateLock` 重新生成该清单。TUI 版本升级无需重复安装工具集。
+生成 `artifacts/debugtui-tools-arm-win-x64.zip`，解压后得到 tools 目录。包中只有运行所需的 profile、板级配置和 `bin/`；`openocd-adapter/` 是随附 OpenOCD 的补丁源码，留在仓库里。打包前校验 `dependencies.lock.json`，`bin/` 下有清单外的文件时拒绝打包；`bin/` 下的文件变化后运行 `./tools/package.ps1 -UpdateLock` 重新生成该清单。TUI 版本升级无需重复安装工具集。
 
 此最小工具集无 Python。GDB 的许可证位于 `bin/gdb/license.txt`；OpenOCD 的 GPLv2 文本、其他组件许可和来源在 `bin/openocd/COPYING.txt`、`bin/openocd/licenses/`、`bin/openocd/PROVENANCE.txt`。应用源码许可证不替代第三方条款。

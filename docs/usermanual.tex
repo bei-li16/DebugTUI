@@ -683,7 +683,7 @@ CTI（Cross Trigger Interface）把本地触发输入映射到触发通道，再
 适配 CTI 时先从芯片 TRM/集成资料确认 CTI 基址、触发输入输出接线、通道数、时钟与权限，再配置输入映射、通道门控和输出映射；对保持型事件还须遵循清除/确认规则。错误映射可能导致事件无法传播或反复触发。硬件联停延迟受实际拓扑影响，也不能笼统承诺所有核同周期停止。
 
 本工程 \code{[sync]} 中的 \code{method="cti"} 是兼容配置名，与 \code{method="tcl"} 一样执行 \code{sync.open} 中明确给出的 TCL 命令。它不发现 CTI、不自动分配通道、不生成寄存器值。\code{halt_peers} 是收到停止事件后的软件协调；\code{startup_order} 是会话启动顺序；二者都不会建立 CTI 硬件连接。本地单核 F429 profile 未配置 CTI，不据此推断芯片中存在某组可用 CTI。
-\src{\href{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/how-to-debug-coresight-basics-part-1}{Arm CoreSight basics Part 1：Cross Triggering}；\path{src/coordinator.rs}、\path{src/coordinator/control.rs}；\path{tools/examples/multicore-access.md}。}
+\src{\href{https://developer.arm.com/community/arm-community-blogs/b/architectures-and-processors-blog/posts/how-to-debug-coresight-basics-part-1}{Arm CoreSight basics Part 1：Cross Triggering}；\path{src/coordinator.rs}、\path{src/coordinator/control.rs}；\path{docs/examples/multicore-access.md}。}
 
 \subsection{ETM、ITM、DWT、ATB 与 Trace 接收端}\label{sec:trace}
 调试快照回答“现在停在哪里”，Trace 则尝试保存“到达这里之前发生了什么”。硬件 Trace 由事件源持续生成编码流；主机随后结合正确的程序镜像和解码规则还原执行信息。它不等同于 TUI 每 100 ms 读一次变量，也不等同于 GDB 日志或 UART printf。
@@ -804,7 +804,7 @@ on_exit = "detach"
 这是 CMSIS-DAP profile 中对应片段；J-Link/OpenOCD 只将板级文件换成 \code{stm32f429-live.cfg}。ready 是输出子串就绪条件，不代表符号已加载或应用完成启动；之后仍需 GDB 连接和实际状态查询。
 
 \subsection{自行安装的 J-Link Server}\label{sec:jlink-server}
-tools 不再包含 SEGGER J-Link 软件：其许可证要求每次再分发都事先取得 SEGGER 书面授权。需要 SEGGER Server 时，从 SEGGER 安装 J-Link Software，把 \path{tools/examples/jlink-gdb-server.toml} 复制到 tools 目录，并把 \code{service.command} 改为本机安装路径。该 Server 没有 OpenOCD TCL 端口，Memory access、Live refresh 和寄存器专用读取不可用。
+tools 不再包含 SEGGER J-Link 软件：其许可证要求每次再分发都事先取得 SEGGER 书面授权。需要 SEGGER Server 时，从 SEGGER 安装 J-Link Software，把 \path{docs/examples/jlink-gdb-server.toml} 复制到 tools 目录，并把 \code{service.command} 改为本机安装路径。该 Server 没有 OpenOCD TCL 端口，Memory access、Live refresh 和寄存器专用读取不可用。
 
 本地 J-Link Server 路径有普通调试成功记录，也有约 52--53 秒后的长会话访问失效记录。使用前应同时阅读第\ref{sec:jlink-duration}节；短程连接成功不能代替长会话稳定性验证。
 \par\noindent\begin{minipage}{\linewidth}
@@ -834,7 +834,7 @@ debugtui --environment ./tools/debug-env-cmsis-dap.toml `
 \end{lstlisting}
 \end{minipage}\par
 外部启动的服务由启动者管理。TUI 的工作区重建、任务执行或退出只终止自己启动的服务/GDB/子任务。OpenOCD 在 GDB 断开后继续运行，由启动者用 Ctrl+C 结束。
-\src{\path{tools/debug-env.toml}；\path{tools/debug-env-cmsis-dap.toml}；\path{tools/examples/jlink-gdb-server.toml}；\path{tools/bin/openocd/PROVENANCE.txt}；\path{tools/dependencies.lock.json}。}
+\src{\path{tools/debug-env.toml}；\path{tools/debug-env-cmsis-dap.toml}；\path{docs/examples/jlink-gdb-server.toml}；\path{tools/bin/openocd/PROVENANCE.txt}；\path{tools/dependencies.lock.json}。}
 
 \newsection{STM32F429 本地实板配置与操作}\label{sec:f429}
 \subsection{确认本机实际型号和固件}
@@ -1785,7 +1785,7 @@ Coordinator 将用户 id 与内部逐核 id 分离。一个 Batch 顺序等待�
 \code{sync.open} 在共享 Server 就绪后、GDB 连接前执行，method=tcl 或兼容的 cti 都只发送明确配置的 TCL 字符串。TUI 不识别 CTI 拓扑、不配置 AP、不承诺硬件联停；CTI base、通道、核关联和 MEM-AP 路由均属板级脚本。多个通道可用不同端口，CPU target 名称也不等于固定 AP 编号。
 
 本次已定位并复核 THA6206 双 Cortex-R52 的 2026-09-20 原始 result/events 记录，覆盖组控制、共享复位、运行中 Watch 和多核断点，见第\ref{sec:tha6206}节。Bao 双 VM 的另一组证据见第\ref{sec:bao-tha6206}节；它不能替代双 VM 加逐核 Guest C 符号的完整 TUI 验收；9 月 29 日已新增 Bao smoke 的双 GDB 编译下载回归，见第\ref{sec:bao-current-evidence}节。较早“无多核板卡”或“缺原始目录”的描述属于当时的资料范围。
-\src{\path{src/coordinator.rs}；\path{src/coordinator/control.rs}；\path{src/coordinator/breakpoints.rs}；\path{src/ui/breakpoints/cores.rs}；\path{tools/examples/multicore-access.md}。}
+\src{\path{src/coordinator.rs}；\path{src/coordinator/control.rs}；\path{src/coordinator/breakpoints.rs}；\path{src/ui/breakpoints/cores.rs}；\path{docs/examples/multicore-access.md}。}
 
 \newsection{Headless JSONL 自动化接口}\label{sec:jsonl}
 \subsection{启动、请求与事件约定}
@@ -1893,8 +1893,8 @@ ui\_preferences & Ui 对象 & 保存 UI 配置，无 MI；建议先读取工程�
 退出 & 明确板上保持/恢复策略，无自有进程或监听残留。\\\bottomrule
 \end{tabularx}
 
-对于 RISC-V 使用匹配的 GDB 和服务，仓库 \code{tools/examples/riscv-external.toml} 仅是模板；对于不同 ELF/SVD 的异构核，当前共享文件限制使其不能完整适配。对于 Cortex-R/A，复位初态某些浮点寄存器不可读可配置 gdb.registers；总线值与核缓存之间的一致性由芯片/服务配置保证。
-\src{\path{tools/examples/openocd.toml}、\path{tools/examples/riscv-external.toml}、\path{tools/examples/multicore-access.md}；\path{src/config.rs}。}
+对于 RISC-V 需要自备匹配的 GDB 和服务；对于不同 ELF/SVD 的异构核，当前共享文件限制使其不能完整适配。对于 Cortex-R/A，复位初态某些浮点寄存器不可读可配置 gdb.registers；总线值与核缓存之间的一致性由芯片/服务配置保证。
+\src{\path{docs/examples/multicore-access.md}；\path{src/config.rs}。}
 
 \newsection{日志、诊断与常见故障}\label{sec:diagnostics}
 \subsection{日志组织}

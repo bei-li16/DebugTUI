@@ -44,14 +44,14 @@ $manifest = Get-Content $lockPath -Raw | ConvertFrom-Json
 foreach ($entry in $manifest.files.PSObject.Properties) {
     if ((Get-FileHash -LiteralPath (Join-Path $PSScriptRoot $entry.Name)).Hash -ne $entry.Value.sha256) { throw "Tool checksum mismatch: $($entry.Name)" }
 }
-# Runtime files only: profiles, board configs, templates and the locked binaries.
+# Runtime files only: profiles, board configs and the locked binaries.
 # openocd-adapter/ is source for the bundled OpenOCD and stays in the repository.
 $locked = [Collections.Generic.HashSet[string]]::new([string[]]@($manifest.files.PSObject.Properties.Name), [StringComparer]::Ordinal)
 $files = foreach ($file in Get-ChildItem -LiteralPath $PSScriptRoot -File -Recurse -Force) {
     $relative = $file.FullName.Substring($PSScriptRoot.Length + 1).Replace('\','/')
     if ($relative.StartsWith('bin/')) {
         if (-not $locked.Contains($relative)) { throw "Tool file missing from dependencies.lock.json: $relative" }
-    } elseif (-not ($relative -in @('README.md','dependencies.lock.json') -or $relative -like 'debug-env*.toml' -or $relative -like 'config/*' -or $relative -like 'examples/*')) {
+    } elseif (-not ($relative -in @('README.md','dependencies.lock.json') -or $relative -like 'debug-env*.toml' -or $relative -like 'config/*')) {
         continue
     }
     [pscustomobject]@{ Path = $file.FullName; Entry = 'tools/' + $relative }
