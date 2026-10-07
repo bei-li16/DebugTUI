@@ -9,9 +9,21 @@
 
 两者都使用 `bin/gdb` 的 ARM GDB 和 `bin/openocd` 的 OpenOCD；GDB 3333、TCL 6666 仅监听本机，telnet 关闭。GDB/Server 路径按 TOML 所在目录解析，`${profile_dir}` 用于环境自己的资源路径。复制 profile 可以建立不同板卡的配置；修改端口时同步修改板级 cfg 和 `target.endpoint`。TUI 无需重新编译。
 
+## OpenOCD 版本
+
+`bin/openocd` 是用 [openocd-adapter](openocd-adapter/README.md) 补丁构建的 OpenOCD：上游 `d3ebb8d` 加 DebugTUI 的 ARMv8-R 寄存器适配，版本串 `0.12.0+dev-gd3ebb8d-dirty`。它保留上游的全部调试功能，另外提供 R52 寄存器专用协议（`aarch64 r52_read`、`banked`、`timer`、`vfp` 等），因此 STM32 与 R52 工程使用同一个 OpenOCD。程序与 `openocd-adapter/source.lock.json` 记录的 Windows 候选摘要一致；该构建只做过软件验证（构建、协议命令和配置解析），没有连接探针或板卡。来源和许可见 `bin/openocd/PROVENANCE.txt` 与 `licenses/`，GPL 对应源码 `corresponding-source.zip` 随 [v0.10.0-readonly.1](https://github.com/bei-li16/DebugTUI/releases/tag/v0.10.0-readonly.1) Release 提供。
+
+## R52 多核芯片
+
+THA6206 等 R52 工程可以在其环境 profile 中把 `service.command` 指向本目录的 `bin/openocd/bin/openocd.exe`，并用 `-s` 指向 `bin/openocd/scripts`，继续使用工程自己的板级 `openocd.cfg`（核心 target、AP、CTI、复位脚本）。寄存器专用读取按 [只读寄存器指南](../docs/registers-readonly-guide.md) 在 `[registers]` 中显式配置。板级 cfg 若依赖厂商 OpenOCD 的专用命令或脚本，先用下面的命令检查，它在不连接探针的情况下解析配置并报告缺失的命令或文件：
+
+~~~powershell
+./tools/bin/openocd/bin/openocd.exe -s ./tools/bin/openocd/scripts -f <工程>/.vscode/openocd.cfg -c shutdown
+~~~
+
 ## OpenOCD 脚本
 
-`bin/openocd/scripts` 只保留随附 profile 和 STM32 系列需要的 36 个上游文件：26 个 `target/stm32*.cfg`，J-Link、CMSIS-DAP、ST-Link 接口，以及 `mem_helper.tcl`、`target/swj-dp.tcl` 等通用辅助脚本，内容未修改。其他芯片的 target/board 脚本从对应 OpenOCD 版本或芯片厂商获取，放到工程目录并用 `-s` 或 `-f` 引用；OpenOCD 在解析配置时就会报告缺失的文件，不会拖到连接之后。
+`bin/openocd/scripts` 只保留随附 profile 和 STM32 系列需要的 40 个上游文件：30 个 `target/stm32*.cfg`，J-Link、CMSIS-DAP、ST-Link 接口，以及 `mem_helper.tcl`、`target/swj-dp.tcl` 等通用辅助脚本，内容未修改。其他芯片的 target/board 脚本从对应 OpenOCD 版本或芯片厂商获取，放到工程目录并用 `-s` 或 `-f` 引用；OpenOCD 在解析配置时就会报告缺失的文件，不会拖到连接之后。
 
 ## STM32F429 / J-Link
 
@@ -63,4 +75,4 @@ debugtui --environment ./tools/debug-env.toml --connect 127.0.0.1:3333 --elf ./b
 
 生成 `artifacts/debugtui-tools-stm32-jlink-win-x64.zip`，解压后得到 tools 目录。打包前校验 `dependencies.lock.json`；`bin/` 下的文件变化后运行 `./tools/package.ps1 -UpdateLock` 重新生成该清单。TUI 版本升级无需重复安装工具集。
 
-此最小工具集无 Python。GDB 的许可证位于 `bin/gdb/license.txt`；OpenOCD 的 GPLv2 文本和来源在 `bin/openocd/COPYING.txt`、`bin/openocd/PROVENANCE.txt`。应用源码许可证不替代第三方条款。
+此最小工具集无 Python。GDB 的许可证位于 `bin/gdb/license.txt`；OpenOCD 的 GPLv2 文本、其他组件许可和来源在 `bin/openocd/COPYING.txt`、`bin/openocd/licenses/`、`bin/openocd/PROVENANCE.txt`。应用源码许可证不替代第三方条款。

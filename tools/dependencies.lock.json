@@ -34,29 +34,77 @@
       "bytes": 17984,
       "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
     },
-    "bin/openocd/PROVENANCE.txt": {
-      "bytes": 698,
-      "sha256": "6b57b94d760a4c6f2b04d76570031eee0411ba15ef8d1b52ee11acb211a475cc"
+    "bin/openocd/PROVENANCE.json": {
+      "bytes": 202957,
+      "sha256": "eb53a86393adb49f89934f791166ccacf8988e49a1de804f1299f3e2b9ce37f2"
     },
-    "bin/openocd/bin/libftdi1.dll": {
-      "bytes": 272504,
-      "sha256": "a78e1a41e18ae01b1a8e78dd16bfb6ed21a2b35809f18dec65a888ccede093ac"
+    "bin/openocd/PROVENANCE.txt": {
+      "bytes": 1681,
+      "sha256": "fedfc524c76e61e305ace040c4999e7cc6ecaf6349b4d6a905b1505eb4cba002"
+    },
+    "bin/openocd/bin/libhidapi-0.dll": {
+      "bytes": 62665,
+      "sha256": "802e20725e36f9ce092ba3e60c1c9f4a175c01a03eac32b1a2a57c224eae2ba6"
     },
     "bin/openocd/bin/libusb-1.0.dll": {
-      "bytes": 234930,
-      "sha256": "e811df196a8e4e2ee18bcd224d7f6421736fafc78fe20419d76165692668926b"
+      "bytes": 227483,
+      "sha256": "50ead89843c992b17b3050798b08d095a5f44074c571c33c7a4d383c1e4502f5"
     },
     "bin/openocd/bin/openocd.exe": {
-      "bytes": 4490254,
-      "sha256": "10567f01d37c66a0975537960d66e61f7b4e2a17eb2c9637e2c2cbc569f70c79"
+      "bytes": 4261861,
+      "sha256": "0820f197803c55ecf756d7b7ef33f6c82ef97821b2764561ad71d32455e779a0"
+    },
+    "bin/openocd/licenses/COPYING.LibJaylink": {
+      "bytes": 18092,
+      "sha256": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643"
+    },
+    "bin/openocd/licenses/COPYING.LibUSB": {
+      "bytes": 26436,
+      "sha256": "5df07007198989c622f5d41de8d703e7bef3d0e79d62e24332ee739a452af62a"
+    },
+    "bin/openocd/licenses/COPYING.OpenOCD": {
+      "bytes": 362,
+      "sha256": "1b8f7e37ee5afbbf95c2a4d62b12b25232e29538692663b434318503a9a88419"
+    },
+    "bin/openocd/licenses/COPYRIGHT.GCC": {
+      "bytes": 75729,
+      "sha256": "a481f772f7a53335f13b32c6c54eb1c8577ce97704edd3757ab7ed4287a8e96a"
+    },
+    "bin/openocd/licenses/COPYRIGHT.MinGW": {
+      "bytes": 35569,
+      "sha256": "a88b3bc93337100ff09d32850afcc18d367cc6f069380029e40d4cf3fa6c40e2"
+    },
+    "bin/openocd/licenses/LICENSE.HIDAPI": {
+      "bytes": 530,
+      "sha256": "7d3b087c34f35d4d538e3bcddd1ff8f66e92f9ef336881999482800ddf840913"
+    },
+    "bin/openocd/licenses/LICENSE.HIDAPI.BSD": {
+      "bytes": 1534,
+      "sha256": "30eb1bef29b46f8ba7ab8b416035dbd93cb034a45481dd97815b944284582cd2"
+    },
+    "bin/openocd/licenses/LICENSE.HIDAPI.GPL3": {
+      "bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+    },
+    "bin/openocd/licenses/LICENSE.HIDAPI.Original": {
+      "bytes": 264,
+      "sha256": "fb5436aa63d1b71a8dfbf74ecaf1a5b4e1ec4df7f80074d11fec99284f69ca5f"
+    },
+    "bin/openocd/licenses/LICENSE.JimTcl": {
+      "bytes": 2276,
+      "sha256": "419f1146334e57fb258d6c957d1f94d43455ec0d24b1b54c4447e5f61a353950"
+    },
+    "bin/openocd/licenses/LICENSE.Tcl": {
+      "bytes": 2255,
+      "sha256": "b22f67b80c02c760bd7441ae50aa227f08394026f5ff5439b70f8efd2edaa010"
     },
     "bin/openocd/scripts/bitsbytes.tcl": {
       "bytes": 1659,
       "sha256": "d35d6059fab540c5584b0e3f36c0e97e9d0ea8a07bb85b7e8f5b39fde397ec2e"
     },
     "bin/openocd/scripts/file_renaming.cfg": {
-      "bytes": 962,
-      "sha256": "8befb0b7faf555b044f5fb9c8da877de139280303a71956e02c1ff8413f620a1"
+      "bytes": 2946,
+      "sha256": "d2e3404775de502253afca4199093c865d94378e9b959aa5027017e746974491"
     },
     "bin/openocd/scripts/interface/cmsis-dap.cfg": {
       "bytes": 267,
@@ -71,8 +119,8 @@
       "sha256": "fae3ee99dfa8efde390538f3f168583e1d5b5dfd55b794bf829fdcb713cfd4a6"
     },
     "bin/openocd/scripts/interface/stlink.cfg": {
-      "bytes": 903,
-      "sha256": "6d80f32294a750d968dde9322072509d2bb7b8a736416dbe2f72eed6fb074bea"
+      "bytes": 913,
+      "sha256": "109db9c5116fb53da2a89940307fbae8f2f87cbcb92e5897322f72e2e1c83a6c"
     },
     "bin/openocd/scripts/mem_helper.tcl": {
       "bytes": 1021,
@@ -87,104 +135,120 @@
       "sha256": "530b7d32ea996b0df060bebe7bb21dc8d2b1bbfba8db7fe3be1a47c8b33a0109"
     },
     "bin/openocd/scripts/target/stm32c0x.cfg": {
-      "bytes": 1759,
-      "sha256": "9f221292dc1ac9bf4974cf667676ca8d14531d6c1d317e5d659b0c136f231223"
+      "bytes": 1701,
+      "sha256": "22615a142fcfe772ed82840e953f29d4e327a861174bca0e173b355635722608"
     },
     "bin/openocd/scripts/target/stm32f0x.cfg": {
-      "bytes": 2610,
-      "sha256": "7c5778fc8d4c3935ebc451e3dadd41668974ae33a505981caad4307f4260e310"
+      "bytes": 2553,
+      "sha256": "79b16d099451787cfb96aecf9af3418a3fa9c0e99558cead30cae26d5e2b2c59"
     },
     "bin/openocd/scripts/target/stm32f1x.cfg": {
-      "bytes": 2514,
-      "sha256": "fe44c3ade7395db34a751c57401ebc2a176ed1ca793c47081cc9f06a8618125e"
+      "bytes": 2503,
+      "sha256": "bd086fbcb18aaed8839f844be4a8abfa6c284b776e05c8e7e8f1883d6686d7fe"
     },
     "bin/openocd/scripts/target/stm32f2x.cfg": {
-      "bytes": 2676,
-      "sha256": "e7c2ee96993733233de5030ddbb3517f6488cc89ae598af4cc87821d26e4e05d"
+      "bytes": 2665,
+      "sha256": "244d3ed8cf5046a90c5dfdc7845ee491935a06f8ea1fae9aa531122956bed7a1"
     },
     "bin/openocd/scripts/target/stm32f3x.cfg": {
-      "bytes": 3584,
-      "sha256": "963a84416334422be2f05d28ca42fb89b278039d9e78687ace7f4c68d6461eb9"
+      "bytes": 3573,
+      "sha256": "55ea3f22a6b3d61f6dc2d773637972542e415751a5f6a9e0928d85d186708aef"
     },
     "bin/openocd/scripts/target/stm32f4x.cfg": {
-      "bytes": 4442,
-      "sha256": "e42b6d3a3c9f300efbd936ec09358f6c541f7306e22ad7edffdd0f6f902806bf"
+      "bytes": 4431,
+      "sha256": "734f1ae8904b87bf9381abb3c074124fcd35852900a9af4195b77303d664c2c8"
     },
     "bin/openocd/scripts/target/stm32f7x.cfg": {
-      "bytes": 6551,
-      "sha256": "0661490b1d9a55f7405002bb62983b6108f9fc7f5fde5b0e3b269d99bb6c4ecd"
+      "bytes": 6540,
+      "sha256": "7d143d4a9917f5d61e5aa9c19f40e89de0c6f58d1de93b10e69dcfeae26b900f"
     },
     "bin/openocd/scripts/target/stm32g0x.cfg": {
-      "bytes": 2392,
-      "sha256": "12824c863e06702b8bc3de42d6c565b06eaae4a975a39ee7e246012c7051e92d"
+      "bytes": 2335,
+      "sha256": "a9c2c492779408f11249a218b79e7eec7d0d817c57a950f93d2f0b0769fd38e3"
     },
     "bin/openocd/scripts/target/stm32g4x.cfg": {
-      "bytes": 2989,
-      "sha256": "0393a5284b6a64e68e26116fc706cc1a5b2386a915100e82f4f6c0adac679112"
+      "bytes": 2880,
+      "sha256": "3c2a1e86550ebd1f05954f7ca74135a605af8908adf9bd1c5570a42414087686"
+    },
+    "bin/openocd/scripts/target/stm32h7rsx.cfg": {
+      "bytes": 2723,
+      "sha256": "ae13b3c23a6ab7dce363bebda785e371df58e9accfd638d7630cbeefac1265fe"
     },
     "bin/openocd/scripts/target/stm32h7x.cfg": {
-      "bytes": 9438,
-      "sha256": "7af442b5e64edd9dc864228d24bcce5c5afa4bdc894af862fc8438fafc81a3ae"
+      "bytes": 9304,
+      "sha256": "d42bb124e23066b16a8145800ef22f8ed28ea0dff638563b84e3e5c8a76f45ec"
     },
     "bin/openocd/scripts/target/stm32h7x_dual_bank.cfg": {
       "bytes": 186,
       "sha256": "dcc2c050561698edf9f70266a346db7c20d07040547f41f4a5ee53442d5e391b"
     },
     "bin/openocd/scripts/target/stm32l0.cfg": {
-      "bytes": 2241,
-      "sha256": "09f65bd9a49e5becd8fc2bebb6c12328eef5efaf7f681c0ec981c354b8c21bf5"
+      "bytes": 2170,
+      "sha256": "da4fa51e78784dda2a4c34c2049a76c5752539c35338d9d4d8c3ecde53454567"
     },
     "bin/openocd/scripts/target/stm32l0_dual_bank.cfg": {
       "bytes": 193,
       "sha256": "375b963ef8b9a26655399c6d9116bed509fd590cfb5688987dddc13531cadcda"
     },
     "bin/openocd/scripts/target/stm32l1.cfg": {
-      "bytes": 2758,
-      "sha256": "d1bc1b28a40ef48231f796a152d0cb23caa3537422c63549b50e7d008f6c28a6"
+      "bytes": 2747,
+      "sha256": "ad1a848ad3853e386928e16db2fb1f59ed1ec44f3a60f350df9f9259fc42c9d1"
     },
     "bin/openocd/scripts/target/stm32l1x_dual_bank.cfg": {
       "bytes": 290,
       "sha256": "014ca989be0e211277d09da027d6e7f03c6e2bedec17ff88709327e56d1168cb"
     },
     "bin/openocd/scripts/target/stm32l4x.cfg": {
-      "bytes": 4566,
-      "sha256": "30870b65c1dada6ef5705d44687b06b6c53ef782406031d725bb6e0674220d03"
+      "bytes": 4575,
+      "sha256": "f9cfde60819893d6fd0b3154838728ceb1a7ce7cbe13e20fa40dd4f4a5b74599"
     },
     "bin/openocd/scripts/target/stm32l5x.cfg": {
       "bytes": 1507,
       "sha256": "d9d171a4dc7785f7264fd403d6e24f7408aa4b9ccd22ff0e5280d4d6a5609e8c"
     },
+    "bin/openocd/scripts/target/stm32n6x.cfg": {
+      "bytes": 4801,
+      "sha256": "05af5991750a126a61560bcd162eabef1fa029dbd78173719172653245e35be2"
+    },
     "bin/openocd/scripts/target/stm32u0x.cfg": {
-      "bytes": 1444,
-      "sha256": "f9e8a4089b6d0f0ee5b30df52bb7a4f5238fe11e98eec30598f200ac52ba47fe"
+      "bytes": 1454,
+      "sha256": "d42001ad451c45330f1cf8faf681331d8285272bfc0bafe9604115b75642796e"
     },
     "bin/openocd/scripts/target/stm32u3x.cfg": {
-      "bytes": 1346,
-      "sha256": "532332cd52af14437b20380c8ea43895126223c7f61f4ea5dba1a9846c917d54"
+      "bytes": 1457,
+      "sha256": "ef0a34f8a23e9f35a4d8b436c5c95c70320595c3c1715ee9b9ab293cf65cb81a"
     },
     "bin/openocd/scripts/target/stm32u5x.cfg": {
       "bytes": 1942,
       "sha256": "9be42cf991b805682822e70abad70cc33655cbbd45306e4d124cc06ac814578c"
     },
     "bin/openocd/scripts/target/stm32w108xx.cfg": {
-      "bytes": 1752,
-      "sha256": "0f90cdcf9e9ef4e7c6743fb397a116e1bef0ebec42121962164ebbae9d16dfc9"
+      "bytes": 1741,
+      "sha256": "2c3781488f33ab12020f9cf274c86961cb81cecc13537a54e9ba413c010308aa"
     },
-    "bin/openocd/scripts/target/stm32wbax.cfg": {
-      "bytes": 2981,
-      "sha256": "466dc1da6fa0c265ef98c40752b813694cc3b2a6d26c5e234fff0f2d1b62c87c"
+    "bin/openocd/scripts/target/stm32wba2x.cfg": {
+      "bytes": 2972,
+      "sha256": "e448c84008e417a5d55ddc2b66e10f5331d1f7edf98a6333d18266ee78f7e2ac"
+    },
+    "bin/openocd/scripts/target/stm32wba5x.cfg": {
+      "bytes": 2976,
+      "sha256": "6f17a06060a89e54a5b2eb8ea256c70180e9bac04f84ae6ea70ce84e3802a1c5"
+    },
+    "bin/openocd/scripts/target/stm32wba6x.cfg": {
+      "bytes": 2976,
+      "sha256": "2e1330735ee0e13301ad7713653a80d1ebabab6546808f98dd953bb7b52e83fc"
     },
     "bin/openocd/scripts/target/stm32wbx.cfg": {
-      "bytes": 3152,
-      "sha256": "a91450b36fcab5cdfbadee06056e4822e3f9743e55e0bbc7b31b035a2879982f"
+      "bytes": 3159,
+      "sha256": "dc31ea2f8197862a201120375522576ce6f662f5f8b6f4758461e4ab8f785682"
     },
     "bin/openocd/scripts/target/stm32wlx.cfg": {
-      "bytes": 5013,
-      "sha256": "7e45768e5259dc213414dc90f8ac1a8696c187cf266a61e27b6e8ebce7f5a03a"
+      "bytes": 5031,
+      "sha256": "4131113ebe05a0f20dfad703fce668999c65c3655cd42f0ae379e0594680cc8d"
     },
     "bin/openocd/scripts/target/stm32x5x_common.cfg": {
-      "bytes": 4954,
-      "sha256": "f9833cc6c8695708f6daed81581604eae8fc1eadd3aea485217bad3e4c7f2ee3"
+      "bytes": 5014,
+      "sha256": "41b78ae57511e5dec595e3dbde4894b22b66fb31b0e5d62d0871679625cc9ba0"
     },
     "bin/openocd/scripts/target/stm32xl.cfg": {
       "bytes": 249,

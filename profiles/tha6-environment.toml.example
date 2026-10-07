@@ -8,6 +8,8 @@ registers = ["r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", 
 # Optional project-level system register settings: docs/registers-readonly-guide.md.
 # Use [registers], independently of the gdb.registers name list above:
 # cpu="cortex-r52", tcl_endpoint="127.0.0.1:6666".
+# DebugTUI's tools/bin/openocd ships that pinned adapter build; point
+# service.command at it (with -s .../bin/openocd/scripts) to use it here.
 # The pinned modified adapter's bounded R52 readonly path uses the matching
 # cp15_command="aarch64 r52_read", selector_command="aarch64 r52_select",
 # isb_command="". Fresh current Debug EL2 proof is required, not saved CPSR.

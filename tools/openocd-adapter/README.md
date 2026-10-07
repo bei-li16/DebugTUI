@@ -1,6 +1,6 @@
 # OpenOCD ARMv8 寄存器适配补丁
 
-这是独立的 GPL-2.0-or-later OpenOCD 修改，固定上游 `d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e` 和 Jim Tcl 子模块版本。校验和见 `source.lock.json`，补丁可以干净应用到该提交。现有 xPack Windows OpenOCD 没有被替换；相同的 `0.12.0` 版本号不证明具备本适配器。
+这是独立的 GPL-2.0-or-later OpenOCD 修改，固定上游 `d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e` 和 Jim Tcl 子模块版本。校验和见 `source.lock.json`，补丁可以干净应用到该提交。`tools/bin/openocd` 随附该补丁的 Windows 候选构建，摘要与 `source.lock.json` 的 `windows_candidate_sha256` 一致；其他 OpenOCD 即使版本号同为 `0.12.0`，也不证明具备本适配器。
 
 当前补丁提供有界普通 R52 读取 `aarch64 r52_read NAME` 与 MPU selector `aarch64 r52_select el1|el2 INDEX EXPECTED_COUNT`，各有独立协议，见 [配置、当前 EL2 与事务边界](../../docs/register-r52-core-read.md)。普通读取、MPU 总览和 selector 共用当次 Debug 证据；selector 在后端单事务内验证容量、保存/选择/恢复回读及真正 T32 ISB，不使用保存 CPSR 授予权限。当前仅支持已复核的实际 R52 D13/AArch32/Debug EL2、有界寄存器，不接通新 PMU selector 或任意 CP15 指令。
 
