@@ -76,7 +76,7 @@ ISB 使用现有 DPM AArch32 EDITR 路径接受的 T32 编码，最终由 `T32_F
 
 ## 验证边界
 
-`tools/openocd-adapter/tests/r52-transfer.c` 编译实际生产事务头文件，物理 I/O 使用独立模型；手写指令字来自 TRM，覆盖 111 项、4360 个逐操作故障点、768 个独立 bank 容量组合，以及恢复/身份/DSPSR/DLR/EDSCR 变化。低 EL/HDD 拒绝不执行 CPU 指令，容量拒绝无 region 数据读取，无模式/selector/使能/控制 MCR。
+`third_party/openocd-adapter/tests/r52-transfer.c` 编译实际生产事务头文件，物理 I/O 使用独立模型；手写指令字来自 TRM，覆盖 111 项、4360 个逐操作故障点、768 个独立 bank 容量组合，以及恢复/身份/DSPSR/DLR/EDSCR 变化。低 EL/HDD 拒绝不执行 CPU 指令，容量拒绝无 region 数据读取，无模式/selector/使能/控制 MCR。
 
 Rust 测试覆盖受限编码与协议解析、权限预检查、实际 MI/TCP/Tcl worker、多核隔离、能力 Probe、保存 User 状态、取消/帧变化、旧值和故障隔离。延后驱动默认四项 SKIPPED；实际 EXE 与软件夹具验证驱动流程及错误独立基线拒绝，不能当作 ARM 指令执行或实板证据。
 

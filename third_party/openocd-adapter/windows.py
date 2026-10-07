@@ -141,7 +141,7 @@ def stage(args):
     profiles = install / 'config'
     profiles.mkdir(exist_ok=True)
     for name in ['stm32f429-live.cfg', 'stm32f429-dap.cfg']:
-        shutil.copyfile(HERE.parent / 'config' / name, profiles / name)
+        shutil.copyfile(HERE.parents[1] / 'tools' / 'config' / name, profiles / name)
     for binary in [install / 'bin/openocd.exe'] + list((install / 'bin').glob('*.dll')):
         subprocess.run([args.cross + 'strip', '--strip-unneeded', str(binary)], check=True)
     dependencies = dll_closure(install / 'bin', args.cross + 'objdump', deps['system_dlls'])
@@ -158,7 +158,7 @@ def stage(args):
             if path.is_file() and '__pycache__' not in path.parts:
                 bundle.write(path, 'recipe/openocd-adapter/' + path.relative_to(HERE).as_posix())
         for name in ['stm32f429-live.cfg', 'stm32f429-dap.cfg']:
-            bundle.write(HERE.parent / 'config' / name, 'recipe/config/' + name)
+            bundle.write(HERE.parents[1] / 'tools' / 'config' / name, 'recipe/config/' + name)
         bundle.write(HERE.parents[1] / DRIVER_FIXTURE, DRIVER_FIXTURE)
     record = {
         'format': 1, 'target': deps['target'], 'board_tests_executed': False,

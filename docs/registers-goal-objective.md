@@ -51,7 +51,7 @@ G:\Data\GitFiles\ARM\File\ARM Architecture Reference Manual Supplement - ARMv8, 
 重新生成时的本地核对快照（2026-10-06）：开发代码 HEAD 为 `14dbbb4865166ee4e780a51d5d17d69953d4169e`。已提交代码完成 A01～A10、B01～B11、C01～C06，共 27 项；工作区的迭代 17 已完成 D01～D03 软件验收，账本记录 **[30]/[6]**，但该批代码尚未提交和推送。恢复执行必须先核对这批成果与证据，完成提交推送，不能把本地验收当作远端已交付。执行时重新查询远端，不能沿用历史远端 SHA。
 
 - EDSCR HDD[15]、RES1[16/18]、当前 Debug EL 解码及状态保存掩码已修正。普通 CP15、MPU 总览及有界 EL1/EL2 selector 已接通当前 Debug 证据，C03～C06 已软件验收，不再列为待重写功能。
-- `tools/openocd-adapter/source.lock.json` 的 Windows/Linux 新后端软件构建已验证，候选二进制摘要已记录；生产 C 模型、真实后端命令入口与 host 接入已有证据。硬件 `board_support_verified=false`，旧安装工具不自动视为等价。最终分发包与安装升级仍须 E04 验收。
+- `third_party/openocd-adapter/source.lock.json` 的 Windows/Linux 新后端软件构建已验证，候选二进制摘要已记录；生产 C 模型、真实后端命令入口与 host 接入已有证据。硬件 `board_support_verified=false`，旧安装工具不自动视为等价。最终分发包与安装升级仍须 E04 验收。
 - 迭代 17 已修正 selector 失败原因传递，并复验 ADS 参考界面、原值来源和生命周期；所选 95 项软件测试及严格 Clippy 通过。具体证据见账本末轮及 `docs/register-readonly-ui-lifecycle.md`。这不是最终完整 Cargo 或发布回归，E03 仍未完成。
 - 未提交批次涉及 `docs/registers-readonly-goal.md`、`docs/register-readonly-ui-lifecycle.md`、`src/session/selectors.rs`、`src/ui/registers.rs`、`src/ui/registers/framework_tests.rs`、`tests/selector_access/r52_selector_cases.rs`。先核对实际 diff 和适用证据，再提交相关文件；不要直接丢弃、重写或盲目提交整个工作区。
 - 用户参考文档 `G:\Data\GitFiles\DebugTUI\tui-debugger-spec.md` 未跟踪，只读保留，不提交。其他用户改动同样保留。目标文本修订不增加 feature 完成数。

@@ -45,7 +45,6 @@ foreach ($entry in $manifest.files.PSObject.Properties) {
     if ((Get-FileHash -LiteralPath (Join-Path $PSScriptRoot $entry.Name)).Hash -ne $entry.Value.sha256) { throw "Tool checksum mismatch: $($entry.Name)" }
 }
 # Runtime files only: profiles, board configs and the locked binaries.
-# openocd-adapter/ is source for the bundled OpenOCD and stays in the repository.
 $locked = [Collections.Generic.HashSet[string]]::new([string[]]@($manifest.files.PSObject.Properties.Name), [StringComparer]::Ordinal)
 $files = foreach ($file in Get-ChildItem -LiteralPath $PSScriptRoot -File -Recurse -Force) {
     $relative = $file.FullName.Substring($PSScriptRoot.Length + 1).Replace('\','/')

@@ -40,13 +40,13 @@
 
 ## 专用 Timer 后端
 
-显式配置 `registers.timer_command="aarch64 timer"` 后，十五项按精确 CP15 编码接入独立 Timer 协议；名称相同但编码不同的客户条目不会被强行重路由，位宽矛盾在访问前拒绝。最小约束是 [后端源码锁](../tools/openocd-adapter/source.lock.json) 的 Timer 协议；`0.12.0` 版本字符串不能代替协议。原 MRC/MRRC 配置可为空；选中 Timer 协议后错误不回退 GDB/旧命令。未配置仍保留旧工程行为。
+显式配置 `registers.timer_command="aarch64 timer"` 后，十五项按精确 CP15 编码接入独立 Timer 协议；名称相同但编码不同的客户条目不会被强行重路由，位宽矛盾在访问前拒绝。最小约束是 [后端源码锁](../third_party/openocd-adapter/source.lock.json) 的 Timer 协议；`0.12.0` 版本字符串不能代替协议。原 MRC/MRRC 配置可为空；选中 Timer 协议后错误不回退 GDB/旧命令。未配置仍保留旧工程行为。
 
 生产后端通过当前 core debug AP 读取 EDSCR 和 MIDR（R52 TRM Table 12-5 的 0x088/0xD00），各 AP 操作检查 EDPRSR.HALT，避免低 EL 试读可能 trap 的 MIDR。实际 Arm D13/AArch32 和当前 EL2 允许十五项；EL1、HDD=0/1 允许 CNTFRQ、CNTKCTL 与四项 CNTV。DDI0568A.c H1-255 排除 CRn/CRm=14 的 HSTR coarse trap。EL1 的物理 Timer 需要不可从 EL1 读出的 CNTHCTL，返回权限 Unknown；Hyp-only 项为 Access restricted。EL0 对 CNTKCTL/Hyp-only 明确拒绝，其余上层 enable 未知时不注入 Timer 指令，不冒充硬件缺失或已证明 trap。完整低 EL 受控访问和 R52+ 实际身份仍待适配。
 
 前后比较完整 DSPSR、DLR、外部身份与 EDSCR 状态，逐项保存/恢复/物理回读暂存 R0/R1。六项六十四位值各只有一次 MRRC；只在全部检查成功后发布固定宽度值，任一失败点立即停止并标记 unknown。没有 DCPS/DRPS、Timer/control 写入或旧异常恢复。每个成功 sample 的 `provenance.access.timer` 保存完整 MIDR/EDSCR/DSPSR/DLR；headless 与详情窗口可查，旧值保留自身的证据。服务锁、实际线程/物理 frame 0 前后校验、target 恢复、取消丢弃及 Scope All 选定核限制沿用生产适配器路径。
 
-`tools/openocd-adapter/tests/timer-transfer.c` 编译生产头文件：独立十五项指令字、474 个失败点、12 个合法 EL1/HDD 组合、48 个拒绝、暂存恢复及状态/PC/身份变化。Windows/Linux 在全新目录构建并完成真实离线命令检查，Windows 还完成原生依赖/配置/源码包检查；全部使用 dummy 或配置期检查，未连接探针。候选证据分别为 `artifacts/openocd-timer-windows-native-final.log`、`artifacts/openocd-timer-linux-build.log` 和 `.dev/openocd-windows-timer/windows-tests/report.json`，候选尚未安装或发布。
+`third_party/openocd-adapter/tests/timer-transfer.c` 编译生产头文件：独立十五项指令字、474 个失败点、12 个合法 EL1/HDD 组合、48 个拒绝、暂存恢复及状态/PC/身份变化。Windows/Linux 在全新目录构建并完成真实离线命令检查，Windows 还完成原生依赖/配置/源码包检查；全部使用 dummy 或配置期检查，未连接探针。候选证据分别为 `artifacts/openocd-timer-windows-native-final.log`、`artifacts/openocd-timer-linux-build.log` 和 `.dev/openocd-windows-timer/windows-tests/report.json`，候选尚未安装或发布。
 
 TVAL 是三十二位有符号差值 `(CompareValue - counter)[31:0]`，可选择有符号格式查看，不能当成六十四位计数器。ENABLE=0 时 TVAL 读值和 ISTATUS 都是架构 UNKNOWN；目录保留原始位并说明限制，不为 ISTATUS 设置可能误导的条件枚举。Valid 仅说明完整原始值读取成功，不证明禁用 Timer 的这些位有有效含义。IMASK 独立于 ISTATUS。CVAL/计数/offset 的字段保留全部六十四位；不同条目分别采样，不能把它们视为同一时刻的原子快照，也不能从先后读取的 CNTPCT/CNTVCT 推导精确 CNTVOFF。
 

@@ -84,7 +84,7 @@ VFP 读取生产模型验证73个故障点、八种保存模式与当前Hyp分�
 在具备 Git、GCC、make、autoconf、automake、libtool 和 pkg-config 的 Unix 构建环境中执行：
 
 ```sh
-sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
+sh third_party/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 ```
 
 输出目录必须是新路径。脚本保留固定版本源码、安装目录、GPL 许可和测试报告；可追加 configure 选项选择探针及交叉工具链。USB 接口需要对应开发依赖。默认包含 dummy/remote-bitbang，关闭 J-Link 子模块。本 VFP 写入后端批次已用上述 Linux 一键脚本在全新目录完成 WSL Ubuntu 22.04 构建，最终修复增量重编译后重新完成真实命令检查。Windows 使用下面单独经过全新目录构建验证的脚本。
@@ -92,7 +92,7 @@ sh tools/openocd-adapter/build.sh .dev/openocd-adapter-new-build
 检查已应用补丁的源码和后端：
 
 ```sh
-python3 tools/openocd-adapter/test.py --source PATH_TO_PINNED_SOURCE --out artifacts/openocd-adapter-tests --openocd PATH_TO_BACKEND
+python3 third_party/openocd-adapter/test.py --source PATH_TO_PINNED_SOURCE --out artifacts/openocd-adapter-tests --openocd PATH_TO_BACKEND
 ```
 
 事务测试编译生产使用的同一份头文件，验证完整高字、一次MRRC、MRC/MCR的物理恢复、19个传输失败点和三类恢复值不匹配，另验证银行事务的1110个故障点、R0恢复／完整DSPSR与DLR变化、37项EL0/EL2成功、41项受限及162项EL1 Unknown，以及VFP的73个故障点、R0/R1恢复、外部当前MIDR/EDSCR与DSPSR/DLR/FPEXC/HCPTR变化、八种保存模式、D16/D32、未使能和原始未知MVFR；严格C警告检查通过。命令检查仅初始化进程内dummy虚拟适配器，保持target未examine，核对七项协议、帮助以及参数和全部23个银行状态的精确原生错误码；所有端口关闭，不连接实际探针/板卡。`tests/encoding.s` 和 `tests/banked-encoding.s` 用GNU Arm汇编器独立确认MRRC、Thumb ISB及银行／当前寄存器编码；`tests/vfp-encoding.s` 核对VMRS／VMOV／HCPTR。
@@ -104,7 +104,7 @@ python3 tools/openocd-adapter/test.py --source PATH_TO_PINNED_SOURCE --out artif
 在 Linux／WSL 中准备主机 GCC、Git、Python 3（tarfile 支持 `filter='data'`）、make、autotools、pkg-config 以及 MinGW-w64 x64 的 gcc、windres、objdump、strip，然后执行：
 
 ```sh
-sh tools/openocd-adapter/build-windows.sh /tmp/openocd-windows-new
+sh third_party/openocd-adapter/build-windows.sh /tmp/openocd-windows-new
 ```
 
 脚本不安装主机依赖，不覆盖已有输出路径。`OPENOCD_CROSS_PREFIX` 可指定工具前缀，编译器的目标必须是 `x86_64-w64-mingw32`。固定的 libusb 1.0.30 归档 SHA-256、HIDAPI 0.15.0 和 LibJaylink 提交及许可选择见 `windows-dependencies.lock.json`；Jim Tcl 和 OpenOCD 提交仍由 `source.lock.json` 管理。HIDAPI 的 Windows 单文件嵌入方式已包含描述符重建代码，不能再重复编译该 C 文件。构建隔离 pkg-config 主机库，明确指定 build/host，不借 WSL 的 Windows 程序互操作误判为原生编译。
@@ -114,14 +114,14 @@ sh tools/openocd-adapter/build-windows.sh /tmp/openocd-windows-new
 输出包含 OpenOCD、完整脚本、libusb／HIDAPI DLL、两份现有 F429 配置、许可、每个文件的字节数／SHA-256、依赖导入表、`corresponding-source.zip` 和候选运行包。源码包保留完整 OpenOCD／Jim Tcl／LibJaylink／HIDAPI checkout、Git 对象、libusb 原始归档和构建／测试配方。解压源码包后，把它作为脚本的第二个参数，可从这些缓存提交构建全新目录而不下载源代码；主机工具链仍需事先准备。
 
 ```sh
-sh tools/openocd-adapter/build-windows.sh /tmp/openocd-windows-another /path/to/extracted-source
+sh third_party/openocd-adapter/build-windows.sh /tmp/openocd-windows-another /path/to/extracted-source
 ```
 
 构建检查全部 PE 为 x64、USB/HID 等通道确实编译、静态 DLL 导入依赖闭合；不从 PATH 猜补依赖，不把跨平台编译记为 Windows 原生验证。HID／USB 动态加载的 Windows 系统组件和探针 USB 驱动由宿主提供；离线检查不证明实际驱动兼容。把输出的 `source`、`install`、`corresponding-source.zip` 放到同一个 Windows 输出目录后执行（示例编译器路径需对应本机）：
 
 ```powershell
-python tools/openocd-adapter/windows.py verify --root G:/Build/openocd-windows-new --cc C:/MinGW/bin/gcc.exe --objdump C:/MinGW/bin/objdump.exe
-python tools/openocd-adapter/tests/windows-package.py --candidate G:/Build/openocd-windows-new/install --source-archive G:/Build/openocd-windows-new/corresponding-source.zip --objdump C:/MinGW/bin/objdump.exe
+python third_party/openocd-adapter/windows.py verify --root G:/Build/openocd-windows-new --cc C:/MinGW/bin/gcc.exe --objdump C:/MinGW/bin/objdump.exe
+python third_party/openocd-adapter/tests/windows-package.py --candidate G:/Build/openocd-windows-new/install --source-archive G:/Build/openocd-windows-new/corresponding-source.zip --objdump C:/MinGW/bin/objdump.exe
 ```
 
 原生检查先验证清单、配方和源码ZIP，再执行生产事务测试及真实后端命令检查，核对J-Link、CMSIS-DAP、ST-Link、FTDI的注册，以及两份F429配置和HID／USB bulk后端能离线加载。物理配置加载在config阶段结束，显式init被拒绝；只在前面的独立事务检查中初始化进程内dummy，不连接真实探针或打开调试端口。检查成功后才把 `native_windows_verified` 标为true并重新生成候选ZIP。十一项包检查包含缺失DLL、非PE、同大小篡改、新增DLL、有效ZIP内补丁篡改、Git空目录遗失及独立TCP驱动夹具缺失/变化拒绝。Git refs负向夹具包含有效JSON，避免被新JSON检查提前拒绝而漏验原Git目录问题。
@@ -159,7 +159,7 @@ VFP REG-H03 驱动 `scripts/test-register-vfp-hardware.cjs` 默认 4 skipped；�
 对应源码ZIP现在包含独立驱动依赖的 `tests/fixtures/register-vfp-write-board.example.json`，PROVENANCE保存其哈希；缺失或变化的示例会使本机包验证拒绝。此前仅从工作区执行测试不能证明单独解压的配方可用。新增 `tests/source-package.py` 在全新目录解压并核对当前配方，脱离工作区重新编译七套生产事务和运行八项TCP驱动测试，可选择用候选执行dummy原生命令；不连接探针。
 
 ```sh
-python tools/openocd-adapter/tests/source-package.py --archive PATH/corresponding-source.zip --out NEW_DIRECTORY --cc gcc --openocd PATH/openocd
+python third_party/openocd-adapter/tests/source-package.py --archive PATH/corresponding-source.zip --out NEW_DIRECTORY --cc gcc --openocd PATH/openocd
 ```
 
 EDSCR中的DTR满/空位可能在不同事务间变化；延后驱动每次仍严格验证身份、EL2/AArch32、ITE、故障和TCP10，稳定性比较按执行状态mask进行，原始值完整保留。不能把传输位变化视为EL变化，也不能因忽略传输位而放宽权限检查。

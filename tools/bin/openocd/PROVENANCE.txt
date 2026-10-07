@@ -2,9 +2,9 @@ DebugTUI-patched Open On-Chip Debugger (win32-x64)
 Version string: Open On-Chip Debugger 0.12.0+dev-gd3ebb8d-dirty (2026-10-06-13:04)
 Source: https://github.com/openocd-org/openocd d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e
         Jim Tcl d5243a25c488dfe751ef218828f13516e04ea2ba
-        + tools/openocd-adapter/0001-debugtui-armv8-register-adapter.patch
+        + third_party/openocd-adapter/0001-debugtui-armv8-register-adapter.patch
           (sha256 4cccd65e244745a3d3ec650153c462ee5bf1ca91ce9cc5e35696af794f20b2aa)
-Build: tools/openocd-adapter/build-windows.sh with x86_64-w64-mingw32-gcc 10-win32;
+Build: third_party/openocd-adapter/build-windows.sh with x86_64-w64-mingw32-gcc 10-win32;
        compiler, dependency revisions and per-file hashes are in PROVENANCE.json.
 Package: openocd-windows-x64-candidate.zip
          (sha256 fb1cfbd72c290df677fbf5bfae5f3199e9c1854dfe0251548abc0b49c340b664)

@@ -305,7 +305,7 @@ VFP 主机写入批次结束时，按 71 项 TODO 的完整验收口径，**已�
 
 2026-10-05 Windows 后端批次：固定源码／依赖的全新目录 MinGW-w64 构建通过，包含 J-Link、CMSIS-DAP HID／USB、ST-Link 和 FTDI。Windows 原生生产事务、协议、参数／状态拒绝、静态 DLL 导入、两份 F429 配置和两种 CMSIS-DAP 后端的离线检查通过；9 项包完整性／负向检查通过。源码 ZIP 解压后四份固定提交的 Git 对象检查和独立缓存 clone 回读通过，保留对应源码、配方和许可；修复 ZIP 遗漏 Git 空 refs 目录的问题。动态系统组件与 USB 驱动由宿主提供，离线检查不证明探针通信。当前工具集和安装未替换，未连接物理探针或上板。本批未修改 Rust 运行时，最近 Cargo 完整回归仍为 292 单元、58 集成、2 ignored。最终工具集／profile 整合、安装升级及完整任务验收仍待完成，未推送或发布。
 
-2026-10-05 MRRC／ISB 批次：292 项单元、58 项集成测试通过，2 项 ignored；严格 Clippy 通过。新增显式 64 位 MRRC 通道、真实 ISB 同步和协议门禁，Scope All 仅访问选中核。固定源码 OpenOCD 补丁在 WSL 完整编译 Linux 候选，并通过真实命令的离线拒绝检查；生产事务头文件在 Windows／Linux 编译验证 19 个故障点及临时寄存器恢复。Timer 钩子用 R52 编译参数编译通过；延后驱动默认 5 skipped，实际 DebugTUI 二进制在双核软件模型六阶段通过，未执行上板测试。Windows 后端、完整一键新目录构建和生产探针打包仍待完成。配置与限制见 [适配说明](../tools/openocd-adapter/README.md)。本批先保留本地，完整任务完成后统一推送与发布。
+2026-10-05 MRRC／ISB 批次：292 项单元、58 项集成测试通过，2 项 ignored；严格 Clippy 通过。新增显式 64 位 MRRC 通道、真实 ISB 同步和协议门禁，Scope All 仅访问选中核。固定源码 OpenOCD 补丁在 WSL 完整编译 Linux 候选，并通过真实命令的离线拒绝检查；生产事务头文件在 Windows／Linux 编译验证 19 个故障点及临时寄存器恢复。Timer 钩子用 R52 编译参数编译通过；延后驱动默认 5 skipped，实际 DebugTUI 二进制在双核软件模型六阶段通过，未执行上板测试。Windows 后端、完整一键新目录构建和生产探针打包仍待完成。配置与限制见 [适配说明](../third_party/openocd-adapter/README.md)。本批先保留本地，完整任务完成后统一推送与发布。
 
 2026-10-05 MPU／MAIR 批次：288 项单元测试、53 项集成测试通过，另 2 项 ignored；严格 Clippy 通过。新增当前核心 EL1／EL2 全部实现区域的直接读取、SCTLR／HSCTLR 全局状态、HPRENR／HCR 和 MAIR 内存属性解码；总览支持键鼠、滚动与显式 Probe／Read。实际二进制延后用例在双核软件夹具完成 5 阶段，所有选择器和控制状态未变；未执行上板测试。完整任务仍在开发，自检完成后统一推送非主分支并发布。
 

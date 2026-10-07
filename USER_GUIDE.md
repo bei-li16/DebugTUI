@@ -728,7 +728,7 @@ Status 的条件详情分别保存当前判定、最新尝试和保留原值当�
 
 R52/R52+ Timer 目录含十五项寄存器及字段；`timer.present` 未确定时不自动读取。TVAL 是三十二位有符号差值，可在格式菜单选有符号十进制；Timer 关闭时 TVAL 与 CTL.ISTATUS 的原始位没有有效计时语义。计数器、CVAL 与 CNTVOFF 保留完整六十四位，但分别采样不保证同时性。访问说明区分 Hyp、EL1/Guest 和 EL0 门控，说明本身不证明当前权限已核验；完整范围及未完成项见 [Timer 自检](docs/register-timer.md)。
 
-使用专用后端时，在 `[registers]` 中显式设置 `timer_command="aarch64 timer"`；实际 OpenOCD 必须符合 [源码锁](tools/openocd-adapter/source.lock.json) 的独立 Timer 协议，版本号本身不能证明支持。当前适配实际 R52：Debug EL2 允许十五项，EL1 允许频率、CNTKCTL 和虚拟 Timer；EL1 物理 Timer 及 EL0 中未证明的上层使能保持权限未知。详情与 headless JSON 保存实际 MIDR、当前 Debug EDSCR 和停止 DSPSR/DLR；停止前 CPSR 不代替当前 EL。选用后端后，协议不符、访问拒绝或截断不会回退其他命令。未设置该字段的工程保留原读取路径。
+使用专用后端时，在 `[registers]` 中显式设置 `timer_command="aarch64 timer"`；实际 OpenOCD 必须符合 [源码锁](third_party/openocd-adapter/source.lock.json) 的独立 Timer 协议，版本号本身不能证明支持。当前适配实际 R52：Debug EL2 允许十五项，EL1 允许频率、CNTKCTL 和虚拟 Timer；EL1 物理 Timer 及 EL0 中未证明的上层使能保持权限未知。详情与 headless JSON 保存实际 MIDR、当前 Debug EDSCR 和停止 DSPSR/DLR；停止前 CPSR 不代替当前 EL。选用后端后，协议不符、访问拒绝或截断不会回退其他命令。未设置该字段的工程保留原读取路径。
 
 Timer 的详情和 headless 来源会记录单项 `mrc32`/`mrrc64` 及主机请求起止时间。一次 MRRC 保留同一项的完整高低位；不同项分别采样。请求区间属于当前核的主机会话时钟，包含传输和检查耗时，不是硬件时间戳，也不能用来证明跨核同步或由先后两个计数值推导精确 CNTVOFF。旧值保留原来的时间来源；缺少旧证据时保持未知。
 
@@ -778,7 +778,7 @@ Headless 先调用 `registers_list` 获取 `context`，再用 `registers_probe` 
 
 ### 读取 R52 模式银行（开发分支）
 
-内置 R52／R52+ 目录的 23 个模式银行条目使用独立的 `banked` reader。工程需显式配置 `registers.banked_command = "aarch64 banked"`、TCL endpoint 和各核实际 target，并选用 [固定源码适配后端](tools/openocd-adapter/README.md)。默认空配置或协议不符返回 Reader unsupported。普通 **Read**／`registers_read` 即可读取；**Read bank** 是 MPU／PMU 选择器动作。
+内置 R52／R52+ 目录的 23 个模式银行条目使用独立的 `banked` reader。工程需显式配置 `registers.banked_command = "aarch64 banked"`、TCL endpoint 和各核实际 target，并选用 [固定源码适配后端](third_party/openocd-adapter/README.md)。默认空配置或协议不符返回 Reader unsupported。普通 **Read**／`registers_read` 即可读取；**Read bank** 是 MPU／PMU 选择器动作。
 
 读取只接受当前暂停核心的物理 frame 0。后端从调试态 DSPSR 读取完整停止 CPSR，以实际 MIDR 确认身份；普通 MRS CPSR 屏蔽执行状态位，不能用于这个检查。当前银行使用普通 MOV／MRS，其他银行使用架构允许的 banked MRS。它不切换模式；在 R52的专用银行reader要求独立v2协议和每次外部MIDR/EDSCR证明。当前Debug EL2/Hyp可读三十项；当前EL0/User可读七个显式`*_usr`银行，其他银行受限。内置目录仍为原二十三项，七项User扩展可放入自定义目录。EL1的三个Hyp银行受限，其他项权限未知；完整EL1模式适配仍待完成。停止前CPSR/DSPSR不能代替当前Debug模式证明，调试态直接MRS CPSR也不用于该证明。当前仅接受Arm/D13/架构F的Cortex-R52，R52+未知身份保持unsupported。
 

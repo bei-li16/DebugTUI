@@ -774,7 +774,7 @@ init = ["set remotetimeout 5", "set tcp connect-timeout 5"]
 核心追加 \code{-nx -q --interpreter=mi2}，关闭分页与交互确认，尝试开启 mi-async。GDB 自身资源或 DLL 问题应先在独立命令行复现；TUI 不补造目标能力。
 
 \subsection{OpenOCD 服务和目标动作}
-仓库分发 DebugTUI 补丁版 OpenOCD：上游 \code{d3ebb8d} 加 \path{tools/openocd-adapter} 的 ARMv8-R 寄存器适配，版本串为 \code{0.12.0+dev-gd3ebb8d-dirty}（2026-10-06）。它保留上游调试功能并提供 R52 寄存器专用协议，STM32 与 R52 工程共用；只完成构建、协议命令和配置解析的软件验证，未连接探针或板卡。配套 libusb、HIDAPI DLL 和精简后的 upstream scripts（STM32 系列 target、J-Link/CMSIS-DAP/ST-Link 接口与通用辅助脚本，共 40 个，内容未修改）已纳入工具校验清单；GPL 对应源码随 v0.10.0-readonly.1 Release 提供。其他芯片的脚本需从对应 OpenOCD 版本或厂商获取。
+仓库分发 DebugTUI 补丁版 OpenOCD：上游 \code{d3ebb8d} 加 \path{third_party/openocd-adapter} 的 ARMv8-R 寄存器适配，版本串为 \code{0.12.0+dev-gd3ebb8d-dirty}（2026-10-06）。它保留上游调试功能并提供 R52 寄存器专用协议，STM32 与 R52 工程共用；只完成构建、协议命令和配置解析的软件验证，未连接探针或板卡。配套 libusb、HIDAPI DLL 和精简后的 upstream scripts（STM32 系列 target、J-Link/CMSIS-DAP/ST-Link 接口与通用辅助脚本，共 40 个，内容未修改）已纳入工具校验清单；GPL 对应源码随 v0.10.0-readonly.1 Release 提供。其他芯片的脚本需从对应 OpenOCD 版本或厂商获取。
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
 [service]

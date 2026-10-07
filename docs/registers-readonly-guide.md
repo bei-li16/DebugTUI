@@ -28,7 +28,7 @@ Setup 的 CPU / Catalogue 与 Status 展示各核有效值及来源。目录继�
 
 M 的 CorePrivate 同地址读取必须走独立物理 route；`while_running=false` 是新模板默认。只有验证过允许运行 AP 读取的 channel 才显式设置 true。GDB memory fallback、regfile、CP15 和 selector/cache 事务仍要求暂停。NVIC 优先级位来源为 SVD 或显式配置，缺失 Unknown，不写 IPR 探测。DWT/FPU 未使能显示 NeedEnable，不自动改变 enable。
 
-R52 原生配置需要 [固定修改后端](../tools/openocd-adapter/README.md) 和独立 core/selector 协议。stock xPack、同名命令或 OpenOCD 版本号不能证明等价。每次事务以外部 MIDR/EDSCR 及 HALT、完整 DSPSR/DLR、scratch 恢复回读和当前容量判断；保存的 CPSR/DSPSR 只说明停止前程序状态。新 MPU selector 使用真正 ISB，不依赖或打开 CP15BEN；它不支持 PMU selector。旧 MRC/MCR 配置继续兼容，旧路径的权限限制不能作为新路径已验收的依据。细节见 [R52 受保护访问](register-r52-core-read.md)。
+R52 原生配置需要 [固定修改后端](../third_party/openocd-adapter/README.md) 和独立 core/selector 协议。stock xPack、同名命令或 OpenOCD 版本号不能证明等价。每次事务以外部 MIDR/EDSCR 及 HALT、完整 DSPSR/DLR、scratch 恢复回读和当前容量判断；保存的 CPSR/DSPSR 只说明停止前程序状态。新 MPU selector 使用真正 ISB，不依赖或打开 CP15BEN；它不支持 PMU selector。旧 MRC/MCR 配置继续兼容，旧路径的权限限制不能作为新路径已验收的依据。细节见 [R52 受保护访问](register-r52-core-read.md)。
 
 ## 使用与自动化
 

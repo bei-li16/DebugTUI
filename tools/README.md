@@ -12,7 +12,7 @@
 
 ## OpenOCD 版本
 
-`bin/openocd` 是用 [openocd-adapter](openocd-adapter/README.md) 补丁构建的 OpenOCD：上游 `d3ebb8d` 加 DebugTUI 的 ARMv8-R 寄存器适配，版本串 `0.12.0+dev-gd3ebb8d-dirty`。它保留上游的全部调试功能，另外提供 R52 寄存器专用协议（`aarch64 r52_read`、`banked`、`timer`、`vfp` 等），因此 STM32 与 R52 工程使用同一个 OpenOCD。程序与 `openocd-adapter/source.lock.json` 记录的 Windows 候选摘要一致；该构建只做过软件验证（构建、协议命令和配置解析），没有连接探针或板卡。来源和许可见 `bin/openocd/PROVENANCE.txt` 与 `licenses/`，GPL 对应源码 `corresponding-source.zip` 随 [v0.10.0-readonly.1](https://github.com/bei-li16/DebugTUI/releases/tag/v0.10.0-readonly.1) Release 提供。
+`bin/openocd` 是用 [openocd-adapter](../third_party/openocd-adapter/README.md) 补丁构建的 OpenOCD：上游 `d3ebb8d` 加 DebugTUI 的 ARMv8-R 寄存器适配，版本串 `0.12.0+dev-gd3ebb8d-dirty`。它保留上游的全部调试功能，另外提供 R52 寄存器专用协议（`aarch64 r52_read`、`banked`、`timer`、`vfp` 等），因此 STM32 与 R52 工程使用同一个 OpenOCD。程序与 `third_party/openocd-adapter/source.lock.json` 记录的 Windows 候选摘要一致；该构建只做过软件验证（构建、协议命令和配置解析），没有连接探针或板卡。来源和许可见 `bin/openocd/PROVENANCE.txt` 与 `licenses/`，GPL 对应源码 `corresponding-source.zip` 随 [v0.10.0-readonly.1](https://github.com/bei-li16/DebugTUI/releases/tag/v0.10.0-readonly.1) Release 提供。
 
 ## R52 多核芯片
 
@@ -77,6 +77,6 @@ debugtui --environment ./tools/debug-env.toml --connect 127.0.0.1:3333 --elf ./b
 ./tools/package.ps1
 ~~~
 
-生成 `artifacts/debugtui-tools-arm-win-x64.zip`，解压后得到 tools 目录。包中只有运行所需的 profile、板级配置和 `bin/`；`openocd-adapter/` 是随附 OpenOCD 的补丁源码，留在仓库里。打包前校验 `dependencies.lock.json`，`bin/` 下有清单外的文件时拒绝打包；`bin/` 下的文件变化后运行 `./tools/package.ps1 -UpdateLock` 重新生成该清单。TUI 版本升级无需重复安装工具集。
+生成 `artifacts/debugtui-tools-arm-win-x64.zip`，解压后得到 tools 目录。包中只有运行所需的 profile、板级配置和 `bin/`；随附 OpenOCD 的补丁源码在 `third_party/openocd-adapter/`，不进入该包。打包前校验 `dependencies.lock.json`，`bin/` 下有清单外的文件时拒绝打包；`bin/` 下的文件变化后运行 `./tools/package.ps1 -UpdateLock` 重新生成该清单。TUI 版本升级无需重复安装工具集。
 
 此最小工具集无 Python。GDB 的许可证位于 `bin/gdb/license.txt`；OpenOCD 的 GPLv2 文本、其他组件许可和来源在 `bin/openocd/COPYING.txt`、`bin/openocd/licenses/`、`bin/openocd/PROVENANCE.txt`。应用源码许可证不替代第三方条款。

@@ -9,13 +9,13 @@
 默认执行不会连接：
 
 ```powershell
-python tools/openocd-adapter/tests/vfp-write-hardware.py
+python third_party/openocd-adapter/tests/vfp-write-hardware.py
 ```
 
 环境具备后复制 [case 模板](../fixtures/register-vfp-write-board.example.json)，替换 endpoint、target、peer_target、register、raw 和两核已知物理 pair，移除 `software_example`。`expected_before` / `expected_peer` 始终为 128 位（高 D 在左、低 D 在右），即使修改 S/D。`fixture_core_private` 与 `restore_on_verified` 必须为 true，表示操作者已确认测试存储及成功后的显式原值写入。驱动不启动 OpenOCD、不执行目标代码，使用已连接的独立后端：
 
 ```powershell
-python tools/openocd-adapter/tests/vfp-write-hardware.py --run --case G:/Tests/r52-core0-s31.json
+python third_party/openocd-adapter/tests/vfp-write-hardware.py --run --case G:/Tests/r52-core0-s31.json
 ```
 
 驱动核对固定协议和暂停 owner、独立基线、原始写入及完整 pair、FP/模式/陷阱控制和 peer；使用每个响应的MIDR/EDSCR/DSPSR/DLR/HCPTR，不另注入CPU MIDR或直接当前CPSR指令。EDSCR稳定比较忽略可变化的DTR传输位，每次仍严格校验EL/ITE/故障。只在所有验证通过后再发送一次独立恢复写入。任何 unknown、mismatch、断连、超时、控制变化或恢复故障停止后续指令，不重试、不自动 rollback。内部事务物理回读 R0/R1；驱动的外部控制复核不能代替独立物理 PC/GPR 或恢复运行后固件样本。这些仍需保存为各用例的额外证据。八项TCP软件测试含低EL拒绝、传输位正常变化及空异常失败报告，均不能作为上板通过。

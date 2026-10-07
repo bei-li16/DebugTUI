@@ -39,8 +39,8 @@
       "sha256": "eb53a86393adb49f89934f791166ccacf8988e49a1de804f1299f3e2b9ce37f2"
     },
     "bin/openocd/PROVENANCE.txt": {
-      "bytes": 1681,
-      "sha256": "fedfc524c76e61e305ace040c4999e7cc6ecaf6349b4d6a905b1505eb4cba002"
+      "bytes": 1693,
+      "sha256": "578ed89c459e70f408a0c2ad27f31f6675005719e84b2fe4741305178e8c9c79"
     },
     "bin/openocd/bin/libhidapi-0.dll": {
       "bytes": 62665,

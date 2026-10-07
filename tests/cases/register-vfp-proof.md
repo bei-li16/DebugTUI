@@ -16,7 +16,7 @@
 ```powershell
 node scripts/test-register-vfp-hardware.cjs
 node scripts/test-register-vfp-hardware.cjs --run --binary PATH\debugtui.exe --project PATH\project.toml --core core0 --case PATH\vfp-case.json
-python tools/openocd-adapter/tests/vfp-write-hardware.py --help
+python third_party/openocd-adapter/tests/vfp-write-hardware.py --help
 ```
 
 只读case从 `tests/fixtures/register-vfp-board.example.json` 复制；明确填写 `expected_debug_el=2` 与正常固件的 `expected_mode`，不得将两个字段互相推导。停止前DSPSR/DLR另与独立固件、GDB原始停止状态及PC核对，当前EL独立记录外部EDSCR。正常固件允许读取CPSR，与调试态禁止直接当前CPSR读取的规则分开。EL1/Guest合法VFP读取仍是REG-304缺口，不按受限结果宣称完成。

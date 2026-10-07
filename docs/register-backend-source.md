@@ -4,7 +4,7 @@
 
 2026-10-06。REG-006 的源码/构建可获得性已验证；实际工具安装与板级能力另由 REG-001/003/008/505 跟踪。
 
-上游为 [openocd-org/openocd](https://github.com/openocd-org/openocd)，固定提交 `d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e`。`tools/openocd-adapter/source.lock.json` 固定补丁、十一项 patched source SHA256、Jim Tcl 和七个独立协议；Windows USB/HID/J-Link依赖、许可与固定归档另在 `windows-dependencies.lock.json`。修改清单及协议行为在 [后端说明](../tools/openocd-adapter/README.md)，包含生产源码、独立事务/编码测试、构建与打包配方。
+上游为 [openocd-org/openocd](https://github.com/openocd-org/openocd)，固定提交 `d3ebb8d2b9adbfd9a13072e8e446f424b5ff3c0e`。`third_party/openocd-adapter/source.lock.json` 固定补丁、十一项 patched source SHA256、Jim Tcl 和七个独立协议；Windows USB/HID/J-Link依赖、许可与固定归档另在 `windows-dependencies.lock.json`。修改清单及协议行为在 [后端说明](../third_party/openocd-adapter/README.md)，包含生产源码、独立事务/编码测试、构建与打包配方。
 
 本轮从固定Git对象导出全新源树并重新应用VFP v2当前补丁，十一项源码逐字节匹配源锁，审计 `artifacts/vfp-proof-source-audit.json`。前序Windows审计受系统Git `core.autocrlf=true` 影响生成CRLF，锁校验失败；保留首轮日志和完整源树。按正式Unix构建配方设置 `core.autocrlf=false`/LF后重新审计通过，未放宽哈希或比较规则。前序证据 `artifacts/register-backend-source-audit.json`；原失败日志 `artifacts/register-backend-source-audit-windows-crlf.log`。
 
@@ -24,10 +24,10 @@ Windows包检查十一项通过，日志 `artifacts/vfp-proof-windows-package-re
 复建入口需要新输出目录，主机工具链按后端README准备；支持源码缓存的Windows入口可使用源码ZIP中的缓存。Linux配方要求Git/GCC/make/autotools/pkg-config；Windows额外需要Python、MinGW-w64 x64工具和已列出的开发依赖。
 
 ```sh
-sh tools/openocd-adapter/build.sh NEW_LINUX_DIRECTORY
-sh tools/openocd-adapter/build-windows.sh NEW_WINDOWS_DIRECTORY [SOURCE_CACHE]
-python3 tools/openocd-adapter/test.py --source PINNED_SOURCE --out TEST_DIRECTORY --openocd BACKEND
-python3 tools/openocd-adapter/tests/source-package.py --archive SOURCE.zip --out NEW_DIRECTORY --cc GCC --openocd BACKEND
+sh third_party/openocd-adapter/build.sh NEW_LINUX_DIRECTORY
+sh third_party/openocd-adapter/build-windows.sh NEW_WINDOWS_DIRECTORY [SOURCE_CACHE]
+python3 third_party/openocd-adapter/test.py --source PINNED_SOURCE --out TEST_DIRECTORY --openocd BACKEND
+python3 third_party/openocd-adapter/tests/source-package.py --archive SOURCE.zip --out NEW_DIRECTORY --cc GCC --openocd BACKEND
 ```
 
 后端版本号0.12.0本身不能证明这些扩展可用；必须匹配源锁规定的独立协议、各reader最低能力及实际候选哈希。dirty表示尚未进入上游的受控适配补丁。构建时间/路径/工具链影响文件字节，不声明二进制逐字节可复现。两个候选当前均未安装；没有实板结果或最终工具集/Release交付声明。源码/补丁/GPL许可随未来交付保留。

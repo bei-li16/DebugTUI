@@ -14,4 +14,4 @@ resources/svd/**/*.svd -text -whitespace
 third_party/cmsis-core/*.h -text -whitespace
 third_party/cmsis-core/LICENSE -text -whitespace
 # Unified patches intentionally preserve a space on blank context lines.
-tools/openocd-adapter/*.patch text eol=lf -whitespace
+third_party/openocd-adapter/*.patch text eol=lf -whitespace
