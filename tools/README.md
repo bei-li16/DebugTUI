@@ -73,6 +73,6 @@ debugtui --environment ./tools/debug-env.toml --connect 127.0.0.1:3333 --elf ./b
 ./tools/package.ps1
 ~~~
 
-生成 `artifacts/debugtui-tools-stm32-jlink-win-x64.zip`，解压后得到 tools 目录。打包前校验 `dependencies.lock.json`；`bin/` 下的文件变化后运行 `./tools/package.ps1 -UpdateLock` 重新生成该清单。TUI 版本升级无需重复安装工具集。
+生成 `artifacts/debugtui-tools-arm-win-x64.zip`，解压后得到 tools 目录。包中只有运行所需的 profile、板级配置、模板和 `bin/`；`openocd-adapter/` 是随附 OpenOCD 的补丁源码，留在仓库里。打包前校验 `dependencies.lock.json`，`bin/` 下有清单外的文件时拒绝打包；`bin/` 下的文件变化后运行 `./tools/package.ps1 -UpdateLock` 重新生成该清单。TUI 版本升级无需重复安装工具集。
 
 此最小工具集无 Python。GDB 的许可证位于 `bin/gdb/license.txt`；OpenOCD 的 GPLv2 文本、其他组件许可和来源在 `bin/openocd/COPYING.txt`、`bin/openocd/licenses/`、`bin/openocd/PROVENANCE.txt`。应用源码许可证不替代第三方条款。

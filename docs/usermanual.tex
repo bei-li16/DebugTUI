@@ -2073,7 +2073,7 @@ v0.8.3 初版源码 & 137 项单元测试、1 项 CLI 集成测试通过，0 失
 \subsection{分发和许可证}
 package.json 的 files 目前包含 EXE、profiles、说明与许可证，\textbf{不包含 docs、resources/svd 或 tools}。本次手册放入 docs 不会自动进入 npm 包；如需发行附带手册，另更新打包清单。TUI 以 Apache-2.0 分发；GDB、OpenOCD、SEGGER 工具及 SVD 遵从各自许可证，不能用应用许可证替代第三方条款。
 
-\code{scripts/package.ps1} 核对 npm/EXE 版本并拒绝开发/工具依赖泄入 TUI 包；\code{tools/package.ps1} 验证 dependencies.lock.json 的文件 SHA-256，再生成独立 tools ZIP。当前 ZIP 文件名仍含 stm32-jlink，但内容已经包含 OpenOCD/CMSIS-DAP 配置，应以归档清单为准。
+\code{scripts/package.ps1} 核对 npm/EXE 版本并拒绝开发/工具依赖泄入 TUI 包；\code{tools/package.ps1} 验证 dependencies.lock.json 的文件 SHA-256，拒绝清单外的 \path{bin/} 文件，再生成只含运行文件的 \path{debugtui-tools-arm-win-x64.zip}；\path{openocd-adapter/} 源码不进入该包。\code{-UpdateLock} 按当前 \path{bin/} 重新生成清单。
 \src{\path{Cargo.toml}、\path{Cargo.lock}、\path{package.json}；\path{scripts/}；\path{tools/package.ps1}；\path{NOTICE}、\path{THIRD_PARTY_NOTICES.md}、\path{licenses/}。}
 
 \newsection{已知问题、实现限制与维护建议}\label{sec:limits}

@@ -54,7 +54,7 @@ if ((Get-FileHash -LiteralPath $exePath).Hash -ne (Get-FileHash -LiteralPath $ex
 $assets = @($zipPath, $exePath, $tgzPath, $stableTgzPath)
 if ($IncludeTools) {
     & "$projectRoot\tools\package.ps1" -OutputDirectory $artifactRoot
-    $assets += Join-Path $artifactRoot 'debugtui-tools-stm32-jlink-win-x64.zip'
+    $assets += Join-Path $artifactRoot 'debugtui-tools-arm-win-x64.zip'
 }
 $hashes = @($assets | ForEach-Object { ((Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()) + '  ' + (Split-Path $_ -Leaf) })
 [IO.File]::WriteAllText((Join-Path $artifactRoot 'SHA256SUMS.txt'), ($hashes -join "`n") + "`n", [Text.UTF8Encoding]::new($false))

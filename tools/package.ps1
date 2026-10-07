@@ -44,17 +44,26 @@ $manifest = Get-Content $lockPath -Raw | ConvertFrom-Json
 foreach ($entry in $manifest.files.PSObject.Properties) {
     if ((Get-FileHash -LiteralPath (Join-Path $PSScriptRoot $entry.Name)).Hash -ne $entry.Value.sha256) { throw "Tool checksum mismatch: $($entry.Name)" }
 }
+# Runtime files only: profiles, board configs, templates and the locked binaries.
+# openocd-adapter/ is source for the bundled OpenOCD and stays in the repository.
+$locked = [Collections.Generic.HashSet[string]]::new([string[]]@($manifest.files.PSObject.Properties.Name), [StringComparer]::Ordinal)
+$files = foreach ($file in Get-ChildItem -LiteralPath $PSScriptRoot -File -Recurse -Force) {
+    $relative = $file.FullName.Substring($PSScriptRoot.Length + 1).Replace('\','/')
+    if ($relative.StartsWith('bin/')) {
+        if (-not $locked.Contains($relative)) { throw "Tool file missing from dependencies.lock.json: $relative" }
+    } elseif (-not ($relative -in @('README.md','dependencies.lock.json') -or $relative -like 'debug-env*.toml' -or $relative -like 'config/*' -or $relative -like 'examples/*')) {
+        continue
+    }
+    [pscustomobject]@{ Path = $file.FullName; Entry = 'tools/' + $relative }
+}
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$zipPath = Join-Path $outputRoot 'debugtui-tools-stm32-jlink-win-x64.zip'
+$zipPath = Join-Path $outputRoot 'debugtui-tools-arm-win-x64.zip'
 $stream = [IO.File]::Open($zipPath,[IO.FileMode]::Create)
 $zip = [IO.Compression.ZipArchive]::new($stream,[IO.Compression.ZipArchiveMode]::Create,$false)
 try {
-    foreach ($file in Get-ChildItem -LiteralPath $PSScriptRoot -File -Recurse -Force) {
-        if ($file.FullName.StartsWith($outputRoot + [IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)) { continue }
-        if ($file.Name -in @('.gitignore','.gitattributes','package.ps1')) { continue }
-        $relative = 'tools/' + $file.FullName.Substring($PSScriptRoot.Length + 1).Replace('\','/')
-        $null = [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$file.FullName,$relative,[IO.Compression.CompressionLevel]::Optimal)
+    foreach ($file in $files) {
+        $null = [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip,$file.Path,$file.Entry,[IO.Compression.CompressionLevel]::Optimal)
     }
 } finally { $zip.Dispose(); $stream.Dispose() }
 Write-Output "PASS separate environment package: $zipPath"
