@@ -1,5 +1,13 @@
 # DebugTUI 验证记录
 
+## 最小 tools 集与补丁版 OpenOCD（2026-10-07，claude/tools-minimal）
+
+`tools/` 跟踪的文件从 1090 个、38.6 MiB 减到 102 个、15.0 MiB；运行包 `debugtui-tools-arm-win-x64.zip` 为 74 个文件、6.9 MB，此前发布的 tools ZIP 约 14.5 MB。移除 SEGGER J-Link（许可证要求每次再分发事先取得 SEGGER 书面授权）及其 BAT 入口，默认 `debug-env.toml` 改为 OpenOCD + J-Link；OpenOCD 换为 openocd-adapter 补丁构建（上游 d3ebb8d），`openocd.exe` 与 `source.lock.json` 的 Windows 候选摘要一致，随附文件均与构建的 PROVENANCE.json 一致；脚本保留 40 个；新增 ST-Link profile。
+
+软件验证，未连接探针或板卡：DebugTUI 九项协议命令在 dummy armv8r target 上通过；F429 的 J-Link、CMSIS-DAP、ST-Link 配置均可解析；30 个 STM32 target × 3 种接口共 90 个组合，精简前后的脚本树结果一致（87 个可解析，`stm32x5x_common.cfg` 是被包含的片段，两边单独解析都失败）。从 git 导出的 tools 可以独立打包并启动 OpenOCD；`bin/` 有清单外的文件时拒绝打包。完整 Cargo 515 项单元测试、严格 Clippy 通过。三项集成测试在本机满载时按时限失败，单独重跑通过；`register_distribution` 在路径超过 260 字符的检出目录中失败，短路径下 14/14 通过。功能套件 cli、terminal、devices-tui、distribution 通过。
+
+未执行：三种探针的实板回归，R52/THA6 板级 cfg 与补丁版 OpenOCD 的组合，依赖 SEGGER Server 的 `test-step-isolation.cjs`，以及改为 OpenOCD 的 `test-lifecycle.ps1`、`test-hardware.ps1`、`test-step-hardware.cjs`（只做了语法检查）。
+
 ## REG-406 STM（2026-10-06，开发分支）
 
 完整Cargo **406单元＋175集成通过，2 ignored，共581通过**；F24 **156/156**为证据匹配模式数，非用例数。525324 ms无超时；其他**22外层功能套件未选择**。完整报告/Markdown/unit.log逐字节镜像 `artifacts/functional-1791244770256-6c55a69d/`，61份原始子报告保留于总报告引用位置；Node大产物留在C盘，核对 `artifacts/register-stm-report-mirror.json`。严格Clippy通过，日志 `artifacts/register-stm-clippy.log`；目录再生成及后端11项源锁静态核对通过，见 `artifacts/register-stm-static-audit.json`。
