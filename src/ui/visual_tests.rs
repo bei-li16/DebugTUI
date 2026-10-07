@@ -243,7 +243,7 @@ fn export_color_previews_when_requested() {
     a.select_pane(pane::SOURCE);
     a.activate_source(0);
     a.source_top = 8;
-    a.fx.request(400, "step");
+    a.fx.request(400, method::STEP);
     let mut running = a.snapshot.clone();
     running.state = state::RUNNING.into();
     a.update(Event::Snapshot {

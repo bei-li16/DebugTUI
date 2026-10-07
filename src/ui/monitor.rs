@@ -546,7 +546,7 @@ impl App {
         sample.channel = policy.channel.clone();
         let (method, mut params, resolve) = if let Some(binding) = &sample.binding {
             (
-                "memory_read",
+                method::MEMORY_READ,
                 json!({"address":binding.address,"bits":binding.bits,"little_endian":binding.little_endian,"channel":policy.channel,"context":request_context,"selection_epoch":epoch,
                     "watch_binding":if binding.binding_id.is_empty(){None}else{Some(&binding.binding_id)}}),
                 false,
@@ -555,7 +555,7 @@ impl App {
             && let Some((expression, path)) = &item.watch
         {
             (
-                "watch_resolve",
+                method::WATCH_RESOLVE,
                 json!({"expression":expression,"path":path,"context":request_context,"selection_epoch":epoch}),
                 true,
             )
@@ -1029,7 +1029,7 @@ mod tests {
             let (mut a, (engine, requests)) = (app(), session::test_channel());
             assert!(a.ensure_monitors(Some(&engine)));
             let request = requests.try_recv().unwrap();
-            assert_eq!(request.method, "watch_resolve");
+            assert_eq!(request.method, method::WATCH_RESOLVE);
             assert_eq!(request.params["context"], json!(a.register_context()));
             let mut result = json!({"address":536870912,"bits":32,"little_endian":true,
                 "binding_id":"fixture-binding","selection_epoch":a.snapshot.memory_selection_epoch,
@@ -1065,12 +1065,12 @@ mod tests {
         a.snapshot.register_generation = Some(7);
         assert!(a.ensure_monitors(Some(&engine)));
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "watch_resolve");
+        assert_eq!(request.method, method::WATCH_RESOLVE);
         assert_eq!(request.params["context"]["generation"], 7);
         resolved(&mut a, request.id);
         assert!(a.ensure_monitors(Some(&engine)));
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "memory_read");
+        assert_eq!(request.method, method::MEMORY_READ);
         assert_eq!(request.params["context"]["generation"], 7);
         assert_eq!(request.params["context"], json!(a.register_context()));
     }
@@ -1115,7 +1115,7 @@ mod tests {
         app.project.ui.refresh.insert(key.clone(), old);
         assert!(app.ensure_monitors(Some(&engine)));
         let pending = requests.try_recv().unwrap();
-        assert_eq!(pending.method, "watch_resolve");
+        assert_eq!(pending.method, method::WATCH_RESOLVE);
         app.snapshot.register_session += 1;
         resolved(&mut app, pending.id);
         assert!(app.monitor.next_read.is_none());
@@ -1125,7 +1125,7 @@ mod tests {
         resolved(&mut app, requests.try_recv().unwrap().id);
         assert!(app.ensure_monitors(Some(&engine)));
         let pending = requests.try_recv().unwrap();
-        assert_eq!(pending.method, "memory_read");
+        assert_eq!(pending.method, method::MEMORY_READ);
         app.snapshot.frame.level += 1;
         app.monitor_response(pending.id, &json!({"value":77}), None);
         assert!(app.watch_sample("watch:counter").is_none());
@@ -1143,11 +1143,11 @@ mod tests {
         let (mut a, (engine, rx)) = (app(), session::test_channel());
         assert!(a.ensure_monitors(Some(&engine)));
         let request = rx.try_recv().unwrap();
-        assert_eq!(request.method, "watch_resolve");
+        assert_eq!(request.method, method::WATCH_RESOLVE);
         resolved(&mut a, request.id);
         assert!(a.ensure_monitors(Some(&engine)));
         let request = rx.try_recv().unwrap();
-        assert_eq!(request.method, "memory_read");
+        assert_eq!(request.method, method::MEMORY_READ);
         let result = memory_access::scalar_fixture(&a, &request, 1);
         a.monitor_response(request.id, &result, None);
         assert!(!a.ensure_monitors(Some(&engine))); // configured interval, no busy polling
@@ -1158,7 +1158,7 @@ mod tests {
             .for_each(|s| s.due = Instant::now());
         assert!(a.ensure_monitors(Some(&engine)));
         let request = rx.try_recv().unwrap();
-        assert_eq!(request.method, "memory_read");
+        assert_eq!(request.method, method::MEMORY_READ);
         assert_eq!(request.params["channel"], "bus");
         let result = memory_access::scalar_fixture(&a, &request, 7);
         a.monitor_response(request.id, &result, None);
@@ -1363,7 +1363,7 @@ mod tests {
             .for_each(|sample| sample.due = Instant::now());
         assert!(a.ensure_monitors(Some(&engine)));
         let read = requests.recv().unwrap();
-        assert_eq!(read.method, "memory_read");
+        assert_eq!(read.method, method::MEMORY_READ);
         assert_eq!(read.params["watch_binding"], "fixture-binding");
         assert_eq!(read.params["context"]["generation"], 7);
         let result = memory_access::scalar_fixture(&a, &read, 2);

@@ -175,7 +175,7 @@ fn symbols_debounce_bound_requests_and_reject_stale_query_and_core_replies() {
     a.symbol_search.changed -= Duration::from_secs(1);
     assert!(a.ensure_symbol_search(Some(&engine)));
     let old = requests.try_recv().unwrap();
-    assert_eq!(old.method, "symbols");
+    assert_eq!(old.method, method::SYMBOLS);
     assert_eq!(old.params["query"], "spi");
     a.search_paste("_irq");
     a.symbol_search.changed -= Duration::from_secs(1);
@@ -287,7 +287,7 @@ fn files_load_from_ready_elf_without_requesting_target_memory_or_registers() {
     a.side_pane = pane::MEMORY;
     render(&mut a, 120, 36);
     assert!(a.ensure_visible_data(Some(&engine)));
-    assert_eq!(requests.try_recv().unwrap().method, "files");
+    assert_eq!(requests.try_recv().unwrap().method, method::FILES);
     assert!(requests.try_recv().is_err());
 }
 

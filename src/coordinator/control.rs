@@ -25,7 +25,7 @@ impl Coordinator {
 
     /// Return true when this request has been handled by the group controller.
     pub(super) fn begin_control(&mut self, req: &mut Request) -> bool {
-        if req.method == "console" {
+        if req.method == method::CONSOLE {
             let command = req
                 .params
                 .get("command")
@@ -34,13 +34,13 @@ impl Coordinator {
                 .trim();
             if let Some(method) = session::execution_alias(command) {
                 req.method = match method {
-                    "step-instruction" => "stepi",
+                    "step-instruction" => method::STEPI,
                     "next-instruction" => return false,
                     method => method,
                 }
                 .into();
             }
-            if req.method == "console"
+            if req.method == method::CONSOLE
                 && matches!(
                     self.engines[self.active].snapshot.state.as_str(),
                     state::READY | state::STOPPED
@@ -51,15 +51,15 @@ impl Coordinator {
                 let mut steps: VecDeque<_> = self
                     .order
                     .iter()
-                    .map(|&i| Step::Core(i, "register_boundary".into()))
+                    .map(|&i| Step::Core(i, method::REGISTER_BOUNDARY.into()))
                     .collect();
-                steps.push_back(Step::Core(self.active, "console".into()));
+                steps.push_back(Step::Core(self.active, method::CONSOLE.into()));
                 self.control_batch(req.clone(), steps, false);
                 self.batch.as_mut().unwrap().aggregate = false;
                 return true;
             }
         }
-        if req.method == "control_scope" {
+        if req.method == method::CONTROL_SCOPE {
             let scope = match req.params.get("scope").and_then(Json::as_str) {
                 Some("all") => ControlScope::All,
                 Some("core") => ControlScope::Core,
@@ -86,10 +86,14 @@ impl Coordinator {
                 return true;
             }
         };
-        let shared_reset = req.method == "restart" && !self.project.multicore.restart.is_empty();
-        let stepping = matches!(req.method.as_str(), "step" | "next" | "stepi" | "finish");
+        let shared_reset =
+            req.method == method::RESTART && !self.project.multicore.restart.is_empty();
+        let stepping = matches!(
+            req.method.as_str(),
+            method::STEP | method::NEXT | method::STEPI | method::FINISH
+        );
         let all = scope == ControlScope::All;
-        if all && req.method == "wait_stopped" {
+        if all && req.method == method::WAIT_STOPPED {
             let timeout = req
                 .params
                 .get("timeout_ms")
@@ -107,23 +111,29 @@ impl Coordinator {
             return true;
         }
         if !shared_reset
-            && req.method != "run"
+            && req.method != method::RUN
             && !(all
-                && (stepping || matches!(req.method.as_str(), "continue" | "pause" | "restart")))
+                && (stepping
+                    || matches!(
+                        req.method.as_str(),
+                        method::CONTINUE | method::PAUSE | method::RESTART
+                    )))
         {
             return false;
         }
-        if req.method == "restart" && !shared_reset {
+        if req.method == method::RESTART && !shared_reset {
             self.reply(req.id, Json::Null, Some("Group Reset requires multicore.restart and multicore.restart_core; per-core reset actions may reset the whole chip".into()));
             return true;
         }
         // Keep legacy Run-all behavior unless the caller explicitly asks for one core.
-        let indices =
-            if all || shared_reset || (req.method == "run" && req.params.get("scope").is_none()) {
-                self.order.clone()
-            } else {
-                vec![self.active]
-            };
+        let indices = if all
+            || shared_reset
+            || (req.method == method::RUN && req.params.get("scope").is_none())
+        {
+            self.order.clone()
+        } else {
+            vec![self.active]
+        };
         if let Some(&i) = indices.iter().find(|&&i| {
             !matches!(
                 self.engines[i].snapshot.state.as_str(),
@@ -149,31 +159,31 @@ impl Coordinator {
             return true;
         }
         let mut steps = VecDeque::new();
-        if shared_reset || stepping || req.method == "pause" {
+        if shared_reset || stepping || req.method == method::PAUSE {
             for &i in &indices {
                 if self.engines[i].snapshot.state == state::RUNNING {
-                    steps.push_back(Step::Core(i, "pause".into()));
+                    steps.push_back(Step::Core(i, method::PAUSE.into()));
                 }
             }
         }
         if shared_reset {
             // Invalidate every affected connection before sending the reset, including failures.
             for &i in &indices {
-                steps.push_back(Step::Core(i, "register_boundary".into()));
+                steps.push_back(Step::Core(i, method::REGISTER_BOUNDARY.into()));
             }
             let reset = self
                 .engines
                 .iter()
                 .position(|e| e.name == self.project.multicore.restart_core)
                 .unwrap();
-            steps.push_back(Step::Core(reset, "restart_shared".into()));
+            steps.push_back(Step::Core(reset, method::RESTART_SHARED.into()));
             for &i in &indices {
                 self.engines[i].launched = false;
-                steps.push_back(Step::Core(i, "synchronize".into()));
+                steps.push_back(Step::Core(i, method::SYNCHRONIZE.into()));
             }
         } else if stepping {
             steps.push_back(Step::Core(self.active, req.method.clone()));
-        } else if matches!(req.method.as_str(), "run" | "continue") {
+        } else if matches!(req.method.as_str(), method::RUN | method::CONTINUE) {
             for &i in &indices {
                 steps.push_back(Step::Resume(i));
             }
@@ -209,18 +219,18 @@ impl Coordinator {
             b.internal
                 || matches!(
                     b.request.method.as_str(),
-                    "connect"
-                        | "reconnect"
-                        | "restart"
-                        | "disconnect"
-                        | "quit"
-                        | "build"
-                        | "download"
-                        | "pause"
-                        | "step"
-                        | "next"
-                        | "stepi"
-                        | "finish"
+                    method::CONNECT
+                        | method::RECONNECT
+                        | method::RESTART
+                        | method::DISCONNECT
+                        | method::QUIT
+                        | method::BUILD
+                        | method::DOWNLOAD
+                        | method::PAUSE
+                        | method::STEP
+                        | method::NEXT
+                        | method::STEPI
+                        | method::FINISH
                 )
         }) {
             return;
@@ -257,10 +267,10 @@ impl Coordinator {
             .iter()
             .copied()
             .filter(|&i| i != trigger && self.engines[i].snapshot.state == state::RUNNING)
-            .map(|i| Step::Core(i, "pause".into()))
+            .map(|i| Step::Core(i, method::PAUSE.into()))
             .collect();
         // Internal batches never emit a response with a user request id.
-        self.control_batch(Request::new(0, "pause", json!({})), steps, true);
+        self.control_batch(Request::new(0, method::PAUSE, json!({})), steps, true);
     }
 }
 
@@ -308,10 +318,10 @@ mod tests {
     #[test]
     fn group_continue_orders_both_and_core_override_is_independent() {
         let (mut c, _rx) = coordinator();
-        c.begin(Request::new(1, "continue", json!({})));
+        c.begin(Request::new(1, method::CONTINUE, json!({})));
         assert_eq!(methods(&c), [(1, "resume"), (0, "resume")]);
         c.batch = None;
-        c.begin(Request::new(2, "continue", json!({"scope":"core"})));
+        c.begin(Request::new(2, method::CONTINUE, json!({"scope":"core"})));
         assert_eq!(methods(&c), [(0, "continue")]);
     }
     #[test]
@@ -323,7 +333,7 @@ mod tests {
             e.snapshot.state = state::RUNNING.into();
             e.launched = true;
         }
-        c.begin(Request::new(1, "restart", json!({"scope":"core"})));
+        c.begin(Request::new(1, method::RESTART, json!({"scope":"core"})));
         assert_eq!(
             methods(&c),
             [
@@ -343,7 +353,7 @@ mod tests {
         let (mut c, _rx) = coordinator();
         c.begin(Request::new(
             1,
-            "console",
+            method::CONSOLE,
             json!({"command":"monitor chipreset","scope":"all"}),
         ));
         assert_eq!(
@@ -395,12 +405,12 @@ mod tests {
         for e in &mut c.engines {
             e.snapshot.state = state::RUNNING.into();
         }
-        c.begin(Request::new(1, "pause", json!({})));
+        c.begin(Request::new(1, method::PAUSE, json!({})));
         let mut b = c.batch.take().unwrap();
         b.steps.pop_front();
         c.fail(&mut b, "first core failed".into());
         assert_eq!(b.steps.len(), 1);
-        c.begin(Request::new(2, "continue", json!({})));
+        c.begin(Request::new(2, method::CONTINUE, json!({})));
         let mut b = c.batch.take().unwrap();
         c.fail(&mut b, "resume failed".into());
         assert!(b.recovering);
@@ -414,11 +424,11 @@ mod tests {
     fn step_pauses_peers_first_and_fault_prevents_partial_resume() {
         let (mut c, rx) = coordinator();
         c.engines[1].snapshot.state = state::RUNNING.into();
-        c.begin(Request::new(1, "stepi", json!({})));
+        c.begin(Request::new(1, method::STEPI, json!({})));
         assert_eq!(methods(&c), [(1, "pause"), (0, "stepi")]);
         c.batch = None;
         c.engines[1].snapshot.state = state::FAULT.into();
-        c.begin(Request::new(2, "continue", json!({})));
+        c.begin(Request::new(2, method::CONTINUE, json!({})));
         assert!(c.batch.is_none());
         assert!(rx.try_iter().any(|e| matches!(
             e,
@@ -435,7 +445,11 @@ mod tests {
         for e in &mut c.engines {
             e.snapshot.state = state::RUNNING.into();
         }
-        c.begin(Request::new(1, "wait_stopped", json!({"timeout_ms":8000})));
+        c.begin(Request::new(
+            1,
+            method::WAIT_STOPPED,
+            json!({"timeout_ms":8000}),
+        ));
         c.advance();
         assert!(c.batch.as_ref().unwrap().waiting.is_none());
         assert!(matches!(
@@ -456,6 +470,6 @@ mod tests {
         c.advance();
         let b = c.batch.as_ref().unwrap();
         assert_eq!(b.waiting.unwrap().0, 0);
-        assert_eq!(b.current_method, "pause");
+        assert_eq!(b.current_method, method::PAUSE);
     }
 }

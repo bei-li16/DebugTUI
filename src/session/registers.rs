@@ -1197,7 +1197,7 @@ mod tests {
         assert_eq!(
             engine
                 .execute(
-                    "register_preferences",
+                    method::REGISTER_PREFERENCES,
                     &json!({"scope":"chip/core/catalogue","preferences":preferences})
                 )
                 .unwrap()["saved"],
@@ -1208,7 +1208,7 @@ mod tests {
         assert!(
             engine
                 .execute(
-                    "register_preferences",
+                    method::REGISTER_PREFERENCES,
                     &json!({"scope":"","preferences":preferences})
                 )
                 .is_err()
@@ -1216,12 +1216,12 @@ mod tests {
         assert!(
             engine
                 .execute(
-                    "register_preferences",
+                    method::REGISTER_PREFERENCES,
                     &json!({"scope":"chip/core/catalogue","preferences":{"filter":200}})
                 )
                 .is_err()
         );
-        assert!(engine.execute("register_preferences", &json!({"scope":"chip/core/catalogue","preferences":preferences,"command":"continue"})).is_err());
+        assert!(engine.execute(method::REGISTER_PREFERENCES, &json!({"scope":"chip/core/catalogue","preferences":preferences,"command":"continue"})).is_err());
         assert_eq!(engine.project.ui.register_views.len(), 1);
     }
     #[test]

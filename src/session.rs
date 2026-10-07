@@ -47,13 +47,13 @@ pub(crate) use symbols::Symbol;
 
 pub(crate) fn execution_alias(command: &str) -> Option<&'static str> {
     Some(match command {
-        "c" | "continue" => "continue",
-        "r" | "run" => "run",
-        "s" | "step" => "step",
-        "n" | "next" => "next",
+        "c" | "continue" => method::CONTINUE,
+        "r" | "run" => method::RUN,
+        "s" | "step" => method::STEP,
+        "n" | "next" => method::NEXT,
         "si" | "stepi" => "step-instruction",
         "ni" | "nexti" => "next-instruction",
-        "fin" | "finish" => "finish",
+        "fin" | "finish" => method::FINISH,
         _ => return None,
     })
 }
@@ -152,6 +152,73 @@ pub struct Breakpoint {
     pub address: String,
     pub pending: bool,
     pub restore_error: String,
+}
+/// Request method names, shared by the UI, the coordinator, the session
+/// worker and the JSON interface.
+pub mod method {
+    pub const BREAK: &str = "break";
+    pub const BREAK_APPLY: &str = "break_apply";
+    pub const BREAK_CORES: &str = "break_cores";
+    pub const BUILD: &str = "build";
+    pub const COMPLETE: &str = "complete";
+    pub const CONNECT: &str = "connect";
+    pub const CONSOLE: &str = "console";
+    pub const CONTINUE: &str = "continue";
+    pub const CONTROL_SCOPE: &str = "control_scope";
+    pub const CORES: &str = "cores";
+    pub const DATA_BREAK: &str = "data_break";
+    pub const DELETE_BREAK: &str = "delete_break";
+    pub const DISASSEMBLE: &str = "disassemble";
+    pub const DISCONNECT: &str = "disconnect";
+    pub const DOWNLOAD: &str = "download";
+    pub const ENABLE_BREAK: &str = "enable_break";
+    pub const EVALUATE: &str = "evaluate";
+    pub const FILES: &str = "files";
+    pub const FINISH: &str = "finish";
+    pub const FRAME: &str = "frame";
+    pub const LOCAL_EXPAND: &str = "local_expand";
+    pub const MEMORY: &str = "memory";
+    pub const MEMORY_CHANNELS: &str = "memory_channels";
+    pub const MEMORY_DUMP: &str = "memory_dump";
+    pub const MEMORY_READ: &str = "memory_read";
+    pub const NEXT: &str = "next";
+    pub const PAUSE: &str = "pause";
+    pub const PERIPHERAL_READ: &str = "peripheral_read";
+    pub const QUIT: &str = "quit";
+    pub const RECONNECT: &str = "reconnect";
+    pub const REFRESH: &str = "refresh";
+    pub const REGISTER_BOUNDARY: &str = "register_boundary";
+    pub const REGISTER_PREFERENCES: &str = "register_preferences";
+    pub const REGISTER_SHARED_INVALIDATE: &str = "register_shared_invalidate";
+    pub const REGISTERS_CACHE: &str = "registers_cache";
+    pub const REGISTERS_LIST: &str = "registers_list";
+    pub const REGISTERS_MATRIX: &str = "registers_matrix";
+    pub const REGISTERS_MPU: &str = "registers_mpu";
+    pub const REGISTERS_PROBE: &str = "registers_probe";
+    pub const REGISTERS_READ: &str = "registers_read";
+    pub const REGISTERS_SELECT: &str = "registers_select";
+    pub const RESTART: &str = "restart";
+    pub const RESTART_SHARED: &str = "restart_shared";
+    pub const RUN: &str = "run";
+    pub const SELECT_CORE: &str = "select_core";
+    pub const SET_ELF: &str = "set_elf";
+    pub const STATUS: &str = "status";
+    pub const STEP: &str = "step";
+    pub const STEPI: &str = "stepi";
+    pub const SYMBOLS: &str = "symbols";
+    pub const SYNCHRONIZE: &str = "synchronize";
+    pub const UI_PREFERENCES: &str = "ui_preferences";
+    pub const UNWATCH: &str = "unwatch";
+    pub const UPDATE_BREAK: &str = "update_break";
+    pub const WAIT_STOPPED: &str = "wait_stopped";
+    pub const WATCH: &str = "watch";
+    pub const WATCH_EXPAND: &str = "watch_expand";
+    pub const WATCH_RESOLVE: &str = "watch_resolve";
+    pub const WRITE_APPLY: &str = "write_apply";
+    pub const WRITE_CANCEL: &str = "write_cancel";
+    pub const WRITE_DISCARD: &str = "write_discard";
+    pub const WRITE_INVALIDATE: &str = "write_invalidate";
+    pub const WRITE_PREVIEW: &str = "write_preview";
 }
 /// Target states as snapshots and the JSON interface spell them.
 pub mod state {
@@ -257,8 +324,8 @@ pub struct Request {
 }
 impl Request {
     pub fn is_quit(&self) -> bool {
-        self.method == "quit"
-            || (self.method == "console"
+        self.method == method::QUIT
+            || (self.method == method::CONSOLE
                 && self
                     .params
                     .get("command")
@@ -284,18 +351,21 @@ impl Request {
     pub(crate) fn is_register_read(&self) -> bool {
         matches!(
             self.method.as_str(),
-            "registers_read"
-                | "registers_probe"
-                | "registers_select"
-                | "registers_mpu"
-                | "registers_cache"
+            method::REGISTERS_READ
+                | method::REGISTERS_PROBE
+                | method::REGISTERS_SELECT
+                | method::REGISTERS_MPU
+                | method::REGISTERS_CACHE
         )
     }
     pub(crate) fn is_cancellable_read(&self) -> bool {
         self.is_register_read()
             || matches!(
                 self.method.as_str(),
-                "watch_resolve" | "memory_read" | "memory_dump" | "peripheral_read"
+                method::WATCH_RESOLVE
+                    | method::MEMORY_READ
+                    | method::MEMORY_DUMP
+                    | method::PERIPHERAL_READ
             )
     }
 }
@@ -803,10 +873,13 @@ impl Engine {
                     self.write_peers.clear();
                     self.read_cancel = Arc::new(AtomicBool::new(false));
                     if let Err(error) = &result
-                        && !matches!(request.method.as_str(), "complete" | "symbols")
+                        && !matches!(request.method.as_str(), method::COMPLETE | method::SYMBOLS)
                     {
                         self.log(
-                            if matches!(request.method.as_str(), "watch_resolve" | "memory_read") {
+                            if matches!(
+                                request.method.as_str(),
+                                method::WATCH_RESOLVE | method::MEMORY_READ
+                            ) {
                                 "diagnostic"
                             } else {
                                 "error"
@@ -1749,11 +1822,11 @@ impl Engine {
     fn execute(&mut self, method: &str, p: &Json) -> Result<Json, String> {
         if matches!(
             method,
-            "registers_read"
-                | "registers_probe"
-                | "registers_select"
-                | "registers_mpu"
-                | "registers_cache"
+            method::REGISTERS_READ
+                | method::REGISTERS_PROBE
+                | method::REGISTERS_SELECT
+                | method::REGISTERS_MPU
+                | method::REGISTERS_CACHE
         ) {
             self.check_register_read_cancelled()?;
         }
@@ -1764,7 +1837,7 @@ impl Engine {
                 .to_owned()
         };
         match method {
-            "ui_preferences" => {
+            method::UI_PREFERENCES => {
                 let mut ui: crate::config::Ui =
                     serde_json::from_value(p.clone()).map_err(|e| e.to_string())?;
                 if !ui.register_views.is_empty() {
@@ -1786,7 +1859,7 @@ impl Engine {
                 self.project.ui = ui;
                 Ok(json!({"saved":saved}))
             }
-            "register_preferences" => {
+            method::REGISTER_PREFERENCES => {
                 #[derive(Deserialize)]
                 #[serde(deny_unknown_fields)]
                 struct ViewRequest {
@@ -1804,30 +1877,30 @@ impl Engine {
                     .insert(view.scope.clone(), view.preferences);
                 Ok(json!({"saved":saved,"scope":view.scope}))
             }
-            "connect" => self.connect(),
-            "reconnect" => {
+            method::CONNECT => self.connect(),
+            method::RECONNECT => {
                 self.disconnect()?;
                 self.connect()
             }
-            "disconnect" => self.disconnect(),
-            "quit" => {
+            method::DISCONNECT => self.disconnect(),
+            method::QUIT => {
                 let result = self.disconnect();
                 self.exiting = true;
                 result
             }
-            "status" => Ok(serde_json::to_value(&self.snapshot).unwrap()),
-            "registers_list" => self.registers_list(),
-            "registers_matrix" => self.register_matrix(),
-            "registers_probe" => self.probe_register_capabilities(p),
-            "registers_select" => self.read_selected_registers(p),
-            "registers_mpu" => self.mpu_regions(p),
-            "registers_cache" => self.m_cache_view(p),
-            "registers_read" => self.read_registers(p),
-            "register_boundary" => {
+            method::STATUS => Ok(serde_json::to_value(&self.snapshot).unwrap()),
+            method::REGISTERS_LIST => self.registers_list(),
+            method::REGISTERS_MATRIX => self.register_matrix(),
+            method::REGISTERS_PROBE => self.probe_register_capabilities(p),
+            method::REGISTERS_SELECT => self.read_selected_registers(p),
+            method::REGISTERS_MPU => self.mpu_regions(p),
+            method::REGISTERS_CACHE => self.m_cache_view(p),
+            method::REGISTERS_READ => self.read_registers(p),
+            method::REGISTER_BOUNDARY => {
                 self.invalidate_register_boundary();
                 Ok(json!({"context":self.register_context()}))
             }
-            "register_shared_invalidate" => {
+            method::REGISTER_SHARED_INVALIDATE => {
                 let owners = p["owners"].as_array().ok_or("Shared owners are required")?;
                 for sample in &mut self.snapshot.register_samples {
                     if sample
@@ -1851,8 +1924,8 @@ impl Engine {
                 self.publish();
                 Ok(json!({"invalidated":true}))
             }
-            "memory_channels" => self.memory_channels(),
-            "complete" => {
+            method::MEMORY_CHANNELS => self.memory_channels(),
+            method::COMPLETE => {
                 self.inactive()?;
                 let input = text("text");
                 if input.is_empty() || input.len() > 512 || input.chars().any(char::is_control) {
@@ -1909,9 +1982,9 @@ impl Engine {
                 names.dedup();
                 Ok(json!({"matches":names}))
             }
-            "continue" => {
+            method::CONTINUE => {
                 if self.snapshot.state == state::READY {
-                    return self.execute("run", p);
+                    return self.execute(method::RUN, p);
                 }
                 self.stopped()?;
                 let generation = self.snapshot.generation;
@@ -1921,7 +1994,7 @@ impl Engine {
                 }
                 Ok(json!({"running":self.snapshot.state==state::RUNNING}))
             }
-            "run" => {
+            method::RUN => {
                 if !matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED) {
                     return Err("Run requires a connected, inactive or stopped target".into());
                 }
@@ -1940,20 +2013,20 @@ impl Engine {
                 }
                 Ok(json!({"running":self.snapshot.state==state::RUNNING}))
             }
-            "pause" => self.pause(),
-            "wait_stopped" => self.wait_stopped(Duration::from_millis(
+            method::PAUSE => self.pause(),
+            method::WAIT_STOPPED => self.wait_stopped(Duration::from_millis(
                 p.get("timeout_ms")
                     .and_then(Json::as_u64)
                     .unwrap_or(10000)
                     .min(60000),
             )),
-            "step" | "next" | "stepi" | "finish" => {
+            method::STEP | method::NEXT | method::STEPI | method::FINISH => {
                 self.stopped()?;
                 let generation = self.snapshot.generation;
                 let cmd = match method {
-                    "step" => "-exec-step",
-                    "next" => "-exec-next",
-                    "stepi" => "-exec-step-instruction",
+                    method::STEP => "-exec-step",
+                    method::NEXT => "-exec-next",
+                    method::STEPI => "-exec-step-instruction",
                     _ => "-exec-finish",
                 };
                 self.mi(cmd).map_err(|error| {
@@ -1967,7 +2040,7 @@ impl Engine {
                 }
                 Ok(json!({"running":self.snapshot.state==state::RUNNING}))
             }
-            "synchronize" => {
+            method::SYNCHRONIZE => {
                 self.inactive()?;
                 // This fixed internal command only invalidates GDB's value cache.
                 // Arbitrary user Console commands still clear endpoint evidence.
@@ -1977,7 +2050,7 @@ impl Engine {
                 self.sync_target_state()?;
                 Ok(json!({"state":self.snapshot.state}))
             }
-            "restart_shared" => {
+            method::RESTART_SHARED => {
                 self.stopped()?;
                 if self.project.multicore.restart.is_empty() {
                     return Err("Shared reset is not configured".into());
@@ -1990,7 +2063,7 @@ impl Engine {
                 // The coordinator refreshes every connection after this command.
                 Ok(json!({"restarted":true}))
             }
-            "restart" => {
+            method::RESTART => {
                 if self.project.actions.restart.is_empty() {
                     return Err("Restart is not configured by this environment".into());
                 }
@@ -2003,7 +2076,7 @@ impl Engine {
                 self.sync_target_state()?;
                 Ok(json!({"restarted":true,"state":self.snapshot.state}))
             }
-            "evaluate" => {
+            method::EVALUATE => {
                 self.stopped()?;
                 let r = self.mi(&format!(
                     "-data-evaluate-expression {}",
@@ -2011,7 +2084,7 @@ impl Engine {
                 ))?;
                 Ok(json!({"value":r.data.string("value")}))
             }
-            "watch" => {
+            method::WATCH => {
                 let expr = text("expression");
                 if expr.is_empty() {
                     return Err("Expression is required".into());
@@ -2035,7 +2108,7 @@ impl Engine {
                 }
                 Ok(json!({"watches":self.watch_names}))
             }
-            "unwatch" => {
+            method::UNWATCH => {
                 self.watch_names.retain(|s| s != &text("expression"));
                 self.watch_expansions.remove(&text("expression"));
                 self.snapshot
@@ -2044,25 +2117,29 @@ impl Engine {
                 self.publish();
                 Ok(json!({"watches":self.watch_names}))
             }
-            "watch_expand" => self.expand_watch(p),
-            "watch_resolve" => self.resolve_watch(p),
-            "local_expand" => self.expand_local(p),
-            "memory_read" => self.read_memory_channel(p),
-            "memory_dump" => self.read_memory_dump(p),
-            "write_preview" => self.preview_write(p),
-            "write_apply" => self.apply_write(p),
-            "write_invalidate" => {
+            method::WATCH_EXPAND => self.expand_watch(p),
+            method::WATCH_RESOLVE => self.resolve_watch(p),
+            method::LOCAL_EXPAND => self.expand_local(p),
+            method::MEMORY_READ => self.read_memory_channel(p),
+            method::MEMORY_DUMP => self.read_memory_dump(p),
+            method::WRITE_PREVIEW => self.preview_write(p),
+            method::WRITE_APPLY => self.apply_write(p),
+            method::WRITE_INVALIDATE => {
                 self.invalidate_written_views();
                 Ok(json!({"invalidated":true}))
             }
-            "write_cancel" => self.cancel_write(p),
-            "write_discard" => {
+            method::WRITE_CANCEL => self.cancel_write(p),
+            method::WRITE_DISCARD => {
                 self.write_drafts.clear();
                 Ok(json!({"discarded":true}))
             }
-            "break" | "data_break" | "delete_break" | "enable_break" | "update_break"
-            | "break_apply" => self.breakpoint_command(method, p),
-            "frame" => {
+            method::BREAK
+            | method::DATA_BREAK
+            | method::DELETE_BREAK
+            | method::ENABLE_BREAK
+            | method::UPDATE_BREAK
+            | method::BREAK_APPLY => self.breakpoint_command(method, p),
+            method::FRAME => {
                 self.write_drafts.clear();
                 self.stopped()?;
                 let index = p.get("level").and_then(Json::as_u64).unwrap_or(0);
@@ -2074,11 +2151,11 @@ impl Engine {
                 self.refresh()?;
                 Ok(json!({"frame":self.snapshot.frame}))
             }
-            "refresh" => {
+            method::REFRESH => {
                 self.refresh()?;
                 Ok(json!({"refreshed":true}))
             }
-            "peripheral_read" => {
+            method::PERIPHERAL_READ => {
                 if p["channel"]
                     .as_str()
                     .is_some_and(|channel| !channel.is_empty())
@@ -2087,7 +2164,7 @@ impl Engine {
                 }
                 self.read_memory_channel(p)
             }
-            "memory" => {
+            method::MEMORY => {
                 self.stopped()?;
                 let count = p
                     .get("count")
@@ -2122,7 +2199,7 @@ impl Engine {
                 self.publish();
                 Ok(json!({"memory":r.data}))
             }
-            "disassemble" => {
+            method::DISASSEMBLE => {
                 self.stopped()?;
                 let address = text("address");
                 let address = if address.is_empty() {
@@ -2154,8 +2231,8 @@ impl Engine {
                 self.publish();
                 Ok(json!({"assembly":self.snapshot.assembly}))
             }
-            "symbols" => self.symbols(&text("query")),
-            "files" => {
+            method::SYMBOLS => self.symbols(&text("query")),
+            method::FILES => {
                 let r = self.mi("-file-list-exec-source-files")?;
                 let mut files: Vec<String> = r
                     .data
@@ -2181,7 +2258,7 @@ impl Engine {
                 self.publish();
                 Ok(json!({"files":&*self.snapshot.files}))
             }
-            "download" => {
+            method::DOWNLOAD => {
                 if !self.project.tasks.download.trim().is_empty() {
                     return self.project_task("download");
                 }
@@ -2201,20 +2278,20 @@ impl Engine {
                 self.sync_target_state()?;
                 Ok(json!({"downloaded":true}))
             }
-            "console" => {
+            method::CONSOLE => {
                 self.write_drafts.clear();
                 let command = text("command");
                 let trimmed = command.trim();
                 match trimmed {
                     "c" | "continue" => {
-                        return self.execute("continue", &Json::Null);
+                        return self.execute(method::CONTINUE, &Json::Null);
                     }
-                    "s" | "step" => return self.execute("step", &Json::Null),
-                    "n" | "next" => return self.execute("next", &Json::Null),
-                    "si" | "stepi" => return self.execute("stepi", &Json::Null),
-                    "interrupt" => return self.execute("pause", &Json::Null),
-                    "q" | "quit" => return self.execute("quit", &Json::Null),
-                    "run" | "r" => return self.execute("run", &Json::Null),
+                    "s" | "step" => return self.execute(method::STEP, &Json::Null),
+                    "n" | "next" => return self.execute(method::NEXT, &Json::Null),
+                    "si" | "stepi" => return self.execute(method::STEPI, &Json::Null),
+                    "interrupt" => return self.execute(method::PAUSE, &Json::Null),
+                    "q" | "quit" => return self.execute(method::QUIT, &Json::Null),
+                    "run" | "r" => return self.execute(method::RUN, &Json::Null),
                     _ => {}
                 }
                 if !matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED) {
@@ -2227,7 +2304,7 @@ impl Engine {
                 self.refresh_pending = true;
                 Ok(json!({"result":r.data}))
             }
-            "set_elf" => {
+            method::SET_ELF => {
                 self.write_drafts.clear();
                 if self.gdb.is_some() {
                     return Err("Disconnect before changing ELF".into());
@@ -2236,7 +2313,7 @@ impl Engine {
                 self.project.program.elf = text("path").into();
                 Ok(json!({"elf":self.project.program.elf}))
             }
-            "build" => self.project_task("build"),
+            method::BUILD => self.project_task("build"),
             _ => Err(format!("Unknown method: {method}")),
         }
     }

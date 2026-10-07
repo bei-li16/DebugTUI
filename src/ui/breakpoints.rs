@@ -135,14 +135,14 @@ impl App {
         if let Some(b) = self.selected_break() {
             self.break_send(
                 engine,
-                "enable_break",
+                method::ENABLE_BREAK,
                 json!({"number":b.id,"enabled":!b.enabled || !b.restore_error.is_empty()}),
             );
         }
     }
     pub(super) fn remove_selected_break(&mut self, engine: Option<&EngineHandle>) {
         if let Some(b) = self.selected_break() {
-            self.break_send(engine, "delete_break", json!({"number":b.id}));
+            self.break_send(engine, method::DELETE_BREAK, json!({"number":b.id}));
         }
     }
     pub(super) fn reconcile_break_selection(&mut self, snapshot: &Snapshot, core_changed: bool) {
@@ -196,11 +196,11 @@ impl App {
         }
         let o = &editor.options;
         let method = if editor.number.is_some() {
-            "update_break"
+            method::UPDATE_BREAK
         } else if o.kind.is_data() {
-            "data_break"
+            method::DATA_BREAK
         } else {
-            "break"
+            method::BREAK
         };
         let p = json!({"number":editor.number,"location":o.location,"expression":o.location,"hardware":o.kind == Kind::Hardware,
             "access":match o.kind { Kind::Read => "read", Kind::Access => "access", _ => "write" },
@@ -677,7 +677,7 @@ mod tests {
             Some(&engine),
         );
         let req = rx.try_recv().unwrap();
-        assert_eq!(req.method, "enable_break");
+        assert_eq!(req.method, method::ENABLE_BREAK);
         assert_eq!(req.params["enabled"], false);
         assert_eq!(req.params["number"], "7");
         key(&mut a, KeyCode::Char(' '), &engine);
@@ -689,7 +689,7 @@ mod tests {
         assert_eq!(req.params["enabled"], true);
         a.break_response(req.id, true, None);
         key(&mut a, KeyCode::Delete, &engine);
-        assert_eq!(rx.try_recv().unwrap().method, "delete_break");
+        assert_eq!(rx.try_recv().unwrap().method, method::DELETE_BREAK);
     }
     #[test]
     fn data_editor_paste_delete_and_access_modes_do_not_send_console_commands() {
@@ -703,7 +703,7 @@ mod tests {
         a.breaks.editor.as_mut().unwrap().options.kind = Kind::Access;
         a.apply_break_editor(Some(&engine));
         let req = rx.try_recv().unwrap();
-        assert_eq!(req.method, "data_break");
+        assert_eq!(req.method, method::DATA_BREAK);
         assert_eq!(req.params["access"], "access");
         assert_eq!(req.params["expression"], "*(unsigned int *)0x20000000");
         a.break_response(req.id, false, Some("No watchpoint resources"));

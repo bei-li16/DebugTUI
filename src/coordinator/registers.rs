@@ -82,7 +82,7 @@ impl Coordinator {
                 // A local FIFO boundary also covers an in-flight read which has not stored yet.
                 let _ = engine.handle.send(Request::new(
                     id,
-                    "register_shared_invalidate",
+                    method::REGISTER_SHARED_INVALIDATE,
                     json!({"owners":owners}),
                 ));
             }

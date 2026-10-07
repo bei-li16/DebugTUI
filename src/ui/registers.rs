@@ -522,7 +522,7 @@ impl App {
                 .as_ref()
                 .or(self.register_view.probe_pending.as_ref())
             {
-                let ids: Vec<String> = if request.method == "registers_probe" {
+                let ids: Vec<String> = if request.method == method::REGISTERS_PROBE {
                     crate::registers::capabilities::PROBE_IDS
                         .iter()
                         .map(|id| (*id).into())
@@ -722,7 +722,7 @@ impl App {
             self.next_id += 1;
             match engine.send(Request::new(
                 id,
-                "register_preferences",
+                method::REGISTER_PREFERENCES,
                 json!({"scope":scope,"preferences":preferences}),
             )) {
                 Ok(()) => {
@@ -798,7 +798,7 @@ impl App {
         self.register_view.bank_pending = Some(kind.ids(index));
         self.submit(
             engine,
-            "registers_select",
+            method::REGISTERS_SELECT,
             json!({"context":context,"kind":kind,"index":index}),
         );
         if !self.pending_commands.contains(&request_id) {
@@ -905,7 +905,7 @@ impl App {
         }
         let id = self.next_id;
         self.register_view.probe_pending = Some((id, context.clone()));
-        self.submit(engine, "registers_probe", json!({"context":context}));
+        self.submit(engine, method::REGISTERS_PROBE, json!({"context":context}));
         if !self.pending_commands.contains(&id) {
             self.register_view.probe_pending = None;
         }
@@ -1137,7 +1137,7 @@ impl App {
         let request_id = self.next_id;
         self.submit(
             engine,
-            "registers_read",
+            method::REGISTERS_READ,
             json!({"ids":ids,"context":context,"manual":manual}),
         );
         if !self.pending_commands.contains(&request_id) {
@@ -1892,7 +1892,7 @@ mod tests {
                     }
                     if enabled {
                         let request = requests.try_recv().unwrap();
-                        assert_eq!(request.method, "write_preview");
+                        assert_eq!(request.method, method::WRITE_PREVIEW);
                         assert_eq!(request.params["target"]["id"], name);
                         assert_eq!(request.params["input"]["text"], raw);
                         assert_eq!(request.params["context"], json!(app.register_context()));
@@ -2041,7 +2041,7 @@ mod tests {
             Some(&engine),
         );
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "register_preferences");
+        assert_eq!(request.method, method::REGISTER_PREFERENCES);
         let object = serde_json::to_string(&("d0", Option::<String>::None)).unwrap();
         assert_eq!(app.register_display_format(&object), format);
         assert_eq!(
@@ -2070,7 +2070,10 @@ mod tests {
             KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
             Some(&engine),
         );
-        assert_eq!(requests.try_recv().unwrap().method, "register_preferences");
+        assert_eq!(
+            requests.try_recv().unwrap().method,
+            method::REGISTER_PREFERENCES
+        );
         app.register_key(
             KeyEvent::new(KeyCode::Left, KeyModifiers::NONE),
             Some(&engine),
@@ -2097,7 +2100,7 @@ mod tests {
             Some(&engine),
         );
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "register_preferences");
+        assert_eq!(request.method, method::REGISTER_PREFERENCES);
         assert_eq!(request.params["preferences"]["query"], "p");
         assert!(requests.try_recv().is_err());
     }
@@ -2110,7 +2113,7 @@ mod tests {
         assert!(requests.try_recv().is_err());
         app.probe_registers(Some(&engine));
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "registers_probe");
+        assert_eq!(request.method, method::REGISTERS_PROBE);
         assert_eq!(request.params["context"]["generation"], 3);
         app.probe_registers(Some(&engine));
         assert!(!app.ensure_registers(Some(&engine)));
@@ -2189,7 +2192,7 @@ mod tests {
         }
         app.command(Some(&engine), ":register-bank-read");
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "registers_select");
+        assert_eq!(request.method, method::REGISTERS_SELECT);
         assert_eq!(request.params["kind"], "mpu_el1");
         assert_eq!(request.params["index"], 23);
         app.command(Some(&engine), ":register-bank-read");
@@ -2375,7 +2378,7 @@ mod tests {
         let (engine, requests) = engine();
         assert!(app.ensure_registers(Some(&engine)));
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "registers_read");
+        assert_eq!(request.method, method::REGISTERS_READ);
         assert_eq!(request.params["ids"], json!(["r0", "r1", "r2", "r3"]));
         assert!(!app.ensure_registers(Some(&engine)));
         app.register_response(request.id, &json!({"samples":[]}), None);

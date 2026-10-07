@@ -320,12 +320,12 @@ impl Engine {
         let mut result = json!({"updated":true});
         let action = (|| {
             match method {
-                "break_apply" => self.apply_linked_breakpoint(p)?,
-                "break" | "data_break" => {
-                    if method == "data_break" {
+                method::BREAK_APPLY => self.apply_linked_breakpoint(p)?,
+                method::BREAK | method::DATA_BREAK => {
+                    if method == method::DATA_BREAK {
                         self.stopped()?;
                     }
-                    let kind = if method == "data_break" {
+                    let kind = if method == method::DATA_BREAK {
                         match text("access") {
                             "" | "write" => Kind::Write,
                             "read" => Kind::Read,
@@ -339,7 +339,7 @@ impl Engine {
                     };
                     let o = Options {
                         group: None,
-                        location: text(if method == "data_break" {
+                        location: text(if method == method::DATA_BREAK {
                             "expression"
                         } else {
                             "location"
@@ -354,7 +354,7 @@ impl Engine {
                     let r = self.insert_breakpoint(&o, false)?;
                     result = json!({"breakpoint":r.data});
                 }
-                "delete_break" => {
+                method::DELETE_BREAK => {
                     let id = text("number");
                     if id.is_empty() {
                         self.console("delete breakpoints")?;
@@ -369,11 +369,11 @@ impl Engine {
                     }
                     result = json!({"deleted":true});
                 }
-                "enable_break" | "update_break" => {
+                method::ENABLE_BREAK | method::UPDATE_BREAK => {
                     self.refresh_breakpoints()?;
                     let id = text("number");
                     if id.is_empty()
-                        && (method != "enable_break"
+                        && (method != method::ENABLE_BREAK
                             || p.get("all").and_then(Json::as_bool) != Some(true))
                     {
                         return Err(
@@ -392,7 +392,7 @@ impl Engine {
                     }
                     for b in selected {
                         let mut o = b.options();
-                        if method == "enable_break" {
+                        if method == method::ENABLE_BREAK {
                             o.enabled = p
                                 .get("enabled")
                                 .and_then(Json::as_bool)

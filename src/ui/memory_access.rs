@@ -311,7 +311,7 @@ mod tests {
         });
         let request = Request::new(
             1,
-            "memory_read",
+            method::MEMORY_READ,
             json!({"channel":"bus","address":0x100000008u64,"bits":64,"little_endian":false}),
         );
         let result = scalar_fixture(&app, &request, 0xfedcba9876543210u64);

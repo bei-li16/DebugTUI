@@ -50,7 +50,7 @@ impl App {
             .collect();
         self.break_send(
             engine,
-            "break_cores",
+            method::BREAK_CORES,
             json!({"number":e.number,"cores":cores}),
         );
     }
@@ -289,7 +289,7 @@ mod tests {
             Some(&engine),
         );
         let req = requests.try_recv().unwrap();
-        assert_eq!(req.method, "break_cores");
+        assert_eq!(req.method, method::BREAK_CORES);
         assert_eq!(req.params, json!({"number":"7","cores":[0,1]}));
         a.break_response(req.id, false, Some("core1 unavailable; rolled back"));
         assert!(
@@ -321,7 +321,7 @@ mod tests {
         a.source_line = 12;
         a.toggle_break(Some(&engine));
         let req = requests.try_recv().unwrap();
-        assert_eq!(req.method, "break");
+        assert_eq!(req.method, method::BREAK);
         assert!(req.params.get("cores").is_none());
         a.snapshot.breakpoints[0].cores = vec![0, 1];
         let line = super::super::rows(&a, 0, 1).remove(0).to_string();

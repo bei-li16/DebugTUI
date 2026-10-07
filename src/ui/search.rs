@@ -255,7 +255,11 @@ impl App {
         let id = self.next_id;
         self.next_id += 1;
         self.symbol_search.requested = Some(key.clone());
-        match engine.send(Request::new(id, "symbols", json!({"query":key.query}))) {
+        match engine.send(Request::new(
+            id,
+            method::SYMBOLS,
+            json!({"query":key.query}),
+        )) {
             Ok(()) => {
                 self.symbol_search.pending = Some((id, key));
                 self.symbol_search.hint = "Searching ELF debug symbols...".into();
@@ -358,7 +362,7 @@ impl App {
             }
             KeyCode::Home => self.symbol_search.selected = 0,
             KeyCode::End => self.symbol_search.selected = max,
-            KeyCode::F(6) => self.submit(engine, "pause", json!({})),
+            KeyCode::F(6) => self.submit(engine, method::PAUSE, json!({})),
             KeyCode::F(4) => self.symbol_search.invalidate(),
             KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.symbol_search.query.clear();

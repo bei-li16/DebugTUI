@@ -749,7 +749,7 @@ mod tests {
         });
         a.toggle_break(Some(&engine));
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "delete_break");
+        assert_eq!(request.method, method::DELETE_BREAK);
         assert_eq!(request.params["number"], "17");
     }
 

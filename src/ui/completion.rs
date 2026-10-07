@@ -208,7 +208,11 @@ impl App {
         }
         let id = self.next_id;
         self.next_id += 1;
-        let request = Request::new(id, "complete", json!({"text":text,"expression":expression}));
+        let request = Request::new(
+            id,
+            method::COMPLETE,
+            json!({"text":text,"expression":expression}),
+        );
         if engine.send(request).is_ok() {
             self.completion.pending = Some((id, key));
         }
@@ -422,7 +426,7 @@ mod tests {
         assert!(requests.try_recv().is_err()); // Debounced while typing.
         ready(&mut a, &engine);
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "complete");
+        assert_eq!(request.method, method::COMPLETE);
         assert_eq!(request.params, json!({"text":"pri","expression":false}));
         answer(&mut a, request.id, &["print", "printf"]);
         key(&mut a, KeyCode::Down, &engine);
@@ -498,7 +502,7 @@ mod tests {
         assert!(requests.try_recv().is_err());
         key(&mut a, KeyCode::Enter, &engine);
         let watch = requests.try_recv().unwrap();
-        assert_eq!(watch.method, "watch");
+        assert_eq!(watch.method, method::WATCH);
         assert_eq!(watch.params["expression"], "counter_total");
         key(&mut a, KeyCode::Enter, &engine);
         assert!(requests.try_recv().is_err()); // Double Enter must not enqueue duplicates.
@@ -516,7 +520,7 @@ mod tests {
         assert_eq!(a.input, "p other");
         assert!(a.watch_editing && !a.editing);
         key(&mut a, KeyCode::F(10), &engine);
-        assert_eq!(requests.try_recv().unwrap().method, "next");
+        assert_eq!(requests.try_recv().unwrap().method, method::NEXT);
     }
 
     #[test]
@@ -541,7 +545,7 @@ mod tests {
         assert!(a.completion.items.is_empty());
         a.snapshot.state = state::STOPPED.into();
         ready(&mut a, &engine);
-        assert_eq!(requests.try_recv().unwrap().method, "complete");
+        assert_eq!(requests.try_recv().unwrap().method, method::COMPLETE);
     }
 
     #[test]

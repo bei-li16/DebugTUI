@@ -77,7 +77,7 @@ fn running_real_ui_scheduler_reads_only_visible_safe_rows_once_and_renews_after_
     app.snapshot.state = state::RUNNING.into();
     assert!(app.ensure_visible_data(Some(&engine)));
     let request = requests.try_recv().unwrap();
-    assert_eq!(request.method, "registers_read");
+    assert_eq!(request.method, method::REGISTERS_READ);
     assert_eq!(request.params["ids"], json!(["scb.ccr", "scb.cpuid"]));
     let context = app.register_context();
     let values = vec![

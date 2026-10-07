@@ -426,7 +426,7 @@ impl App {
             route_key,
         });
         self.view_tops[pane::MEMORY] = 0;
-        self.submit(Some(engine), "memory_dump", json!({"address":range.address,"count":range.count,"channel":channel,"context":context,"selection_epoch":epoch}));
+        self.submit(Some(engine), method::MEMORY_DUMP, json!({"address":range.address,"count":range.count,"channel":channel,"context":context,"selection_epoch":epoch}));
         true
     }
     pub(super) fn memory_response(&mut self, id: u64, result: &Value, error: Option<&str>) -> bool {
@@ -775,9 +775,9 @@ mod tests {
             KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
             Some(&engine),
         );
-        assert_eq!(requests.recv().unwrap().method, "ui_preferences");
+        assert_eq!(requests.recv().unwrap().method, method::UI_PREFERENCES);
         let read = requests.recv().unwrap();
-        assert_eq!(read.method, "memory_dump");
+        assert_eq!(read.method, method::MEMORY_DUMP);
         assert_eq!(read.params["address"], "0x100000008");
         assert_eq!(read.params["count"], 4);
         assert_eq!(read.params["channel"], "ap");

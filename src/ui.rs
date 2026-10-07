@@ -4,7 +4,7 @@ use crate::{
     config::Project,
     coordinator,
     launch::{Document, Launch, Setup},
-    session::{EngineHandle, Event, Frame, Request, Snapshot, Variable, state},
+    session::{EngineHandle, Event, Frame, Request, Snapshot, Variable, method, state},
     theme::{self, SplitCached},
 };
 use crossterm::{
@@ -962,20 +962,20 @@ impl App {
         false
     }
     fn submit(&mut self, engine: Option<&EngineHandle>, method: &str, params: Value) {
-        if method == "set_elf" && self.pending_elf.is_some() {
+        if method == method::SET_ELF && self.pending_elf.is_some() {
             self.notice = "Changing ELF; wait for completion.".into();
             return;
         }
-        if method == "unwatch" && self.watch.pending_remove.is_some() {
+        if method == method::UNWATCH && self.watch.pending_remove.is_some() {
             self.notice = "Removing Watch expression; wait for completion.".into();
             return;
         }
-        if self.pending_task.is_some() && method != "quit" {
+        if self.pending_task.is_some() && method != method::QUIT {
             self.notice = "Build / Download is in progress. Ctrl+Q cancels and exits.".into();
             return;
         }
         if self.demo {
-            if method == "quit" {
+            if method == method::QUIT {
                 self.quitting = true;
                 return;
             }
@@ -983,9 +983,9 @@ impl App {
             self.log(self.notice.clone());
             return;
         }
-        if (method == "download" && !self.project.has_download())
-            || (method == "build" && !self.project.has_build())
-            || (method == "restart" && !self.has_reset())
+        if (method == method::DOWNLOAD && !self.project.has_download())
+            || (method == method::BUILD && !self.project.has_build())
+            || (method == method::RESTART && !self.has_reset())
         {
             self.notice = format!("{method} is not configured. Open F2 Setup to configure it.");
             return;
@@ -995,7 +995,7 @@ impl App {
             self.register_view.read_request = Some(request.clone());
         }
         self.next_id += 1;
-        if method == "download" {
+        if method == method::DOWNLOAD {
             self.confirm = Some(request);
             return;
         }
@@ -1005,24 +1005,29 @@ impl App {
         self.completion.invalidate();
         if matches!(
             request.method.as_str(),
-            "connect" | "reconnect" | "disconnect" | "set_elf" | "build" | "download"
+            method::CONNECT
+                | method::RECONNECT
+                | method::DISCONNECT
+                | method::SET_ELF
+                | method::BUILD
+                | method::DOWNLOAD
         ) {
             self.symbol_search.invalidate();
         }
         self.fx.request(request.id, &request.method);
-        if matches!(request.method.as_str(), "build" | "download") {
+        if matches!(request.method.as_str(), method::BUILD | method::DOWNLOAD) {
             self.pending_task = Some(request.id);
         }
-        if request.method == "quit" {
+        if request.method == method::QUIT {
             self.quitting = true;
         }
         self.notice = format!("{}…", request.method);
         if let Some(engine) = engine {
             let id = request.id;
-            if request.method == "set_elf" {
+            if request.method == method::SET_ELF {
                 self.pending_elf = Some(id);
             }
-            if request.method == "unwatch" {
+            if request.method == method::UNWATCH {
                 self.watch.pending_remove = Some(id);
             }
             self.pending_commands.insert(id);
@@ -1049,7 +1054,7 @@ impl App {
         }
         self.log(format!("> {input}"));
         if !input.starts_with(':') {
-            self.submit(engine, "console", json!({"command":input}));
+            self.submit(engine, method::CONSOLE, json!({"command":input}));
             return;
         }
         let (name, arg) = input[1..]
@@ -1069,8 +1074,8 @@ impl App {
             "register-bank-read" => self.read_register_bank(engine),
             "mpu" => self.open_mpu_view(arg),
             "cache" => self.open_cache_view(arg),
-            "scope" => self.submit(engine, "control_scope", json!({"scope":arg})),
-            "scope-toggle" => self.submit(engine, "control_scope", json!({"scope":if self.group_control() { "core" } else { "all" }})),
+            "scope" => self.submit(engine, method::CONTROL_SCOPE, json!({"scope":arg})),
+            "scope-toggle" => self.submit(engine, method::CONTROL_SCOPE, json!({"scope":if self.group_control() { "core" } else { "all" }})),
             "appearance" => self.open_appearance(),
             "zoom" => self.zoom = !self.zoom,
             "format" => self.open_format(None),
@@ -1108,14 +1113,14 @@ impl App {
                     Ok(index) => json!({"index":index}),
                     Err(_) => json!({"name":arg}),
                 };
-                self.submit(engine, "select_core", params);
+                self.submit(engine, method::SELECT_CORE, params);
             }
-            "cores" => self.submit(engine, "cores", json!({})),
+            "cores" => self.submit(engine, method::CORES, json!({})),
             "watch" | "unwatch" => self.submit(engine, name, json!({"expression":arg})),
             "data-break" => {
                 let (first, rest) = arg.split_once(' ').unwrap_or((arg, ""));
                 let (access, expression) = if matches!(first, "read" | "write" | "access" | "read-write") { (first, rest) } else { ("write", arg) };
-                self.submit(engine, "data_break", json!({"expression":expression,"access":access}));
+                self.submit(engine, method::DATA_BREAK, json!({"expression":expression,"access":access}));
             }
             "break-new" => self.open_break_editor(false, false),
             "break-data" => self.open_break_editor(true, false),
@@ -1123,13 +1128,13 @@ impl App {
             "break-toggle" => self.toggle_selected_break(engine),
             "break-remove" => self.remove_selected_break(engine),
             "break-cores" => self.open_break_cores(),
-            "break-enable-all" | "break-disable-all" => self.break_send(engine, "enable_break", json!({"all":true,"enabled":name == "break-enable-all"})),
-            "enable" | "disable" => self.submit(engine, "enable_break", json!({"number":if arg == "all" { "" } else { arg }, "all":arg == "all", "enabled":name == "enable"})),
-            "break" => self.submit(engine, "break", json!({"location":unquote(arg)})),
-            "delete" => self.submit(engine, "delete_break", json!({"number":arg})),
+            "break-enable-all" | "break-disable-all" => self.break_send(engine, method::ENABLE_BREAK, json!({"all":true,"enabled":name == "break-enable-all"})),
+            "enable" | "disable" => self.submit(engine, method::ENABLE_BREAK, json!({"number":if arg == "all" { "" } else { arg }, "all":arg == "all", "enabled":name == "enable"})),
+            "break" => self.submit(engine, method::BREAK, json!({"location":unquote(arg)})),
+            "delete" => self.submit(engine, method::DELETE_BREAK, json!({"number":arg})),
             "frame" => self.submit(
                 engine,
-                "frame",
+                method::FRAME,
                 json!({"level":arg.parse::<u64>().unwrap_or(0)}),
             ),
             "memory" => {
@@ -1138,13 +1143,13 @@ impl App {
             "disasm" => {
                 self.select_pane(pane::ASM);
                 self.view_stamps[pane::ASM] = Some(self.view_stamp());
-                self.submit(engine, "disassemble", json!({"address":arg}));
+                self.submit(engine, method::DISASSEMBLE, json!({"address":arg}));
             }
             "symbols" => self.open_symbol_search(),
             "files" => {
                 self.select_pane(pane::FILES);
                 self.view_stamps[pane::FILES] = Some("files".into());
-                self.submit(engine, "files", json!({}));
+                self.submit(engine, method::FILES, json!({}));
             }
             "open" => {
                 let path = unquote(arg);
@@ -1170,7 +1175,7 @@ impl App {
             }
             "elf" => {
                 let path = unquote(arg);
-                self.submit(engine, "set_elf", json!({"path":path}));
+                self.submit(engine, method::SET_ELF, json!({"path":path}));
             }
             "help" => self.open_help(true),
             _ => self.notice = format!("Unknown workstation command: {name}. Use ? for help."),
@@ -1196,16 +1201,16 @@ impl App {
         }) {
             let number = b.id.clone();
             if b.enabled {
-                self.submit(engine, "delete_break", json!({"number":number}));
+                self.submit(engine, method::DELETE_BREAK, json!({"number":number}));
             } else {
                 self.submit(
                     engine,
-                    "enable_break",
+                    method::ENABLE_BREAK,
                     json!({"number":number,"enabled":true}),
                 );
             }
         } else {
-            self.submit(engine, "break", json!({"location":location}));
+            self.submit(engine, method::BREAK, json!({"location":location}));
         }
     }
     fn move_selection(&mut self, delta: isize) {
@@ -1261,14 +1266,14 @@ impl App {
             if self.demo {
                 return true;
             }
-            self.submit(engine, "quit", json!({}));
+            self.submit(engine, method::QUIT, json!({}));
             return false;
         }
         if let Some(setup) = &mut self.setup {
             self.launch = setup.key(key);
             if setup.quit_requested {
                 self.launch = None;
-                self.submit(engine, "quit", json!({}));
+                self.submit(engine, method::QUIT, json!({}));
             } else if setup.workspace_requested {
                 self.document = setup.document.clone();
                 self.setup = None;
@@ -1366,7 +1371,7 @@ impl App {
                 KeyCode::Char('t') => {
                     if let Some((_, idx, count)) = &self.core_info {
                         let next = (*idx + 1) % count;
-                        self.submit(engine, "select_core", json!({"index":next}));
+                        self.submit(engine, method::SELECT_CORE, json!({"index":next}));
                     }
                     return false;
                 }
@@ -1430,10 +1435,10 @@ impl App {
                 self.open_edit_value()
             }
             KeyCode::F(2) => self.open_setup(),
-            KeyCode::F(5) => self.submit(engine, "continue", json!({})),
-            KeyCode::F(6) => self.submit(engine, "pause", json!({})),
+            KeyCode::F(5) => self.submit(engine, method::CONTINUE, json!({})),
+            KeyCode::F(6) => self.submit(engine, method::PAUSE, json!({})),
             KeyCode::F(9) => self.toggle_break(engine),
-            KeyCode::F(10) => self.submit(engine, "next", json!({})),
+            KeyCode::F(10) => self.submit(engine, method::NEXT, json!({})),
             KeyCode::F(11) => self.submit(
                 engine,
                 if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -1444,7 +1449,7 @@ impl App {
                 json!({}),
             ),
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                self.submit(engine, "pause", json!({}))
+                self.submit(engine, method::PAUSE, json!({}))
             }
             KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.palette_index = 0;
@@ -1467,7 +1472,7 @@ impl App {
                 if self.demo {
                     return true;
                 }
-                self.submit(engine, "quit", json!({}));
+                self.submit(engine, method::QUIT, json!({}));
             }
             KeyCode::Tab => {
                 self.cycle_pane(1);
@@ -1526,7 +1531,7 @@ impl App {
                     && let Some(frame) = self.snapshot.stack.get(self.selection)
                 {
                     let level = frame.level;
-                    self.submit(engine, "frame", json!({"level":level}));
+                    self.submit(engine, method::FRAME, json!({"level":level}));
                 } else if !matches!(self.pane, pane::STACK | pane::FILES) {
                     self.focus_input(self.pane == pane::WATCH);
                 }
@@ -1949,7 +1954,7 @@ impl App {
             self.launch = setup.mouse(mouse);
             if setup.quit_requested {
                 self.launch = None;
-                self.submit(engine, "quit", json!({}));
+                self.submit(engine, method::QUIT, json!({}));
             } else if setup.workspace_requested {
                 self.document = setup.document.clone();
                 self.setup = None;
@@ -2033,7 +2038,7 @@ impl App {
             if mouse.kind == MouseEventKind::Down(event::MouseButton::Left)
                 && let Some((_, index)) = self.core_hits.iter().find(|(r, _)| r.contains(point))
             {
-                self.submit(engine, "select_core", json!({"index":index}));
+                self.submit(engine, method::SELECT_CORE, json!({"index":index}));
                 return;
             }
             if self.watch_mouse(mouse, engine) {
@@ -2336,7 +2341,7 @@ pub fn run(
     };
     if !demo && app.setup.is_none() {
         if connect_ready {
-            app.submit(engine.as_ref(), "connect", json!({}));
+            app.submit(engine.as_ref(), method::CONNECT, json!({}));
         } else {
             app.notice = "ELF not built. Use Build, then Reconnect to start debugging.".into();
         }
@@ -2414,7 +2419,7 @@ pub fn run(
                     let connect_ready = project.clone().prepare_workspace().unwrap_or(false);
                     engine = Some(coordinator::spawn_with(project, bell.clone()));
                     if connect_ready {
-                        app.submit(engine.as_ref(), "connect", json!({}));
+                        app.submit(engine.as_ref(), method::CONNECT, json!({}));
                     } else {
                         app.notice =
                             "ELF not built. Use Build, then Reconnect to start debugging.".into();
@@ -2432,7 +2437,7 @@ pub fn run(
         }
         if let Some(launch) = app.launch.take() {
             if let Some(engine) = &engine {
-                engine.send(Request::new(SWITCH_QUIT, "quit", json!({})))?;
+                engine.send(Request::new(SWITCH_QUIT, method::QUIT, json!({})))?;
                 pending_launch = Some(launch);
             } else if let Some(setup) = &mut app.setup {
                 setup.pending = false;
@@ -2620,7 +2625,7 @@ mod tests {
                 row as u16,
                 Some(&engine),
             );
-            assert_eq!(requests.try_recv().unwrap().method, "quit");
+            assert_eq!(requests.try_recv().unwrap().method, method::QUIT);
             assert!(requests.try_recv().is_err());
             assert!(app.quitting);
             assert!(app.launch.is_none());
@@ -2851,7 +2856,7 @@ mod tests {
         key(&mut a, KeyCode::Up);
         key(&mut a, KeyCode::Enter);
         assert!(!a.palette);
-        assert_eq!(requests.try_recv().unwrap().method, "finish");
+        assert_eq!(requests.try_recv().unwrap().method, method::FINISH);
         a.open_help(false);
         assert!(a.palette_query.is_empty(), "reopening starts unfiltered");
         for ch in "zzq".chars() {
@@ -3135,7 +3140,7 @@ mod tests {
             Some(&engine),
         );
         let request = commands.try_recv().unwrap();
-        assert_eq!(request.method, "console");
+        assert_eq!(request.method, method::CONSOLE);
         assert_eq!(request.params["command"], "p/x counter");
         assert!(a.editing);
         assert!(a.input.is_empty());
@@ -3150,7 +3155,7 @@ mod tests {
             Some(&engine),
         );
         let request = commands.try_recv().unwrap();
-        assert_eq!(request.method, "watch");
+        assert_eq!(request.method, method::WATCH);
         assert_eq!(request.params["expression"], "counter");
         a.key(
             KeyEvent::new(KeyCode::Up, KeyModifiers::NONE),
@@ -3175,7 +3180,7 @@ mod tests {
             KeyEvent::new(KeyCode::F(10), KeyModifiers::NONE),
             Some(&engine),
         );
-        assert_eq!(commands.try_recv().unwrap().method, "next");
+        assert_eq!(commands.try_recv().unwrap().method, method::NEXT);
         assert!(a.editing);
         a.input = "中".repeat(150) + " tail";
         assert!(render(&mut a, 80, 24).contains("tail"));
@@ -3325,7 +3330,7 @@ mod tests {
             pause.y,
             Some(&engine),
         );
-        assert_eq!(commands.try_recv().unwrap().method, "pause");
+        assert_eq!(commands.try_recv().unwrap().method, method::PAUSE);
         let hit = a
             .action_hits
             .iter()
@@ -3386,7 +3391,7 @@ mod tests {
                     hit.y,
                     Some(&engine),
                 );
-                assert_eq!(commands.try_recv().unwrap().method, "quit", "{state}");
+                assert_eq!(commands.try_recv().unwrap().method, method::QUIT, "{state}");
                 assert!(
                     engine
                         .cancellation
@@ -3496,7 +3501,7 @@ mod tests {
                 KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
                 Some(&engine),
             );
-            assert_eq!(commands.try_recv().unwrap().method, "step");
+            assert_eq!(commands.try_recv().unwrap().method, method::STEP);
             assert!(commands.try_recv().is_err());
             a.command(Some(&engine), ":help");
             assert!(a.help && !a.palette);
@@ -3560,10 +3565,10 @@ mod tests {
             Some(&engine),
         );
         let request = commands.try_recv().unwrap();
-        assert_eq!(request.method, "build");
+        assert_eq!(request.method, method::BUILD);
         assert!(!a.action_enabled("download"));
         assert!(a.action_enabled("quit"));
-        a.submit(Some(&engine), "build", json!({}));
+        a.submit(Some(&engine), method::BUILD, json!({}));
         assert!(commands.try_recv().is_err());
         a.update(Event::Response {
             id: request.id,
@@ -3593,12 +3598,12 @@ mod tests {
         );
         assert!(a.confirm.is_none());
         assert!(commands.try_recv().is_err());
-        a.submit(Some(&engine), "download", json!({}));
+        a.submit(Some(&engine), method::DOWNLOAD, json!({}));
         a.key(
             KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE),
             Some(&engine),
         );
-        assert_eq!(commands.try_recv().unwrap().method, "download");
+        assert_eq!(commands.try_recv().unwrap().method, method::DOWNLOAD);
     }
     #[test]
     fn assembly_loads_on_entry_and_stop_without_repeated_requests() {
@@ -3612,7 +3617,7 @@ mod tests {
         render(&mut a, 120, 36);
         assert!(a.ensure_visible_data(Some(&engine)));
         let request = commands.try_recv().unwrap();
-        assert_eq!(request.method, "disassemble");
+        assert_eq!(request.method, method::DISASSEMBLE);
         assert_eq!(request.params["address"], "$pc");
         assert!(!a.ensure_visible_data(Some(&engine)));
         a.update(Event::Response {
@@ -3657,7 +3662,7 @@ mod tests {
             error: None,
         });
         assert!(a.ensure_visible_data(Some(&engine)));
-        assert_eq!(commands.try_recv().unwrap().method, "disassemble");
+        assert_eq!(commands.try_recv().unwrap().method, method::DISASSEMBLE);
         assert!(!a.ensure_visible_data(Some(&engine)));
     }
     #[test]
@@ -3677,7 +3682,7 @@ mod tests {
             Some(&engine),
         );
         let request = commands.try_recv().unwrap();
-        assert_eq!(request.method, "frame");
+        assert_eq!(request.method, method::FRAME);
         assert_eq!(request.params["level"], 1);
         assert_eq!(a.main_pane, pane::SOURCE);
         assert!(commands.try_recv().is_err());

@@ -160,14 +160,19 @@ impl Effects {
         self.requests.insert(id, method.into());
         if matches!(
             method,
-            "step" | "next" | "finish" | "stepi" | "continue" | "run"
+            method::STEP
+                | method::NEXT
+                | method::FINISH
+                | method::STEPI
+                | method::CONTINUE
+                | method::RUN
         ) {
             self.last_action = method.into();
         }
-        if matches!(method, "connect" | "reconnect") {
+        if matches!(method, method::CONNECT | method::RECONNECT) {
             self.connection = Some(0);
         }
-        if matches!(method, "build" | "download") {
+        if matches!(method, method::BUILD | method::DOWNLOAD) {
             self.task = Some(Task {
                 id,
                 name: method.into(),
@@ -179,14 +184,14 @@ impl Effects {
         }
         if !matches!(
             method,
-            "peripheral_read" | "disassemble" | "files" | "complete"
+            method::PERIPHERAL_READ | method::DISASSEMBLE | method::FILES | method::COMPLETE
         ) {
             self.trigger("submit", 220);
         }
     }
     pub fn response(&mut self, id: u64, ok: bool) {
         let method = self.requests.remove(&id).unwrap_or_default();
-        if matches!(method.as_str(), "connect" | "reconnect") {
+        if matches!(method.as_str(), method::CONNECT | method::RECONNECT) {
             self.connection = if ok { Some(3) } else { None };
             self.trigger(if ok { "connected" } else { "error" }, 1000);
         }
@@ -197,7 +202,7 @@ impl Effects {
             t.end = Some(Instant::now());
             self.trigger("task-result", 900);
         }
-        if method == "watch" && ok {
+        if method == method::WATCH && ok {
             self.trigger("watch-added", 800);
         }
         if !ok {
@@ -571,7 +576,7 @@ mod tests {
         assert_eq!(fx.observe("r0", "0xff"), None);
         assert_eq!(fx.observe("r0", "0xfe"), Some("0xff".into()));
         assert!(fx.amount("value:r0") > 0.0);
-        fx.request(1, "pause");
+        fx.request(1, method::PAUSE);
         assert_eq!(fx.amount("stop"), 0.0);
         fx.response(1, false);
         assert_eq!(fx.amount("stop"), 0.0);
@@ -585,7 +590,7 @@ mod tests {
     #[test]
     fn connection_steps_traces_and_tasks_follow_actual_events() {
         let mut fx = Effects::default();
-        fx.request(1, "connect");
+        fx.request(1, method::CONNECT);
         let mut old = Snapshot::default();
         for (state, stage) in [
             (state::STARTING_SERVER, 0),
@@ -604,7 +609,7 @@ mod tests {
         assert_eq!(fx.connection, Some(3));
         old.frame.file = "sample.c".into();
         old.frame.line = 18;
-        fx.request(2, "step");
+        fx.request(2, method::STEP);
         let new = Snapshot {
             state: state::STOPPED.into(),
             generation: 1,
@@ -619,7 +624,7 @@ mod tests {
         assert_eq!(fx.traces.len(), 1);
         assert_eq!(fx.traces[0].1, 18);
         assert_eq!(fx.tab_file, "led.c");
-        fx.request(3, "build");
+        fx.request(3, method::BUILD);
         assert_eq!(fx.task.as_ref().unwrap().progress, None);
         fx.response(3, false);
         let (label, color) = fx.task_label(state::DISCONNECTED).unwrap();

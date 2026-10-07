@@ -227,7 +227,7 @@ impl App {
             return false;
         }
         let expanded = expand.unwrap_or(!tree.expanded || node.more);
-        self.submit(engine,"local_expand",json!({"expression":node.root,"path":node.path,"expanded":expanded,"more":node.more&&expanded}));
+        self.submit(engine,method::LOCAL_EXPAND,json!({"expression":node.root,"path":node.path,"expanded":expanded,"more":node.more&&expanded}));
         true
     }
     pub(super) fn add_watch_input(&mut self, engine: Option<&EngineHandle>) {
@@ -237,7 +237,7 @@ impl App {
         }
         self.fx.trigger("submit", 220);
         let id = self.next_id;
-        self.submit(engine, "watch", json!({"expression":expression}));
+        self.submit(engine, method::WATCH, json!({"expression":expression}));
         if self.pending_commands.contains(&id) {
             self.pending_watch = Some((id, expression));
         }
@@ -307,7 +307,7 @@ impl App {
             .filter(|v| v.removable())
         {
             let name = value.root.to_owned();
-            self.submit(engine, "unwatch", json!({"expression":name}));
+            self.submit(engine, method::UNWATCH, json!({"expression":name}));
         } else {
             self.notice = "Select a top-level Watch expression to remove it.".into();
         }
@@ -339,7 +339,7 @@ impl App {
             return true;
         }
         let params = json!({"expression":node.root,"path":node.path,"expanded":expanded,"more":node.more && expanded});
-        self.submit(engine, "watch_expand", params);
+        self.submit(engine, method::WATCH_EXPAND, params);
         true
     }
     pub(super) fn watch_item(&self, row: usize) -> Option<formats::Item> {
@@ -700,7 +700,7 @@ mod tests {
             let request = requests
                 .try_recv()
                 .expect("Delete must keep working after deleting the tail");
-            assert_eq!(request.method, "unwatch");
+            assert_eq!(request.method, method::UNWATCH);
             assert_eq!(request.params["expression"], name);
             removed(&mut a, &request);
         }
@@ -716,13 +716,13 @@ mod tests {
         a.selection = 1;
         removed(
             &mut a,
-            &Request::new(15, "unwatch", json!({"expression":"first"})),
+            &Request::new(15, method::UNWATCH, json!({"expression":"first"})),
         );
         assert_eq!(a.snapshot.watches[a.selected(pane::WATCH)].name, "middle");
         a.select_pane(pane::SOURCE);
         removed(
             &mut a,
-            &Request::new(16, "unwatch", json!({"expression":"last"})),
+            &Request::new(16, method::UNWATCH, json!({"expression":"last"})),
         );
         a.select_pane(pane::WATCH);
         assert_eq!(a.selected(pane::WATCH), 0);
@@ -876,7 +876,7 @@ mod tests {
         }
         click(&mut a, add, &engine);
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "watch");
+        assert_eq!(request.method, method::WATCH);
         assert_eq!(request.params, json!({"expression":"counter_pair.value"}));
         click(&mut a, add, &engine);
         assert!(requests.try_recv().is_err());
@@ -946,7 +946,7 @@ mod tests {
         // A queued removal shifts the index after drawing, but not the identity.
         removed(
             &mut a,
-            &Request::new(999, "unwatch", json!({"expression":"first"})),
+            &Request::new(999, method::UNWATCH, json!({"expression":"first"})),
         );
         click(&mut a, hit, &engine);
         assert_eq!(requests.try_recv().unwrap().params["expression"], "middle");
@@ -971,10 +971,10 @@ mod tests {
         a.select_pane(pane::WATCH);
         a.snapshot.state = state::RUNNING.into();
         click(&mut a, add, &engine);
-        assert_eq!(requests.try_recv().unwrap().method, "watch");
+        assert_eq!(requests.try_recv().unwrap().method, method::WATCH);
         click(&mut a, close, &engine);
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "unwatch");
+        assert_eq!(request.method, method::UNWATCH);
         assert_eq!(request.params["expression"], "first");
         assert_eq!(a.snapshot.state, state::RUNNING);
     }
@@ -1102,7 +1102,7 @@ mod tests {
         key(&mut a, KeyCode::Tab, &engine);
         key(&mut a, KeyCode::Enter, &engine);
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "write_preview");
+        assert_eq!(request.method, method::WRITE_PREVIEW);
         assert_eq!(request.params["target"]["pane"], "locals");
         assert_eq!(request.params["target"]["path"], json!([0, 0]));
         assert_eq!(request.params["context"]["frame"], 2);
@@ -1127,7 +1127,7 @@ mod tests {
             assert!(arrow.right() <= width && arrow.bottom() <= height);
             click(&mut a, arrow, &engine);
             let request = requests.try_recv().unwrap();
-            assert_eq!(request.method, "local_expand");
+            assert_eq!(request.method, method::LOCAL_EXPAND);
             assert_eq!(request.params["expanded"], false);
         }
         a.selection = 2;
@@ -1138,7 +1138,7 @@ mod tests {
         });
         assert_eq!(a.selection, 0);
         key(&mut a, KeyCode::Right, &engine);
-        assert_eq!(requests.try_recv().unwrap().method, "local_expand");
+        assert_eq!(requests.try_recv().unwrap().method, method::LOCAL_EXPAND);
     }
     #[test]
     fn watch_tree_disclosure_mouse_and_keyboard_dispatch_paths() {
@@ -1154,7 +1154,7 @@ mod tests {
             .0;
         click(&mut a, arrow, &engine);
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "watch_expand");
+        assert_eq!(request.method, method::WATCH_EXPAND);
         assert_eq!(
             request.params,
             json!({"expression":"outer","path":[],"expanded":false,"more":false})

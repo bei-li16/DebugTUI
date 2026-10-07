@@ -67,7 +67,7 @@ fn dragging_copies_only_raw_source_and_keeps_breakpoint_gutter() {
         },
         Some(&engine),
     );
-    assert_eq!(requests.try_recv().unwrap().method, "break");
+    assert_eq!(requests.try_recv().unwrap().method, method::BREAK);
     assert!(a.source_text.range().is_none());
 }
 
@@ -105,7 +105,7 @@ fn copy_requires_source_focus_and_selection_and_f6_always_pauses() {
         KeyModifiers::CONTROL,
         Some(&engine),
     );
-    assert_eq!(requests.try_recv().unwrap().method, "pause");
+    assert_eq!(requests.try_recv().unwrap().method, method::PAUSE);
     select(&mut a, 0, 0, 8);
     key(
         &mut a,
@@ -115,7 +115,7 @@ fn copy_requires_source_focus_and_selection_and_f6_always_pauses() {
     );
     assert!(requests.try_recv().is_err());
     key(&mut a, KeyCode::F(6), KeyModifiers::NONE, Some(&engine));
-    assert_eq!(requests.try_recv().unwrap().method, "pause");
+    assert_eq!(requests.try_recv().unwrap().method, method::PAUSE);
     a.select_pane(pane::REGS);
     key(
         &mut a,
@@ -123,7 +123,7 @@ fn copy_requires_source_focus_and_selection_and_f6_always_pauses() {
         KeyModifiers::CONTROL,
         Some(&engine),
     );
-    assert_eq!(requests.try_recv().unwrap().method, "pause");
+    assert_eq!(requests.try_recv().unwrap().method, method::PAUSE);
 }
 
 #[test]
@@ -143,7 +143,7 @@ fn watch_button_reuses_normal_request_and_preserves_failed_expression() {
         Some(&engine),
     );
     let request = requests.try_recv().unwrap();
-    assert_eq!(request.method, "watch");
+    assert_eq!(request.method, method::WATCH);
     assert_eq!(request.params["expression"], "platform.cpu_num");
     assert_eq!(a.pane, pane::WATCH);
     a.update(Event::Response {

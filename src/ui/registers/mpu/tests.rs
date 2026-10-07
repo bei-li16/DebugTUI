@@ -64,7 +64,7 @@ fn m7_cache_popup_open_scroll_render_and_close_are_zero_io_and_read_is_explicit(
         Some(&engine),
     );
     let req = requests.try_recv().unwrap();
-    assert_eq!(req.method, "registers_cache");
+    assert_eq!(req.method, method::REGISTERS_CACHE);
     assert!(req.params.get("bank").is_none());
     app.register_response(req.id, &json!({}), None);
     app.snapshot.state = state::RUNNING.into();
@@ -160,7 +160,7 @@ fn m_mpu_overview_uses_explicit_read_and_shows_stale_raw_without_field_derivatio
         Some(&engine),
     );
     let request = requests.try_recv().unwrap();
-    assert_eq!(request.method, "registers_mpu");
+    assert_eq!(request.method, method::REGISTERS_MPU);
     assert_eq!(request.params["bank"], "m");
     app.register_response(request.id, &json!({}), None);
     app.snapshot.state = state::RUNNING.into();
@@ -316,7 +316,7 @@ fn mpu_overview_keyboard_mouse_and_narrow_layout_read_only_on_explicit_action() 
         Some(&engine),
     );
     let request = requests.try_recv().unwrap();
-    assert_eq!(request.method, "registers_mpu");
+    assert_eq!(request.method, method::REGISTERS_MPU);
     assert_eq!(request.params["bank"], "el1");
     assert_eq!(request.params["read"], true);
     app.key(

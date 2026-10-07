@@ -135,7 +135,11 @@ impl App {
         popup.error = None;
         self.submit(
             engine,
-            if cache { "registers_cache" } else { "registers_mpu" },
+            if cache {
+                method::REGISTERS_CACHE
+            } else {
+                method::REGISTERS_MPU
+            },
             if cache { json!({"context":context,"read":true}) } else { json!({"context":context,"bank":if m_profile {json!("m")} else {json!(bank)},"read":true}) },
         );
         if !self.pending_commands.contains(&id) {

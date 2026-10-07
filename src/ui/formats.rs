@@ -140,7 +140,7 @@ impl App {
                 .as_object_mut()
                 .unwrap()
                 .remove("register_views");
-            match engine.send(Request::new(id, "ui_preferences", preferences)) {
+            match engine.send(Request::new(id, method::UI_PREFERENCES, preferences)) {
                 Ok(()) => {
                     self.formats.pending_save.insert(id);
                 }
@@ -768,7 +768,7 @@ mod tests {
         );
         assert_eq!(a.project.ui.formats.get("watch:counter"), Some(&Radix::Hex));
         let req = requests.try_recv().unwrap();
-        assert_eq!(req.method, "ui_preferences");
+        assert_eq!(req.method, method::UI_PREFERENCES);
         assert!(requests.try_recv().is_err());
         assert_eq!(a.snapshot.watches[0].value, original.watches[0].value);
         assert_eq!(a.base_for("watch:flag", Radix::Decimal), Radix::Decimal);
@@ -815,7 +815,7 @@ mod tests {
             Some(&engine),
         );
         assert_eq!(a.project.ui.animations, Motion::Off);
-        assert_eq!(requests.try_recv().unwrap().method, "ui_preferences");
+        assert_eq!(requests.try_recv().unwrap().method, method::UI_PREFERENCES);
         assert!(requests.try_recv().is_err());
     }
     #[test]

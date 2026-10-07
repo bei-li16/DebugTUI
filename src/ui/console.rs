@@ -296,7 +296,7 @@ mod tests {
             Some(&engine),
         );
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "console");
+        assert_eq!(request.method, method::CONSOLE);
         assert_eq!(request.params["command"], "print counter");
     }
     #[test]

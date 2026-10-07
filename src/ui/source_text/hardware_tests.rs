@@ -42,7 +42,7 @@ fn command(
     response(a, engine, id, events)
 }
 fn refresh(a: &mut App, engine: &EngineHandle, events: &mut Vec<Value>) {
-    let value = command(a, engine, "status", json!({}), events);
+    let value = command(a, engine, method::STATUS, json!({}), events);
     a.update(Event::Snapshot {
         snapshot: Box::new(serde_json::from_value(value).unwrap()),
     });
@@ -78,14 +78,14 @@ fn tha6206_source_selection_to_real_watch() {
     let mut a = App::new(project, false);
     let mut events = vec![];
     let checked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        command(&mut a, &engine, "connect", json!({}), &mut events);
+        command(&mut a, &engine, method::CONNECT, json!({}), &mut events);
         if std::env::var_os("DEBUGTUI_SOURCE_INITIALIZE").is_some() {
-            command(&mut a, &engine, "restart", json!({}), &mut events);
-            command(&mut a, &engine, "run", json!({}), &mut events);
+            command(&mut a, &engine, method::RESTART, json!({}), &mut events);
+            command(&mut a, &engine, method::RUN, json!({}), &mut events);
             command(
                 &mut a,
                 &engine,
-                "wait_stopped",
+                method::WAIT_STOPPED,
                 json!({"timeout_ms":8000}),
                 &mut events,
             );
@@ -98,18 +98,18 @@ fn tha6206_source_selection_to_real_watch() {
                 command(
                     &mut a,
                     &engine,
-                    "select_core",
+                    method::SELECT_CORE,
                     json!({"index":core}),
                     &mut events,
                 );
             }
             refresh(&mut a, &engine, &mut events);
             if a.snapshot.state != state::STOPPED {
-                command(&mut a, &engine, "pause", json!({}), &mut events);
+                command(&mut a, &engine, method::PAUSE, json!({}), &mut events);
                 command(
                     &mut a,
                     &engine,
-                    "wait_stopped",
+                    method::WAIT_STOPPED,
                     json!({"timeout_ms":5000}),
                     &mut events,
                 );
@@ -200,7 +200,7 @@ fn tha6206_source_selection_to_real_watch() {
             command(
                 &mut a,
                 &engine,
-                "select_core",
+                method::SELECT_CORE,
                 json!({"index":0}),
                 &mut events,
             );
@@ -211,7 +211,7 @@ fn tha6206_source_selection_to_real_watch() {
         assert_eq!(fs::read(&source).unwrap(), original);
         assert_eq!(fs::read(&a.project.program.elf).unwrap(), original_elf);
     }));
-    command(&mut a, &engine, "quit", json!({}), &mut events);
+    command(&mut a, &engine, method::QUIT, json!({}), &mut events);
     fs::write(
         root.join("ui-gdb-events.json"),
         serde_json::to_vec_pretty(&events).unwrap(),

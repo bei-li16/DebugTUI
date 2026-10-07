@@ -377,7 +377,7 @@ fn native_selector_failures_keep_distinct_reasons_and_the_original_debug_proof()
         app.selection = 0;
         app.command(Some(&engine), ":register-bank-read");
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "registers_select");
+        assert_eq!(request.method, method::REGISTERS_SELECT);
         app.register_response(request.id, &json!({}), Some(message));
         for original in originals {
             let failed = &app.register_view.values
@@ -611,7 +611,7 @@ fn register_change_highlight_compares_same_owner_and_field_bits_only_after_valid
         app.view_tops[pane::REGS] = 0;
         assert!(app.request_registers(Some(&engine), vec!["cpsr".into()], true));
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "registers_read");
+        assert_eq!(request.method, method::REGISTERS_READ);
         let mut next = sample(&app, "cpsr", raw);
         next.owner = Some(format!("core:{}", app.register_context().core));
         assert!(app.register_response(request.id, &json!({"samples":[next]}), None));
@@ -748,6 +748,6 @@ fn register_tree_keyboard_mouse_scroll_and_description_filters_only_save_prefere
     assert!(
         requests
             .try_iter()
-            .all(|request| request.method == "register_preferences")
+            .all(|request| request.method == method::REGISTER_PREFERENCES)
     );
 }

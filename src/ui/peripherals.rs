@@ -149,7 +149,7 @@ mod tests {
         a.toggle_peripheral(None);
         assert!(a.ensure_visible_data(Some(&engine)));
         let req = rx.try_recv().unwrap();
-        assert_eq!(req.method, "memory_read");
+        assert_eq!(req.method, method::MEMORY_READ);
         assert_eq!(req.params["address"], 0x40000000u64);
         response(&mut a, &req, Some(42));
         // Other visible rows are write-only or have read side effects.
@@ -214,7 +214,7 @@ mod tests {
         a.toggle_peripheral(Some(true));
         assert!(a.ensure_monitors(Some(&engine)));
         let request = rx.try_recv().unwrap();
-        assert_eq!(request.method, "memory_read");
+        assert_eq!(request.method, method::MEMORY_READ);
         assert_eq!(request.params["channel"], "bus");
         assert_eq!(request.params["address"], 0x40000000u64);
         response(&mut a, &request, Some(43));
@@ -263,7 +263,7 @@ mod tests {
                 Some(&engine),
             );
             let req = rx.try_recv().unwrap();
-            assert_eq!(req.method, "memory_read");
+            assert_eq!(req.method, method::MEMORY_READ);
             response(&mut a, &req, Some(0x1234));
         }
         a.editing = true;
@@ -310,7 +310,7 @@ mod tests {
         );
         a.refresh_peripheral(Some(&engine));
         let request = requests.recv().unwrap();
-        assert_eq!(request.method, "memory_read");
+        assert_eq!(request.method, method::MEMORY_READ);
         assert_eq!(request.params["channel"], "bus");
         assert_eq!(request.params["context"]["generation"], 7);
         assert_eq!(request.params["selection_epoch"], 5);

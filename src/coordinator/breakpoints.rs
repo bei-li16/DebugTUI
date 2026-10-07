@@ -26,7 +26,10 @@ impl Coordinator {
     pub(super) fn begin_breakpoint_edit(&mut self, req: &Request) -> bool {
         if !matches!(
             req.method.as_str(),
-            "break_cores" | "update_break" | "enable_break" | "delete_break"
+            method::BREAK_CORES
+                | method::UPDATE_BREAK
+                | method::ENABLE_BREAK
+                | method::DELETE_BREAK
         ) {
             return false;
         }
@@ -39,10 +42,10 @@ impl Coordinator {
             .snapshot
             .breakpoints
             .iter()
-            .filter(|b| b.id == number || (number.is_empty() && req.method != "break_cores"))
+            .filter(|b| b.id == number || (number.is_empty() && req.method != method::BREAK_CORES))
             .cloned()
             .collect();
-        if req.method != "break_cores" && !selected.iter().any(|b| b.group.is_some()) {
+        if req.method != method::BREAK_CORES && !selected.iter().any(|b| b.group.is_some()) {
             return false;
         }
         match self.breakpoint_steps(req, &selected) {
@@ -63,7 +66,7 @@ impl Coordinator {
         if selected.is_empty() {
             return Err("Select an existing breakpoint".into());
         }
-        let desired = if req.method == "break_cores" {
+        let desired = if req.method == method::BREAK_CORES {
             if selected.len() != 1 {
                 return Err("Select one breakpoint".into());
             }
@@ -96,7 +99,7 @@ impl Coordinator {
         } else {
             None
         };
-        if req.method == "update_break"
+        if req.method == method::UPDATE_BREAK
             && req
                 .params
                 .get("number")
@@ -105,7 +108,7 @@ impl Coordinator {
         {
             return Err("Select one breakpoint to edit".into());
         }
-        if req.method == "enable_break"
+        if req.method == method::ENABLE_BREAK
             && req
                 .params
                 .get("number")
@@ -189,14 +192,17 @@ impl Coordinator {
             for i in affected {
                 let existing = members.iter().find(|(core, _)| *core == i).map(|(_, b)| b);
                 let before = existing.map(Breakpoint::options);
-                let after = if req.method == "delete_break" || !wanted.contains(&i) {
+                let after = if req.method == method::DELETE_BREAK || !wanted.contains(&i) {
                     None
                 } else {
                     let mut o = existing.unwrap_or(b).options();
                     if desired.is_some() {
                         o.group = (wanted.len() > 1).then(|| group.clone());
                     }
-                    if matches!(req.method.as_str(), "enable_break" | "update_break") {
+                    if matches!(
+                        req.method.as_str(),
+                        method::ENABLE_BREAK | method::UPDATE_BREAK
+                    ) {
                         apply_options(&mut o, req)?;
                     }
                     Some(o)
@@ -215,14 +221,14 @@ impl Coordinator {
 }
 
 fn apply_options(o: &mut BreakpointOptions, req: &Request) -> Result<(), String> {
-    if req.method == "enable_break" || req.params.get("enabled").is_some() {
+    if req.method == method::ENABLE_BREAK || req.params.get("enabled").is_some() {
         o.enabled = req
             .params
             .get("enabled")
             .and_then(Json::as_bool)
             .ok_or("enabled must be true or false")?;
     }
-    if req.method == "update_break" {
+    if req.method == method::UPDATE_BREAK {
         if let Some(v) = req.params.get("condition") {
             o.condition = v.as_str().ok_or("condition must be text")?.into();
         }
@@ -268,7 +274,7 @@ mod tests {
     #[test]
     fn source_break_stays_local_and_invalid_members_never_start_edits() {
         let (mut c, rx) = fixture();
-        c.begin(Request::new(1, "break", json!({"location":"main"})));
+        c.begin(Request::new(1, method::BREAK, json!({"location":"main"})));
         assert!(
             matches!(c.batch.as_ref().unwrap().steps.front(), Some(Step::Core(0, m)) if m == "break")
         );
@@ -276,7 +282,7 @@ mod tests {
         for cores in [json!([]), json!([1]), json!([0, 0]), json!([0, 9])] {
             c.begin(Request::new(
                 2,
-                "break_cores",
+                method::BREAK_CORES,
                 json!({"number":"4","cores":cores}),
             ));
             assert!(c.batch.is_none());
@@ -284,7 +290,7 @@ mod tests {
         c.engines[1].snapshot.state = state::RUNNING.into();
         c.begin(Request::new(
             3,
-            "break_cores",
+            method::BREAK_CORES,
             json!({"number":"4","cores":[0,1]}),
         ));
         assert!(c.batch.is_none());
@@ -303,7 +309,7 @@ mod tests {
         c.engines[1].snapshot.breakpoints.push(other);
         c.begin(Request::new(
             1,
-            "break_cores",
+            method::BREAK_CORES,
             json!({"number":"4","cores":[0,1]}),
         ));
         let steps = &c.batch.as_ref().unwrap().steps;
@@ -314,7 +320,7 @@ mod tests {
         let mut linked = c.engines[0].snapshot.breakpoints[0].clone();
         linked.id = "23".into();
         c.engines[1].snapshot.breakpoints.push(linked);
-        c.begin(Request::new(2, "delete_break", json!({"number":"4"})));
+        c.begin(Request::new(2, method::DELETE_BREAK, json!({"number":"4"})));
         let steps = &c.batch.as_ref().unwrap().steps;
         assert!(
             matches!(&steps[1], Step::Breakpoint(1,p,_) if p["number"] == "23" && p["options"].is_null())
@@ -329,7 +335,7 @@ mod tests {
         let (mut c, _rx) = fixture();
         c.begin(Request::new(
             1,
-            "break_cores",
+            method::BREAK_CORES,
             json!({"number":"4","cores":[0,1]}),
         ));
         let mut b = c.batch.take().unwrap();

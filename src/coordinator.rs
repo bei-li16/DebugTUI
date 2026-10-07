@@ -2,7 +2,7 @@
 use crate::{
     config::{ControlScope, Core, Project},
     logging::{Stamp, Trace},
-    session::{self, CoreStatus, EngineHandle, Event, Request, Snapshot, state},
+    session::{self, CoreStatus, EngineHandle, Event, Request, Snapshot, method, state},
     wake::{Doorbell, RingOnDrop},
 };
 
@@ -526,7 +526,7 @@ impl Coordinator {
                         self.reply(r.id, Json::Null, Some("Cancelled during exit".into()));
                     }
                     self.queue
-                        .push_front(Request::new(req.id, "quit", json!({})));
+                        .push_front(Request::new(req.id, method::QUIT, json!({})));
                     false
                 }
                 Ok(req) => {
@@ -538,12 +538,12 @@ impl Coordinator {
                     false
                 }
                 Err(mpsc::TryRecvError::Disconnected)
-                    if !self.exiting && !self.queue.iter().any(|r| r.method == "quit") =>
+                    if !self.exiting && !self.queue.iter().any(|r| r.method == method::QUIT) =>
                 {
                     self.cancellation.store(true, Ordering::Relaxed);
                     self.queue.clear();
                     self.queue
-                        .push_back(Request::new(u64::MAX, "quit", json!({})));
+                        .push_back(Request::new(u64::MAX, method::QUIT, json!({})));
                     false
                 }
                 Err(_) => true,
@@ -680,15 +680,15 @@ impl Coordinator {
                 }
                 let mut b = self.batch.take().unwrap();
                 b.waiting = None;
-                if b.current_method == "registers_read" {
+                if b.current_method == method::REGISTERS_READ {
                     self.accept_shared_response(i, &b.shared_epochs, &mut result);
                     self.publish();
                 }
-                if b.current_method == "registers_probe" && ok {
+                if b.current_method == method::REGISTERS_PROBE && ok {
                     self.accept_probe_response(i, &b.shared_epochs, &mut result);
                     self.publish();
                 }
-                if b.current_method == "registers_matrix"
+                if b.current_method == method::REGISTERS_MATRIX
                     && ok
                     && let Err(failure) = self.filter_register_matrix(i, &mut result)
                 {
@@ -698,14 +698,14 @@ impl Coordinator {
                 }
                 if matches!(
                     b.current_method.as_str(),
-                    "registers_read" | "registers_list" | "registers_probe"
+                    method::REGISTERS_READ | method::REGISTERS_LIST | method::REGISTERS_PROBE
                 ) && self.multi()
                     && result.is_object()
                 {
                     result["owner_generations"] = json!(self.shared_epochs);
                 }
                 if ok
-                    && b.current_method == "write_apply"
+                    && b.current_method == method::WRITE_APPLY
                     && matches!(result["scope"].as_str(), Some("chip" | "cluster"))
                     && result["outcome"].as_str().is_some_and(|o| o != "not_sent")
                 {
@@ -717,16 +717,19 @@ impl Coordinator {
                             self.next_id += 1;
                             let _ = self.engines[peer].handle.send(Request::new(
                                 id,
-                                "write_invalidate",
+                                method::WRITE_INVALIDATE,
                                 json!({}),
                             ));
                         }
                     }
                 }
-                if ok && matches!(b.current_method.as_str(), "run" | "continue") {
+                if ok && matches!(b.current_method.as_str(), method::RUN | method::CONTINUE) {
                     self.engines[i].launched = true;
                 }
-                if matches!(b.current_method.as_str(), "connect" | "disconnect") {
+                if matches!(
+                    b.current_method.as_str(),
+                    method::CONNECT | method::DISCONNECT
+                ) {
                     self.engines[i].launched = false;
                 }
                 b.results.push(json!({"index":i,"name":self.engines[i].name,"ok":ok,"result":result,"error":error}));
@@ -759,7 +762,7 @@ impl Coordinator {
         if !b.recovering
             && matches!(
                 b.request.method.as_str(),
-                "connect" | "reconnect" | "build" | "download"
+                method::CONNECT | method::RECONNECT | method::BUILD | method::DOWNLOAD
             )
             && b.aggregate
         {
@@ -768,28 +771,36 @@ impl Coordinator {
                 .order
                 .iter()
                 .rev()
-                .map(|&i| Step::Core(i, "disconnect".into()))
+                .map(|&i| Step::Core(i, method::DISCONNECT.into()))
                 .collect();
             b.steps.push_back(Step::StopService);
         } else if !b.recovering
-            && !matches!(b.request.method.as_str(), "quit" | "disconnect" | "pause")
+            && !matches!(
+                b.request.method.as_str(),
+                method::QUIT | method::DISCONNECT | method::PAUSE
+            )
         {
             b.steps.clear();
-            if b.aggregate && matches!(b.request.method.as_str(), "run" | "continue" | "restart") {
+            if b.aggregate
+                && matches!(
+                    b.request.method.as_str(),
+                    method::RUN | method::CONTINUE | method::RESTART
+                )
+            {
                 // A partially resumed/reset group must not silently keep running.
                 b.recovering = true;
                 for (i, e) in self.engines.iter().enumerate() {
                     if e.snapshot.state == state::RUNNING {
-                        b.steps.push_back(Step::Core(i, "pause".into()));
+                        b.steps.push_back(Step::Core(i, method::PAUSE.into()));
                     }
                 }
-                if b.request.method == "restart" {
+                if b.request.method == method::RESTART {
                     for (i, e) in self.engines.iter().enumerate() {
                         if matches!(
                             e.snapshot.state.as_str(),
                             state::READY | state::STOPPED | state::RUNNING
                         ) {
-                            b.steps.push_back(Step::Core(i, "synchronize".into()));
+                            b.steps.push_back(Step::Core(i, method::SYNCHRONIZE.into()));
                         }
                     }
                 }
@@ -823,7 +834,7 @@ impl Coordinator {
                     rollback.push_front(Step::Breakpoint(core, undo, None));
                 }
                 explicit_params = Some(params);
-                step = Step::Core(core, "break_apply".into());
+                step = Step::Core(core, method::BREAK_APPLY.into());
             }
             if let Step::Resume(i) = step {
                 if self.group_stop.is_some() || self.engines[i].snapshot.state == state::RUNNING {
@@ -832,9 +843,9 @@ impl Coordinator {
                 step = Step::Core(
                     i,
                     if self.engines[i].launched {
-                        "continue"
+                        method::CONTINUE
                     } else {
-                        "run"
+                        method::RUN
                     }
                     .into(),
                 );
@@ -868,7 +879,7 @@ impl Coordinator {
                     if self.group_stop.is_some() {
                         for &i in self.order.iter().rev() {
                             if self.engines[i].snapshot.state == state::RUNNING {
-                                b.steps.push_front(Step::Core(i, "pause".into()));
+                                b.steps.push_front(Step::Core(i, method::PAUSE.into()));
                             }
                         }
                         if !matches!(b.steps.front(), Some(Step::WaitGroupStop(_))) {
@@ -887,9 +898,10 @@ impl Coordinator {
                     }
                 }
                 Step::Core(i, method) => {
-                    if self.engines[i].exited || (self.engines[i].unresponsive && method != "quit")
+                    if self.engines[i].exited
+                        || (self.engines[i].unresponsive && method != method::QUIT)
                     {
-                        if method == "quit" && self.engines[i].exited {
+                        if method == method::QUIT && self.engines[i].exited {
                             continue;
                         }
                         self.fail(
@@ -907,7 +919,7 @@ impl Coordinator {
                     } else {
                         json!({})
                     };
-                    let timeout = if matches!(method.as_str(), "build" | "download") {
+                    let timeout = if matches!(method.as_str(), method::BUILD | method::DOWNLOAD) {
                         self.project.tasks.timeout_ms.saturating_add(120_000)
                     } else {
                         self.project
@@ -920,7 +932,7 @@ impl Coordinator {
                     if worker_request.is_cancellable_read() && method == b.request.method {
                         worker_request.read_cancel = b.request.read_cancel.clone();
                     }
-                    if matches!(method.as_str(), "write_preview" | "write_apply") {
+                    if matches!(method.as_str(), method::WRITE_PREVIEW | method::WRITE_APPLY) {
                         worker_request.write_peers = self.statuses();
                     }
                     match self.engines[i].handle.send(worker_request) {
@@ -944,13 +956,13 @@ impl Coordinator {
         if ok
             && matches!(
                 b.request.method.as_str(),
-                "connect" | "reconnect" | "build" | "download"
+                method::CONNECT | method::RECONNECT | method::BUILD | method::DOWNLOAD
             )
         {
             self.start_live();
         }
         if ok
-            && matches!(b.request.method.as_str(), "watch" | "unwatch")
+            && matches!(b.request.method.as_str(), method::WATCH | method::UNWATCH)
             && self.live_watch.is_some()
         {
             self.start_live();
@@ -959,8 +971,8 @@ impl Coordinator {
             let mut info = self.info();
             info["results"] = json!(b.results);
             match b.request.method.as_str() {
-                "connect" | "reconnect" => info["connected"] = json!(ok),
-                "run" | "continue" => {
+                method::CONNECT | method::RECONNECT => info["connected"] = json!(ok),
+                method::RUN | method::CONTINUE => {
                     info["running"] = json!(
                         ok && self
                             .engines
@@ -968,7 +980,7 @@ impl Coordinator {
                             .all(|e| e.snapshot.state == state::RUNNING)
                     )
                 }
-                "pause" => {
+                method::PAUSE => {
                     info["stopped"] = json!(
                         ok && self.engines.iter().all(|e| matches!(
                             e.snapshot.state.as_str(),
@@ -976,17 +988,17 @@ impl Coordinator {
                         ))
                     )
                 }
-                "restart" => info["restarted"] = json!(ok),
-                "quit" | "disconnect" => info["disconnected"] = json!(ok),
+                method::RESTART => info["restarted"] = json!(ok),
+                method::QUIT | method::DISCONNECT => info["disconnected"] = json!(ok),
                 _ => {}
             }
             info
-        } else if b.request.method == "status" {
+        } else if b.request.method == method::STATUS {
             json!(self.snapshot())
         } else {
             b.last
         };
-        if b.break_undo.is_some() || b.request.method == "break_cores" {
+        if b.break_undo.is_some() || b.request.method == method::BREAK_CORES {
             self.publish();
         }
         if b.internal {
@@ -1010,7 +1022,7 @@ impl Coordinator {
             return;
         }
         if self.multi()
-            && req.method == "connect"
+            && req.method == method::CONNECT
             && self.engines.iter().any(|e| {
                 !matches!(
                     e.snapshot.state.as_str(),
@@ -1025,12 +1037,12 @@ impl Coordinator {
             );
             return;
         }
-        if self.multi() && req.method == "set_elf" {
+        if self.multi() && req.method == method::SET_ELF {
             self.reply(req.id,Json::Null,Some("Multi-core workspaces share one ELF. Change Program / ELF in F2 Setup and restart the workspace.".into()));
             return;
         }
-        if matches!(req.method.as_str(), "select_core" | "cores") {
-            if req.method == "select_core" {
+        if matches!(req.method.as_str(), method::SELECT_CORE | method::CORES) {
+            if req.method == method::SELECT_CORE {
                 let index = if let Some(name) = req.params.get("name").and_then(Json::as_str) {
                     self.engines.iter().position(|e| e.name == name)
                 } else {
@@ -1054,7 +1066,7 @@ impl Coordinator {
                     self.next_id += 1;
                     let _ = engine
                         .handle
-                        .send(Request::new(id, "write_discard", json!({})));
+                        .send(Request::new(id, method::WRITE_DISCARD, json!({})));
                 }
                 self.active = index;
                 self.revision += 1;
@@ -1069,14 +1081,18 @@ impl Coordinator {
         }
         let multi = self.multi();
         let task = multi
-            && ((req.method == "build"
+            && ((req.method == method::BUILD
                 && (!self.project.tasks.build.is_empty() || self.project.build.is_some()))
-                || (req.method == "download" && !self.project.tasks.download.is_empty()));
+                || (req.method == method::DOWNLOAD && !self.project.tasks.download.is_empty()));
         let aggregate = multi
             && (task
                 || matches!(
                     req.method.as_str(),
-                    "connect" | "reconnect" | "run" | "disconnect" | "quit"
+                    method::CONNECT
+                        | method::RECONNECT
+                        | method::RUN
+                        | method::DISCONNECT
+                        | method::QUIT
                 ));
         let mut steps = VecDeque::new();
         if task {
@@ -1089,14 +1105,14 @@ impl Coordinator {
                 )
             });
             for &i in self.order.iter().rev() {
-                steps.push_back(Step::Core(i, "disconnect".into()));
+                steps.push_back(Step::Core(i, method::DISCONNECT.into()));
             }
             steps.push_back(Step::StopService);
             steps.push_back(Step::Core(self.active, req.method.clone()));
             if connected {
                 steps.push_back(Step::StartService);
                 for &i in &self.order {
-                    steps.push_back(Step::Core(i, "connect".into()));
+                    steps.push_back(Step::Core(i, method::CONNECT.into()));
                 }
             }
             self.batch = Some(Batch {
@@ -1117,24 +1133,24 @@ impl Coordinator {
         }
         if matches!(
             req.method.as_str(),
-            "connect" | "reconnect" | "disconnect" | "quit"
+            method::CONNECT | method::RECONNECT | method::DISCONNECT | method::QUIT
         ) {
             self.live_watch = None;
             self.live_key = None;
         }
-        if req.method == "quit" {
+        if req.method == method::QUIT {
             self.exiting = true;
             for e in &self.engines {
                 e.handle.cancellation.store(true, Ordering::Relaxed);
             }
         }
-        if multi && req.method == "reconnect" {
+        if multi && req.method == method::RECONNECT {
             for &i in self.order.iter().rev() {
-                steps.push_back(Step::Core(i, "disconnect".into()));
+                steps.push_back(Step::Core(i, method::DISCONNECT.into()));
             }
             steps.push_back(Step::StopService);
         }
-        if multi && matches!(req.method.as_str(), "connect" | "reconnect") {
+        if multi && matches!(req.method.as_str(), method::CONNECT | method::RECONNECT) {
             steps.push_back(Step::StartService);
         }
         for i in if aggregate {
@@ -1144,23 +1160,23 @@ impl Coordinator {
         } {
             steps.push_back(Step::Core(
                 i,
-                if req.method == "reconnect" && multi {
-                    "connect".into()
+                if req.method == method::RECONNECT && multi {
+                    method::CONNECT.into()
                 } else {
                     req.method.clone()
                 },
             ));
         }
-        if matches!(req.method.as_str(), "quit" | "disconnect") {
+        if matches!(req.method.as_str(), method::QUIT | method::DISCONNECT) {
             steps.push_back(Step::StopService);
         }
         if multi
             && self.project.target.mode != "local"
-            && matches!(req.method.as_str(), "connect" | "reconnect")
+            && matches!(req.method.as_str(), method::CONNECT | method::RECONNECT)
         {
             // One core's after_connect may reset the entire chip.
             for &i in &self.order {
-                steps.push_back(Step::Core(i, "synchronize".into()));
+                steps.push_back(Step::Core(i, method::SYNCHRONIZE.into()));
             }
         }
         self.batch = Some(Batch {

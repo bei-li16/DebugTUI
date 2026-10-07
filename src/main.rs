@@ -1,7 +1,7 @@
 use debugtui::{
     config::Project,
     coordinator,
-    session::{Event, Request},
+    session::{Event, Request, method},
     ui,
 };
 use serde_json::json;
@@ -132,7 +132,7 @@ fn run_headless(project: Project, script: Option<String>) -> Result<(), String> 
         }
         if ended && pending.is_none() && !quitting {
             quitting = true;
-            engine.send(Request::new(u64::MAX, "quit", json!({})))?;
+            engine.send(Request::new(u64::MAX, method::QUIT, json!({})))?;
         }
         match engine.events.try_recv() {
             Ok(event) => {

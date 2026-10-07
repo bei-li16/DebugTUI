@@ -167,7 +167,7 @@ impl App {
             return false;
         }
         if let Some(token) = self.write_editor.cancels.pop_front() {
-            self.submit(engine, "write_cancel", json!({"draft":token}));
+            self.submit(engine, method::WRITE_CANCEL, json!({"draft":token}));
             return true;
         }
         false
@@ -623,7 +623,7 @@ mod tests {
             app.write_paste("77");
             app.write_action(2, Some(&engine));
             let request = requests.try_recv().unwrap();
-            assert_eq!(request.method, "write_preview");
+            assert_eq!(request.method, method::WRITE_PREVIEW);
             assert_eq!(request.params["target"]["expression"], "local_counter");
             assert_eq!(request.params["context"]["frame"], 1);
             assert!(requests.try_recv().is_err());
@@ -667,7 +667,7 @@ mod tests {
         assert!(app.write_paste("4294967295"));
         app.write_action(2, Some(&engine));
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "write_preview");
+        assert_eq!(request.method, method::WRITE_PREVIEW);
         assert_eq!(request.params["input"]["text"], "4294967295");
         assert!(app.write_response(request.id, &response(&app, "a"), None));
         assert_eq!(app.write_editor.popup.as_ref().unwrap().field, 3);
@@ -681,7 +681,7 @@ mod tests {
         assert!(requests.try_recv().is_err());
         assert!(app.flush_write_cancels(Some(&engine)));
         let cancelled = requests.try_recv().unwrap();
-        assert_eq!(cancelled.method, "write_cancel");
+        assert_eq!(cancelled.method, method::WRITE_CANCEL);
         assert_eq!(cancelled.params["draft"], "a");
     }
     #[test]
@@ -731,7 +731,7 @@ mod tests {
         app.write_response(preview.id, &response(&app, "send-once"), None);
         app.write_action(3, Some(&engine));
         let apply = requests.try_recv().unwrap();
-        assert_eq!(apply.method, "write_apply");
+        assert_eq!(apply.method, method::WRITE_APPLY);
         assert_eq!(apply.params, json!({"draft":"send-once"}));
         app.write_action(3, Some(&engine));
         assert!(requests.try_recv().is_err());
@@ -782,7 +782,7 @@ mod tests {
             Some(&engine),
         );
         let request = requests.try_recv().unwrap();
-        assert_eq!(request.method, "write_preview");
+        assert_eq!(request.method, method::WRITE_PREVIEW);
         assert_eq!(request.params["target"]["id"], "r0");
         app.write_response(request.id, &Value::Null, Some("not writable"));
         app.write_action(4, Some(&engine));
@@ -843,7 +843,7 @@ mod tests {
         app.write_paste("12 34 56 78");
         app.write_action(2, Some(&engine));
         let preview = requests.try_recv().unwrap();
-        assert_eq!(preview.method, "write_preview");
+        assert_eq!(preview.method, method::WRITE_PREVIEW);
         assert_eq!(preview.params["target"]["address"], "0x100000001");
         assert_eq!(preview.params["target"]["bits"], 32);
         assert_eq!(preview.params["input"]["kind"], "bytes");
@@ -854,7 +854,7 @@ mod tests {
         app.write_paste("0");
         assert!(app.write_editor.popup.as_ref().unwrap().preview.is_none());
         assert!(app.flush_write_cancels(Some(&engine)));
-        assert_eq!(requests.try_recv().unwrap().method, "write_cancel");
+        assert_eq!(requests.try_recv().unwrap().method, method::WRITE_CANCEL);
         let mut terminal = Terminal::new(TestBackend::new(45, 12)).unwrap();
         app.write_editor.popup.as_mut().unwrap().field = 6;
         terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
