@@ -45,6 +45,7 @@ struct Target {
 pub struct Plan {
     selection: Selection,
     targets: BTreeMap<String, Target>,
+    pub(crate) chip_profile_path: Option<PathBuf>,
     pub(crate) register_layers: Vec<crate::config::register_sources::Layer>,
     pub(crate) memory_access_source: Option<String>,
 }
@@ -428,6 +429,7 @@ pub(crate) fn resolve_with_profile(
         })
         .transpose()?;
     let external_group = external.is_some();
+    let chip_profile_path = external.as_ref().map(|loaded| loaded.path.clone());
     let memory_access_source = external
         .as_ref()
         .and_then(|loaded| loaded.memory_access_source.clone());
@@ -530,6 +532,7 @@ pub(crate) fn resolve_with_profile(
     Ok(Some(Plan {
         selection,
         targets,
+        chip_profile_path,
         register_layers,
         memory_access_source,
     }))
@@ -786,7 +789,7 @@ mod tests {
                 .unwrap();
         let mut raw = base.clone();
         resolve(&mut environment.clone(), &mut raw, Some(&catalogue)).unwrap();
-        assert_eq!(raw["registers"]["cpu"].as_str(), Some("cortex-r52"));
+        assert_eq!(raw["registers"]["cpu"].as_str(), Some("cortex-r52+"));
         catalogue.devices.get_mut("tha6206").unwrap().cpu = "cortex-m4".into();
         let mut raw = base.clone();
         resolve(&mut environment.clone(), &mut raw, Some(&catalogue)).unwrap();
@@ -1132,6 +1135,63 @@ mod tests {
         );
     }
     #[test]
+    fn bundled_tha_mcal_example_resets_once_and_keeps_helper_policy_in_project() {
+        let fixture = Fixture::new();
+        let catalogue = Catalogue::parse(DEFAULTS).unwrap();
+        let mut raw: toml::Value = toml::from_str(include_str!(
+            "../profiles/tha6-bundled-project.toml.example"
+        ))
+        .unwrap();
+        // Resolve the checkout payload without consulting per-user overrides.
+        raw["tools"]["profile"] =
+            portable_path(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tools/debug-env.toml"))
+                .into();
+        for (chip, count) in [("tha6104", 1), ("tha6206", 2), ("tha6412", 4)] {
+            for mask in 1u32..(1 << count) {
+                let ids: Vec<_> = (0..count).filter(|id| mask & (1 << id) != 0).collect();
+                raw["debug"] = toml::Value::try_from(Selection {
+                    chip: chip.into(),
+                    cores: ids.clone(),
+                })
+                .unwrap();
+                let p = Project::from_document_with_catalogue(
+                    raw.clone(),
+                    Some(fixture.0.join("debug.toml")),
+                    None,
+                    Some(&catalogue),
+                )
+                .unwrap();
+                assert_eq!(p.cores.len(), ids.len());
+                assert_eq!(p.live_watch.as_ref().unwrap().bus_target, "AHB_3");
+                assert!(p.tasks.build.ends_with(chip));
+                assert!(p.tasks.download.ends_with(chip));
+                assert_eq!(!p.multicore.restart.is_empty(), ids.contains(&0));
+                let others = (0..count)
+                    .filter(|id| !ids.contains(id))
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                for (core, id) in p.cores.iter().zip(&ids) {
+                    assert_eq!(core.endpoint, format!("127.0.0.1:{}", 3333 + id));
+                    assert_eq!(
+                        core.after_connect
+                            .iter()
+                            .filter(|s| s.contains("chipreset"))
+                            .count(),
+                        usize::from(*id == 0)
+                    );
+                    if *id == 0 {
+                        assert!(core.after_connect[1].contains(&format!("{{{others}}}")));
+                        assert_eq!(core.startup_order, 3);
+                    } else {
+                        assert!(!core.after_connect.iter().any(|s| s.contains("resume")));
+                        assert_eq!(core.startup_order, *id as i32 - 1);
+                    }
+                }
+            }
+        }
+    }
+    #[test]
     fn universal_tools_switch_chip_without_leaking_svd_channels_or_core_ports() {
         let fixture = Fixture::new();
         let catalogue = Catalogue::parse(DEFAULTS).unwrap();
@@ -1143,6 +1203,8 @@ mod tests {
         raw["program"]["elf"] = "build/${chip_upper}.elf".into();
         for (chip, ids, mask) in [
             ("stm32f429", vec![0], 1),
+            ("tha6104", vec![0], 1),
+            ("tha6206", vec![0], 1),
             ("tha6206", vec![1], 2),
             ("tha6206", vec![0, 1], 3),
             ("tha6412", vec![1, 3], 10),
@@ -1207,22 +1269,73 @@ mod tests {
                 assert!(p.registers.targets.is_empty());
                 assert!(p.actions.restart.iter().any(|s| s == "monitor reset halt"));
             } else {
-                assert!(
-                    service
-                        .args
-                        .last()
-                        .unwrap()
-                        .ends_with("/openocd/r52-template.cfg")
-                );
+                assert!(service.args.last().unwrap().ends_with("/openocd/tha6.cfg"));
                 assert!(service.args.contains(&format!("set DEBUGCORE {mask}")));
-                assert_eq!(p.registers.cpu, "cortex-r52");
-                assert!(p.program.svd.as_os_str().is_empty());
-                assert!(p.memory_access.is_empty());
+                assert_eq!(
+                    p.registers.cpu,
+                    if chip == "tha6206" {
+                        "cortex-r52+"
+                    } else {
+                        "cortex-r52"
+                    }
+                );
+                assert_eq!(
+                    fs::canonicalize(p.program.svd.parent().unwrap()).unwrap(),
+                    fs::canonicalize(tools.join("svd")).unwrap()
+                );
+                assert_eq!(
+                    p.program.svd.file_name().unwrap().to_str().unwrap(),
+                    format!("{}.svd", chip.to_ascii_uppercase())
+                );
+                assert_eq!(p.memory_access.len(), 2);
+                assert_eq!(p.memory_access[0].target, "AHB_3");
+                assert_eq!(p.memory_access[1].target, "APB_1");
+                assert!(p.memory_access.iter().all(|m| m.while_running));
+                assert_eq!(!p.multicore.restart.is_empty(), ids.contains(&0));
+                if ids.contains(&0) {
+                    assert_eq!(p.multicore.restart_core, "core.0");
+                    assert_eq!(p.multicore.restart[0], "monitor chipreset");
+                }
+                // Attaching does not reset the application or resume helper CPUs.
+                assert_eq!(
+                    p.target.after_connect,
+                    ["monitor halt", "maintenance flush register-cache"]
+                );
+                assert!(!p.gdb.init.iter().any(|s| s.contains("chipreset")));
+                assert!(p.gdb.init.iter().any(|s| s == "set architecture armv8-r"));
+                assert!(
+                    p.gdb
+                        .init
+                        .iter()
+                        .any(|s| s == "mem 0x08000000 0x08600000 ro")
+                );
                 assert!(p.actions.restart.is_empty());
                 assert!(p.actions.download.is_empty());
                 assert!(p.actions.before_disconnect.is_empty());
-                assert_eq!(p.registers.cp15_command, "aarch64 r52_read");
+                if chip == "tha6206" {
+                    assert!(p.registers.cp15_command.is_empty());
+                    assert!(p.registers.selector_command.is_empty());
+                    assert!(p.registers.banked_command.is_empty());
+                    assert!(p.registers.vfp_command.is_empty());
+                    assert!(p.registers.timer_command.is_empty());
+                    assert!(p.registers.pmu_command.is_empty());
+                    assert!(p.registers.gic_command.is_empty());
+                } else {
+                    assert_eq!(p.registers.cp15_command, "aarch64 r52_read");
+                }
                 assert!(p.registers.vfp_write_command.is_empty());
+                let available = if chip == "tha6104" {
+                    1
+                } else if chip == "tha6206" {
+                    3
+                } else {
+                    15
+                };
+                assert!(
+                    service
+                        .args
+                        .contains(&format!("set EXAMINECORE {available}"))
+                );
                 for id in ids {
                     assert_eq!(
                         p.registers.targets[&format!("core.{id}")],

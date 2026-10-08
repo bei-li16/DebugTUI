@@ -1,0 +1,10 @@
+# Generic external-tools example. Copy to your project, then select a Tools
+# profile with the correct GDB, target and service. For bundled ARM/OpenOCD,
+# start with tools/debug.toml and choose Probe, Chip and Debug cores in Setup.
+version = 2
+[program]
+elf = "./build/firmware.elf"
+source_root = "."
+[session]
+on_exit = "detach"
+log_dir = "./debug_log"

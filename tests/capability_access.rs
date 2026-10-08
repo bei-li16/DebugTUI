@@ -72,7 +72,10 @@ fn request(
     params: Value,
 ) -> Result<Value, String> {
     engine.send(Request::new(id, method, params)).unwrap();
-    let deadline = Instant::now() + Duration::from_secs(10);
+    // Multicore connect includes both workers and their synchronization.
+    // Each worker parses the full catalogue in a debug build; the aggregate
+    // needs more time than a single request, even with no probe attached.
+    let deadline = Instant::now() + Duration::from_secs(if method == "connect" { 30 } else { 10 });
     loop {
         if let Event::Response {
             id: found,

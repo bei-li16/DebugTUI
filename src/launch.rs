@@ -21,6 +21,7 @@ use std::{
 mod channels;
 mod choices;
 mod devices;
+mod help;
 pub(crate) mod registers;
 mod remap;
 mod scroll;
@@ -49,12 +50,12 @@ const LABELS: [&str; 20] = [
     "Save config",
 ];
 const HINTS: [&str; 20] = [
-    "Project TOML stores ELF, Chip/Core, Probe and debugging preferences.\nStartup searches its working directory: debug.toml first, otherwise another project TOML.\nA minimal debug.toml is created when none exists. F3: project list. F2: browse.",
+    "Project TOML stores ELF, Chip/Core, Probe and debugging preferences.\nEnter / F3: choose a configuration in this directory. F2: browse another file or directory.\nStartup loads debug.toml, offers other configurations, or creates a minimal file when none exists.",
     "Use builtin:arm-openocd for the tools shipped with DebugTUI, or a custom profile path.\nEnter: edit. F2: choose installed or external profiles; the list shows resolved installation paths.\nProject paths stay relative to Project; bundled resources follow the installed executable.",
     "Enter / Left / Right: inherit profile, CMSIS-DAP, J-Link or ST-Link.\nSaved as [tools] probe; it selects an OpenOCD driver independently of Chip/Core.\nFor a legacy profile, choose the bundled profile in the offered list to apply this probe.",
     "Enter: choose a chip from the local device catalogue, or add a new chip.\nThe catalogue declares available core IDs and a backend; Tools / profile provides its tools.\nLegacy keeps existing single-core / [[cores]] settings. No hardware action until Start.",
     "Enter: select one or more core IDs supported by the chip.\nOne core creates one GDB session; multiple cores share the workspace coordinator.\nEndpoints and startup actions must be provided by the matching Tools / profile and project.",
-    "Optional chip settings TOML, relative to Project. Enter: edit. F2: browse.\nBlank uses user profiles/chips/<chip>.toml, then the built-in chip settings.\nKeep custom R52 board settings outside the npm package; use builtin: paths in extends.",
+    "Optional chip settings TOML, relative to Project. Enter: edit. F2: choose Automatic or a custom file.\nAutomatic follows Chip: user profiles/chips/<chip>.toml, then the built-in chip settings.\nClearing the custom path restores Automatic; use builtin: paths in extends for custom boards.",
     "ELF / executable provides symbols for C source, variables and breakpoints. A HEX file has no debug symbols.\nExample: ./build/firmware.elf, relative to Project. F2: browse. Use the ELF matching the flashed firmware.\nOptional for remote attachment; needed for source debugging. Selecting it does not flash the device.",
     "Local source lookup root and working directory for Build / Download commands.\nExample: . or ./firmware, relative to Project; blank uses the project directory. F2: browse.\nEnable Source remap to map a directory recorded in the ELF to this root.",
     "Shell command used by the workspace Build action; runs in Source root, not the tools directory.\nExamples: .\\build.bat or cmake --build build. Quote paths containing spaces.\nOptional: blank uses legacy [build] if present. Starting debugging does not run this command.",
@@ -67,7 +68,7 @@ const HINTS: [&str; 20] = [
     "Enter: choose a built-in or user CPU preset, Automatic, or the original GDB register list.\nA project catalogue file takes precedence over the CPU preset. Selection does not prove hardware or backend support.\nUser presets live in the local profiles/registers directory and are preserved during upgrades.",
     "Optional TOML architecture register catalogue. Enter: type a path. F2: browse.\nRelative paths are resolved against Project; a path inherited from Tools remains relative to that profile.\nBlank uses the selected CPU preset. Catalogue selection only changes the draft until Start.",
     "Enter: configure the target, TCL endpoint, label and core restrictions of each memory access channel.\nRunning reads must be supported by the chosen OpenOCD bus/AP target. Core access can remain stopped-only.\nApply creates a project override; Save config or Start persists it. The tools profile is never rewritten.",
-    "Start with the reviewed settings: Enter, F5 or Ctrl+R. The previous session is closed first.\nThe configuration is saved to Project before the new session starts.\nFor a new project, choose Examples to fill a starting configuration, then adjust project paths and select Tools / profile.",
+    "Start with the reviewed settings: Enter, F5 or Ctrl+R. The previous session is closed first.\nThe configuration is saved to Project before the new session starts.\nFor a new project, select Tools / profile, Probe, Chip, Debug cores and the matching ELF.",
     "Save config / Ctrl+S writes the draft to Project without starting GDB or connecting to hardware.\nA missing Project TOML is created; the referenced tools profile is never rewritten.\nStart also saves the configuration. Use Exit to leave without saving draft edits.",
 ];
 // Only project fields are editable. Tool defaults remain in the selected profile;
@@ -91,9 +92,7 @@ const CHANNELS: usize = 17;
 const START: usize = 18;
 const SAVE: usize = 19;
 const WORKSPACE: usize = 20;
-const PROJECTS: usize = 21;
-const EXAMPLES: usize = 22;
-const EXIT: usize = 23;
+const EXIT: usize = 21;
 
 fn displayed_path(base: &Path, path: &Path) -> String {
     let value = relative_path(base, path);
@@ -102,32 +101,6 @@ fn displayed_path(base: &Path, path: &Path) -> String {
     } else {
         format!("./{value}")
     }
-}
-
-fn help_line_count(text: &str, width: u16) -> u16 {
-    let width = usize::from(width.max(1));
-    text.lines()
-        .map(|line| {
-            let mut lines = 1usize;
-            let mut used = 0usize;
-            for word in line.split_whitespace() {
-                let size = unicode_width::UnicodeWidthStr::width(word);
-                let gap = usize::from(used > 0);
-                if used + gap + size > width && used > 0 {
-                    lines += 1;
-                    used = 0;
-                }
-                if size > width {
-                    lines += (size - 1) / width;
-                    used = (size - 1) % width + 1;
-                } else {
-                    used += usize::from(used > 0) + size;
-                }
-            }
-            lines
-        })
-        .sum::<usize>()
-        .min(u16::MAX as usize) as u16
 }
 
 fn absolute(base: &Path, path: &Path) -> PathBuf {
@@ -458,6 +431,21 @@ impl Document {
         }
         Ok(())
     }
+    fn select_chip_profile(&mut self, value: Option<&str>) {
+        if let Some(value) = value.filter(|value| !value.is_empty()) {
+            self.set_path(
+                "tools",
+                "chip_profile",
+                &absolute(self.base(), Path::new(value)),
+            );
+        } else if let Some(tools) = self
+            .raw
+            .get_mut("tools")
+            .and_then(toml::Value::as_table_mut)
+        {
+            tools.remove("chip_profile");
+        }
+    }
     pub fn save(&mut self) -> Result<(), String> {
         self.validate_draft()?;
         let _guard = crate::config::PREFERENCE_WRITE
@@ -662,8 +650,11 @@ pub struct Setup {
     channels: Option<channels::Channels>,
     register_details: Option<registers::Details>,
     register_observation: Option<registers::Observation>,
+    hover: Option<help::Hover>,
+    field_help: Option<help::Popup>,
     action_hits: Vec<(Rect, usize)>,
     row_hits: Vec<(Rect, usize)>,
+    help_hits: Vec<(Rect, usize)>,
     field_scroll: scroll::FieldScroll,
 }
 impl Setup {
@@ -686,11 +677,11 @@ impl Setup {
         let message = if picker.is_some() {
             "Choose a project TOML to load its settings, or Esc to keep the new debug.toml draft."
         } else if !document.path.exists() {
-            "New project: choose Examples for a starting configuration, or enter your own settings."
+            "New project: configure Tools / profile, Chip, Debug cores and ELF; use Project to choose an existing configuration."
         } else if document.incomplete_builtin() {
             "Choose Probe, Chip and Debug cores, then select the project ELF. Bundled tools need no project copy."
         } else {
-            "Review the configuration. Projects switches TOML files; Start begins debugging."
+            "Review the configuration. Enter on Project switches TOML files; Start begins debugging."
         }
         .into();
         Self {
@@ -709,8 +700,11 @@ impl Setup {
             channels: None,
             register_details: None,
             register_observation: None,
+            hover: None,
+            field_help: None,
             action_hits: vec![],
             row_hits: vec![],
+            help_hits: vec![],
             field_scroll: scroll::FieldScroll::default(),
         }
     }
@@ -829,8 +823,20 @@ impl Setup {
                 .get("tools")
                 .and_then(|t| t.get("chip_profile"))
                 .and_then(toml::Value::as_str)
-                .unwrap_or_default()
-                .into(),
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .unwrap_or_else(|| {
+                    if let Some(file) = &p.chip_profile_path {
+                        format!(
+                            "Chip default: {}",
+                            file.file_name().unwrap_or_default().to_string_lossy()
+                        )
+                    } else if self.document.supports_probe() {
+                        "Automatic (select Chip first)".into()
+                    } else {
+                        "Legacy / uses Tools profile".into()
+                    }
+                }),
             path(&p.program.elf),
             path(&p.program.source_root),
             p.tasks.build,
@@ -928,15 +934,7 @@ impl Setup {
                 doc.set("tools", "probe", value.into());
             }
             CHIP_PROFILE => {
-                if value.is_empty() {
-                    doc.set("tools", "chip_profile", "".into());
-                } else {
-                    doc.set_path(
-                        "tools",
-                        "chip_profile",
-                        &absolute(doc.base(), Path::new(value)),
-                    );
-                }
+                doc.select_chip_profile(Some(value));
             }
             ELF | SOURCE => {
                 let key = if self.selected == ELF {
@@ -1007,19 +1005,29 @@ impl Setup {
                 .project()
                 .is_ok_and(|p| p.source_mapping_enabled())
     }
+    fn focus(&mut self, selected: usize) {
+        if self.selected != selected {
+            self.selected = selected;
+            if !self.message.starts_with("Error") {
+                self.message.clear();
+            }
+        }
+    }
     fn move_selection(&mut self, backwards: bool, fields_only: bool) {
         let count = if fields_only { START } else { EXIT + 1 };
         if self.selected >= count {
             // Arrow navigation from a clicked action returns to Project.
-            self.selected = 0;
+            self.focus(0);
             return;
         }
+        let mut selected = self.selected;
         loop {
-            self.selected = (self.selected + if backwards { count - 1 } else { 1 }) % count;
-            if self.field_enabled(self.selected) {
+            selected = (selected + if backwards { count - 1 } else { 1 }) % count;
+            if self.field_enabled(selected) {
                 break;
             }
         }
+        self.focus(selected);
     }
     fn cycle(&mut self, backwards: bool) -> Result<(), String> {
         if self.selected == SOURCE_REMAP {
@@ -1047,6 +1055,7 @@ impl Setup {
         self.set_value(values[(n + if backwards { values.len() - 1 } else { 1 }) % values.len()])
     }
     pub fn paste(&mut self, text: &str) {
+        self.hover = None;
         if let Some(channels) = &mut self.channels {
             channels.paste(text);
             return;
@@ -1060,6 +1069,9 @@ impl Setup {
         }
     }
     pub fn key(&mut self, key: KeyEvent) -> Option<Launch> {
+        if key.kind != KeyEventKind::Release && key.code != KeyCode::F(1) {
+            self.hover = None;
+        }
         if key.kind != KeyEventKind::Release
             && key.modifiers.contains(KeyModifiers::CONTROL)
             && key.code == KeyCode::Char('q')
@@ -1081,6 +1093,17 @@ impl Setup {
         }
     }
     fn handle_key(&mut self, key: KeyEvent) -> Result<Option<Launch>, String> {
+        let help_field = self
+            .hover
+            .take()
+            .map(|hover| hover.field)
+            .unwrap_or(self.selected);
+        if let Some(help) = &mut self.field_help {
+            if help.key(key.code) {
+                self.field_help = None;
+            }
+            return Ok(None);
+        }
         if let Some(details) = &mut self.register_details {
             if details.key(key.code) {
                 self.register_details = None;
@@ -1088,7 +1111,7 @@ impl Setup {
             return Ok(None);
         }
         if key.code == KeyCode::F(1)
-            && matches!(self.selected, CPU | CATALOGUE)
+            && matches!(help_field, CPU | CATALOGUE)
             && self.channels.is_none()
             && self.devices.is_none()
             && self.mapping.is_none()
@@ -1114,14 +1137,10 @@ impl Setup {
             self.mapping_action(action);
             return Ok(None);
         }
-        if key.code == KeyCode::F(3) || key.code == KeyCode::F(4) {
+        if key.code == KeyCode::F(3) {
             self.commit_editor()?;
             self.browser = None;
-            if key.code == KeyCode::F(3) {
-                self.open_projects()?;
-            } else {
-                self.picker = Some(Picker::examples(self.document.base()));
-            }
+            self.open_projects()?;
             return Ok(None);
         }
         if let Some(picker) = &mut self.picker {
@@ -1214,12 +1233,18 @@ impl Setup {
             }
             return Ok(None);
         }
+        if key.code == KeyCode::F(1) {
+            let title = LABELS.get(help_field).copied().unwrap_or("Setup");
+            self.field_help = Some(help::Popup::new(title, self.field_help_text(help_field)));
+            return Ok(None);
+        }
         match key.code {
+            KeyCode::Enter if self.selected == 0 => self.open_projects()?,
             KeyCode::Up => self.move_selection(true, true),
             KeyCode::Down => self.move_selection(false, true),
             KeyCode::BackTab => self.move_selection(true, false),
             KeyCode::Tab => self.move_selection(false, false),
-            KeyCode::F(2) if matches!(self.selected, 1 | SVD) => {
+            KeyCode::F(2) if matches!(self.selected, 1 | SVD | CHIP_PROFILE) => {
                 self.picker = Some(Picker::resources(&self.document, self.selected, None)?);
             }
             KeyCode::F(2)
@@ -1255,11 +1280,16 @@ impl Setup {
                 self.open_mapping()?
             }
             KeyCode::Enter if self.selected < START && self.field_enabled(self.selected) => {
-                let text = if self.selected == SVD {
+                let text = if matches!(self.selected, SVD | CHIP_PROFILE) {
+                    let (section, key) = if self.selected == SVD {
+                        ("program", "svd")
+                    } else {
+                        ("tools", "chip_profile")
+                    };
                     self.document
                         .raw
-                        .get("program")
-                        .and_then(|p| p.get("svd"))
+                        .get(section)
+                        .and_then(|p| p.get(key))
                         .and_then(toml::Value::as_str)
                         .unwrap_or_default()
                         .into()
@@ -1271,10 +1301,6 @@ impl Setup {
             KeyCode::Enter if self.selected == START => return self.start(),
             KeyCode::Enter if self.selected == SAVE => self.save_document()?,
             KeyCode::Enter if self.selected == WORKSPACE => self.workspace_requested = true,
-            KeyCode::Enter if self.selected == PROJECTS => self.open_projects()?,
-            KeyCode::Enter if self.selected == EXAMPLES => {
-                self.picker = Some(Picker::examples(self.document.base()))
-            }
             KeyCode::Enter if self.selected == EXIT => self.quit_requested = true,
             KeyCode::Esc => self.workspace_requested = true,
             _ => {}
@@ -1295,6 +1321,12 @@ impl Setup {
                 .project()
                 .map(|p| p.program.svd)
                 .unwrap_or(crate::bundled_tools::resolve_svd(Path::new(&value), base)?),
+            CHIP_PROFILE => self
+                .document
+                .project()
+                .ok()
+                .and_then(|p| p.chip_profile_path)
+                .unwrap_or_else(|| self.document.base().to_owned()),
             _ => absolute(base, Path::new(&value)),
         };
         self.browser = Some(Browser::open(
@@ -1353,12 +1385,19 @@ impl Setup {
         self.mapping.as_ref().is_some_and(remap::Mapping::scanning)
     }
     fn open_projects(&mut self) -> Result<(), String> {
-        let picker = Picker::projects(self.document.base())?;
+        let mut picker = Picker::projects(self.document.base())?;
+        self.focus(0);
         if picker.choices.is_empty() {
-            self.message = "No project TOML found. Use the current draft, choose Examples, or F2 on Project to browse elsewhere.".into();
-            self.selected = 0;
+            self.message = "No configuration TOML found here. Keep configuring this draft, or press F2 on Project to browse another file or directory.".into();
             self.picker = None;
         } else {
+            picker.selected = picker
+                .choices
+                .iter()
+                .position(
+                    |choice| matches!(choice, Choice::Project(path) if path == &self.document.path),
+                )
+                .unwrap_or(0);
             self.picker = Some(picker);
         }
         Ok(())
@@ -1382,36 +1421,6 @@ impl Setup {
                 Document::open(path)?,
                 "Project loaded. All fields refreshed; review settings before Start.",
             ),
-            Choice::Example { raw, .. } => {
-                let mut document = self.document.clone();
-                document.raw = raw.clone();
-                // Examples replace project defaults, not an existing toolchain.
-                // Keep legacy inline overrides as well as the selected profile.
-                for key in ["tools", "gdb", "target", "service"] {
-                    if document.raw.get(key).is_none()
-                        && let Some(value) = self.document.raw.get(key)
-                    {
-                        document
-                            .raw
-                            .as_table_mut()
-                            .unwrap()
-                            .insert(key.into(), value.clone());
-                    }
-                }
-                if let Some(timeout) = self
-                    .document
-                    .raw
-                    .get("session")
-                    .and_then(|s| s.get("timeout_ms"))
-                {
-                    document.set("session", "timeout_ms", timeout.clone());
-                }
-                document.discovered = false;
-                (
-                    document,
-                    "Example applied to draft. Review project paths and Tools / profile; Ctrl+S saves. No file written yet.",
-                )
-            }
             Choice::Cpu { id, .. } => {
                 let mut document = self.document.clone();
                 document.select_register_cpu(id.as_deref());
@@ -1432,6 +1441,8 @@ impl Setup {
                     if let Some(probe) = probe {
                         document.set("tools", "probe", probe.clone().into());
                     }
+                } else if *field == CHIP_PROFILE {
+                    document.select_chip_profile(value.as_deref());
                 } else {
                     document.select_svd(value.as_deref())?;
                 }
@@ -1487,6 +1498,41 @@ impl Setup {
         }))
     }
     pub fn mouse(&mut self, mouse: MouseEvent) -> Option<Launch> {
+        if mouse.kind == MouseEventKind::Moved {
+            if self.main_form() && self.editor.is_none() && !self.pending {
+                let at = (mouse.column, mouse.row).into();
+                if let Some((_, field)) = self
+                    .help_hits
+                    .iter()
+                    .find(|(rect, _)| rect.contains(at))
+                    .copied()
+                {
+                    if let Some(hover) = &mut self.hover
+                        && hover.field == field
+                    {
+                        hover.at = at;
+                    } else {
+                        self.hover = Some(help::Hover {
+                            field,
+                            at,
+                            popup: help::Popup::new(LABELS[field], self.field_help_text(field)),
+                        });
+                    }
+                } else {
+                    self.hover = None;
+                }
+            } else {
+                self.hover = None;
+            }
+            return None;
+        }
+        self.hover = None;
+        if let Some(help) = &mut self.field_help {
+            if help.mouse(mouse) {
+                self.field_help = None;
+            }
+            return None;
+        }
         if let Some(details) = &mut self.register_details {
             if details.mouse(mouse) {
                 self.register_details = None;
@@ -1550,9 +1596,7 @@ impl Setup {
             .find(|(rect, _)| rect.contains(point))
             .copied()
         {
-            if (self.browser.is_some() || self.picker.is_some())
-                && !matches!(action, PROJECTS | EXAMPLES)
-            {
+            if self.browser.is_some() || self.picker.is_some() {
                 return None;
             }
             self.browser = None;
@@ -1561,7 +1605,7 @@ impl Setup {
                 self.message = format!("Error: {error}");
                 return None;
             }
-            self.selected = action;
+            self.focus(action);
             return self.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         }
         if let Some((_, index)) = self
@@ -1582,7 +1626,7 @@ impl Setup {
                     self.message = format!("Error: {error}");
                     return None;
                 }
-                self.selected = index;
+                self.focus(index);
             }
             return self.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         }
@@ -1634,6 +1678,18 @@ impl Setup {
             Err(_) => "Check Tools / profile".into(),
         }
     }
+    fn main_form(&self) -> bool {
+        self.browser.is_none()
+            && self.picker.is_none()
+            && self.mapping.is_none()
+            && self.devices.is_none()
+            && self.channels.is_none()
+            && self.register_details.is_none()
+            && self.field_help.is_none()
+    }
+    pub(crate) fn clear_hover(&mut self) {
+        self.hover = None;
+    }
     fn help_text(&self) -> String {
         if let Some(devices) = &self.devices {
             return devices.help();
@@ -1641,7 +1697,19 @@ impl Setup {
         if let Some(mapping) = &self.mapping {
             return mapping.help();
         }
-        if matches!(self.selected, CPU | CATALOGUE) {
+        if !matches!(self.selected, CPU | CATALOGUE)
+            && let Some(picker) = &self.picker
+        {
+            return picker
+                .choices
+                .get(picker.selected)
+                .map(Choice::description)
+                .unwrap_or_default();
+        }
+        self.field_help_text(self.selected)
+    }
+    fn field_help_text(&self, field: usize) -> String {
+        if matches!(field, CPU | CATALOGUE) {
             let preview = self
                 .catalogue_preview()
                 .map(|lines| {
@@ -1660,17 +1728,12 @@ impl Setup {
                 .unwrap_or_else(|error| format!("Catalogue error: {error}"));
             return format!(
                 "F1: catalogue details / support conditions\n{preview}\n{}: {}",
-                LABELS[self.selected], HINTS[self.selected]
+                LABELS[field], HINTS[field]
             );
         }
-        if let Some(picker) = &self.picker {
-            return picker
-                .choices
-                .get(picker.selected)
-                .map(Choice::description)
-                .unwrap_or_default();
-        }
-        match self.selected {
+        match field {
+            CHIP_PROFILE => format!("Chip config: Enter edits a custom path; F2 chooses Automatic or browses a file.\nResolved file: {}\nAutomatic follows Chip; custom selections stay fixed. Clear the path to restore Automatic.",
+                self.document.project().map(|p| p.chip_profile_path.map(|path| portable_path(&path)).unwrap_or_else(|| "(none; uses legacy Tools profile)".into())).unwrap_or_else(|e| e)),
             1 => {
                 let tools: crate::config::Tools = self.document.raw.get("tools").cloned()
                     .and_then(|v| v.try_into().ok()).unwrap_or_default();
@@ -1683,16 +1746,19 @@ impl Setup {
             SVD => format!("SVD: Enter edits; F2 chooses a bundled or external file, Automatic or Disabled.\nResolved file: {}\nAutomatic follows the selected chip; an explicit SVD selection stays fixed.",
                 self.document.project().map(|p| if p.program.svd.as_os_str().is_empty() { "(none)".into() } else { portable_path(&p.program.svd) }).unwrap_or_else(|e| e)),
             WORKSPACE => "Return to the workspace without restarting. Draft edits apply on Start; use Save to keep them on disk.".into(),
-            PROJECTS => "Choose a project TOML in the selected project directory (F3). Its settings replace the displayed draft.\nF2 on Project browses other directories. Selecting a file never starts debugging or saves it.".into(),
-            EXAMPLES => "Choose an example to fill the draft (F4), then adjust project paths and select Tools / profile.\nTemplates cover single-core, local and multicore projects; current tool settings are retained.\nApplying an example does not write files or start GDB; Save / Start controls persistence.".into(),
             EXIT => "Exit DebugTUI without saving draft edits. Works even when configuration is incomplete or invalid.\nIf a session is active, normal disconnect and owned-process cleanup still run. Shortcut: Ctrl+Q.".into(),
-            _ => format!("{}: {}", LABELS[self.selected], HINTS[self.selected]),
+            _ => format!("{}: {}", LABELS[field], HINTS[field]),
         }
     }
     pub fn draw(&mut self, f: &mut Frame) {
         self.action_hits.clear();
         self.row_hits.clear();
+        self.help_hits.clear();
         self.field_scroll.clear_hits();
+        if let Some(help) = &mut self.field_help {
+            help.draw_details(f);
+            return;
+        }
         if let Some(mut details) = self.register_details.take() {
             let key = self.catalogue_preview_key();
             if !details.matches(&key) {
@@ -1746,22 +1812,6 @@ impl Setup {
                 },
                 SAVE,
             ),
-            (
-                if compact {
-                    "Projects"
-                } else {
-                    "Projects · F3"
-                },
-                PROJECTS,
-            ),
-            (
-                if compact {
-                    "Examples"
-                } else {
-                    "Examples · F4"
-                },
-                EXAMPLES,
-            ),
             (if compact { "Back" } else { "← Workspace" }, WORKSPACE),
             (if compact { "Exit" } else { "Exit · Ctrl+Q" }, EXIT),
         ];
@@ -1776,21 +1826,17 @@ impl Setup {
             }
             used += width + 1;
         }
-        let help_height = if area.height < 20 {
+        // Field help floats above the form. Only picker instructions reserve
+        // a larger footer, independently of the selected choice's text.
+        let help_height = if area.height < 20 || self.main_form() {
             1
         } else {
-            // Keep room for scrolling fields, while allowing the full selected
-            // field description to wrap on ordinary 80-column terminals.
-            let limit = area
-                .height
-                .saturating_sub(3 + action_rows * button_height + 6 + 2 + 2)
-                .clamp(2, 8);
-            help_line_count(&self.help_text(), area.width).clamp(2, limit)
+            5
         };
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(if area.height < 20 { 2 } else { 3 }),
+                Constraint::Length(2),
                 Constraint::Length(action_rows * button_height),
                 Constraint::Min(3),
                 Constraint::Length(help_height),
@@ -1835,8 +1881,8 @@ impl Setup {
                 || (!self.pending
                     && self.mapping.is_none()
                     && self.devices.is_none()
-                    && ((self.browser.is_none() && self.picker.is_none())
-                        || matches!(action, PROJECTS | EXAMPLES)));
+                    && self.browser.is_none()
+                    && self.picker.is_none());
             let tone = if action == START {
                 theme::GREEN
             } else if action == EXIT {
@@ -1970,6 +2016,15 @@ impl Setup {
             let values = self.values();
             let prefix_enabled = self.field_enabled(ELF_PREFIX);
             let cores_enabled = self.field_enabled(CORES);
+            let chip_required = cores_enabled || self.document.supports_probe();
+            let profile_required = !values[1].is_empty() || self.document.raw_tools_missing();
+            let prefix_required = prefix_enabled
+                && self
+                    .document
+                    .raw
+                    .get("source_map")
+                    .and_then(toml::Value::as_array)
+                    .is_none_or(Vec::is_empty);
             let lines = LABELS
                 .iter()
                 .enumerate()
@@ -1979,6 +2034,13 @@ impl Setup {
                     let enabled =
                         (i != ELF_PREFIX || prefix_enabled) && (i != CORES || cores_enabled);
                     let selected = enabled && i == self.selected;
+                    let required = match i {
+                        0 | ELF => true,
+                        1 => profile_required,
+                        CHIP | CORES => chip_required,
+                        ELF_PREFIX => prefix_required,
+                        _ => false,
+                    };
                     let value = if i == self.selected {
                         self.editor
                             .as_ref()
@@ -2024,14 +2086,16 @@ impl Setup {
                     } else {
                         visible_tail(shown, available)
                     };
-                    // Separate muted field labels from bright values; reserve
-                    // the accent and stronger weight for keyboard focus.
+                    // Required labels stay red when focused; the background
+                    // and stronger weight still identify keyboard focus.
                     Line::from(vec![
                         Span::styled(
                             prefix,
                             Style::default()
                                 .fg(if !enabled {
                                     theme::DIM
+                                } else if required {
+                                    theme::RED
                                 } else if selected {
                                     theme::ACCENT
                                 } else {
@@ -2088,10 +2152,23 @@ impl Setup {
                         )
                     }),
             );
+            self.help_hits
+                .extend((start..START).take(inner.height as usize).enumerate().map(
+                    |(row, index)| {
+                        (
+                            Rect::new(inner.x, inner.y + row as u16, inner.width, 1),
+                            index,
+                        )
+                    },
+                ));
             f.render_widget(
-                Paragraph::new(self.help_text())
-                    .wrap(Wrap { trim: false })
-                    .style(Style::default().fg(theme::MUTED)),
+                Paragraph::new(if area.width < 70 {
+                    "Red: required; ELF: source debugging."
+                } else {
+                    "Red: required settings; ELF is required for source debugging."
+                })
+                .wrap(Wrap { trim: false })
+                .style(Style::default().fg(theme::RED)),
                 rows[3],
             );
         }
@@ -2108,14 +2185,30 @@ impl Setup {
         f.render_widget(Paragraph::new(if self.mapping.is_some() {
             " Up/Down / click: select  Left/Right: parent/child\n Enter: apply  R: rescan  Esc: cancel  Ctrl+Q: exit"
         } else if self.picker.is_some() {
-            " Up/Down: select  Enter / click: apply  Esc: cancel\n F2: browse files  F3: projects  F4: examples  Ctrl+Q: exit"
+            " Up/Down: select  Enter / click: apply  Esc: cancel\n F2: browse files  F3: configurations  Ctrl+Q: exit"
         } else if self.editor.is_some() {
             " Enter: apply  Esc: cancel  Ctrl+U: clear\n Ctrl+R / F5: apply and start  Ctrl+S: apply and save"
         } else if area.width < 70 {
-            " Up/Down: fields  Tab: all  Enter: edit\n F5: start  Ctrl+S: save  Ctrl+Q: exit"
+            " ↑↓: fields  F1: help  Enter: edit\n F5: start  Ctrl+S: save  Ctrl+Q: exit"
         } else {
-            " ↑↓: fields  Tab: all  Enter: edit  F2: browse  F3: projects  F4: examples\n F5: start  Ctrl+S: save  Esc: workspace  Ctrl+Q: exit"
+            " ↑↓: fields  Tab: all  F1: help  Enter: choose / edit  F2: browse  F3: configurations\n F5: start  Ctrl+S: save  Esc: workspace  Ctrl+Q: exit"
         }).style(Style::default().fg(theme::MUTED)), rows[5]);
+        if self.main_form()
+            && self.editor.is_none()
+            && let Some(hover) = &mut self.hover
+        {
+            if self
+                .help_hits
+                .iter()
+                .any(|(rect, field)| *field == hover.field && rect.contains(hover.at))
+            {
+                hover.popup.draw_hover(f, hover.at);
+            } else {
+                self.hover = None;
+            }
+        } else {
+            self.hover = None;
+        }
     }
 }
 
@@ -2381,6 +2474,7 @@ mod tests {
         let message = setup.message.clone();
         assert!(setup.mouse(click).is_none());
         assert_eq!(setup.selected, 0);
+        assert_eq!(setup.message, message);
         setup.selected = SOURCE_REMAP;
         setup.key(key(KeyCode::Down));
         assert_eq!(setup.selected, CPU);
@@ -2392,6 +2486,7 @@ mod tests {
         setup.selected = START;
         setup.key(key(KeyCode::BackTab));
         assert_eq!(setup.selected, CHANNELS);
+        let message = setup.message.clone();
         // Even a stale selection or mouse hit cannot open or edit a disabled field.
         setup
             .row_hits
@@ -2649,6 +2744,374 @@ mod tests {
     }
 
     #[test]
+    fn catalogue_selection_status_clears_when_keyboard_or_mouse_changes_fields() {
+        let fixture = Fixture::new();
+        let mut document = Document::empty(fixture.0.join("debug.toml"));
+        document.set("registers", "cpu", "".into());
+        let mut setup = Setup::new(document);
+        setup.selected = CPU;
+        let mut picker = Picker::cpus().unwrap();
+        picker.selected = picker
+            .choices
+            .iter()
+            .position(|choice| matches!(choice, Choice::Cpu { id: Some(id), .. } if id.is_empty()))
+            .unwrap();
+        setup.picker = Some(picker);
+        setup.key(key(KeyCode::Enter));
+        let applied = setup.message.clone();
+        assert!(applied.starts_with("Register catalogue selection applied"));
+        let draft = setup.document.raw.clone();
+        for direction in [KeyCode::Up, KeyCode::Down, KeyCode::Tab, KeyCode::BackTab] {
+            setup.selected = CPU;
+            setup.message = applied.clone();
+            setup.key(key(direction));
+            assert!(setup.message.is_empty());
+            assert_eq!(setup.document.raw, draft);
+        }
+        setup.selected = CPU;
+        setup.message = applied;
+        let mut terminal = Terminal::new(TestBackend::new(122, 35)).unwrap();
+        terminal.draw(|f| setup.draw(f)).unwrap();
+        let hit = setup
+            .row_hits
+            .iter()
+            .find(|(_, field)| *field == ELF)
+            .unwrap()
+            .0;
+        setup.mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: hit.x,
+            row: hit.y,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert_eq!(setup.selected, ELF);
+        assert!(setup.message.is_empty());
+        assert!(setup.help_text().starts_with("Program / ELF:"));
+        assert_eq!(setup.document.raw, draft);
+    }
+
+    #[test]
+    fn setup_hover_shows_the_pointed_field_without_focus_edits_or_layout_changes() {
+        let fixture = Fixture::new();
+        for (width, height) in [(45, 12), (80, 24), (122, 35), (180, 50)] {
+            let mut setup = Setup::new(Document::empty(fixture.0.join("debug.toml")));
+            setup.picker = None;
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            let fields = setup.field_scroll.rect;
+            let draft = setup.document.raw.clone();
+            let message = setup.message.clone();
+            let point = setup
+                .help_hits
+                .iter()
+                .find(|(_, id)| *id == PROBE)
+                .unwrap()
+                .0;
+            let buffer = terminal.backend().buffer();
+            let row_text = |y| {
+                (0..width)
+                    .map(|x| buffer[(x, y)].symbol())
+                    .collect::<String>()
+            };
+            let legend_y = (0..height).find(|&y| row_text(y).contains("Red:")).unwrap();
+            assert!(legend_y > fields.bottom());
+            assert!(
+                !buffer
+                    .content
+                    .iter()
+                    .map(|cell| cell.symbol())
+                    .collect::<String>()
+                    .contains("Saved as [tools]")
+            );
+            setup.mouse(MouseEvent {
+                kind: MouseEventKind::Moved,
+                column: point.x,
+                row: point.y,
+                modifiers: KeyModifiers::NONE,
+            });
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            let hover = setup.hover.as_ref().unwrap();
+            assert_eq!(hover.field, PROBE);
+            assert_eq!(
+                hover
+                    .popup
+                    .rect
+                    .intersection(terminal.backend().buffer().area),
+                hover.popup.rect
+            );
+            assert_eq!(setup.field_scroll.rect, fields);
+            assert_eq!(setup.selected, 0);
+            assert_eq!(setup.document.raw, draft);
+            assert_eq!(setup.message, message);
+            assert!(setup.editor.is_none() && !setup.pending);
+            let shown: String = terminal
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|cell| cell.symbol())
+                .collect();
+            assert!(shown.contains("Enter / Left / Right"));
+
+            // F1 opens the hovered field's full help without changing focus.
+            setup.key(key(KeyCode::F(1)));
+            assert!(setup.field_help.is_some());
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            let shown: String = terminal
+                .backend()
+                .buffer()
+                .content
+                .iter()
+                .map(|cell| cell.symbol())
+                .collect();
+            assert!(shown.contains("Probe / help"));
+            setup.key(key(KeyCode::Esc));
+            assert!(setup.field_help.is_none() && !setup.workspace_requested);
+            assert_eq!(setup.document.raw, draft);
+            assert_eq!(setup.selected, 0);
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            setup.mouse(MouseEvent {
+                kind: MouseEventKind::Moved,
+                column: point.x,
+                row: point.y,
+                modifiers: KeyModifiers::NONE,
+            });
+            setup.mouse(MouseEvent {
+                kind: MouseEventKind::Moved,
+                column: 0,
+                row: 0,
+                modifiers: KeyModifiers::NONE,
+            });
+            assert!(setup.hover.is_none());
+        }
+    }
+
+    #[test]
+    fn tha6206_setup_hover_covers_all_fields_including_disabled_prefix_and_edges() {
+        let fixture = Fixture::new();
+        let mut document = Document::empty(fixture.0.join("debug.toml"));
+        document.environment(crate::bundled_tools::PROFILE);
+        document.enable_device_selection();
+        document.set("debug", "chip", "tha6206".into());
+        document.set("debug", "cores", toml::Value::try_from(vec![0, 1]).unwrap());
+        let mut setup = Setup::new(document);
+        let draft = setup.document.raw.clone();
+        let mut terminal = Terminal::new(TestBackend::new(122, 35)).unwrap();
+        terminal.draw(|f| setup.draw(f)).unwrap();
+        let fields = setup.field_scroll.rect;
+        for field in 0..START {
+            for right_edge in [false, true] {
+                let hit = setup
+                    .help_hits
+                    .iter()
+                    .find(|(_, id)| *id == field)
+                    .unwrap()
+                    .0;
+                let x = if right_edge { hit.right() - 1 } else { hit.x };
+                setup.mouse(MouseEvent {
+                    kind: MouseEventKind::Moved,
+                    column: x,
+                    row: hit.y,
+                    modifiers: KeyModifiers::NONE,
+                });
+                terminal.draw(|f| setup.draw(f)).unwrap();
+                let hover = setup.hover.as_ref().unwrap();
+                assert_eq!(hover.field, field);
+                assert_eq!(
+                    hover
+                        .popup
+                        .rect
+                        .intersection(terminal.backend().buffer().area),
+                    hover.popup.rect
+                );
+                assert_eq!(setup.field_scroll.rect, fields);
+                assert_eq!(setup.selected, 0);
+                assert_eq!(setup.document.raw, draft);
+                assert!(setup.editor.is_none() && !setup.pending);
+                if let Some(directory) = env::var_os("DEBUGTUI_SETUP_SNAPSHOTS") {
+                    let directory = PathBuf::from(directory);
+                    fs::create_dir_all(&directory).unwrap();
+                    let shown = terminal
+                        .backend()
+                        .buffer()
+                        .content
+                        .chunks(122)
+                        .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    fs::write(
+                        directory.join(format!("hover-{field}-right-{right_edge}.txt")),
+                        shown,
+                    )
+                    .unwrap();
+                }
+            }
+        }
+        assert!(!setup.field_enabled(ELF_PREFIX));
+        setup.clear_hover();
+        setup.selected = PROBE;
+        setup.key(key(KeyCode::F(1)));
+        assert!(setup.field_help.is_some());
+        setup.key(key(KeyCode::Esc));
+        terminal.draw(|f| setup.draw(f)).unwrap();
+        let hit = setup.help_hits.iter().find(|(_, id)| *id == ELF).unwrap().0;
+        setup.mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: hit.x,
+            row: hit.y,
+            modifiers: KeyModifiers::NONE,
+        });
+        setup.mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: hit.x,
+            row: hit.y,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert!(setup.hover.is_none());
+        assert_eq!(setup.selected, ELF);
+        assert!(setup.editor.is_some());
+        setup.mouse(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: hit.x,
+            row: hit.y,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert!(setup.hover.is_none());
+        assert_eq!(setup.document.raw, draft);
+    }
+
+    #[test]
+    fn chip_config_shows_resolved_defaults_and_switches_between_custom_and_automatic() {
+        let fixture = Fixture::new();
+        let mut document = Document::empty(fixture.0.join("debug.toml"));
+        document.environment(crate::bundled_tools::PROFILE);
+        document.enable_device_selection();
+        document.set("debug", "chip", "tha6206".into());
+        document.set("debug", "cores", toml::Value::try_from(vec![0]).unwrap());
+        let mut setup = Setup::new(document);
+        let original = setup.document.raw.clone();
+        assert_eq!(setup.values()[CHIP_PROFILE], "Chip default: tha6206.toml");
+        assert_eq!(setup.document.raw, original);
+        assert!(setup.help_text().starts_with("Project:"));
+        setup.selected = CHIP_PROFILE;
+        assert!(setup.help_text().contains("tha6206.toml"));
+        setup.key(key(KeyCode::Enter));
+        assert!(setup.editor.as_ref().unwrap().text.is_empty());
+        setup.key(key(KeyCode::Enter));
+        assert!(setup.document.raw["tools"].get("chip_profile").is_none());
+        setup.device_action(devices::Action::Select(crate::devices::Selection {
+            chip: "tha6412".into(),
+            cores: vec![0],
+        }));
+        assert_eq!(setup.values()[CHIP_PROFILE], "Chip default: tha6412.toml");
+
+        let board = fixture.0.join("board.toml");
+        let board_text = "extends='builtin:devices/tha6206.toml'\n";
+        fs::write(&board, board_text).unwrap();
+        setup.selected = CHIP_PROFILE;
+        setup.key(key(KeyCode::F(2)));
+        let picker = setup.picker.as_mut().unwrap();
+        picker.selected = picker
+            .choices
+            .iter()
+            .position(|choice| matches!(choice, Choice::BrowseResource { .. }))
+            .unwrap();
+        setup.key(key(KeyCode::Enter));
+        assert!(setup.browser.is_some());
+        setup.choose_path(&board).unwrap();
+        assert_eq!(setup.values()[CHIP_PROFILE], "board.toml");
+        assert!(
+            setup
+                .document
+                .project()
+                .unwrap()
+                .chip_profile_path
+                .unwrap()
+                .ends_with("board.toml")
+        );
+        setup.device_action(devices::Action::Select(crate::devices::Selection {
+            chip: "tha6206".into(),
+            cores: vec![0],
+        }));
+        assert_eq!(setup.values()[CHIP_PROFILE], "board.toml");
+        setup.document.save().unwrap();
+        let saved = Document::open(&setup.document.path).unwrap();
+        assert_eq!(
+            saved.raw["tools"]["chip_profile"].as_str(),
+            Some("board.toml")
+        );
+
+        setup.selected = CHIP_PROFILE;
+        setup.key(key(KeyCode::F(2)));
+        assert!(matches!(
+            setup.picker.as_ref().unwrap().choices.first(),
+            Some(Choice::Resource { value: None, .. })
+        ));
+        setup.key(key(KeyCode::Enter));
+        assert_eq!(setup.values()[CHIP_PROFILE], "Chip default: tha6206.toml");
+        assert!(setup.document.raw["tools"].get("chip_profile").is_none());
+        setup.document.save().unwrap();
+        assert!(
+            Document::open(&setup.document.path).unwrap().raw["tools"]
+                .get("chip_profile")
+                .is_none()
+        );
+        assert_eq!(fs::read_to_string(board).unwrap(), board_text);
+    }
+
+    #[test]
+    fn setup_field_area_stays_fixed_when_navigating_between_short_and_long_help() {
+        let fixture = Fixture::new();
+        let catalogue = fixture.0.join("registers.toml");
+        fs::write(
+            &catalogue,
+            include_str!("../profiles/registers/cortex-r52+.toml"),
+        )
+        .unwrap();
+        for (width, height) in [(122, 35), (100, 35), (80, 24), (45, 12)] {
+            let mut document = Document::empty(fixture.0.join("debug.toml"));
+            document.set_path("registers", "catalogue", &catalogue);
+            let mut setup = Setup::new(document);
+            setup.selected = CHANNELS;
+            let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            let fields = setup.field_scroll.rect;
+            let bar = setup.field_scroll.bar;
+            let all_visible = fields.height as usize >= START;
+            if width == 122 {
+                assert!(
+                    all_visible,
+                    "All setup fields should fit at {width}x{height}"
+                );
+            }
+            for direction in [KeyCode::Up, KeyCode::Up, KeyCode::Down, KeyCode::Down] {
+                setup.key(key(direction));
+                terminal.draw(|f| setup.draw(f)).unwrap();
+                assert_eq!(
+                    setup.field_scroll.rect, fields,
+                    "Field area moved at {width}x{height}"
+                );
+                assert_eq!(
+                    setup.field_scroll.bar, bar,
+                    "Scrollbar changed at {width}x{height}"
+                );
+                assert!(setup.row_hits.iter().any(|(_, id)| *id == setup.selected));
+                if all_visible {
+                    assert_eq!(setup.field_scroll.top, 0);
+                    assert_eq!(setup.field_scroll.bar, Rect::default());
+                    let buffer = terminal.backend().buffer();
+                    for (row, label) in LABELS.iter().take(START).enumerate() {
+                        let line = (fields.x..fields.right())
+                            .map(|x| buffer[(x, fields.y + row as u16)].symbol())
+                            .collect::<String>();
+                        assert!(line.contains(label), "Missing field {label}: {line}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn small_setup_says_how_many_fields_are_above_and_below_the_card() {
         let fixture = Fixture::new();
         let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
@@ -2695,6 +3158,9 @@ mod tests {
             .collect();
         assert!(text.contains("CPU registers") && text.contains("Memory channels"));
         assert!(!text.contains("more"));
+        // Help overlays let all fields fit at 30 rows. Use a shorter screen
+        // for the independent scrollbar interaction checks below.
+        short = Terminal::new(TestBackend::new(140, 24)).unwrap();
         short.draw(|f| setup.draw(f)).unwrap();
         let before = setup.document.raw.clone();
         let bar = setup.field_scroll.bar;
@@ -2757,7 +3223,7 @@ mod tests {
         narrow.draw(|f| setup.draw(f)).unwrap();
         assert!(setup.row_hits.iter().any(|(_, id)| *id == ELF));
         assert_eq!(setup.document.raw, before);
-        setup.picker = Some(Picker::examples(setup.document.base()));
+        setup.picker = Some(Picker::cpus().unwrap());
         narrow.draw(|f| setup.draw(f)).unwrap();
         assert_eq!(setup.field_scroll.rect, Rect::default());
         assert_eq!(setup.field_scroll.bar, Rect::default());
@@ -2818,7 +3284,7 @@ mod tests {
                 .unwrap()
                 .0;
             assert!(setup.row_hits.iter().all(|(rect, _)| rect.y > button.y));
-            assert_eq!(setup.action_hits.len(), 6);
+            assert_eq!(setup.action_hits.len(), 4);
             assert!(
                 setup
                     .action_hits
@@ -2909,7 +3375,7 @@ mod tests {
                         setup.selected = 1;
                         setup.editor = Some(Editor::new("missing-profile.toml".into()));
                     }
-                    1 => setup.picker = Some(Picker::examples(setup.document.base())),
+                    1 => setup.picker = Some(Picker::cpus().unwrap()),
                     2 => {
                         setup.selected = 0;
                         setup.open_browser().unwrap();
@@ -3024,61 +3490,109 @@ mod tests {
     }
 
     #[test]
-    fn examples_are_opt_in_refresh_fields_and_persist_only_on_save() {
+    fn project_enter_and_f3_switch_configurations_while_f4_preserves_the_draft() {
         let fixture = Fixture::new();
-        let doc = Document::open(&fixture.0).unwrap();
-        let mut setup = Setup::new(doc);
-        assert!(setup.picker.is_none());
-        assert!(setup.values()[ELF].is_empty());
+        let current = fixture.0.join("debug.toml");
+        let core0 = fixture.0.join("debug-core0.toml");
+        let text = "version=3\nwatch=['counter']\nbreakpoints=['main']\n[tools]\nprofile='builtin:arm-openocd'\n[debug]\nchip='tha6206'\ncores=[0,1]\n[program]\nelf='firmware.elf'\nsource_root='.'\n[tasks]\nbuild='build-board'\ndownload='flash-board'\n[[source_map]]\nfrom='/ci/build'\nto='.'\n";
+        fs::write(&current, text).unwrap();
+        let core0_text = text.replace("cores=[0,1]", "cores=[0]");
+        fs::write(&core0, &core0_text).unwrap();
+        let mut setup = Setup::new(Document::open(&current).unwrap());
+        setup.document.set("tasks", "build", "unsaved-build".into());
+        let draft = setup.document.raw.clone();
         setup.key(key(KeyCode::F(4)));
+        assert!(setup.picker.is_none() && setup.editor.is_none());
+        assert_eq!(setup.document.raw, draft);
+
+        setup.key(key(KeyCode::Enter)); // Project row is the configuration chooser.
+        let picker = setup.picker.as_ref().unwrap();
+        assert_eq!(picker.choices.len(), 2);
+        assert_eq!(picker.choices[picker.selected].label(), "debug.toml");
+        setup.key(key(KeyCode::F(4)));
+        assert_eq!(setup.picker.as_ref().unwrap().choices.len(), 2);
         setup.key(key(KeyCode::Esc));
-        assert!(setup.values()[ELF].is_empty());
-        // The final universal template intentionally waits for Chip/Core selection.
-        let count = Picker::examples(setup.document.base()).choices.len() - 1;
-        for i in 0..count {
-            setup.key(key(KeyCode::F(4)));
-            setup.picker.as_mut().unwrap().selected = i;
-            setup.key(key(KeyCode::Enter));
-            assert!(setup.picker.is_none(), "{}", setup.message);
-            let project = setup.document.project().unwrap();
-            assert!(!project.program.elf.as_os_str().is_empty());
-            assert!(project.session.log_dir.is_some());
-            assert!(project.service.is_none());
-            for key in ["gdb", "target", "service"] {
-                assert!(setup.document.raw.get(key).is_none());
-            }
-            assert!(setup.document.raw["session"].get("timeout_ms").is_none());
-            assert!(!setup.document.path.exists());
-        }
-        assert_eq!(setup.document.project().unwrap().cores.len(), 2);
-        setup.key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
-        assert!(setup.document.path.exists());
+        assert_eq!(setup.document.raw, draft);
+        let mut terminal = Terminal::new(TestBackend::new(122, 35)).unwrap();
+        terminal.draw(|f| setup.draw(f)).unwrap();
+        let project_hit = setup
+            .row_hits
+            .iter()
+            .find(|(_, field)| *field == 0)
+            .unwrap()
+            .0;
+        setup.mouse(MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: project_hit.x,
+            row: project_hit.y,
+            modifiers: KeyModifiers::NONE,
+        });
+        assert!(setup.picker.is_some() && setup.editor.is_none());
+        setup.key(key(KeyCode::Esc));
+        assert_eq!(setup.document.raw, draft);
+        setup.selected = ELF;
+        setup.key(key(KeyCode::F(3)));
+        assert_eq!(setup.selected, 0);
+        let picker = setup.picker.as_mut().unwrap();
+        picker.selected = picker
+            .choices
+            .iter()
+            .position(|choice| choice.label() == "debug-core0.toml")
+            .unwrap();
+        setup.key(key(KeyCode::Enter));
+        assert!(setup.picker.is_none());
+        assert_eq!(setup.document.path, fs::canonicalize(&core0).unwrap());
+        assert_eq!(setup.selection().cores, [0]);
+        assert_eq!(setup.document.raw["watch"][0].as_str(), Some("counter"));
+        assert_eq!(setup.document.raw["breakpoints"][0].as_str(), Some("main"));
         assert_eq!(
-            Document::open(&fixture.0)
-                .unwrap()
-                .project()
-                .unwrap()
-                .cores
-                .len(),
-            2
+            setup.document.raw["tasks"]["build"].as_str(),
+            Some("build-board")
         );
+        setup.key(key(KeyCode::Enter));
+        let picker = setup.picker.as_ref().unwrap();
+        assert_eq!(picker.choices[picker.selected].label(), "debug-core0.toml");
+        setup.key(key(KeyCode::Esc));
+        setup.key(key(KeyCode::F(2)));
+        assert!(setup.browser.is_some());
+        setup.key(key(KeyCode::F(4)));
+        assert!(setup.browser.is_some());
+        setup.choose_path(&current).unwrap();
+        assert_eq!(setup.selection().cores, [0, 1]);
+        setup.selected = ELF;
+        setup.key(key(KeyCode::Enter));
+        let edited = setup.editor.as_ref().unwrap().text.clone();
+        let draft = setup.document.raw.clone();
+        setup.key(key(KeyCode::F(4)));
+        assert_eq!(setup.editor.as_ref().unwrap().text, edited);
+        assert_eq!(setup.document.raw, draft);
+        assert!(!setup.pending);
+        assert_eq!(fs::read_to_string(current).unwrap(), text);
+        assert_eq!(fs::read_to_string(core0).unwrap(), core0_text);
+
+        let empty = fixture.0.join("empty");
+        fs::create_dir(&empty).unwrap();
+        let mut setup = Setup::new(Document::open(&empty).unwrap());
+        setup.key(key(KeyCode::Enter));
+        assert!(setup.picker.is_none() && setup.editor.is_none());
+        assert!(setup.message.starts_with("No configuration TOML"));
+        assert!(!setup.document.path.exists());
+        setup.key(key(KeyCode::F(2)));
+        assert!(setup.browser.is_some());
     }
 
     #[test]
-    fn local_tools_example_inherits_profile_and_can_be_saved_without_rewriting_it() {
+    fn local_tools_selection_inherits_profile_and_saves_without_rewriting_it() {
         let fixture = Fixture::new();
         fs::create_dir(fixture.0.join(".vscode")).unwrap();
         let profile = fixture.0.join(".vscode/debug-env.toml");
         let content = "[gdb]\nexecutable='./gdb.exe'\n[target]\nendpoint='localhost:4444'\n[service]\ncommand='./server.exe'\n";
         fs::write(&profile, content).unwrap();
         let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
-        setup.key(key(KeyCode::F(4)));
-        assert!(
-            setup.picker.as_ref().unwrap().choices[0]
-                .label()
-                .contains(".vscode")
-        );
-        setup.key(key(KeyCode::Enter));
+        setup.selected = 1;
+        setup.key(key(KeyCode::F(2)));
+        setup.key(key(KeyCode::F(2)));
+        setup.choose_path(&profile).unwrap();
         assert_eq!(setup.values()[1], ".vscode/debug-env.toml");
         let project = setup.document.project().unwrap();
         assert_eq!(project.target.endpoint, "localhost:4444");
@@ -3099,15 +3613,19 @@ mod tests {
             let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
             setup.working_directory = fs::canonicalize(&fixture.0).unwrap();
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
-            for mode in ["empty", "examples", "applied", "help"] {
+            for mode in ["empty", "configurations", "cancelled", "help"] {
                 match mode {
-                    "examples" => {
-                        setup.key(key(KeyCode::F(4)));
+                    "configurations" => {
+                        setup.key(key(KeyCode::F(3)));
                     }
-                    "applied" => {
-                        setup.key(key(KeyCode::Enter));
+                    "cancelled" => {
+                        setup.key(key(KeyCode::Esc));
+                        setup.workspace_requested = false;
                     }
-                    "help" => setup.selected = 1,
+                    "help" => {
+                        setup.selected = 1;
+                        setup.key(key(KeyCode::F(1)));
+                    }
                     _ => {}
                 }
                 terminal.draw(|f| setup.draw(f)).unwrap();
@@ -3119,7 +3637,9 @@ mod tests {
                     .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
                     .collect::<Vec<_>>()
                     .join("\n");
-                assert!(text.contains("Exit"));
+                if mode != "help" {
+                    assert!(text.contains("Exit"));
+                }
                 if mode == "help" && width >= 120 {
                     assert!(text.contains("builtin:arm-openocd"));
                     assert!(text.contains("Resolved file:"));
@@ -3212,7 +3732,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_inline_tools_survive_form_edits_and_project_examples() {
+    fn legacy_inline_tools_survive_form_edits_and_retired_f4() {
         let fixture = Fixture::new();
         let path = fixture.0.join("debug.toml");
         fs::write(&path, "version=2\n[gdb]\nexecutable='legacy-gdb'\nargs=['--quiet']\n[target]\nmode='extended-remote'\nendpoint='localhost:3334'\n[service]\nenabled=false\ncommand='legacy-server'\n[session]\ntimeout_ms=5432\non_exit='resume'\n").unwrap();
@@ -3229,8 +3749,7 @@ mod tests {
             original["session"]["timeout_ms"]
         );
         setup.key(key(KeyCode::F(4)));
-        setup.key(key(KeyCode::Enter));
-        assert!(setup.picker.is_none(), "{}", setup.message);
+        assert!(setup.picker.is_none());
         for key in ["gdb", "target", "service"] {
             assert_eq!(setup.document.raw[key], original[key]);
         }

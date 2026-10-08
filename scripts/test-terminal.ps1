@@ -60,13 +60,17 @@ try {
         if ($terminal.Screen().Contains('terminal_filter_123')) { throw 'Filter text survived Ctrl+U' }
         $terminal.Send([string][char]27)
     }
-    Test-Case 'TERM-04' 'F2 opens Setup, F3 Projects and F4 Examples; Esc returns to workbench' {
+    Test-Case 'TERM-04' 'Setup has four actions; Project Enter and F3 choose configurations, F4 is inert' {
         $terminal.Send("${esc}OQ"); Wait-Screen 'Tools / profile'
         Wait-Screen 'Memory channels'
         if ($terminal.Screen() -match '\d+ more') { throw 'Roomy Setup unexpectedly hides fields' }
-        $terminal.Send("${esc}OR"); Wait-Screen 'Projects / select'; $terminal.Send([string][char]27)
+        if ($terminal.Screen() -match 'Projects.*F3|Examples.*F4') { throw 'Retired top buttons remain visible' }
+        $terminal.Send("`r"); Wait-Screen 'Project / select a configuration'; $terminal.Send([string][char]27)
         Start-Sleep -Milliseconds 100
-        $terminal.Send("${esc}OS"); Wait-Screen 'Examples / choose'; $terminal.Send([string][char]27)
+        $terminal.Send("${esc}OR"); Wait-Screen 'Project / select a configuration'; $terminal.Send([string][char]27)
+        Start-Sleep -Milliseconds 100
+        $terminal.Send("${esc}OS"); Start-Sleep -Milliseconds 150; Wait-Screen 'Tools / profile'
+        if ($terminal.Screen().Contains('Examples / choose')) { throw 'Retired F4 still replaces the Setup form' }
         Start-Sleep -Milliseconds 100
         $terminal.Send([string][char]27); Wait-Screen 'DEMO.*STOPPED'
     }

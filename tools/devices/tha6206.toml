@@ -1,3 +1,18 @@
-# tha6206 board template. Available physical core IDs come from the device catalogue.
-extends = "families/cortex-r52.toml"
-# Put this chip's reviewed service/actions/SVD overrides here when available.
+# THA6206: two physical Cortex-R52+ cores; core1-only keeps GDB port 3334.
+# Board observation: both external MIDRs are 0x410fd161 (2026-10-08).
+extends = "families/tha6.toml"
+[program]
+svd = "../svd/THA6206.svd"
+
+[registers]
+cpu = "cortex-r52+"
+# The bundled injected-register adapters are verified only for R52 (0xd13).
+# Do not opt an R52+ (0xd16) into them or fall back to unrestricted MRC.
+# Core GDB registers remain available; extended readers need R52+ validation.
+cp15_command = ""
+selector_command = ""
+banked_command = ""
+vfp_command = ""
+timer_command = ""
+pmu_command = ""
+gic_command = ""

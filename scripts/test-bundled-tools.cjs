@@ -48,7 +48,7 @@ function status(chip,cores,probe='cmsis-dap',extra=[],cwd=firmware) {
   const before=hash(file);ok(['--init-project']);assert.equal(hash(file),before);
  });
  for(const probe of ['cmsis-dap','jlink','stlink']) await suite.test(`BUNDLE-STM32-${probe}`,'Project probe chooses an independent bundled OpenOCD adapter',async()=>status('stm32f429',[0],probe));
- for(const [chip,cores] of [['tha6104',[0]],['tha6206',[1]],['tha6206',[0,1]],['tha6412',[1,3]]]) await suite.test(`BUNDLE-${chip}-${cores.join('')}`,'Bundled R52 templates preserve physical core IDs and fixed ports',async()=>status(chip,cores));
+ for(const [chip,cores] of [['tha6104',[0]],['tha6206',[0]],['tha6206',[1]],['tha6206',[0,1]],['tha6412',[1,3]]]) await suite.test(`BUNDLE-${chip}-${cores.join('')}`,'Bundled THA profiles preserve physical core IDs and fixed ports',async()=>status(chip,cores));
  await suite.test('BUNDLE-PROBE-ERROR','Invalid probe is rejected without modifying the project',async()=>{
   const file=path.join(firmware,'debug.toml'),before=hash(file);const r=run(['--headless','--chip','stm32f429','--cores','0','--probe','invalid']);assert.notEqual(r.status,0);assert(r.stderr.includes('Unknown probe'));assert.equal(hash(file),before);
  });

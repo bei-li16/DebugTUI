@@ -369,6 +369,43 @@ pub fn decode_register(hex: &str, bits: u32, little_endian: bool) -> Result<u64,
 mod tests {
     use super::*;
     #[test]
+    fn bundled_tha_svd_describes_chip_reset_and_peripherals() {
+        for chip in ["THA6104", "THA6206", "THA6412"] {
+            let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tools/svd/{chip}.svd"));
+            // Vendor SVDs are local packaging inputs, deliberately absent in Git.
+            if !path.is_file() {
+                eprintln!("{chip}: optional local SVD absent; parsing check skipped");
+                continue;
+            }
+            let device = Device::load(&path).unwrap();
+            assert_eq!(device.name, chip);
+            let reset = device
+                .peripherals
+                .iter()
+                .find(|p| p.name == "MAINRESET")
+                .unwrap();
+            assert_eq!(reset.address, 0xc0000800);
+            let debug_reset = reset
+                .registers
+                .iter()
+                .find(|r| r.name == "DBGRSTCON")
+                .unwrap();
+            assert_eq!(debug_reset.address, 0xc00008a0);
+            assert!(
+                debug_reset
+                    .fields
+                    .iter()
+                    .any(|f| f.name == "DBGRST" && f.offset == 0 && f.width == 1)
+            );
+            assert!(
+                device.peripherals.len() > 50,
+                "{chip}: incomplete peripherals"
+            );
+            // Keep diagnostics useful when updating these vendor draft descriptions.
+            eprintln!("{chip}: {} peripherals", device.peripherals.len());
+        }
+    }
+    #[test]
     fn stm32f429_inherits_peripherals_and_decodes_fields() {
         let device = Device::load(
             &Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/svd/stm32/STM32F429.svd"),

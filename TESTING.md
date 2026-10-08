@@ -1,5 +1,23 @@
 # DebugTUI 验证记录
 
+## 1.1.1 正式发布验证（2026-10-08）
+
+Cargo、lockfile 和 npm 统一为 **1.1.1**。相对于公开正式版 1.0.0，本次包含此前本机 1.1.0 的 THA 工具和 Setup 改动，以及发布回归中发现的 Windows 并发保存修复。更新、升级和支持边界见 [发布说明](docs/release-1.1.1.md)。
+
+- Rust 单元测试 **539 通过、2 ignored**：`artifacts/release-1.1.1-cargo-verified.log`。两项跳过分别为 Windows 剪贴板写入和需连接 THA6206 的 Source-to-Watch 实板测试。最终并发保存修复后，配置模块 **32/32** 复验通过，双客户端连续 **10 轮** 同时保存保持两核偏好：`artifacts/release-1.1.1-config-final.log`、`artifacts/release-1.1.1-concurrent-save.log`。
+- 严格 Clippy `--all-targets -- -D warnings`、格式检查和 Release 构建通过；最终构建用时 4 分 24 秒，日志 `artifacts/release-1.1.1-clippy-final.log`、`artifacts/release-1.1.1-build-final.log`。
+- 真实 Windows ConPTY **8/8**、CLI **12/12**、便携包工具/配置 **15/15**、旧工程安装器兼容 **19/19**、THA 配置/复位离线检查 **30/30**。日志分别为 `artifacts/release-1.1.1-terminal.log`、`release-1.1.1-cli.log`、`release-1.1.1-bundled-tools.log`、`release-1.1.1-chip-profiles.log`、`release-1.1.1-tha-tools.log`；最终程序的复验记录随发布附件列出。
+- 用完整便携包加载 `THA6XXX_MC_AS440` 的 6 份实际工程配置，均保持 DISCONNECTED 且没有 GDB/MI 命令；记录 `artifacts/release-1.1.1-real-project.json`。工程 TOML 和包外用户 `profiles/devices.toml` 的前后 SHA256 相同，未改写实际工程。
+- 本机三个 THA SVD 已真实解析并随 npm/ZIP 分发，Git 中保持忽略。测试不强制要求克隆仓库中存在这些本地文件。固定 OpenOCD 的 EXE 摘要与 PROVENANCE 一致；对应源码从 v1.0.0 公网附件取得，SHA256 为 `67a14bcc54fbd89337073246bd3cf0e1ffcd5ddcd378bb84c424925676e614e8`。
+
+最终安装包以 Release EXE SHA256 `f6fb9cfafc75d53ad22b98a69b89a94b70d62670482f93de4146298bbe191e31` 验证。`test-register-distribution.cjs` 使用从 v1.0.0 Release 下载且摘要匹配的真实旧包作为基线，**14/14** 通过；覆盖生产 npm/ZIP 资源、EXE/ZIP 替换、实际 postinstall、CMD/PowerShell 入口、重复安装、卸载、客户配置保留和失败钩子：`artifacts/register-distribution-1791467607868-5b56804f/report.json`。原生终端、CLI、内置工具与双客户端并发保存也针对最终 EXE 复验通过。THA SVD 出现在 npm 清单和完整 ZIP 中，未被 Git 暂存。
+
+Rust 集成回归的 **17 个测试目标、260 个用例全部通过**，与上述单元测试合计 **799 个不同 Rust 测试通过、2 ignored**。分批证据为 `artifacts/release-1.1.1-integration-final.log`、`release-1.1.1-integration-remaining.log`；`register_distribution` 的 Rust 包装器只调用同一 Node 驱动，本轮直接以最终 Release EXE 和真实 v1.0.0 历史包执行该驱动的 14 项生产验证，单独统计，未将它重复计入 Rust 用例。完整机器可读摘要随 Release 附件 `software-validation-1.1.1.json` 交付。
+
+首轮失败日志保留：F1 从特定行帮助改为通用浮窗后，一项旧测试没有关闭上一行帮助，已更新导航预期；Clippy 检出的等价比较写法已修正。模拟 TCL 服务五秒接入预算曾在高并发下超时，串行复验通过；双核 connect 含两名 worker 及同步，原十秒聚合等待不足，测试预算单独改为三十秒，未修改生产通信超时。双客户端保存曾遇到 Windows 锁文件清理的短暂 ACCESS_DENIED，现纳入原五秒上限内重试，并增加连续并发保存验证。失败原记录没有覆写为通过。
+
+功能开发阶段已在 THA6206/CMSIS-DAP/SWD 与 MCAL 工程完成 core0、core1、双核和芯片复位检查；发布阶段只执行软件/配置/安装验证，没有再次复位或烧录板卡。THA6104/6412、JTAG、其他探针及 R52+ 扩展寄存器不作为已通过实板的功能宣称。
+
 ## 1.0.0 正式发布软件验证（2026-10-08）
 
 Cargo、lockfile 和 npm 版本统一为 **1.0.0**，从 `claude/optimizations` 发布。更新细节、首次启动默认配置、STM32/R52 操作与迁移说明见 [发布说明](docs/release-1.0.0.md) 和 [使用指南](USER_GUIDE.md)。历史 PDF/TeX、个人审计提示词与本地参考资料不进入运行包，包内文档使用 `docs/*.md`。

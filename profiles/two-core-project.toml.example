@@ -1,0 +1,19 @@
+# Generic two-session example for external tools. Select a compatible Tools
+# profile and review endpoints, core identity, startup/reset and ELF settings.
+# For THA6 bundled tools, use tha6-bundled-project.toml.example instead.
+version = 2
+[program]
+elf = "./build/firmware.elf"
+source_root = "."
+[session]
+on_exit = "detach"
+log_dir = "./debug_log"
+[multicore]
+scope = "all"
+halt_peers = true
+[[cores]]
+name = "core0"
+endpoint = "127.0.0.1:3333"
+[[cores]]
+name = "core1"
+endpoint = "127.0.0.1:3334"

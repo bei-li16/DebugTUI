@@ -1,6 +1,6 @@
 # DebugTUI 使用指南
 
-本文按 **v1.0.0** 更新，核对日期为 **2026-10-08**。快速开始见 [README](README.md)，新增能力、旧配置迁移与支持边界见 [1.0.0 发布说明](docs/release-1.0.0.md)。后文保留特定工程示例及可选后端说明，只有具备相应配置和后端证明的对象才启用读取/编辑；软件验证不表示全部硬件已经验证。
+本文按 **v1.1.1** 更新，核对日期为 **2026-10-08**。快速开始见 [README](README.md)，新增能力、旧配置迁移与支持边界见 [1.1.1 发布说明](docs/release-1.1.1.md)。后文保留特定工程示例及可选后端说明，只有具备相应配置和后端证明的对象才启用读取/编辑；软件验证不表示全部硬件已经验证。
 
 **阅读入口：** [安装](#安装与升级) · [首次配置](#首次配置与启动) · [配置分层](#项目与工具配置) · [芯片与核心](#芯片与核心选择) · [常用操作](#常用调试操作) · [源码映射](#源码路径重映射) · [运行时刷新](#运行时刷新) · [多核](#多核工作区) · [构建下载](#构建与下载) · [排查问题](#常见问题)
 
@@ -19,11 +19,11 @@ npm.cmd install -g --prefer-online "https://github.com/bei-li16/DebugTUI/release
 debugtui --version
 ```
 
-该 URL 跟随 GitHub 最新正式 Release；退出正在运行的 DebugTUI 后重新运行同一命令升级。离线安装可以下载版本化 tgz 后执行 `npm.cmd install -g ./debugtui-cli-1.0.0.tgz`。卸载使用 `npm.cmd uninstall -g @debugtui/cli`；用户芯片目录和工程配置保留。
+该 URL 跟随 GitHub 最新正式 Release；退出正在运行的 DebugTUI 后重新运行同一命令升级。离线安装可以下载版本化 tgz 后执行 `npm.cmd install -g ./debugtui-cli-1.1.1.tgz`。卸载使用 `npm.cmd uninstall -g @debugtui/cli`；用户芯片目录和工程配置保留。
 
 ### 便携分发与工具边界
 
-[v1.0.0 Release](https://github.com/bei-li16/DebugTUI/releases/tag/v1.0.0) 提供 `debugtui-1.0.0-win-x64.zip`、独立 EXE、npm tgz 和 `SHA256SUMS.txt`。解压完整 ZIP 后运行 `debugtui.exe`；ZIP/npm 包含 ARM GDB、OpenOCD、STM32F429 SVD、芯片/探针配置与 Markdown 使用说明。独立 EXE 不含这些资源，优先使用完整 ZIP 或 npm 包。固件编译器、探针驱动、SEGGER J-Link GDB Server 及额外板级资源按工程另行准备。仓库中的历史 PDF 手册保留原版本，1.0.0 使用说明以本文及发布说明为准。
+[v1.1.1 Release](https://github.com/bei-li16/DebugTUI/releases/tag/v1.1.1) 提供 `debugtui-1.1.1-win-x64.zip`、独立 EXE、npm tgz 和 `SHA256SUMS.txt`。解压完整 ZIP 后运行 `debugtui.exe`；ZIP/npm 包含 ARM GDB、OpenOCD、STM32F429 和 THA6 SVD、芯片/探针配置与 Markdown 使用说明。独立 EXE 不含这些资源，优先使用完整 ZIP 或 npm 包。固件编译器、探针驱动、SEGGER J-Link GDB Server 及额外板级资源按工程另行准备。仓库中的历史 PDF 手册保留原版本，1.1.1 使用说明以本文及发布说明为准。
 
 `debugtui --demo` 可离线预览界面；`debugtui --snapshot ./preview.txt` 输出演示文本，不连接板卡。安装后命令找不到或版本不符时，用 `Get-Command debugtui -All` 检查 PATH 中是否存在多份程序，重新打开终端后再核对 `--version`。
 
@@ -34,6 +34,12 @@ debugtui --version
 在没有调试工程 TOML 的目录启动时，程序按 [tools/debug.toml](tools/debug.toml) 创建 `debug.toml`：`version = 3`，Tools / profile 为 `builtin:arm-openocd`，Probe 为 `cmsis-dap`，Chip 和 ELF 为空、Debug cores 为 `[]`，Source root 为 `.`，On exit 为 `detach`，Log directory 为 `debug-logs`。首次启动不预选 STM32 或 R52，需要在 Setup 选择 Chip、Debug cores 和 ELF 后开始。
 
 其余字段不写入模板：Chip config、SVD、CPU registers、Register catalogue 和 Memory channels 随芯片配置解析；Build command、Download command 没有工程覆盖；Source remap 默认关闭，ELF path prefix 为空。内置资源按安装位置解析，工程文件无需记录 npm 的绝对路径。
+
+Setup 用红色字段名称标记需要配置的项目：Project、使用工具环境时的 Tools / profile，以及芯片模式下的 Chip 和 Debug cores。Program / ELF 标红表示源码调试需要符号文件，仍允许不带 ELF 连接目标；开启 Source remap 且没有手工映射规则时，ELF path prefix 也标红。可继承默认值的项目保持原色，不可操作的项目仍显示灰色；选中必填项时，红色名称保留，背景和粗体表示焦点。
+
+红色说明位于配置框下方。配置项说明改为鼠标悬停浮窗：鼠标停在某行即可查看，不改变当前选中项或配置；浮窗优先显示在鼠标右下方，靠近边缘时自动向左或向上调整，长文本换行，离开配置行、点击、编辑或切换窗口后隐藏。浮窗不占配置框空间，窗口不足以显示全部配置项时才显示滚动条。
+
+仅用键盘时，在选中项按 F1 查看完整帮助；鼠标正在悬停时 F1 打开该行的帮助。方向键、PageUp/PageDown、Home/End 或滚轮可滚动，Esc／Enter／F1 或 Close 返回。CPU 和寄存器目录沿用 F1 完整目录详情，小窗口中被截断的悬停说明会提示使用 F1。
 
 ### 最小远程调试配置
 
@@ -83,24 +89,23 @@ debugtui
 |---|---|
 | 选择字段 | 默认选中 Project；↑ ↓ 只在可用配置项之间循环，跳过禁用项和顶部按钮。鼠标可直接选择；Tab / Shift+Tab 可遍历字段及按钮 |
 | 滚动字段 | 配置区域增加 5 行容量；终端空间不足时，右侧显示滚动条。字段区域滚轮每次滚动 3 行，也可点击滚动条或拖动滑块。滚动保留当前选择和输入草稿，键盘操作会将当前字段滚回视野 |
-| 编辑路径或参数 | Enter；Ctrl+U 清空；Enter 应用，Esc 取消 |
+| 编辑路径或参数 | 除 Project 外按 Enter 编辑；Ctrl+U 清空；Enter 应用，Esc 取消 |
 | 浏览文件/目录 | F2；Enter 进入目录或选择文件；Space 选择当前目录；Backspace 返回上层 |
-| 选择已有工程 TOML | 顶部 Projects / F3；选择后立即刷新配置页各字段。Project 的 F2 浏览保留，文件列表只显示目录和 TOML |
-| 套用示例配置 | 顶部 Examples / F4；预览后按 Enter 或点击套用，再修改路径和连接参数 |
+| 选择已有工程 TOML | 在 Project 行按 Enter 或点击该行；F3 为兼容快捷键。列表默认定位当前文件，Enter／点击加载配置，Esc 保留当前草稿。Project 的 F2 浏览其他目录和 TOML |
 | 切换枚举/开关 | ← → / Enter |
 | 保存配置 | 顶部 Save / Ctrl+S |
-| 开始调试 | 点击顶部 Start debugging，或使用 Ctrl+R、Ctrl+Enter、F5；Tab 选中该按钮后也可按 Enter 启动。启动前保存到工程的 debug.toml；Save config / Ctrl+S 可单独保存而不启动调试 |
+| 开始调试 | 点击顶部 Start debugging，或使用 Ctrl+R、Ctrl+Enter、F5；Tab 选中该按钮后也可按 Enter 启动。启动前保存到所选工程 TOML；Save config / Ctrl+S 可单独保存而不启动调试 |
 | 从调试页面返回配置 | 主界面 Project 栏的 ← Setup / F2 / :setup |
 | 回到原调试页面 | 配置页顶部 ← Workspace / Esc；编辑字段或浏览文件时 Esc 先取消当前操作 |
 | 退出应用 | 配置页顶部 Exit / Ctrl+Q；配置未完成、编辑值无效或正在浏览时也可退出，不保存草稿 |
 
 无参数启动始终先显示配置页，即使当前目录已有 debug.toml；不会直接占用探针。选择工程后优先读取其配置；没有显式 tools/GDB 配置时，会发现该工程内的 tools/debug-env.toml。保存路径尽量相对于工程，保留构建、源码映射、监视与断点等原有配置，不展开并复制整份 tools 配置。
 
-Project 默认显示 `./debug.toml`，相对路径的输入和显示均以启动 DebugTUI 的目录为基准；ELF、Source root、SVD 等资源路径仍以所选工程 TOML 的目录为基准。跨盘无法表达相对路径时保留绝对路径。没有默认文件时，唯一的其他调试工程 TOML 会直接加载，多个候选显示选择列表；没有工程 TOML 时自动创建最简通用配置。Projects 排除 Cargo 等无关配置及 debug-env 工具配置；其他文件仍可通过 F2 手动浏览。
+Project 默认显示 `./debug.toml`，相对路径的输入和显示均以启动 DebugTUI 的目录为基准；ELF、Source root、SVD 等资源路径仍以所选工程 TOML 的目录为基准。跨盘无法表达相对路径时保留绝对路径。没有默认文件时，唯一的其他调试工程 TOML 会直接加载，多个候选显示选择列表；没有工程 TOML 时自动创建最简通用配置。配置列表排除 Cargo 等无关配置及 debug-env 工具配置；其他文件仍可通过 F2 手动浏览。
 
-Examples 提供单核、本机程序、双核工程与内置工具通用模板；工程存在 `debug-env.toml`、`.vscode/debug-env.toml` 或 `tools/debug-env.toml` 时，还可选择引用已有工具配置。模板只填入 ELF、源码目录、日志、退出策略及可选核心映射，不再生成 GDB、target、service 或工具超时配置。应用模板会替换工程草稿，但保留已选择的工具 profile 和旧工程内嵌的 gdb/target/service/timeout 覆盖项；选择另一个 profile 示例时更新引用。请核对工程路径，并通过 Tools / profile 选择适用的工具环境；本机程序需要环境配置 `target.mode='local'`。示例不会自动烧录、复位、启动工具或写文件；只有点击 Save config / Ctrl+S 或启动调试时，才写入 Project。双核示例的逐核地址在 `[[cores]]` 中编辑，板级复位动作由实际环境提供。
+Setup 不再提供 Examples 按钮或 F4 模板套用，避免替换已有配置草稿。首次使用内置工具时，直接填写自动生成配置的 Probe、Chip、Debug cores 和 ELF。外部工具的参考文件保留在安装包 `profiles/` 中：[单核](profiles/single-core-project.toml.example)、[本机程序](profiles/local-program-project.toml.example)、[双核](profiles/two-core-project.toml.example)；复制到工程并改为 `.toml` 后，通过 Project 选择，再配置适用的 Tools / profile。本机程序的 profile 需要 `target.mode='local'`；通用双核示例的端口和启动／复位流程按实际服务器调整。THA6 内置工具使用 [THA6 工程示例](profiles/tha6-bundled-project.toml.example)。示例只作为文件参考，不在 Setup 中自动覆盖草稿。
 
-配置页顶部固定显示 Start、Save、Projects、Examples、Workspace 和 Exit 按钮，不随字段滚动，窄终端会换行。字段下方说明包含用途、路径基准、示例、是否可留空及相关限制。打开配置页时当前调试会话仍然有效；返回工作区会保留未保存的配置草稿。点击 Start debugging 时先校验并应用正在编辑的字段，再清理原会话、启动新配置；旧会话清理失败会在界面报错并停止切换。连接失败可以通过 ← Setup 修正配置并重试。Exit / Ctrl+Q 通过原有退出流程关闭会话和自有服务。
+配置页顶部固定显示 Start debugging、Save config、Workspace 和 Exit 四个按钮，不随字段滚动，窄终端会换行。配置行悬停说明包含用途、路径基准、是否可留空及相关限制，F1 查看完整帮助。打开配置页时当前调试会话仍然有效；返回工作区会保留未保存的配置草稿。点击 Start debugging 时先校验并应用正在编辑的字段，再清理原会话、启动新配置；旧会话清理失败会在界面报错并停止切换。连接失败可以通过 ← Setup 修正配置并重试。Exit / Ctrl+Q 通过原有退出流程关闭会话和自有服务。
 
 也可以使用命令行参数：配置完整时直接准备调试环境；参数不足时进入已填好参数的配置页。添加 --setup 可强制先查看配置。--project 同时接受工程目录和配置文件。
 
@@ -260,9 +265,9 @@ actions 支持 restart、run、download、before_disconnect；target.after_conne
 
 ## 内置工具与自定义芯片配置
 
-在启动目录中优先加载 `debug.toml`；没有时检索同一目录的调试工程 TOML，唯一候选直接加载，多个候选在 Projects 列表选择，没有候选则创建随附最简模板。Cargo、环境配置、设备/寄存器目录及只有普通版本字段的 TOML 不作为工程。已有或损坏的工程不被模板覆盖。`debugtui --init-project` 只查找/创建配置后退出；可与 `--project`、`--chip`、`--cores` 和 `--probe` 配合。无参数启动始终进入 Setup，不自动连接硬件。
+在启动目录中优先加载 `debug.toml`；没有时检索同一目录的调试工程 TOML，唯一候选直接加载，多个候选在 Project 配置列表选择，没有候选则创建随附最简模板。Cargo、环境配置、设备/寄存器目录及只有普通版本字段的 TOML 不作为工程。已有或损坏的工程不被模板覆盖。`debugtui --init-project` 只查找/创建配置后退出；可与 `--project`、`--chip`、`--cores` 和 `--probe` 配合。无参数启动始终进入 Setup，不自动连接硬件。
 
-Setup 新增 **Probe**（对应 `[tools] probe`）和 **Chip config**（对应 `[tools] chip_profile`）。Probe 可选 CMSIS-DAP、J-Link、ST-Link 或继承 profile；仅适用于声明 `[chip_profiles]` 的环境，传统单芯片 profile 使用继承。Chip config 是工程相对路径；内置模式留空时先找用户目录 `profiles/chips/<chip>.toml`，再用包内默认描述。CPU registers、Register catalogue、Memory channels、SVD、Build/Download 等原有设置继续有效。
+Setup 新增 **Probe**（对应 `[tools] probe`）和 **Chip config**（对应 `[tools] chip_profile`）。Probe 可选 CMSIS-DAP、J-Link、ST-Link 或继承 profile；仅适用于声明 `[chip_profiles]` 的环境，传统单芯片 profile 使用继承。Chip config 默认显示实际解析的 `Chip default: <chip>.toml`，随 Chip 变化；内置模式先找用户目录 `profiles/chips/<chip>.toml`，再用包内默认描述，字段帮助显示实际文件路径。Enter 输入工程相对路径可覆盖默认文件，F2 可选 Automatic 或浏览自定义文件；自定义选择在切换 Chip 时保留，选择 Automatic 或清空路径恢复跟随 Chip，自动默认值不写入工程覆盖。CPU registers、Register catalogue、Memory channels、SVD、Build/Download 等原有设置继续有效。
 
 从 `0.10.0-readonly.5` 起，在 **Tools / profile** 或 **SVD file** 上按 **F2**，可直接选择 npm/ZIP 安装目录内的文件，列表和字段提示显示实际解析路径；“Browse another file” 或列表中的 F2 可继续浏览外部文件。选择包内公共 profile 保存为 `builtin:arm-openocd`；选择包内 SVD 保存为 `builtin:svd/STM32F429.svd`，不记录安装绝对路径。SVD 列表同时提供 Automatic（跟随芯片）和 Disabled（显式禁用）。Enter 保留手动编辑功能。
 
@@ -300,7 +305,7 @@ args = ["-s", "${tools_dir}/bin/openocd/scripts",
         "-f", "${profile_dir}/board.cfg"]
 ```
 
-未补齐的内置 R52 板级模板仍明确拒绝连接。数组整体覆盖；自定义 `service.args` 应保留所需 probe、核掩码和固定物理核端口约定。SVD 未在工程中指定时跟随芯片，界面显示 `Chip default`；清空 SVD 编辑框恢复继承，TOML 中显式 `svd = ""` 仍可禁用。
+1.1.1 中的 THA6104/6206/6412 已接入 `tools/openocd/tha6.cfg` 与各自 SVD；其他 R52 板卡仍须补全板级模板。数组整体覆盖；自定义 `service.args` 应保留所需 probe、核掩码和固定物理核端口约定。SVD 未在工程中指定时跟随芯片，界面显示 `Chip default`；清空 SVD 编辑框恢复继承，TOML 中显式 `svd = ""` 仍可禁用。
 
 ## 芯片与核心选择
 
@@ -333,6 +338,8 @@ cores = [0, 1] # 可改为 [0] 或 [1]，也可直接在 Setup 勾选
 一核对应一个 GDB 会话，所有会话共享一项服务。端口优先取对应 `[[cores]]` 模板的显式 `endpoint`，否则取 profile 的 `core_targets`；不会按核心编号自动递增端口。只有单选物理 core0 时，才可回退到根 `[target].endpoint`。项目 `[[cores]]` 可作为按 `core.0` 等物理名称匹配的可选模板，保留每核初始化和启动顺序（当前各核共享项目 ELF）；只实例化所选核心。Watch/断点按 `core_preferences.<chip>."core.N"` 保存，切换芯片或只调 core1 不会改写其他核的偏好。未选中的共享 Reset 所属核不会被悄悄替换，相关组 Reset 被停用。
 
 ### THA6 MCAL 工程
+
+当前源码提供使用内置工具的 [tha6-bundled-project.toml.example](profiles/tha6-bundled-project.toml.example)，可复制为工程根的 `debug.toml`。它使用 `builtin:arm-openocd`，自动选择 THA6104/6206/6412 的板级配置和 SVD，仅 Build / Download 继续依赖工程原有脚本与厂商工具。配置、单核/多核启动策略和测试范围见 [tools 说明](tools/README.md#tha-芯片)。以下保留旧版 `.vscode` 独立工具方式。
 
 THA MCAL 可复制发行包中的 `profiles/tha6-project.toml.example` 到工程根 `debug-chip.toml`，以及 `profiles/tha6-environment.toml.example` 到 `.vscode/debug-env-chip.toml`。这**一对文件**随选择切换 THA6104/6206/6412；无需再为 core0、core1、双核和四核复制文件。使用此命名时，以 `debugtui --project debug-chip.toml --setup` 打开。这两个模板只提供配置，要求工程已有相应 `.vscode` 工具、SVD 和构建脚本。
 
@@ -563,7 +570,7 @@ Memory 可选择地址范围、字节数及实际通道；运行中默认保留�
 
 ### Memory channels 与逐项访问入口
 
-以下入口包含在 v1.0.0 中。可用通道和运行时权限取决于工程/芯片声明，不会由界面选择自动推断 AP 或总线能力。
+以下入口包含在 v1.1.1 中。可用通道和运行时权限取决于工程/芯片声明，不会由界面选择自动推断 AP 或总线能力。
 
 - Setup 的 **Memory channels** 可以编辑通道 ID、名称、TCL endpoint、target、运行时访问声明和核心限制。保存写入当前项目覆盖，取消丢弃草稿；继承的工具 profile 不被改写。
 - Watch、Peripherals 的 **Memory access** 按钮打开逐项通道与刷新设置，展示所选通道的 target、endpoint 配置及来源。Watch 在暂停时解析可取地址成员；重连、换停止点或栈帧后重新解析。
@@ -774,13 +781,17 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 Setup 的 CPU registers 可选 M3、M4、M7、R52、R52+、用户 preset、Automatic 或 GDB；Register catalogue 可输入或 F2 浏览文件。CPU picker 内的 F2 同样浏览目录。F1 查看候选目录的名称、架构、来源、说明、支持条件及各核身份，方向键／翻页／Home／End／滚轮滚动，Esc／Close 返回草稿。选择与预览不启动读取，Ctrl+S 保存项目引用，不改写客户 profile 或目录。使用文件且未选 CPU preset 时显示 Catalogue file，不会误显示成原 GDB 列表。
 
+Register catalogue 是 **CPU 架构寄存器定义 TOML**，用于 System Regs 的寄存器分组、位宽、字段、访问条件和读写方式；SVD 则定义 UART、SPI 等外设的内存映射寄存器，两者用途不同。安装包的 `profiles/registers/` 内有 M3/M4/M7/R52/R52+ 的文件模板，EXE 也内嵌对应默认目录。THA6206 的 CPU registers 默认关联 `cortex-r52+`，Register catalogue 留空即可：优先使用用户目录 `%LOCALAPPDATA%/debugtui/profiles/registers/cortex-r52+.toml`（若存在），否则使用 EXE 内嵌目录，不必再次选择安装包中的同名文件。
+
+需要自定义时，把相应模板复制到工程，例如 `debug-board/registers.toml`，修改后在 Register catalogue 按 Enter 输入路径或 F2 选择文件，再 Ctrl+S 保存或 Start 应用。显式 catalogue 文件优先于 CPU preset；清空文件引用后恢复 preset 的目录选择。选择后的成功提示在切换字段时清除，错误提示保留供检查。目录定义不代表硬件或后端已支持读取：THA6206 的 R52+ 扩展读取仍以该芯片配置和实际验证的 reader 能力为准，不能仅靠选择目录启用尚未适配的 CP15、VFP、Timer/PMU/GIC 等读取。
+
 配置 CPU、目录 CPU、Chip 关联和 Observed CPU 分别显示；差异提示不自动改配置。芯片关联只是配置；当前停止核心没有有效 Probe 时显示 Unknown，其他核及旧 session／stop／frame 的身份不复用。Setup 改目标、工具或 TCL endpoint／target 等访问路由后，旧身份也不用于新草稿。选择 R52+ 目录不证明实际 R52+ 身份、可选扩展或 reader/writer 支持；完整操作及自检见 [Setup 目录选择](docs/register-setup-catalogues.md)。
 
 System Regs 的 Total／Shown／Valid 分别计目录定义、展开筛选后的寄存器行及当前暂停上下文的有效值。Status 按钮、`t` 或 `:register-status` 打开分类计数和目录来源；窄窗口可用方向键／滚轮，Esc 或 Close 关闭。失败可保留旧值，但显示当前原因，不计成功。
 
 Setup 的寄存器详情和 Status 还显示当前核各项配置的最终值、实际声明文件/section 和被覆盖的旧声明；headless 对应 `registers_list.configuration`。环境/项目 map 递归合并，每核显式 map 整表替换，清空及被移除的 key 可查。配置来源、目录实际 CPU 和目标观测分别呈现；配置声明不证明访问权限。Setup 显示未保存草稿，运行时值若已变更且没有可追溯声明则标来源不可用。详见 [每核配置与来源](docs/register-config-sources.md)。
 
-开发分支的R52专用VFP后端要求源码锁中的v2读写协议。详情分别显示外部EDSCR证明的当前Debug EL和停止前DSPSR/DLR；停止前Hyp不能单独授权读取。当前EL2且权限/使能有效时才读取FP控制和数据，S/D/Q保留同次完整pair及MVFR/FPEXC来源；EL1/Guest/User合法读取仍待适配，不自动使能FPU或切换模式。失败旧值保留原证明和时间，旧协议不回退。范围见[VFP证明](docs/register-vfp-proof.md)；1.0.0 包含该可选协议的软件实现，尚未完成 R52 实板验收。
+开发分支的R52专用VFP后端要求源码锁中的v2读写协议。详情分别显示外部EDSCR证明的当前Debug EL和停止前DSPSR/DLR；停止前Hyp不能单独授权读取。当前EL2且权限/使能有效时才读取FP控制和数据，S/D/Q保留同次完整pair及MVFR/FPEXC来源；EL1/Guest/User合法读取仍待适配，不自动使能FPU或切换模式。失败旧值保留原证明和时间，旧协议不回退。范围见[VFP证明](docs/register-vfp-proof.md)；1.1.1 包含该可选协议的软件实现，尚未完成 R52 实板验收。
 
 Status 的条件详情分别保存当前判定、最新尝试和保留原值当时的依据，显示 min/max、配置声明与当前观察、目录来源、物理核和停止代次。成功读取不会丢失条件；失败后不会把新依据当成旧值依据，旧生产者没有记录时显示 Unknown。别名继承父链的条件及 WO；Unknown 可选项不自动读取，WO 即使手动也不发送读取。PMCR.N 在 Guest/SVC 下可能受 HPMN 限制，不能据此认定物理计数器不存在。当前 R52 物理数量只接受 Hyp N=4，物理 ICC 优先级只接受五位，其他原始值保留但适配容量未知。查看详情不触发读取；规则及限制见 [条件依据自检](docs/register-eligibility.md)。
 
@@ -810,7 +821,7 @@ Status 还分别显示 Catalogue CPU／架构、Configured CPU choice 和有当�
 
 宽窗口固定显示 Name、Value、Size、Access 四列；长名称或过长值以省略号提示。窄窗口保留名称和值，选中说明显示位宽及访问属性。选中字段时使用字段自身的位宽与访问覆盖；按 `t` 可滚动查看父描述、字段说明、全部枚举、bit segments、访问条件、读取原因和完整原始值，包括被主行省略的 128 位高低位。
 
-Cancel read、`:register-cancel` 或非搜索模式的 Esc 取消当前寄存器读取／Probe。MPU 总览关闭或切 bank 也取消未完成读取。当前事务完整恢复后停止后续项、丢弃新结果；会话和其他核心继续可用，需手工重读。恢复结果未知仍进入 FAULT。详见 [计数、取消及限制](docs/register-read-status-and-cancel.md)。1.0.0 包含上述软件入口，硬件行为需按对应 case 验证。
+Cancel read、`:register-cancel` 或非搜索模式的 Esc 取消当前寄存器读取／Probe。MPU 总览关闭或切 bank 也取消未完成读取。当前事务完整恢复后停止后续项、丢弃新结果；会话和其他核心继续可用，需手工重读。恢复结果未知仍进入 FAULT。详见 [计数、取消及限制](docs/register-read-status-and-cancel.md)。1.1.1 包含上述软件入口，硬件行为需按对应 case 验证。
 
 ### 寄存器显示格式与视图偏好（开发分支）
 
@@ -950,7 +961,7 @@ M7＋M4 的相同 PPB 地址分别通过每核自己的 channel/target 访问。
 
 ### 编辑 Core 寄存器（开发分支）
 
-开发分支新增的 Core 寄存器编辑1.0.0 包含上述软件入口，硬件行为需按对应 case 验证。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。
+开发分支新增的 Core 寄存器编辑1.1.1 包含上述软件入口，硬件行为需按对应 case 验证。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。
 
 修改输入必须重新预览；切核、帧、运行、重连或换 ELF 后旧草稿不可应用。Core writer 的 Scope All 仍只写当前核心；共享区域只执行一次所属 owner 的写入。`verified` 表示按有效掩码回读一致，`accepted` 表示后端已受理但没有完成安全验证，`mismatch` 表示回读不符，`unknown` 表示可能已写入而无法确定结果；不自动重试、回滚或重放。发送后关闭编辑窗口不会撤回操作。PC/SP 改动会使源码、栈、Locals、反汇编等视图失效并重新读取；这不是通用的目标恢复操作。
 
@@ -994,7 +1005,7 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --gdb C:
 
 PMU 查看：配置 registers.pmu_command="aarch64 pmu" 可显式选择当前开发后端的独立只读协议。该适配覆盖 R52 四项 32 位事件与完整 64 位周期及相关状态/控制视图；观察不会启动或清空计数。当前 Debug EL2 与停止前 CPSR 分开证明，低 EL 无法证明 Hyp 陷阱时显示 Unknown。计数数量 Probe 需要新鲜原生证据；同名 GDB PMCR 不替代该证明。直接 PMEVCNTRn/PMEVTYPERn 保持 PMSELR，SEL=31 的 PMXEVCNTR 不可用。后端、配置、字段、未上板限制见 [PMU 说明](docs/register-pmu.md)。
 
-GIC 查看：开发版本显式配置 `registers.gic_command="aarch64 gic"` 后使用独立观测协议。物理 ICC、Hyp ICH 与虚拟 ICV AP backing 别名分别展示；R52 只实现每组 AP0R0/AP1R0，Probe 以当前 Debug EL2 证据分别确认物理/虚拟五位容量并过滤其他 AP 定义。停止前 Hyp 或同名 GDB CTLR/VTR 只提供原始字段，不能授权物理容量。IAR 有 acknowledge 副作用，观测后端即使手工也拒绝；EOIR/DIR/SGI 为 Write only，不安排读取。低 EL 保持 Unknown，不关闭陷阱或使能接口。LR/LRC 各为 32 位独立样本，详情保留接口、target、owner 与时间区间。配置和边界见 [GIC 说明](docs/register-gic.md)；1.0.0 包含该可选观测协议，完整 GIC 与实板行为仍需专项适配和验证。
+GIC 查看：开发版本显式配置 `registers.gic_command="aarch64 gic"` 后使用独立观测协议。物理 ICC、Hyp ICH 与虚拟 ICV AP backing 别名分别展示；R52 只实现每组 AP0R0/AP1R0，Probe 以当前 Debug EL2 证据分别确认物理/虚拟五位容量并过滤其他 AP 定义。停止前 Hyp 或同名 GDB CTLR/VTR 只提供原始字段，不能授权物理容量。IAR 有 acknowledge 副作用，观测后端即使手工也拒绝；EOIR/DIR/SGI 为 Write only，不安排读取。低 EL 保持 Unknown，不关闭陷阱或使能接口。LR/LRC 各为 32 位独立样本，详情保留接口、target、owner 与时间区间。配置和边界见 [GIC 说明](docs/register-gic.md)；1.1.1 包含该可选观测协议，完整 GIC 与实板行为仍需专项适配和验证。
 
 ### R52 MMIO 的逐 owner 路线（可选后端）
 

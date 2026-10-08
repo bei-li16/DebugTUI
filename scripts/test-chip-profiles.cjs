@@ -60,8 +60,9 @@ function status(name, profile, chip, cores) {
       const result = run('tools-install', 'powershell.exe', ['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(root,'tools/install.ps1'),fixture,'cmsis-dap']);
       assert.equal(result.status, 0, result.stderr);
       const expected = ['debug-env.toml','devices/stm32f429.toml','devices/tha6104.toml','devices/tha6206.toml',
-        'devices/tha6412.toml','devices/families/cortex-r52.toml','openocd/probes/cmsis-dap.cfg','openocd/probes/jlink.cfg','openocd/probes/stlink.cfg',
-        'openocd/stm32f429.cfg','openocd/r52-template.cfg','svd/STM32F429.svd'];
+        'devices/tha6412.toml','devices/families/cortex-r52.toml','devices/families/tha6.toml','openocd/probes/cmsis-dap.cfg','openocd/probes/jlink.cfg','openocd/probes/stlink.cfg',
+        'openocd/stm32f429.cfg','openocd/r52-template.cfg','openocd/tha6.cfg',
+        'svd/STM32F429.svd','svd/THA6104.svd','svd/THA6206.svd','svd/THA6412.svd'];
       for (const file of expected) assert.equal(hash(path.join(tools,file)),hash(path.join(root,'tools',file)));
       assert.deepEqual(fs.readdirSync(tools).filter(name => /^debug-env.*\.toml$/.test(name)), ['debug-env.toml']);
       assert.deepEqual(fs.readdirSync(path.join(tools,'openocd')).filter(name => name.startsWith('stm32')), ['stm32f429.cfg']);
@@ -118,7 +119,7 @@ function status(name, profile, chip, cores) {
     fs.writeFileSync(profile, common);
     for (const [chip, cores] of [['tha6104',[0]],['tha6206',[1]],['tha6206',[0,1]],['tha6412',[1,3]],['tha6412',[0,1,2,3]]]) {
       const name = `${chip}-${cores.join('')}`;
-      await suite.test(`CHIP-FILES-${name}`, 'Inherited R52 template keeps physical core IDs and ports', async () => status(name, profile, chip, cores));
+      await suite.test(`CHIP-FILES-${name}`, 'Inherited THA profile keeps physical core IDs and ports', async () => status(name, profile, chip, cores));
     }
     const openocd = path.join(tools, 'bin/openocd/bin/openocd.exe');
     for (const probe of ['cmsis-dap','jlink','stlink']) {

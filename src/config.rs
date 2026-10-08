@@ -53,7 +53,10 @@ fn preference_guard(path: &Path) -> Result<PreferenceGuard, String> {
                     });
                 }
                 Err(error)
-                    if matches!(error.raw_os_error(), Some(32 | 33))
+                    // A peer may have closed its exclusive handle and marked
+                    // the lock file for deletion. Windows reports ACCESS_DENIED
+                    // until that deletion completes; keep the same bounded retry.
+                    if matches!(error.raw_os_error(), Some(5 | 32 | 33))
                         && std::time::Instant::now() < deadline =>
                 {
                     std::thread::park_timeout(std::time::Duration::from_millis(5));
@@ -191,6 +194,8 @@ pub struct Project {
     pub debug: crate::devices::Selection,
     pub core_preferences: BTreeMap<String, BTreeMap<String, crate::devices::Preferences>>,
     pub tools: Tools,
+    #[serde(skip)]
+    pub(crate) chip_profile_path: Option<PathBuf>,
     pub gdb: Gdb,
     pub target: Target,
     pub service: Option<Service>,
@@ -885,6 +890,9 @@ impl Project {
         let chip_memory_source = plan
             .as_ref()
             .and_then(|plan| plan.memory_access_source.clone());
+        p.chip_profile_path = plan
+            .as_ref()
+            .and_then(|plan| plan.chip_profile_path.clone());
         if let Some(plan) = plan {
             plan.apply(&mut p)?;
         }

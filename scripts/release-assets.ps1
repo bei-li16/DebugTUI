@@ -32,7 +32,7 @@ $verified = Join-Path $artifactRoot ('release-verify-' + [Guid]::NewGuid().ToStr
 [IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $verified)
 $exe = Join-Path $verified 'debugtui.exe'
 if ((Get-FileHash -LiteralPath $exe).Hash -ne (Get-FileHash -LiteralPath "$projectRoot\bin\debugtui.exe").Hash) { throw 'ZIP executable differs from tested executable' }
-foreach ($required in @('profiles/install.cjs','profiles/devices.toml','profiles/registers/armv7m-common.toml','profiles/registers/cortex-m3.toml','profiles/registers/cortex-m4.toml','profiles/registers/cortex-m7.toml','profiles/registers/cortex-r52.toml','profiles/registers/cortex-r52+.toml','profiles/registers-readonly-multicore.toml.example','profiles/registers-readonly-r52.toml.example','docs/registers-readonly-guide.md','tests/cases/registers-readonly-release.md')) {
+foreach ($required in @('profiles/install.cjs','profiles/devices.toml','profiles/single-core-project.toml.example','profiles/local-program-project.toml.example','profiles/two-core-project.toml.example','profiles/registers/armv7m-common.toml','profiles/registers/cortex-m3.toml','profiles/registers/cortex-m4.toml','profiles/registers/cortex-m7.toml','profiles/registers/cortex-r52.toml','profiles/registers/cortex-r52+.toml','profiles/registers-readonly-multicore.toml.example','profiles/registers-readonly-r52.toml.example','docs/registers-readonly-guide.md','tests/cases/registers-readonly-release.md')) {
     $shipped = Join-Path $verified $required
     if (-not (Test-Path -LiteralPath $shipped -PathType Leaf) -or (Get-FileHash -LiteralPath $shipped).Hash -ne (Get-FileHash -LiteralPath (Join-Path $projectRoot $required)).Hash) {
         throw "ZIP register catalogue/profile asset differs or is missing: $required"

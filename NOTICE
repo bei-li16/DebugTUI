@@ -9,6 +9,10 @@ Bundled third-party software retains its own licenses and notices:
 - OpenOCD and its libraries: tools/bin/openocd/COPYING.txt, licenses/,
   PROVENANCE.txt and PROVENANCE.json (including corresponding source details)
 - STM32F429 SVD: tools/svd/README.md and licenses/Apache-2.0.txt
+- THA6104/THA6206/THA6412 draft SVDs: imported from mcal-vsconfig;
+  source revision, hashes and the THA6412 device-name correction are documented
+  in tools/svd/README.md. The reference files carry no separate license notice;
+  DebugTUI's and STM32's Apache-2.0 terms do not relicense these files.
 - CMSIS-Core register facts: ARM-software/CMSIS_6, Apache-2.0;
   pinned headers and original notices in third_party/cmsis-core/.
 

@@ -2512,9 +2512,17 @@ pub fn run(
                     }
                     dirty = true;
                 }
-                Input::Resize(_, _) => dirty = true,
+                Input::Resize(_, _) => {
+                    if let Some(setup) = &mut app.setup {
+                        setup.clear_hover();
+                    }
+                    dirty = true;
+                }
                 Input::FocusLost => {
                     app.fx.focus(false);
+                    if let Some(setup) = &mut app.setup {
+                        setup.clear_hover();
+                    }
                     dirty = true;
                 }
                 Input::FocusGained => {
@@ -2554,6 +2562,7 @@ pub fn run(
                     // Moving across text or within one control changes nothing
                     // drawn: skip the frame instead of redrawing at up to 40 FPS.
                     if mouse.kind == MouseEventKind::Moved
+                        && app.setup.is_none()
                         && hover == app.fx.hover.map(|(r, _)| r)
                         && app.hover_unchanged(pointer)
                     {

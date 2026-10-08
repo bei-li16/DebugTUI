@@ -35,7 +35,7 @@ $config = Join-Path $runRoot 'debug.toml'
 $configHash = (Get-FileHash -LiteralPath $config).Hash
 if ($PreviousVersion) {
     $oldUrl = "https://github.com/$Repository/releases/download/v$PreviousVersion/debugtui-cli-$PreviousVersion.tgz"
-    & npm.cmd install --global --prefix $prefix --prefer-online --ignore-scripts=false --foreground-scripts --no-audit --no-fund $oldUrl
+    & npm.cmd install --global --prefix $prefix --prefer-online --ignore-scripts=false --foreground-scripts "--allow-scripts=$($metadata.name)" --no-audit --no-fund $oldUrl
     if ($LASTEXITCODE -ne 0) { throw 'Previous public release installation failed' }
     if ((& "$prefix\debugtui.cmd" --version) -ne "debugtui $PreviousVersion") { throw 'Previous public version mismatch' }
 }
@@ -45,7 +45,7 @@ New-Item -ItemType Directory -Path $customerDirectory -Force | Out-Null
 $preserved = @{}
 Get-ChildItem -LiteralPath $userDirectory -File -Recurse | ForEach-Object { $preserved[$_.FullName] = (Get-FileHash -LiteralPath $_.FullName).Hash }
 for ($attempt = 1; $attempt -le 2; $attempt++) {
-    & npm.cmd install --global --prefix $prefix --prefer-online --ignore-scripts=false --foreground-scripts --no-audit --no-fund $url
+    & npm.cmd install --global --prefix $prefix --prefer-online --ignore-scripts=false --foreground-scripts "--allow-scripts=$($metadata.name)" --no-audit --no-fund $url
     if ($LASTEXITCODE -ne 0) { throw 'Public release URL installation failed' }
     if ((& "$prefix\debugtui.cmd" --version) -ne "debugtui $version") { throw 'Installed public version mismatch' }
     if ((& "$prefix\debugtui.ps1" --version) -ne "debugtui $version") { throw 'Installed PowerShell entry mismatch' }

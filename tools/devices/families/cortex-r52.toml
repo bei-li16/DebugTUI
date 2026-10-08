@@ -1,6 +1,7 @@
 backend = "tha6"
 
-# Shared R52 settings. Supply a custom Chip config and board cfg before connecting.
+# Generic R52 settings. THA devices extend these via tha6.toml and tha6.cfg.
+# Other boards must supply a custom Chip config and board cfg before connecting.
 # core.N uses port 3333+N, including a non-contiguous selection such as [1,3].
 # These target names are a template contract, not discovered hardware facts.
 [gdb]
@@ -17,7 +18,7 @@ args = [
 ]
 cwd = "${tools_dir}/openocd"
 [program]
-# No R52 SVD is bundled. Set a reviewed path here when it is available.
+# There is no generic R52 SVD; chip-specific profiles override this value.
 svd = ""
 [target]
 after_connect = ["monitor halt", "maintenance flush register-cache"]

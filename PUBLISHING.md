@@ -2,15 +2,17 @@
 
 GitHub 仓库：<https://github.com/bei-li16/debugtui>。当前通过 GitHub Release 分发安装包，npm 从 Release URL 安装；源码 push 和 Release 附件发布是两个独立操作。
 
-## 1.0.0 分发内容
+## 1.1.1 分发内容
 
 npm tgz 和便携 ZIP 包含 TUI、内置 GDB/OpenOCD、芯片/探针配置、SVD 及其许可证。工程通过 `builtin:arm-openocd` 使用随包工具，用户覆盖文件保存在包外。DebugTUI EXE 由本地构建产生并打包，始终不提交到 Git；单独下载 EXE 不含工具资源，应优先使用 npm 包或完整 ZIP。
 
-1.0.0 从 `claude/optimizations` 发布为正式 Latest，tag 为 `v1.0.0`。更新内容和用户操作见 [发布说明](docs/release-1.0.0.md)。npm/ZIP 只收录 `docs/*.md`；历史 PDF/TeX、个人审计提示词和本地参考手册不进入运行包。修改后的 OpenOCD 使用既有已固定二进制，Release 同时提供 PROVENANCE 声明且摘要匹配的 `corresponding-source.zip`；来源固定为 v0.10.0-readonly.1 的对应源码包。发布附件另带软件验证摘要和全附件 SHA256。
+1.1.1 从 `claude/optimizations` 发布为正式 Latest，tag 为 `v1.1.1`。更新内容和用户操作见 [发布说明](docs/release-1.1.1.md)。npm/ZIP 只收录 `docs/*.md`；历史 PDF/TeX、个人审计提示词和本地参考手册不进入运行包。修改后的 OpenOCD 使用既有已固定二进制，Release 同时提供 PROVENANCE 声明且摘要匹配的 `corresponding-source.zip`；来源固定为 v0.10.0-readonly.1 的对应源码包。发布附件另带软件验证摘要和全附件 SHA256。
 
 运行 `./scripts/release-assets.ps1` 构建包含工具的 npm/ZIP 附件；`-IncludeTools` 另生成可选独立工具 ZIP，`./scripts/package-tools.ps1` 仍支持单独打包。GDB/OpenOCD 来源、许可证及对应源码说明随工具保留。历史附件不变。
 
-开发分支的生产打包门禁要求 `profiles/install.cjs`、`profiles/devices.toml`、M 公共/M3/M4/M7/R52/R52+ 六份目录、两份只读项目模板及只读指南/用例入口。npm 清单缺项或 ZIP 内容与源码不一致时失败；`docs/`、`tests/README.md` 和 `tests/cases/*.md` 随包交付，测试代码、fixtures、开发脚本仍禁止混入，工具仅允许已声明的运行资源。npm 自动收录父目录 README，因此清单显式包含这份文档，隔离测试保留相同目录结构。发布前运行 `node scripts/test-register-distribution.cjs --binary target/release/debugtui.exe`，以真实脚本、独立 npm prefix/config 验证初始化、升级保留及五个核型号的目录来源。默认旧包是模拟 fixture；真实历史包需同时提供 `--previous-package`、`--previous-sha256` 和 `--previous-version`，摘要先对照该 Release 的 SHA256SUMS。[目录交付自检](docs/register-distribution.md) 记录证据与限制；它不代替最终安装或公网验收。
+THA6 的 `tools/svd/THA6*.svd` 不提交 Git；本地存在的文件随 npm/ZIP 分发。需要附带这些 SVD 时，在 `tools/svd/` 准备相应文件，来源和摘要见 [SVD 说明](tools/svd/README.md)。`package.json.files` 显式收录工具运行资源（包含 `tools/svd/`）；打包脚本按本地实际文件核对 npm 清单，不额外检查 THA SVD 是否存在或为空。不要用 `git archive` 生成的源码包代替完整运行包。
+
+开发分支的生产打包门禁要求 `profiles/install.cjs`、`profiles/devices.toml`、M 公共/M3/M4/M7/R52/R52+ 六份目录、两份只读项目模板、三份基础工程模板及只读指南/用例入口。npm 清单缺项或 ZIP 内容与源码不一致时失败；`docs/`、`tests/README.md` 和 `tests/cases/*.md` 随包交付，测试代码、fixtures、开发脚本仍禁止混入，工具仅允许已声明的运行资源。npm 自动收录父目录 README，因此清单显式包含这份文档，隔离测试保留相同目录结构。发布前运行 `node scripts/test-register-distribution.cjs --binary target/release/debugtui.exe`，以真实脚本、独立 npm prefix/config 验证初始化、升级保留及五个核型号的目录来源。默认旧包是模拟 fixture；真实历史包需同时提供 `--previous-package`、`--previous-sha256` 和 `--previous-version`，摘要先对照该 Release 的 SHA256SUMS。[目录交付自检](docs/register-distribution.md) 记录证据与限制；它不代替最终安装或公网验收。
 
 历史版本 `0.10.0-readonly.1` 从 `codex/register-debugging` 发布为 prerelease，tag 必须指向经过完整验证的开发分支提交；不设置 Latest，不替换正式版 latest 地址。附件保留固定 `debugtui-cli.tgz` 和版本化名称，安装使用该 tag 的 `/releases/download/v0.10.0-readonly.1/debugtui-cli.tgz`。发布后以 `scripts/test-release.ps1 -ReleaseTag v0.10.0-readonly.1 -PreviousVersion 0.9.3` 验证指定版本的公网附件及升级。修改后的 OpenOCD 候选与对应源码作为独立附件，声明软件验证通过、实板未验证，不放进 TUI 包。
 

@@ -4,6 +4,8 @@
 /bin/
 /artifacts/
 /node_modules/
+# Local THA6 vendor SVDs belong in runtime packages, not Git.
+/tools/svd/THA6*.svd
 *.tgz
 *.log
 *.pdb

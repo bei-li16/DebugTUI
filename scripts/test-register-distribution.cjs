@@ -30,6 +30,9 @@ function execute(command,args,extra={}) {
 function success(command,args,extra) { const result=execute(command,args,extra); assert.equal(result.status,0,result.stderr||result.stdout); return result.stdout; }
 function powershell(script,args=[],directory=config) { return execute('pwsh',['-NoProfile','-File',script,...args],{env:environment(directory)}); }
 function npm(args,directory=config) {
+  // npm 11.17+ requires an explicit policy for global lifecycle scripts.
+  // Permit only this package for this invocation; never change user npm config.
+  if(args[0]==='install' && args.includes('--global')) args=[...args,`--allow-scripts=${metadata.name}`];
   // Pass paths as single-quoted PowerShell array elements, not shell commands.
   const encoded=Buffer.from(`$ErrorActionPreference='Continue'; & npm.cmd @(${args.map(arg=>"'"+arg.replaceAll("'","''")+"'").join(',')}); exit $LASTEXITCODE`,'utf16le').toString('base64');
   return execute('pwsh',['-NoProfile','-EncodedCommand',encoded],{env:environment(directory)});

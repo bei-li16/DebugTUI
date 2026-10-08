@@ -1,5 +1,9 @@
 # DebugTUI 功能测试
 
+THA 内置板级配置：`node scripts/test-tha-tools.cjs` 使用随包 OpenOCD 离线解析 THA6104/6206/6412 的全部非空选核组合，核对物理端口、AP 通道不开放 GDB、SWD/JTAG、探针配置和非法掩码；使用同一 Jim Tcl 对复位失败、halt 超时、调试通道恢复、清理失败及 target 恢复注入测试。`cargo test --locked --lib bundled_tha` 解析三个实际 SVD；`cargo test --locked --lib devices::tests` 检查芯片切换和 MCAL 工程策略。
+
+THA6206/MCAL 实板：`node scripts/test-tha-bundled-hardware.cjs --run --binary EXE --project-root MCAL_ROOT [--build-download]` 使用工程的 `debug-builtin.toml` 和指定安装包工具，分别验证 core0/core1/双核。带 `--build-download` 会实际编译烧录，其他测试仍会暂停、运行、复位板卡；勿同时启动其他调试器。JSON 报告与协议日志在 `artifacts/tha-bundled-hardware-*`。THA6206 实测为 R52+，测试记录外部 MIDR 并检查 R52-only 注入式扩展读取器明确拒绝，不把该拒绝计作扩展寄存器功能验收通过。THA6104/6412 与其他探针仍待实板。
+
 内置工具与启动配置：`node scripts/test-bundled-tools.cjs --binary <npm或便携ZIP内的EXE>` 检查真实 GDB/OpenOCD 资源、自动创建/发现工程、Probe、R52 物理核、自定义芯片优先级及工程移动，不连接硬件。`node scripts/test-register-distribution.cjs --binary target/release/debugtui.exe` 验证实际打包与隔离 npm 安装/升级。`scripts/test-chip-profiles.cjs` 保留旧 `.vscode` 工具复制流程的兼容回归。
 
 内置文件选择与旧 Probe 回归：`./scripts/test-resource-picker.ps1 -Binary <EXE>` 在真实 Windows ConPTY 中复现旧 `.vscode` 工程，检查 Probe 的兼容 profile 选择、取消、包内文件路径、F2 浏览、SVD 选择及保存保留，七项流程均不启动 GDB/OpenOCD。对应断言和延后硬件用例见 [芯片配置用例](cases/chip-profiles.md)。
@@ -59,7 +63,7 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --only c
 
 | ID | 功能 |
 |---|---|
-| F01–F03 | CLI/JSONL、配置与路径兼容、Setup/Projects/Examples |
+| F01–F03 | CLI/JSONL、配置与路径兼容、Setup/Project 配置选择、F4 不修改草稿 |
 | F04–F07 | 服务/连接/重连、执行控制、代码断点、数据观察点 |
 | F08–F12 | Watch/进制、结构体/数组/指针树、补全、源码选择与标签、Files/Symbols |
 | F13–F16 | 栈/Locals/寄存器、反汇编/内存、SVD/外设、运行时读取与刷新 |
@@ -117,7 +121,7 @@ UNC 目录边界及别名由 Rust 测试覆盖；GDB 对不可达网络主机的
 | 文件 | ID | 数量 | 检查 |
 |---|---|---:|---|
 | `scripts/test-cli.cjs` | CLI-01–12 | 12 | 真实进程版本/帮助/错误参数、UTF-8 路径、脚本协议、失败终止/清理、配置拒绝 |
-| `scripts/test-terminal.ps1` | TERM-01–08 | 8 | 真实 ConPTY：Symbols 跳转、Files 输入焦点/清空、Setup/Projects/Examples、Appearance、缩放、退出 |
+| `scripts/test-terminal.ps1` | TERM-01–08 | 8 | 真实 ConPTY：Symbols 跳转、Files 输入焦点/清空、Setup 四按钮、Project Enter／F3 配置选择、F4 无动作、Appearance、缩放、退出 |
 | `scripts/test-distribution.ps1` | PKG-01–07 | 7 | 本地包边界、隔离前缀升级、入口、哈希、配置保留、重复安装、卸载/重装 |
 | `scripts/test-project-hardware.cjs` | HW-01–18 | 18 | STM32F429 FreeRTOS 实板调试，详见下表 |
 

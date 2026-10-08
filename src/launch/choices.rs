@@ -1,13 +1,8 @@
-//! Project discovery and opt-in launch examples. Never save files or start tools.
+//! Project and resource discovery. Never save files or start tools.
 use super::*;
 
 pub(super) enum Choice {
     Project(PathBuf),
-    Example {
-        label: String,
-        description: String,
-        raw: toml::Value,
-    },
     Cpu {
         id: Option<String>,
         label: String,
@@ -33,9 +28,7 @@ impl Choice {
                 .unwrap_or_default()
                 .to_string_lossy()
                 .into(),
-            Self::Example { label, .. }
-            | Self::Cpu { label, .. }
-            | Self::Resource { label, .. } => label.clone(),
+            Self::Cpu { label, .. } | Self::Resource { label, .. } => label.clone(),
             Self::BrowseResource { .. } => "Browse another file...".into(),
         }
     }
@@ -45,9 +38,6 @@ impl Choice {
             Self::Project(path) => format!(
                 "Load {} and refresh every Setup field.\nEnter / click: select. Esc: keep the current draft. F2: browse other directories.\nSelecting does not save the file or connect to hardware.",
                 path.file_name().unwrap_or_default().to_string_lossy()
-            ),
-            Self::Example { description, .. } => format!(
-                "{description}\nEnter / click applies this example to the draft; review project paths and Tools / profile.\nReplaces project draft settings; retains current tools unless another profile is selected. Save config or Start writes the file."
             ),
             Self::Cpu { description, .. } => format!(
                 "{description}\nApplies to the project draft. Save config or Start persists it; no hardware access."
@@ -72,6 +62,9 @@ impl Picker {
         field: usize,
         probe: Option<&str>,
     ) -> Result<Self, String> {
+        if field == CHIP_PROFILE {
+            return Self::chip_configs(document);
+        }
         let root = crate::bundled_tools::root()?;
         let mut choices = Vec::new();
         let mut add =
@@ -188,6 +181,53 @@ impl Picker {
         })
     }
 
+    fn chip_configs(document: &Document) -> Result<Self, String> {
+        let mut automatic = document.clone();
+        automatic.select_chip_profile(None);
+        let default = automatic
+            .project()
+            .map(|project| {
+                project
+                    .chip_profile_path
+                    .map(|path| portable_path(&path))
+                    .unwrap_or_else(|| "(legacy profile; no separate chip file)".into())
+            })
+            .unwrap_or_else(|error| error);
+        let mut choices = vec![Choice::Resource {
+            field: CHIP_PROFILE,
+            value: None,
+            probe: None,
+            label: "Automatic / follow selected chip".into(),
+            description: format!(
+                "Default file: {default}\nRemove the custom chip path. The default follows Chip and the selected Tools profile."
+            ),
+        }];
+        if let Some(current) = document
+            .raw
+            .get("tools")
+            .and_then(|tools| tools.get("chip_profile"))
+            .and_then(toml::Value::as_str)
+            .filter(|value| !value.is_empty())
+        {
+            choices.push(Choice::Resource {
+                field: CHIP_PROFILE,
+                value: Some(current.into()),
+                probe: None,
+                label: format!("Current chip config: {current}"),
+                description: format!("File: {}\nThis custom selection is retained when switching chips. Choose Automatic to follow Chip.",
+                    portable_path(&absolute(document.base(), Path::new(current)))),
+            });
+        }
+        choices.push(Choice::BrowseResource {
+            field: CHIP_PROFILE,
+        });
+        Ok(Self {
+            title: "Chip config / automatic and custom files",
+            choices,
+            selected: 0,
+        })
+    }
+
     pub fn cpus() -> Result<Self, String> {
         Self::cpus_in(
             &crate::devices::catalogue_path()?
@@ -270,88 +310,11 @@ impl Picker {
             (name != "debug.toml", name)
         });
         Ok(Self {
-            title: "Projects / select a TOML",
+            title: "Project / select a configuration",
             choices: paths.into_iter().map(Choice::Project).collect(),
             selected: 0,
         })
     }
-
-    pub fn examples(directory: &Path) -> Self {
-        let mut choices = Vec::new();
-        for profile in [
-            "debug-env.toml",
-            ".vscode/debug-env.toml",
-            "tools/debug-env.toml",
-        ] {
-            if directory.join(profile).is_file() {
-                let mut raw = base_example();
-                raw.as_table_mut().unwrap().insert(
-                    "tools".into(),
-                    toml::Value::Table(toml::Table::from_iter([(
-                        "profile".into(),
-                        profile.into(),
-                    )])),
-                );
-                choices.push(Choice::Example {
-                    label: format!("Use project tools / {profile}"),
-                    description: format!("Inherit GDB, connection and server from {profile}. ELF: ./build/firmware.elf."),
-                    raw,
-                });
-            }
-        }
-        for (label, description, settings) in [
-            (
-                "Single-core project (default example)",
-                "ELF ./build/firmware.elf. Select an ARM / RISC-V / other tools profile for your board.",
-                "",
-            ),
-            (
-                "Local program project",
-                "Executable ./build/app (app.exe on Windows). Select a tools profile with target.mode='local'.",
-                "[program]\nelf='./build/app'\nsource_root='.'\n",
-            ),
-            (
-                "Two-core project",
-                "core0 :3333 / core1 :3334; shared ELF. Review [[cores]] in TOML and select a compatible tools profile.",
-                "[multicore]\nscope='all'\nhalt_peers=true\n[[cores]]\nname='core0'\nendpoint='127.0.0.1:3333'\n[[cores]]\nname='core1'\nendpoint='127.0.0.1:3334'\n",
-            ),
-        ] {
-            let mut raw = base_example();
-            let extra: toml::Value = toml::from_str(settings).expect("built-in launch example");
-            raw.as_table_mut()
-                .unwrap()
-                .extend(extra.as_table().unwrap().clone());
-            if label == "Local program project" {
-                raw["program"]["elf"] = if cfg!(windows) {
-                    "./build/app.exe"
-                } else {
-                    "./build/app"
-                }
-                .into();
-            }
-            choices.push(Choice::Example {
-                label: label.into(),
-                description: description.into(),
-                raw,
-            });
-        }
-        choices.push(Choice::Example {
-            label: "Universal ARM / bundled OpenOCD".into(),
-            description: "Minimal project using the installed tools. Choose Probe, Chip and Debug cores; no project tool copies.".into(),
-            raw: toml::from_str(crate::bundled_tools::PROJECT_TEMPLATE).expect("bundled project template"),
-        });
-        Self {
-            title: "Examples / choose a starting configuration",
-            choices,
-            selected: 0,
-        }
-    }
-}
-
-fn base_example() -> toml::Value {
-    toml::from_str(
-        "version=2\n[program]\nelf='./build/firmware.elf'\nsource_root='.'\n[session]\non_exit='detach'\nlog_dir='./debug_log'\n",
-    ).expect("built-in launch defaults")
 }
 
 fn is_project_file(path: &Path) -> bool {

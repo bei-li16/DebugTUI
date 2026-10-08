@@ -511,6 +511,12 @@ fn setup_render_imports_current_identity_and_clears_it_on_run_or_draft_target_ch
         if text(&terminal).contains("Register catalogue / preview") {
             break;
         }
+        // Every Setup field now has an F1 help modal. Close unrelated help
+        // before moving to the next field; otherwise Down scrolls that modal.
+        app.key(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            Some(&engine),
+        );
     }
     assert!(text(&terminal).contains("Register catalogue / preview"));
     for state in ["current", "run", "target-change"] {

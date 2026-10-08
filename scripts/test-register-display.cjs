@@ -19,12 +19,16 @@ let first, second, before;
     if (!await suite.test('REG-DISPLAY-LOCAL','Save both scopes from independently loaded clients without GDB',async()=>{
       before = await first.command('status'); assert.equal(before.state,'DISCONNECTED');
       await second.command('status');
-      const results = await Promise.all([
-        first.command('register_preferences',{scope:scope('core0'),preferences:core0}),
-        second.command('register_preferences',{scope:scope('core1'),preferences:core1}),
-      ]);
-      assert(results.every(r=>r.saved));
-      const text = fs.readFileSync(project,'utf8'); assert(text.includes('core0')&&text.includes('core1')); return {results};
+      let results;
+      for(let round=0;round<10;round++) {
+        results = await Promise.all([
+          first.command('register_preferences',{scope:scope('core0'),preferences:core0}),
+          second.command('register_preferences',{scope:scope('core1'),preferences:core1}),
+        ]);
+        assert(results.every(r=>r.saved));
+        const text = fs.readFileSync(project,'utf8'); assert(text.includes('core0')&&text.includes('core1'));
+      }
+      return {results,concurrent_save_rounds:10};
     })) return;
     if (!await suite.test('REG-DISPLAY-GLOBAL','A stale global settings save preserves both new register scopes',async()=>{
       await first.command('ui_preferences',{animations:'full',unicode:false,formats:{'watch:counter':'binary'}});

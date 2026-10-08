@@ -1,0 +1,48 @@
+# THA6104 / THA6206 / THA6412 board mapping from mcal-vsconfig.
+# MCAL-specific helper startup and vendor flash commands belong to the project.
+extends = "cortex-r52.toml"
+
+[gdb]
+init = [
+  "set architecture armv8-r",
+  "maintenance set dwarf unwind off",
+  "set mem inaccessible-by-default off",
+  # Reference Flash window: GDB must use hardware breakpoints here.
+  "mem 0x08000000 0x08600000 ro",
+  "set remotetimeout 10",
+  "set tcp connect-timeout 5"
+]
+
+[service]
+args = [
+  "-s", "${tools_dir}/bin/openocd/scripts",
+  "-s", "${tools_dir}/openocd",
+  "-f", "${probe_config}",
+  "-c", "set CHIPNAME ${chip}",
+  "-c", "set DEBUGCORE ${core_mask}",
+  "-c", "set AVAILABLECORE ${available_core_mask}",
+  # Examine helper CPUs too, but expose GDB ports only for selected cores.
+  "-c", "set EXAMINECORE ${available_core_mask}",
+  "-f", "${tools_dir}/openocd/tha6.cfg"
+]
+cwd = "${tools_dir}/openocd"
+
+[multicore]
+# The reset request is chip-wide. Issue it once through core0, never per core.
+# DebugTUI disables this hook when core0 is not selected (core1-only attach).
+restart_core = "core.0"
+restart = ["monitor chipreset", "maintenance flush register-cache"]
+
+[[memory_access]]
+id = "ahb"
+label = "THA AHB MEM-AP 3"
+target = "AHB_3"
+tcl_endpoint = "127.0.0.1:6666"
+while_running = true
+
+[[memory_access]]
+id = "apb"
+label = "THA debug APB MEM-AP 1"
+target = "APB_1"
+tcl_endpoint = "127.0.0.1:6666"
+while_running = true

@@ -1,0 +1,10 @@
+# Generic local-program example. Copy to your project, adjust the executable
+# (e.g. ./build/app.exe on Windows), and select a Tools profile whose
+# target.mode is "local". This file does not select or launch a toolchain.
+version = 2
+[program]
+elf = "./build/app.exe"
+source_root = "."
+[session]
+on_exit = "detach"
+log_dir = "./debug_log"

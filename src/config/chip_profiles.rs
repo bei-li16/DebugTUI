@@ -20,6 +20,7 @@ struct Probe {
 }
 
 pub(crate) struct Loaded {
+    pub path: PathBuf,
     pub value: toml::Value,
     pub register_layers: Vec<register_sources::Layer>,
     pub memory_access_source: Option<String>,
@@ -90,6 +91,7 @@ pub(crate) fn load(
         ));
     }
     Ok(Loaded {
+        path,
         value,
         register_layers: loader.register_layers,
         memory_access_source: loader.memory_access_source,

@@ -1,3 +1,4 @@
-# tha6412 board template. Available physical core IDs come from the device catalogue.
-extends = "families/cortex-r52.toml"
-# Put this chip's reviewed service/actions/SVD overrides here when available.
+# THA6412: four physical Cortex-R52 cores, including non-contiguous selections.
+extends = "families/tha6.toml"
+[program]
+svd = "../svd/THA6412.svd"
