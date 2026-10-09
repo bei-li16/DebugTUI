@@ -61,7 +61,7 @@ const HINTS: [&str; 20] = [
     "Shell command used by the workspace Build action; runs in Source root, not the tools directory.\nExamples: .\\build.bat or cmake --build build. Quote paths containing spaces.\nOptional: blank uses legacy [build] if present. Starting debugging does not run this command.",
     "Shell command used by Download; runs in Source root. Example: .\\flash.bat or .\\scripts\\flash.ps1.\nOptional: blank uses the profile's actions.download; without either, Download is unavailable.\nBuild/Download release debug connections and owned services before running the command.",
     "Project policy: [session].on_exit; applies to every configured core on session cleanup.\ndetach: detach GDB. resume: resume and release GDB (remote disconnect / local detach).\ndisconnect: release the connection without resuming. Final target state depends on the server/board.",
-    "Directory for GDB/MI and server diagnostic logs. Example: ./debug_log, relative to Project.\nBlank disables session file logging. Enable logs when reporting connection or multicore problems.\nLogs are written during a debug session; saving Setup only stores this path.",
+    "Left / Right: switch between disabled and debug-logs. Enter: edit a custom path; clear it to disable.\nF2: browse folders; Space selects the current folder. Relative paths are resolved against Project.\nNot set disables session file logging. Saving Setup only stores this choice; Console remains available.",
     "Optional CMSIS-SVD XML file describing peripheral registers and fields.\nEnter: edit. F2: choose a bundled SVD, external file, Automatic or Disabled.\nBundled files use builtin:svd/<file>; blank restores the chip default.",
     "Enter / Left / Right: enable or disable source path remapping for all cores.\nEnabling opens an offline ELF directory scan using the selected GDB; no board connection.\nNo disables ELF path prefix selection and editing; saved mapping rules are retained.",
     "Enter: choose an ELF directory to map to Source root. Available when Source remap is Yes.\nThe suffix below that directory is preserved. Preview shows covered files and local matches.\nSaved selection follows Source root changes. Manual [[source_map]] rules for other prefixes still apply first.",
@@ -586,9 +586,10 @@ struct Browser {
     entries: Vec<PathBuf>,
     selected: usize,
     toml_only: bool,
+    directories_only: bool,
 }
 impl Browser {
-    fn open(path: &Path, toml_only: bool) -> Result<Self, String> {
+    fn open(path: &Path, toml_only: bool, directories_only: bool) -> Result<Self, String> {
         let directory = if path.is_dir() {
             path
         } else {
@@ -599,6 +600,7 @@ impl Browser {
             entries: vec![],
             selected: 0,
             toml_only,
+            directories_only,
         };
         b.reload()?;
         Ok(b)
@@ -609,11 +611,12 @@ impl Browser {
             .filter_map(Result::ok)
             .map(|e| e.path())
             .filter(|path| {
-                !self.toml_only
-                    || path.is_dir()
-                    || path
-                        .extension()
-                        .is_some_and(|e| e.eq_ignore_ascii_case("toml"))
+                path.is_dir()
+                    || (!self.directories_only
+                        && (!self.toml_only
+                            || path
+                                .extension()
+                                .is_some_and(|e| e.eq_ignore_ascii_case("toml"))))
             })
             .collect::<Vec<_>>();
         entries.sort_by_key(|p| {
@@ -961,15 +964,14 @@ impl Setup {
             ON_EXIT => doc.set("session", "on_exit", value.into()),
             LOG_DIR => {
                 if value.is_empty() {
-                    if let Some(t) = doc
-                        .raw
-                        .get_mut("session")
-                        .and_then(toml::Value::as_table_mut)
-                    {
-                        t.remove("log_dir");
-                    }
+                    // Preserve an explicit off choice even if the tools profile
+                    // enables logging. An absent key would inherit that path.
+                    doc.set("session", "log_dir", "".into());
                 } else {
                     let path = absolute(doc.base(), Path::new(value));
+                    if path.exists() && !path.is_dir() {
+                        return Err("Log directory must be a folder, not a file.".into());
+                    }
                     doc.set_path("session", "log_dir", &path);
                 }
             }
@@ -1030,6 +1032,21 @@ impl Setup {
         self.focus(selected);
     }
     fn cycle(&mut self, backwards: bool) -> Result<(), String> {
+        if self.selected == LOG_DIR {
+            let value = if self.values()[LOG_DIR].is_empty() {
+                "debug-logs"
+            } else {
+                ""
+            };
+            self.set_value(value)?;
+            self.message = if value.is_empty() {
+                "File logging disabled. Ctrl+S saves; Start applies."
+            } else {
+                "File logs will use debug-logs. Enter: custom path; F2: choose folder; Ctrl+S: save."
+            }
+            .into();
+            return Ok(());
+        }
         if self.selected == SOURCE_REMAP {
             let enabled = !self.document.project()?.source_mapping_enabled();
             self.document.set("source_remap", "enabled", enabled.into());
@@ -1200,13 +1217,15 @@ impl Setup {
                 }
                 KeyCode::Backspace => {
                     if let Some(parent) = browser.directory.parent() {
-                        *browser = Browser::open(parent, browser.toml_only)?;
+                        *browser =
+                            Browser::open(parent, browser.toml_only, browser.directories_only)?;
                     }
                 }
                 KeyCode::Enter => {
                     if let Some(path) = browser.entries.get(browser.selected).cloned() {
                         if path.is_dir() {
-                            *browser = Browser::open(&path, browser.toml_only)?;
+                            *browser =
+                                Browser::open(&path, browser.toml_only, browser.directories_only)?;
                         } else {
                             self.choose_path(&path)?;
                         }
@@ -1223,6 +1242,10 @@ impl Setup {
         if let Some(editor) = &mut self.editor {
             match key.code {
                 KeyCode::Esc => self.editor = None,
+                KeyCode::F(2) if self.selected == LOG_DIR => {
+                    self.commit_editor()?;
+                    self.open_browser()?;
+                }
                 KeyCode::Enter => {
                     let value = editor.text.clone();
                     self.set_value(&value)?;
@@ -1336,6 +1359,7 @@ impl Setup {
                 self.document.base()
             },
             matches!(self.selected, 0 | 1 | CHIP_PROFILE | CATALOGUE),
+            self.selected == LOG_DIR,
         )?);
         Ok(())
     }
@@ -1981,7 +2005,15 @@ impl Setup {
                 })
                 .collect::<Vec<_>>();
             let block = theme::card(
-                format!("  Files / {}  ", portable_path(&browser.directory)),
+                format!(
+                    "  {} / {}  ",
+                    if browser.directories_only {
+                        "Folders"
+                    } else {
+                        "Files"
+                    },
+                    portable_path(&browser.directory)
+                ),
                 true,
             );
             let inner = block.inner(rows[2]);
@@ -1998,7 +2030,12 @@ impl Setup {
                         )
                     }),
             );
-            f.render_widget(Paragraph::new(" Enter: open directory / select file   Space: select current directory\n Backspace: parent   Esc: cancel").wrap(Wrap { trim: false }), rows[3]);
+            let hint = if browser.directories_only {
+                " Enter: open folder   Space: select current folder\n Backspace: parent   Esc: cancel"
+            } else {
+                " Enter: open directory / select file   Space: select current directory\n Backspace: parent   Esc: cancel"
+            };
+            f.render_widget(Paragraph::new(hint).wrap(Wrap { trim: false }), rows[3]);
         } else {
             let block = theme::card(
                 if self.document.path.is_file() {
@@ -2056,7 +2093,7 @@ impl Setup {
                             ELF => "(select ELF for source debugging)",
                             BUILD => "(optional; no build command)",
                             DOWNLOAD => "(optional; uses profile download)",
-                            LOG_DIR => "(optional; logging disabled)",
+                            LOG_DIR => "(not set)",
                             SVD => "(optional; no peripheral descriptions)",
                             _ => "(not set)",
                         }
@@ -2237,6 +2274,149 @@ mod tests {
     }
     pub(super) fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn new_project_logging_starts_disabled_and_toggle_edit_save_round_trip() {
+        let fixture = Fixture::new();
+        let document = Document::startup(&fixture.0, true).unwrap();
+        assert!(document.raw["session"].get("log_dir").is_none());
+        let mut setup = Setup::new(document);
+        setup.selected = LOG_DIR;
+        assert!(setup.values()[LOG_DIR].is_empty());
+        let mut terminal = Terminal::new(TestBackend::new(120, 36)).unwrap();
+        terminal.draw(|f| setup.draw(f)).unwrap();
+        let screen: String = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect();
+        assert!(screen.contains("Log directory      (not set)"));
+
+        setup.key(key(KeyCode::Right));
+        assert_eq!(setup.values()[LOG_DIR], "debug-logs");
+        assert!(!fixture.0.join("debug-logs").exists());
+        setup.save_document().unwrap();
+        let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+        setup.selected = LOG_DIR;
+        assert_eq!(setup.values()[LOG_DIR], "debug-logs");
+        setup.key(key(KeyCode::Left));
+        assert!(setup.values()[LOG_DIR].is_empty());
+        setup.key(key(KeyCode::Enter));
+        assert!(setup.editor.as_ref().unwrap().text.is_empty());
+        setup.paste("日志 folder/nested");
+        setup.key(key(KeyCode::Enter));
+        assert_eq!(setup.values()[LOG_DIR], "日志 folder/nested");
+        setup.save_document().unwrap();
+        let saved = Document::open(&fixture.0).unwrap();
+        assert_eq!(
+            saved.raw["session"]["log_dir"].as_str(),
+            Some("日志 folder/nested")
+        );
+        assert!(!fixture.0.join("日志 folder").exists());
+        setup.key(key(KeyCode::Enter));
+        setup.key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        setup.key(key(KeyCode::Enter));
+        setup.save_document().unwrap();
+        let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+        setup.selected = LOG_DIR;
+        assert!(setup.values()[LOG_DIR].is_empty());
+        assert_eq!(setup.document.raw["session"]["log_dir"].as_str(), Some(""));
+        // Re-enabling always offers the standard folder, even after a custom path.
+        setup.key(key(KeyCode::Left));
+        assert_eq!(setup.values()[LOG_DIR], "debug-logs");
+    }
+
+    #[test]
+    fn disabling_logging_overrides_inherited_paths_and_preserves_existing_projects() {
+        let fixture = Fixture::new();
+        let profile = fixture.0.join("tools/debug-env.toml");
+        let profile_text = "[session]\nlog_dir='profile-logs'\ntimeout_ms=12345\n";
+        fs::write(&profile, profile_text).unwrap();
+        let path = fixture.0.join("debug.toml");
+        let project_text = "version=2\nwatch=['counter']\n[tools]\nprofile='tools/debug-env.toml'\n[session]\non_exit='resume'\nlog_dir='existing-logs'\n";
+        fs::write(&path, project_text).unwrap();
+        let mut setup = Setup::new(Document::open(&path).unwrap());
+        setup.selected = LOG_DIR;
+        assert_eq!(setup.values()[LOG_DIR], "existing-logs");
+        assert_eq!(fs::read_to_string(&path).unwrap(), project_text);
+        setup.key(key(KeyCode::Right));
+        assert!(setup.document.project().unwrap().session.log_dir.is_none());
+        setup.save_document().unwrap();
+        let saved = Document::open(&path).unwrap();
+        let project = saved.project().unwrap();
+        assert!(project.session.log_dir.is_none());
+        assert_eq!(project.session.timeout_ms, 12345);
+        assert_eq!(project.session.on_exit, "resume");
+        assert_eq!(project.watch, vec!["counter"]);
+        assert_eq!(fs::read_to_string(&profile).unwrap(), profile_text);
+        // Missing still inherits a configured profile; only explicit empty disables it.
+        let mut inherited = saved;
+        inherited.raw["session"]
+            .as_table_mut()
+            .unwrap()
+            .remove("log_dir");
+        let mut setup = Setup::new(inherited);
+        setup.selected = LOG_DIR;
+        assert_eq!(setup.values()[LOG_DIR], "profile-logs");
+        setup.set_value("").unwrap();
+        assert!(setup.document.project().unwrap().session.log_dir.is_none());
+    }
+
+    #[test]
+    fn log_folder_browser_filters_files_cancels_and_selects_relative_unicode_directories() {
+        let fixture = Fixture::new();
+        let folder = fixture.0.join("日志 folder");
+        fs::create_dir_all(folder.join("nested")).unwrap();
+        let folder = fs::canonicalize(folder).unwrap();
+        fs::write(folder.join("not-a-directory.txt"), "fixture").unwrap();
+        fs::write(fixture.0.join("file.toml"), "version=2").unwrap();
+        fs::write(fixture.0.join("debug.toml"), "version=2").unwrap();
+        let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+        setup.selected = LOG_DIR;
+        setup.key(key(KeyCode::F(2)));
+        let browser = setup.browser.as_ref().unwrap();
+        assert!(browser.directories_only);
+        assert!(browser.entries.iter().all(|p| p.is_dir()));
+        setup.key(key(KeyCode::Esc));
+        assert!(setup.values()[LOG_DIR].is_empty());
+        assert!(setup.set_value("file.toml").unwrap_err().contains("folder"));
+        assert!(setup.values()[LOG_DIR].is_empty());
+        setup.key(key(KeyCode::F(2)));
+        let browser = setup.browser.as_mut().unwrap();
+        browser.selected = browser.entries.iter().position(|p| p == &folder).unwrap();
+        setup.key(key(KeyCode::Enter));
+        assert_eq!(setup.browser.as_ref().unwrap().directory, folder);
+        assert!(setup.browser.as_ref().unwrap().directories_only);
+        assert!(
+            setup
+                .browser
+                .as_ref()
+                .unwrap()
+                .entries
+                .iter()
+                .all(|p| p.is_dir())
+        );
+        setup.key(key(KeyCode::Backspace));
+        assert!(setup.browser.as_ref().unwrap().directories_only);
+        setup.key(key(KeyCode::Esc));
+        setup.key(key(KeyCode::Enter));
+        setup.paste("日志 folder/nested");
+        setup.key(key(KeyCode::F(2)));
+        assert!(setup.editor.is_none());
+        assert_eq!(
+            setup.browser.as_ref().unwrap().directory,
+            folder.join("nested")
+        );
+        setup.key(key(KeyCode::Backspace));
+        setup.key(key(KeyCode::Char(' ')));
+        assert!(setup.browser.is_none());
+        assert_eq!(setup.values()[LOG_DIR], "日志 folder");
+        setup.save_document().unwrap();
+        let saved = Document::open(&fixture.0).unwrap();
+        assert_eq!(saved.project().unwrap().session.log_dir, Some(folder));
     }
 
     #[test]

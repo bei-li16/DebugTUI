@@ -482,7 +482,15 @@ pub struct Program {
 pub struct Session {
     pub on_exit: String,
     pub timeout_ms: u64,
+    #[serde(deserialize_with = "deserialize_log_dir")]
     pub log_dir: Option<PathBuf>,
+}
+fn deserialize_log_dir<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<PathBuf>, D::Error> {
+    // An explicit empty path overrides a profile's log directory without
+    // turning into the project directory when relative paths are resolved.
+    Ok(Option::<PathBuf>::deserialize(deserializer)?.filter(|p| !p.as_os_str().is_empty()))
 }
 impl Default for Session {
     fn default() -> Self {

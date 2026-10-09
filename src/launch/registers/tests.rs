@@ -393,7 +393,7 @@ fn setup_cpu_catalogue_choices_preview_save_cancel_and_multicore_are_isolated() 
     setup.key(key(KeyCode::F(2)));
     assert_eq!(setup.selected, CATALOGUE);
     assert!(setup.browser.as_ref().unwrap().toml_only);
-    setup.browser = Some(Browser::open(&fixture.0, true).unwrap());
+    setup.browser = Some(Browser::open(&fixture.0, true, false).unwrap());
     let browser = setup.browser.as_mut().unwrap();
     browser.selected = browser
         .entries

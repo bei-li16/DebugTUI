@@ -8,6 +8,8 @@ THA6206/MCAL 实板：`node scripts/test-tha-bundled-hardware.cjs --run --binary
 
 内置文件选择与旧 Probe 回归：`./scripts/test-resource-picker.ps1 -Binary <EXE>` 在真实 Windows ConPTY 中复现旧 `.vscode` 工程，检查 Probe 的兼容 profile 选择、取消、包内文件路径、F2 浏览、SVD 选择及保存保留，七项流程均不启动 GDB/OpenOCD。对应断言和延后硬件用例见 [芯片配置用例](cases/chip-profiles.md)。
 
+Setup 日志目录：`./scripts/test-setup-log-directory.ps1 -Binary <EXE>` 在隔离空目录启动真实 ConPTY，检查默认 `(not set)`、方向键开关、Enter 输入/清空/取消、F2 文件夹选择、相对路径保存和重启；不连接板卡。`node scripts/test-logs-gdb.cjs <EXE>` 使用本地主机 GCC/GDB 验证启用后的日志轮换，以及未设置、空路径、空路径覆盖 profile 三种关闭状态均不写会话日志、Console 仍输出。
+
 本版只读系统寄存器的 [用例与入口清单](cases/registers-readonly-release.md) 关联 M3/M4/M7、多核、R52 core/MPU/selector 和生命周期的软件证据与延后硬件步骤。`node scripts/test-register-readonly-readiness.cjs --binary <EXE绝对路径>` 离线检查两份配置模板及八个驱动的默认 SKIPPED/零连接边界；不传 `--run`、不执行上板。当前完成数以 [冻结账本](../docs/registers-readonly-goal.md) 为准，下列旧批次数量保留为历史记录。
 
 绑定与面板来源：新增七项单元、两项 MI 集成，覆盖四核策略优先级、selection_epoch、Continue revision、芯片外设路线、旧来源/时间、错误 receipt 和 64 位精确 raw；原四核集成增加实际绑定读取及跨 worker 句柄拒绝。`node scripts/test-bus-provenance-fixture.cjs target/debug/debugtui.exe` 可重跑四核实际二进制＋MI/Tcl 模型的五阶段；`node scripts/test-bus-provenance-hardware.cjs` 默认只生成三项 skipped，不连接。原生 Memory 的 20 次运行采样携带停止绑定；[软件范围](../docs/bus-read-provenance.md)、[case/模板与执行命令](cases/bus-provenance.md) 不代替完整 BUS-T/H 或上板验收。

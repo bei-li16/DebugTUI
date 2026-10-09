@@ -16,4 +16,4 @@ source_root = "."
 
 [session]
 on_exit = "detach"
-log_dir = "debug-logs"
+# File logging is disabled by default. Set log_dir = "debug-logs" to enable it.

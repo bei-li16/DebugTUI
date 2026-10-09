@@ -1,6 +1,6 @@
 # DebugTUI 使用指南
 
-本文按 **v1.1.1** 更新，核对日期为 **2026-10-08**。快速开始见 [README](README.md)，新增能力、旧配置迁移与支持边界见 [1.1.1 发布说明](docs/release-1.1.1.md)。后文保留特定工程示例及可选后端说明，只有具备相应配置和后端证明的对象才启用读取/编辑；软件验证不表示全部硬件已经验证。
+本文按 **v1.1.2** 更新，核对日期为 **2026-10-09**。快速开始见 [README](README.md)，新增能力、旧配置迁移与支持边界见 [1.1.2 发布说明](docs/release-1.1.2.md)。后文保留特定工程示例及可选后端说明，只有具备相应配置和后端证明的对象才启用读取/编辑；软件验证不表示全部硬件已经验证。
 
 **阅读入口：** [安装](#安装与升级) · [首次配置](#首次配置与启动) · [配置分层](#项目与工具配置) · [芯片与核心](#芯片与核心选择) · [常用操作](#常用调试操作) · [源码映射](#源码路径重映射) · [运行时刷新](#运行时刷新) · [多核](#多核工作区) · [构建下载](#构建与下载) · [排查问题](#常见问题)
 
@@ -19,11 +19,11 @@ npm.cmd install -g --prefer-online "https://github.com/bei-li16/DebugTUI/release
 debugtui --version
 ```
 
-该 URL 跟随 GitHub 最新正式 Release；退出正在运行的 DebugTUI 后重新运行同一命令升级。离线安装可以下载版本化 tgz 后执行 `npm.cmd install -g ./debugtui-cli-1.1.1.tgz`。卸载使用 `npm.cmd uninstall -g @debugtui/cli`；用户芯片目录和工程配置保留。
+该 URL 跟随 GitHub 最新正式 Release；退出正在运行的 DebugTUI 后重新运行同一命令升级。离线安装可以下载版本化 tgz 后执行 `npm.cmd install -g ./debugtui-cli-1.1.2.tgz`。卸载使用 `npm.cmd uninstall -g @debugtui/cli`；用户芯片目录和工程配置保留。
 
 ### 便携分发与工具边界
 
-[v1.1.1 Release](https://github.com/bei-li16/DebugTUI/releases/tag/v1.1.1) 提供 `debugtui-1.1.1-win-x64.zip`、独立 EXE、npm tgz 和 `SHA256SUMS.txt`。解压完整 ZIP 后运行 `debugtui.exe`；ZIP/npm 包含 ARM GDB、OpenOCD、STM32F429 和 THA6 SVD、芯片/探针配置与 Markdown 使用说明。独立 EXE 不含这些资源，优先使用完整 ZIP 或 npm 包。固件编译器、探针驱动、SEGGER J-Link GDB Server 及额外板级资源按工程另行准备。仓库中的历史 PDF 手册保留原版本，1.1.1 使用说明以本文及发布说明为准。
+[v1.1.2 Release](https://github.com/bei-li16/DebugTUI/releases/tag/v1.1.2) 提供 `debugtui-1.1.2-win-x64.zip`、独立 EXE、npm tgz 和 `SHA256SUMS.txt`。解压完整 ZIP 后运行 `debugtui.exe`；ZIP/npm 包含 ARM GDB、OpenOCD、STM32F429 和 THA6 SVD、芯片/探针配置与 Markdown 使用说明。独立 EXE 不含这些资源，优先使用完整 ZIP 或 npm 包。固件编译器、探针驱动、SEGGER J-Link GDB Server 及额外板级资源按工程另行准备。仓库中的历史 PDF 手册保留原版本，1.1.2 使用说明以本文及发布说明为准。
 
 `debugtui --demo` 可离线预览界面；`debugtui --snapshot ./preview.txt` 输出演示文本，不连接板卡。安装后命令找不到或版本不符时，用 `Get-Command debugtui -All` 检查 PATH 中是否存在多份程序，重新打开终端后再核对 `--version`。
 
@@ -31,7 +31,7 @@ debugtui --version
 
 ### 自动生成的通用配置
 
-在没有调试工程 TOML 的目录启动时，程序按 [tools/debug.toml](tools/debug.toml) 创建 `debug.toml`：`version = 3`，Tools / profile 为 `builtin:arm-openocd`，Probe 为 `cmsis-dap`，Chip 和 ELF 为空、Debug cores 为 `[]`，Source root 为 `.`，On exit 为 `detach`，Log directory 为 `debug-logs`。首次启动不预选 STM32 或 R52，需要在 Setup 选择 Chip、Debug cores 和 ELF 后开始。
+在没有调试工程 TOML 的目录启动时，程序按 [tools/debug.toml](tools/debug.toml) 创建 `debug.toml`：`version = 3`，Tools / profile 为 `builtin:arm-openocd`，Probe 为 `cmsis-dap`，Chip 和 ELF 为空、Debug cores 为 `[]`，Source root 为 `.`，On exit 为 `detach`，Log directory 为 `(not set)`，默认不输出日志文件。首次启动不预选 STM32 或 R52，需要在 Setup 选择 Chip、Debug cores 和 ELF 后开始。
 
 其余字段不写入模板：Chip config、SVD、CPU registers、Register catalogue 和 Memory channels 随芯片配置解析；Build command、Download command 没有工程覆盖；Source remap 默认关闭，ELF path prefix 为空。内置资源按安装位置解析，工程文件无需记录 npm 的绝对路径。
 
@@ -305,7 +305,7 @@ args = ["-s", "${tools_dir}/bin/openocd/scripts",
         "-f", "${profile_dir}/board.cfg"]
 ```
 
-1.1.1 中的 THA6104/6206/6412 已接入 `tools/openocd/tha6.cfg` 与各自 SVD；其他 R52 板卡仍须补全板级模板。数组整体覆盖；自定义 `service.args` 应保留所需 probe、核掩码和固定物理核端口约定。SVD 未在工程中指定时跟随芯片，界面显示 `Chip default`；清空 SVD 编辑框恢复继承，TOML 中显式 `svd = ""` 仍可禁用。
+1.1.2 中的 THA6104/6206/6412 已接入 `tools/openocd/tha6.cfg` 与各自 SVD；其他 R52 板卡仍须补全板级模板。数组整体覆盖；自定义 `service.args` 应保留所需 probe、核掩码和固定物理核端口约定。SVD 未在工程中指定时跟随芯片，界面显示 `Chip default`；清空 SVD 编辑框恢复继承，TOML 中显式 `svd = ""` 仍可禁用。
 
 ## 芯片与核心选择
 
@@ -570,7 +570,7 @@ Memory 可选择地址范围、字节数及实际通道；运行中默认保留�
 
 ### Memory channels 与逐项访问入口
 
-以下入口包含在 v1.1.1 中。可用通道和运行时权限取决于工程/芯片声明，不会由界面选择自动推断 AP 或总线能力。
+以下入口包含在 v1.1.2 中。可用通道和运行时权限取决于工程/芯片声明，不会由界面选择自动推断 AP 或总线能力。
 
 - Setup 的 **Memory channels** 可以编辑通道 ID、名称、TCL endpoint、target、运行时访问声明和核心限制。保存写入当前项目覆盖，取消丢弃草稿；继承的工具 profile 不被改写。
 - Watch、Peripherals 的 **Memory access** 按钮打开逐项通道与刷新设置，展示所选通道的 target、endpoint 配置及来源。Watch 在暂停时解析可取地址成员；重连、换停止点或栈帧后重新解析。
@@ -700,6 +700,7 @@ Build 和 Download 是分别触发的任务，不会自动串成流水线，也�
 - 默认跟随最新输出，向上翻阅后保持当前位置；新消息显示在 **Latest (+N)** 计数中。点击 **Latest** 或在输出区按 **End** 恢复跟随。Enter 返回输入框，`/` 开始输入命令。
 - Console 保留最近 2,000 行；Log 页保留最近 1,000 行，均为有界内存缓存。更早的记录从磁盘日志查看。
 - 在启动页 **Log directory**、项目 `[session] log_dir` 或 `--log-dir` 设置日志目录后，每次连接（包括重连）新建 `session-YYYYMMDD-HHMMSS-mmm.log`，如 `session-20260917-171530-042.log`。同毫秒发生重名时追加序号，使用排他创建，旧文件不会覆盖；目录配置不变。默认不落盘，每次连接最多 8 MiB，达到上限时记录提示。
+- Setup 选中 **Log directory** 后，`←/→` 在关闭与 `debug-logs` 之间切换；Enter 编辑自定义路径，清空后关闭文件日志；F2 只浏览文件夹，Enter 进入文件夹、Space 选择当前文件夹。相对路径以工程 TOML 所在目录为基准，目录在开始调试连接时创建。Ctrl+S 保存，Start 应用。关闭时保存 `log_dir = ""`，可覆盖 profile 中的日志设置；已有工程明确设置的日志目录保持不变，Console 中的日志显示不受影响。
 - 文件中每个物理行包含记录时间和会话已运行时长，例如 `[2026-09-17 17:15:31.276] [+1.234s] [gdb] Breakpoint 1, main ...`。Windows 使用本机时间（毫秒），其他平台标记 UTC `Z`；运行时长使用单调时钟，不受系统校时影响。Console / Log 页显示简短时间 `HH:mm:ss.mmm`。
 - headless `log` 事件包含 `timestamp`、`elapsed_ms`、`channel` 和 `text` 字段，结构化进度数据可直接解析。
 
@@ -791,7 +792,7 @@ System Regs 的 Total／Shown／Valid 分别计目录定义、展开筛选后的
 
 Setup 的寄存器详情和 Status 还显示当前核各项配置的最终值、实际声明文件/section 和被覆盖的旧声明；headless 对应 `registers_list.configuration`。环境/项目 map 递归合并，每核显式 map 整表替换，清空及被移除的 key 可查。配置来源、目录实际 CPU 和目标观测分别呈现；配置声明不证明访问权限。Setup 显示未保存草稿，运行时值若已变更且没有可追溯声明则标来源不可用。详见 [每核配置与来源](docs/register-config-sources.md)。
 
-开发分支的R52专用VFP后端要求源码锁中的v2读写协议。详情分别显示外部EDSCR证明的当前Debug EL和停止前DSPSR/DLR；停止前Hyp不能单独授权读取。当前EL2且权限/使能有效时才读取FP控制和数据，S/D/Q保留同次完整pair及MVFR/FPEXC来源；EL1/Guest/User合法读取仍待适配，不自动使能FPU或切换模式。失败旧值保留原证明和时间，旧协议不回退。范围见[VFP证明](docs/register-vfp-proof.md)；1.1.1 包含该可选协议的软件实现，尚未完成 R52 实板验收。
+开发分支的R52专用VFP后端要求源码锁中的v2读写协议。详情分别显示外部EDSCR证明的当前Debug EL和停止前DSPSR/DLR；停止前Hyp不能单独授权读取。当前EL2且权限/使能有效时才读取FP控制和数据，S/D/Q保留同次完整pair及MVFR/FPEXC来源；EL1/Guest/User合法读取仍待适配，不自动使能FPU或切换模式。失败旧值保留原证明和时间，旧协议不回退。范围见[VFP证明](docs/register-vfp-proof.md)；1.1.2 包含该可选协议的软件实现，尚未完成 R52 实板验收。
 
 Status 的条件详情分别保存当前判定、最新尝试和保留原值当时的依据，显示 min/max、配置声明与当前观察、目录来源、物理核和停止代次。成功读取不会丢失条件；失败后不会把新依据当成旧值依据，旧生产者没有记录时显示 Unknown。别名继承父链的条件及 WO；Unknown 可选项不自动读取，WO 即使手动也不发送读取。PMCR.N 在 Guest/SVC 下可能受 HPMN 限制，不能据此认定物理计数器不存在。当前 R52 物理数量只接受 Hyp N=4，物理 ICC 优先级只接受五位，其他原始值保留但适配容量未知。查看详情不触发读取；规则及限制见 [条件依据自检](docs/register-eligibility.md)。
 
@@ -821,7 +822,7 @@ Status 还分别显示 Catalogue CPU／架构、Configured CPU choice 和有当�
 
 宽窗口固定显示 Name、Value、Size、Access 四列；长名称或过长值以省略号提示。窄窗口保留名称和值，选中说明显示位宽及访问属性。选中字段时使用字段自身的位宽与访问覆盖；按 `t` 可滚动查看父描述、字段说明、全部枚举、bit segments、访问条件、读取原因和完整原始值，包括被主行省略的 128 位高低位。
 
-Cancel read、`:register-cancel` 或非搜索模式的 Esc 取消当前寄存器读取／Probe。MPU 总览关闭或切 bank 也取消未完成读取。当前事务完整恢复后停止后续项、丢弃新结果；会话和其他核心继续可用，需手工重读。恢复结果未知仍进入 FAULT。详见 [计数、取消及限制](docs/register-read-status-and-cancel.md)。1.1.1 包含上述软件入口，硬件行为需按对应 case 验证。
+Cancel read、`:register-cancel` 或非搜索模式的 Esc 取消当前寄存器读取／Probe。MPU 总览关闭或切 bank 也取消未完成读取。当前事务完整恢复后停止后续项、丢弃新结果；会话和其他核心继续可用，需手工重读。恢复结果未知仍进入 FAULT。详见 [计数、取消及限制](docs/register-read-status-and-cancel.md)。1.1.2 包含上述软件入口，硬件行为需按对应 case 验证。
 
 ### 寄存器显示格式与视图偏好（开发分支）
 
@@ -961,7 +962,7 @@ M7＋M4 的相同 PPB 地址分别通过每核自己的 channel/target 访问。
 
 ### 编辑 Core 寄存器（开发分支）
 
-开发分支新增的 Core 寄存器编辑1.1.1 包含上述软件入口，硬件行为需按对应 case 验证。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。
+开发分支新增的 Core 寄存器编辑1.1.2 包含上述软件入口，硬件行为需按对应 case 验证。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。
 
 修改输入必须重新预览；切核、帧、运行、重连或换 ELF 后旧草稿不可应用。Core writer 的 Scope All 仍只写当前核心；共享区域只执行一次所属 owner 的写入。`verified` 表示按有效掩码回读一致，`accepted` 表示后端已受理但没有完成安全验证，`mismatch` 表示回读不符，`unknown` 表示可能已写入而无法确定结果；不自动重试、回滚或重放。发送后关闭编辑窗口不会撤回操作。PC/SP 改动会使源码、栈、Locals、反汇编等视图失效并重新读取；这不是通用的目标恢复操作。
 
@@ -1005,7 +1006,7 @@ node ./scripts/test-functional.cjs --binary ./target/debug/debugtui.exe --gdb C:
 
 PMU 查看：配置 registers.pmu_command="aarch64 pmu" 可显式选择当前开发后端的独立只读协议。该适配覆盖 R52 四项 32 位事件与完整 64 位周期及相关状态/控制视图；观察不会启动或清空计数。当前 Debug EL2 与停止前 CPSR 分开证明，低 EL 无法证明 Hyp 陷阱时显示 Unknown。计数数量 Probe 需要新鲜原生证据；同名 GDB PMCR 不替代该证明。直接 PMEVCNTRn/PMEVTYPERn 保持 PMSELR，SEL=31 的 PMXEVCNTR 不可用。后端、配置、字段、未上板限制见 [PMU 说明](docs/register-pmu.md)。
 
-GIC 查看：开发版本显式配置 `registers.gic_command="aarch64 gic"` 后使用独立观测协议。物理 ICC、Hyp ICH 与虚拟 ICV AP backing 别名分别展示；R52 只实现每组 AP0R0/AP1R0，Probe 以当前 Debug EL2 证据分别确认物理/虚拟五位容量并过滤其他 AP 定义。停止前 Hyp 或同名 GDB CTLR/VTR 只提供原始字段，不能授权物理容量。IAR 有 acknowledge 副作用，观测后端即使手工也拒绝；EOIR/DIR/SGI 为 Write only，不安排读取。低 EL 保持 Unknown，不关闭陷阱或使能接口。LR/LRC 各为 32 位独立样本，详情保留接口、target、owner 与时间区间。配置和边界见 [GIC 说明](docs/register-gic.md)；1.1.1 包含该可选观测协议，完整 GIC 与实板行为仍需专项适配和验证。
+GIC 查看：开发版本显式配置 `registers.gic_command="aarch64 gic"` 后使用独立观测协议。物理 ICC、Hyp ICH 与虚拟 ICV AP backing 别名分别展示；R52 只实现每组 AP0R0/AP1R0，Probe 以当前 Debug EL2 证据分别确认物理/虚拟五位容量并过滤其他 AP 定义。停止前 Hyp 或同名 GDB CTLR/VTR 只提供原始字段，不能授权物理容量。IAR 有 acknowledge 副作用，观测后端即使手工也拒绝；EOIR/DIR/SGI 为 Write only，不安排读取。低 EL 保持 Unknown，不关闭陷阱或使能接口。LR/LRC 各为 32 位独立样本，详情保留接口、target、owner 与时间区间。配置和边界见 [GIC 说明](docs/register-gic.md)；1.1.2 包含该可选观测协议，完整 GIC 与实板行为仍需专项适配和验证。
 
 ### R52 MMIO 的逐 owner 路线（可选后端）
 

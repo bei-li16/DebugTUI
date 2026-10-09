@@ -1,5 +1,20 @@
 # DebugTUI 验证记录
 
+## 1.1.2 正式发布验证（2026-10-09）
+
+Cargo、lockfile 和 npm 统一为 **1.1.2**。本版新增默认关闭文件日志、Setup 日志开关/路径编辑/F2 文件夹选择，并修复空路径重新继承 profile 日志目录的问题。更新与操作见 [发布说明](docs/release-1.1.2.md)。
+
+- 受影响 Rust 模块 **86/86**：Setup **52**、配置 **32**、日志 **2**，分别记录于 `artifacts/release-1.1.2-launch.log`、`release-1.1.2-config.log`、`release-1.1.2-logging.log`。本次按变更范围回归，未重复统计 1.1.1 的全量集成结果。
+- 严格 Clippy `--all-targets -- -D warnings`、格式检查和 Release 构建通过：`artifacts/release-1.1.2-clippy.log`、`release-1.1.2-build.log`。
+- 最终 Release EXE 的 Windows ConPTY 日志配置流程 **5/5**，覆盖空目录首次启动、开关、编辑/清空/取消、F2 选文件夹、保存及重启；CLI **12/12**。日志：`artifacts/release-1.1.2-terminal.log`、`release-1.1.2-cli.log`。
+- 主机真实 GCC/GDB 执行 **14** 条调试命令，验证三次会话日志轮换、逐行时间戳、旧日志不覆盖。另验证未设置、显式空路径、空路径覆盖 profile 三种关闭状态，连接与重连均不创建日志文件，Console 继续输出：`artifacts/release-1.1.2-gdb-logs.log`。
+- 完整便携包的内置工具与配置 **15/15**，含真实 GDB/OpenOCD 离线资源加载、自动建工程、探针选择及 THA 物理核/端口：`artifacts/release-1.1.2-bundled-tools.log`。首轮误传不带工具目录的 Cargo EXE，被脚本拒绝；完整包复验通过，首轮记录保留为 `release-1.1.2-bundled-tools-initial.log`。
+- 从公开 **v1.1.1** 包升级的生产 npm/EXE/ZIP 验证 **14/14**，覆盖初始化钩子、CMD/PowerShell 入口、重复安装、卸载/重装、客户目录保留、错误覆盖与失败钩子：`artifacts/release-1.1.2-distribution.log`。旧包 SHA256 为 `8994065c69f9e9de6c42f71e12aaad73950baafb2819e659a7f37f4dd0872536`，与 GitHub Release 附件摘要一致。
+
+最终 EXE SHA256 为 `c4fa18e589237ab07e2a4b39a02151ddd5baee271e0888d5eadaae837530d160`。npm/ZIP 中的程序、工具与模板由生产打包脚本逐项核对；THA6 SVD 随本地实际资源打包，保持 Git 忽略。随包 OpenOCD 及固定对应源码不变。机器可读摘要随 Release 附件 `software-validation-1.1.2.json` 交付。
+
+本次不执行板卡连接、复位或烧录，THA 实板与扩展寄存器支持边界沿用 1.1.1 记录。
+
 ## 1.1.1 正式发布验证（2026-10-08）
 
 Cargo、lockfile 和 npm 统一为 **1.1.1**。相对于公开正式版 1.0.0，本次包含此前本机 1.1.0 的 THA 工具和 Setup 改动，以及发布回归中发现的 Windows 并发保存修复。更新、升级和支持边界见 [发布说明](docs/release-1.1.1.md)。

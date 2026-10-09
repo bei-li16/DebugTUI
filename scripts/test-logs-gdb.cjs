@@ -1,5 +1,5 @@
 // Development-only native GDB check: session rotation, preserved history, per-line timestamps.
-const {spawn, execFileSync}=require('node:child_process');
+const {spawn, spawnSync, execFileSync}=require('node:child_process');
 const fs=require('node:fs'), path=require('node:path'), readline=require('node:readline'), assert=require('node:assert/strict');
 const root=path.dirname(__dirname);
 const binary=path.resolve(process.argv[2] || path.join(root,'target/release/debugtui.exe'));
@@ -29,6 +29,36 @@ async function command(method,params={},ok=true) {
 const files=()=>fs.readdirSync(output).filter(n=>/^session-.*\.log$/.test(n)).sort();
 const read=f=>fs.readFileSync(path.join(output,f),'utf8');
 const stamp=/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}Z?\] \[\+\d+\.\d{3}s\] \[[^\]]+\] /;
+function verifyDisabledLogging() {
+  const cases=[];
+  for(const mode of ['missing','empty','profile-override']) {
+    const dir=path.join(output,mode);
+    fs.mkdirSync(dir);
+    const inherited=mode==='profile-override';
+    if(inherited) fs.writeFileSync(path.join(dir,'profile.toml'),'[session]\nlog_dir="inherited-logs"\n');
+    const config=`version=2\n${inherited?'[tools]\nprofile="profile.toml"\n':''}[gdb]\nexecutable=${quote(process.env.DEBUGTUI_TEST_GDB || 'C:/MinGW/bin/gdb.exe')}\n[target]\nmode="local"\n[program]\nelf=${quote(path.join(output,'sample.exe'))}\n[session]\non_exit="disconnect"\n${mode==='missing'?'':'log_dir=""\n'}`;
+    const project=path.join(dir,'project.toml'), script=path.join(dir,'commands.jsonl');
+    fs.writeFileSync(project,config);
+    fs.writeFileSync(script,[
+      {id:1,method:'connect'},
+      {id:2,method:'console',params:{command:'printf "DISABLED_FILE_LOGGING\\n"'}},
+      {id:3,method:'reconnect'},
+      {id:4,method:'disconnect'},
+    ].map(r=>JSON.stringify(r)).join('\n')+'\n');
+    const result=spawnSync(binary,['--project',project,'--script',script],{cwd:dir,windowsHide:true,encoding:'utf8',timeout:45000});
+    assert.ifError(result.error);
+    assert.equal(result.status,0,result.stderr);
+    const events=result.stdout.trim().split(/\r?\n/).map(JSON.parse);
+    assert.equal(events.filter(e=>e.event==='response'&&e.id<=4&&e.ok).length,4,mode);
+    assert(events.some(e=>e.event==='log'&&e.channel==='gdb'&&e.text.includes('DISABLED_FILE_LOGGING')),mode);
+    assert(!events.some(e=>e.event==='log'&&e.channel==='session'&&e.text.startsWith('Log:')),mode);
+    assert(!fs.readdirSync(dir,{recursive:true}).some(n=>/^session-.*\.log$/.test(path.basename(n))),mode);
+    assert(!fs.existsSync(path.join(dir,'inherited-logs')),mode);
+    fs.writeFileSync(path.join(dir,'events.jsonl'),result.stdout);
+    cases.push({mode,passed:true,consoleAvailable:true,noSessionFiles:true});
+  }
+  return cases;
+}
 (async()=>{
   try {
     await command('connect');
@@ -61,7 +91,8 @@ const stamp=/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}Z?\] \[\+\d+\.\d{3}s\]
     assert(logs.every(e=>/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}Z?$/.test(e.timestamp) && Number.isSafeInteger(e.elapsed_ms) && e.elapsed_ms>=0));
     assert(logs.some(e=>e.channel==='gdb' && e.text.includes('SESSION_ONE_A') && !e.text.startsWith('[')));
     fs.writeFileSync(path.join(output,'events.jsonl'),events.map(e=>JSON.stringify(e)).join('\n')+'\n');
-    const report={passed:true,binary,commands:nextId-1,files:counts,previousLogsUnchanged:true,allPhysicalLinesTimestamped:true,logEventCount:logs.length,rawTextPreserved:true};
+    const disabledCases=verifyDisabledLogging();
+    const report={passed:true,binary,commands:nextId-1,files:counts,previousLogsUnchanged:true,allPhysicalLinesTimestamped:true,logEventCount:logs.length,rawTextPreserved:true,disabledCases};
     fs.writeFileSync(path.join(output,'verification.json'),JSON.stringify(report,null,2));
     console.log(JSON.stringify({...report,output},null,2));
   } finally {
