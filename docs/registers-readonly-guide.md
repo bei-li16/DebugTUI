@@ -1,13 +1,13 @@
 # 只读系统寄存器版本使用范围
 
-本指南对应 `codex/register-debugging` 的冻结 36 项 Goal。软件验收进度以 [唯一账本](registers-readonly-goal.md) 为准；最终版本、安装包和 Release 由 E03～E05 单独验收。所有硬件 case 尚为 SKIPPED，软件夹具、候选后端构建和目录中的声明都不代表上板通过。
+本指南保留 `codex/register-debugging` 冻结 36 项 Goal 的范围。历史软件验收进度以 [唯一账本](registers-readonly-goal.md) 为准；后续正式版 1.1.3/1.1.4 已完成 STM32F429 的部分实板读取、状态及受控写入验收，当前范围见 [1.1.4 发布说明](release-1.1.4.md)。历史未执行硬件 case 仍为 SKIPPED，软件夹具、候选后端构建和目录中的声明都不代表对应硬件已通过。
 
 ## 支持边界
 
 | 核 / 路径 | 本版范围 | 条件与限制 |
 | --- | --- | --- |
 | Cortex-M3 | SCB、故障字段、NVIC、SysTick、MPU、Debug、DWT/FPB 身份容量 | ID 决定实现/容量；未知 revision 布局保留字段缺口 |
-| Cortex-M4 | M 公共目录及 FPU 配置/身份 | FPU 数据复用 GDB regfile；不自动使能 FPU |
+| Cortex-M4 | M 公共目录、FPU 配置/身份及 DWT/FPB v1 详细定义 | FPU 数据复用 GDB regfile；不自动使能 FPU/DWT；FUNCTION 手动读取 |
 | Cortex-M7 | M4 范围及 cache/TCM 配置、受保护 cache bank | CSSELR 保存恢复；维护命令不执行 |
 | M7＋M4 / 同型多核 | 每核 CPU、目录、独立 PPB route、缓存及采样来源 | 相同 PPB 地址属于各自物理核，必须映射正确 AP/target |
 | R52 原生只读协议 | 规定的 15 项身份/控制/MPU 标量、容量内 EL1/EL2 MPU region、MPU selector | 实际 Arm D13、AArch32、当前 Debug EL2、完整新鲜证明；不要求停止前程序处于 Hyp |

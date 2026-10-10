@@ -89,6 +89,39 @@ fn m4_debug_instances_follow_observed_capacity_enable_and_read_effects() {
             register.fields.iter().any(|f| f.name == "CYCMATCH"),
             index == 0
         );
+        for name in [
+            "DATAVMATCH",
+            "LNK1ENA",
+            "DATAVSIZE",
+            "DATAVADDR0",
+            "DATAVADDR1",
+        ] {
+            assert_eq!(
+                register.fields.iter().any(|f| f.name == name),
+                index == 1,
+                "{name} in FUNCTION{index}"
+            );
+        }
+        assert_eq!(
+            register
+                .fields
+                .iter()
+                .find(|f| f.name == "MATCHED")
+                .unwrap()
+                .access,
+            Some(Access::Ro)
+        );
+        if index == 1 {
+            assert_eq!(
+                register
+                    .fields
+                    .iter()
+                    .find(|f| f.name == "LNK1ENA")
+                    .unwrap()
+                    .access,
+                Some(Access::Ro)
+            );
+        }
     }
     // These layouts and write capabilities must not leak to another architecture.
     for cpu in ["cortex-m3", "cortex-m7", "cortex-r52"] {

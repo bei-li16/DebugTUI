@@ -42,7 +42,7 @@ cargo test --locked --offline --lib stm32_board_capture_replays_valid_stale_refr
 pwsh -NoProfile -File scripts/cleanup-build.ps1 -Apply
 ```
 
-软件回归覆盖 M4 地址/字段、NUMCOMP/NOCYCCNT/NOPRFCNT/TRCENA、FPB revision/容量与 literal 偏移、FUNCTION 手动策略、M3/M7/R52 目录隔离，以及 GDB 回执和界面的验证来源说明。
+软件回归覆盖 M4 地址/字段、NUMCOMP/NOCYCCNT/NOPRFCNT/TRCENA、FPB revision/容量与 literal 偏移、FUNCTION 手动策略、仅 FUNCTION0 的 CYCMATCH、仅 FUNCTION1 的数据匹配字段、MATCHED/LNK1ENA 只读属性、M3/M7/R52 目录隔离，以及 GDB 回执和界面的验证来源说明。
 
 ## 尚未覆盖
 

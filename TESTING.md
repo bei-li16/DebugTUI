@@ -1,5 +1,20 @@
 # DebugTUI 验证记录
 
+## 1.1.4 正式发布验收（2026-10-11）
+
+Cargo、lockfile 和 npm 统一为 **1.1.4**，从 `codex/register-state-fixes` 发布。更新内容、目录升级和操作方法见 [1.1.4 发布说明](docs/release-1.1.4.md) 与 [USER_GUIDE.md](USER_GUIDE.md)。
+
+- 完整 `cargo test --locked --offline` **548 单元 + 261 集成 = 809 通过，0 失败，3 ignored**：`artifacts/release-1.1.4-cargo-test-final.log`。发布前又核对 M4 手册，收紧 FUNCTION1 数据匹配字段及 MATCHED/LNK1ENA 只读属性；这一最终目录修正之后，全体 **548 单元及 35 项受影响集成**再次通过，日志 `artifacts/release-1.1.4-field-regression.log`。这些重复执行不另计不同用例数量。
+- 严格 Clippy `--locked --offline --all-targets -- -D warnings`、格式和六份目录的离线生成一致性检查通过。Release 编译 **3 分 30 秒**：`artifacts/release-1.1.4-clippy.log`、`release-1.1.4-build.log`；测试/开发调试符号和增量缓存关闭，最多两个编译任务。
+- 最终发行 EXE 在 FreeRTOS_Project / STM32F429 / CMSIS-DAP / OpenOCD 实板的原状态/MPU/偏好组 **9/9**，模块组 **15/15**。后者读取 200 项定义、独立 PPB/浮点参考、核对最终字段元数据，5 项 MMIO 临时写入全部恢复，TRCENA 禁用、越界拒绝和真实 Stale/刷新通过。R0 预览/结果明确注明 GDB 视图验证而非物理存储验证。原项目 TOML 与 ELF 摘要保持不变，不构建或烧录固件。证据：`artifacts/register-state-stm32-1791652455992-08b7eb41/`、`artifacts/register-modules-stm32-1791652470207-c3740d98/`。
+- 实板两份采样显式运行同一个实际 App/cache/Ratatui 回放测试，**两次都通过**，保存有效/过期/刷新及模块渲染文本；日志 `artifacts/release-1.1.4-ui-state.log`、`release-1.1.4-ui-modules.log`。平常 ignored 的该项已实际执行，另外两项系统剪贴板与 THA Source-to-Watch 实板测试仍未执行。
+- 最终 EXE 的选定功能套件 **4/4**：CLI（12）、真实 ConPTY（8）、本机 GDB、变量写入。报告 `artifacts/functional-1791652457637-fc3e6490/report.json`；这是选定套件复验，不将未选的 20 套件当成通过。内置工具/配置 **15/15**：`artifacts/bundled-tools-1791652597290-cc868c7a/report.json`。
+- 从公开 **v1.1.3** 且 SHA256 已核对的真实旧安装包，执行最终发行 EXE 的生产 npm/EXE/ZIP 交付回归 **14/14**，覆盖升级、重复安装、初始化钩子、CMD/PowerShell、卸载/重装、目录来源和客户资料保留：`artifacts/register-distribution-1791652584980-932ddd68/report.json`。通过后安装副本和专用缓存自动清理，报告/配置/打包证据保留。全量 Cargo 中的另一轮 14/14 使用明确标注的模拟基线，没有混作真实历史升级。
+
+最终 EXE SHA256：`a4407118231ef87391877cbebe55ae11294789f785e855c8ad31b129899613e8`。正式打包、公开 latest 下载/升级及本机安装的最终结果随附件 `validation-1.1.4.json` 记录。未验收范围沿用下方模块续验说明，不宣称 FPU 存储物理写入、实际 NVIC/DWT/FPB 命中、R52/多核扩展寄存器实板已通过。
+
+首轮失败在 M Probe 夹具退出阶段：持久 RUNNING 注入与退出暂停竞争，导致 No frame。现于收尾前关闭注入，保留探测失效和零后续 I/O 断言，没有修改生产通信超时；相关 **12/12** 及完整回归通过，原日志 `artifacts/release-1.1.4-cargo-test.log` 保留。验证结束后执行 `cleanup-build.ps1 -Apply`；大事件日志可无损 gzip 归档，逐个校验解压 SHA256，保留报告、采样、UI 回放、失败记录、会话及正式附件。
+
 ## Cortex-M4 浮点 / NVIC / DWT / FPB 实板续验（2026-10-11）
 
 使用 `G:\Data\GitFiles\Keil\STM32_CubeIDE\FreeRTOS_Project\debug.toml` 的现有 ELF，在 STM32F429 / CMSIS-DAP / OpenOCD 上复验。最终开发 EXE 加载自己的内置 Cortex-M4 目录，**15/15 阶段通过**；未烧录或重新构建固件，原项目配置和 ELF 的 SHA256 保持不变。命令、写入边界与尚未覆盖的用例见 [模块实板回归](tests/cases/register-modules-stm32.md)。

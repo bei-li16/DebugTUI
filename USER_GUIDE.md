@@ -1,6 +1,6 @@
 # DebugTUI 使用指南
 
-本文按 **v1.1.3** 更新，核对日期为 **2026-10-10**。快速开始见 [README](README.md)，新增能力、旧配置迁移与支持边界见 [1.1.3 发布说明](docs/release-1.1.3.md)。后文保留特定工程示例及可选后端说明，只有具备相应配置和后端证明的对象才启用读取/编辑；软件验证不表示全部硬件已经验证。
+本文按 **v1.1.4** 更新，核对日期为 **2026-10-11**。快速开始见 [README](README.md)，新增能力、旧配置迁移与支持边界见 [1.1.4 发布说明](docs/release-1.1.4.md)。后文保留特定工程示例及可选后端说明，只有具备相应配置和后端证明的对象才启用读取/编辑；软件验证不表示全部硬件已经验证。
 
 **阅读入口：** [安装](#安装与升级) · [首次配置](#首次配置与启动) · [配置分层](#项目与工具配置) · [芯片与核心](#芯片与核心选择) · [常用操作](#常用调试操作) · [源码映射](#源码路径重映射) · [运行时刷新](#运行时刷新) · [多核](#多核工作区) · [构建下载](#构建与下载) · [排查问题](#常见问题)
 
@@ -19,11 +19,11 @@ npm.cmd install -g --prefer-online "https://github.com/bei-li16/DebugTUI/release
 debugtui --version
 ```
 
-该 URL 跟随 GitHub 最新正式 Release；退出正在运行的 DebugTUI 后重新运行同一命令升级。离线安装可以下载版本化 tgz 后执行 `npm.cmd install -g ./debugtui-cli-1.1.3.tgz`。卸载使用 `npm.cmd uninstall -g @debugtui/cli`；用户芯片目录和工程配置保留。
+该 URL 跟随 GitHub 最新正式 Release；退出正在运行的 DebugTUI 后重新运行同一命令升级。离线安装可以下载版本化 tgz 后执行 `npm.cmd install -g ./debugtui-cli-1.1.4.tgz`。卸载使用 `npm.cmd uninstall -g @debugtui/cli`；用户芯片目录和工程配置保留。
 
 ### 便携分发与工具边界
 
-[v1.1.3 Release](https://github.com/bei-li16/DebugTUI/releases/tag/v1.1.3) 提供 `debugtui-1.1.3-win-x64.zip`、独立 EXE、npm tgz 和 `SHA256SUMS.txt`。解压完整 ZIP 后运行 `debugtui.exe`；ZIP/npm 包含 ARM GDB、OpenOCD、STM32F429 和 THA6 SVD、芯片/探针配置与 Markdown 使用说明。独立 EXE 不含这些资源，优先使用完整 ZIP 或 npm 包。固件编译器、探针驱动、SEGGER J-Link GDB Server 及额外板级资源按工程另行准备。仓库中的历史 PDF 手册保留原版本，1.1.3 使用说明以本文及发布说明为准。
+[v1.1.4 Release](https://github.com/bei-li16/DebugTUI/releases/tag/v1.1.4) 提供 `debugtui-1.1.4-win-x64.zip`、独立 EXE、npm tgz 和 `SHA256SUMS.txt`。解压完整 ZIP 后运行 `debugtui.exe`；ZIP/npm 包含 ARM GDB、OpenOCD、STM32F429 和 THA6 SVD、芯片/探针配置与 Markdown 使用说明。独立 EXE 不含这些资源，优先使用完整 ZIP 或 npm 包。固件编译器、探针驱动、SEGGER J-Link GDB Server 及额外板级资源按工程另行准备。仓库中的历史 PDF 手册保留原版本，1.1.4 使用说明以本文及发布说明为准。
 
 `debugtui --demo` 可离线预览界面；`debugtui --snapshot ./preview.txt` 输出演示文本，不连接板卡。安装后命令找不到或版本不符时，用 `Get-Command debugtui -All` 检查 PATH 中是否存在多份程序，重新打开终端后再核对 `--version`。
 
@@ -774,7 +774,7 @@ Headless 支持 `{"method":"control_scope","params":{"scope":"all"}}`；单次 `
 
 ## 开发与验证
 
-本次只读系统寄存器版本的固定范围是 M3/M4/M7、每核独立目录与 CorePrivate，以及 R52 当前 Debug EL2 的常用身份/控制/MPU 读取。配置模板、支持边界及后续事项见 [只读使用指南](docs/registers-readonly-guide.md)，可执行驱动与人工补充见 [本版用例入口](tests/cases/registers-readonly-release.md)。以下保留历史开发功能说明，Banked 低 EL、VFP 写入、完整 Timer/PMU/GIC/STM、Trace 和各类写入不扩大本 Goal；硬件验证全部待执行。
+只读系统寄存器开发的固定范围是 M3/M4/M7、每核独立目录与 CorePrivate，以及 R52 当前 Debug EL2 的常用身份/控制/MPU 读取。配置模板、支持边界及后续事项见 [只读使用指南](docs/registers-readonly-guide.md)，可执行驱动与人工补充见 [本版用例入口](tests/cases/registers-readonly-release.md)。1.1.3/1.1.4 已完成 STM32F429 单核的部分实板读取、状态及受控写入验收，当前范围见 [1.1.4 发布说明](docs/release-1.1.4.md)。以下保留历史开发功能说明，Banked 低 EL、VFP 写入、完整 Timer/PMU/GIC/STM、Trace 和各类写入不据此扩大支持范围；R52/多核扩展寄存器实板仍待验收。
 
 ### 寄存器状态与读取取消（开发分支）
 
@@ -789,6 +789,8 @@ Register catalogue 是 **CPU 架构寄存器定义 TOML**，用于 System Regs �
 配置 CPU、目录 CPU、Chip 关联和 Observed CPU 分别显示；差异提示不自动改配置。芯片关联只是配置；当前停止核心没有有效 Probe 时显示 Unknown，其他核及旧 session／stop／frame 的身份不复用。Setup 改目标、工具或 TCL endpoint／target 等访问路由后，旧身份也不用于新草稿。选择 R52+ 目录不证明实际 R52+ 身份、可选扩展或 reader/writer 支持；完整操作及自检见 [Setup 目录选择](docs/register-setup-catalogues.md)。
 
 System Regs 的 Total／Shown／Valid 分别计目录定义、展开筛选后的寄存器行及当前暂停上下文的有效值。Status 按钮、`t` 或 `:register-status` 打开分类计数和目录来源；窄窗口可用方向键／滚轮，Esc 或 Close 关闭。失败可保留旧值，但显示当前原因，不计成功。
+
+1.1.4 的 Cortex-M4 内置目录增加 28 项 DWT/FPB 定义，共 414 项。暂停当前核心并选物理 frame 0，先 **Probe caps**，再通过 **Group / Find** 选择浮点、NVIC、DWT 或 FPB，按需 **Read**。DWT.FUNCTION 的 MATCHED 有读后清除副作用，仅显式手动读取；TRCENA=0 时显示 FeatureDisabled，软件不自动使能。NVIC 的 ICTR 是位置上限，实际 IRQ 名称和优先级位数参考芯片 SVD。自定义目录优先于内置目录，升级保留原文件；若仍显示旧条目数，先在 Status 核对来源，按需选择包内新版目录并保留自己的修改。详细读值、恢复写入及未验收范围见 [模块回归用例](tests/cases/register-modules-stm32.md)。
 
 Setup 的寄存器详情和 Status 还显示当前核各项配置的最终值、实际声明文件/section 和被覆盖的旧声明；headless 对应 `registers_list.configuration`。环境/项目 map 递归合并，每核显式 map 整表替换，清空及被移除的 key 可查。配置来源、目录实际 CPU 和目标观测分别呈现；配置声明不证明访问权限。Setup 显示未保存草稿，运行时值若已变更且没有可追溯声明则标来源不可用。详见 [每核配置与来源](docs/register-config-sources.md)。
 
@@ -966,7 +968,7 @@ M7＋M4 的相同 PPB 地址分别通过每核自己的 channel/target 访问。
 
 开发分支新增的 Core 寄存器编辑1.1.2 包含上述软件入口，硬件行为需按对应 case 验证。选择暂停核心的物理 frame 0，在 System Regs 选中 r0–r12、SP、LR 或 PC，点击 **Edit value**（或按 `e`、输入 `:edit-value`）。填写数值后先 **Preview**，核对对象、owner、位宽、掩码、实际 GDB endpoint 和影响，再明确 **Apply**；**Cancel** 丢弃未发送草稿。Tab／Shift+Tab 切换输入和按钮，Ctrl+U 清空数值。Bytes 格式明确显示 LE／BE，可用左右键改变字节序。
 
-修改输入必须重新预览；切核、帧、运行、重连或换 ELF 后旧草稿不可应用。Core writer 的 Scope All 仍只写当前核心；共享区域只执行一次所属 owner 的写入。`verified` 表示按有效掩码回读一致，`accepted` 表示后端已受理但没有完成安全验证，`mismatch` 表示回读不符，`unknown` 表示可能已写入而无法确定结果；不自动重试、回滚或重放。发送后关闭编辑窗口不会撤回操作。PC/SP 改动会使源码、栈、Locals、反汇编等视图失效并重新读取；这不是通用的目标恢复操作。
+修改输入必须重新预览；切核、帧、运行、重连或换 ELF 后旧草稿不可应用。Core writer 的 Scope All 仍只写当前核心；共享区域只执行一次所属 owner 的写入。通用 GDB writer 的 `verified` 表示 GDB 寄存器视图按有效掩码回读一致，回执注明 `verification_basis=gdb_register_view`、`physical_storage_verified=false`；服务器可能暂存写入，不能把该结果当作物理存储独立验证。Cortex-M4 的 D/S/FPSCR 仍未提供 writer。`accepted` 表示后端已受理但没有完成安全验证，`mismatch` 表示回读不符，`unknown` 表示可能已写入而无法确定结果；不自动重试、回滚或重放。发送后关闭编辑窗口不会撤回操作。PC/SP 改动会使源码、栈、Locals、反汇编等视图失效并重新读取；这不是通用的目标恢复操作。
 
 未声明独立 writer 的对象可查看原因，当前 CPSR、系统／银行／浮点寄存器 writer 仍在开发。Watch／Locals 的标量及成员已接入 GDB 类型赋值。RAM 和 8/16/32 位 SVD MMIO writer 的声明方式与限制见下方。数值规划器支持 128 位，并不表示 GDB 整数 writer 能写 128 位向量；完整范围与验证限制见 [开发进度](docs/registers-development-status.md)。
 

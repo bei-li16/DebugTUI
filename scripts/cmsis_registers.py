@@ -255,12 +255,22 @@ def m4_debug(header):
     for index in range(4):
         for member in ["COMP", "MASK", "FUNCTION"]:
             item = ppb(header, "DWT_Type", "DWT", f"{member}{index}", "m_debug")
-            item["fields"] = header.fields(f"DWT_{member}", ["CYCMATCH"] if member == "FUNCTION" and index != 0 else [])
+            excluded = []
+            if member == "FUNCTION":
+                if index != 0:
+                    excluded.append("CYCMATCH")
+                # DDI 0439C 9.3: data matching is only implemented by comparator 1.
+                if index != 1:
+                    excluded += ["DATAVMATCH", "LNK1ENA", "DATAVSIZE", "DATAVADDR0", "DATAVADDR1"]
+            item["fields"] = header.fields(f"DWT_{member}", excluded)
             item["present_if"] = condition("dwt.ctrl", "NUMCOMP", "gt", index)
             item["access_rule"]["need_enable"] = enable
             if member == "FUNCTION":
+                for field in item["fields"]:
+                    if field["name"] in ["MATCHED", "LNK1ENA"]:
+                        field["access"] = "ro"
                 item["read_side_effect"] = True
-                item["description"] = "Manual-only read: MATCHED is cleared by a read. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
+                item["description"] = "Manual-only read: MATCHED is cleared by a read. MATCHED and LNK1ENA are RO. M4 data matching fields are limited to FUNCTION1 (DDI 0439C 9.3); support is not inferred by writing DATAVMATCH. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
             result.append(item)
     remap = dict(id="fpb.remap", name="FP_REMAP", group="m_debug", bits=32,
                  access="rw", scope="core", reader=dict(kind="core_private", address=0xE0002004),

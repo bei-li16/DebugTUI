@@ -560,6 +560,9 @@ fn run_notification_during_m_probe_discards_local_evidence_and_stops_next_io() {
     let state = call(&engine, 4, "status", json!({}));
     assert_eq!(state["state"], "RUNNING");
     assert!(state["register_probe"].is_null());
+    // Stop the persistent RUNNING injector before quit pauses the fixture.
+    // Otherwise its timer can resume it between the stop event and frame query.
+    fs::write(&notify, "{}").unwrap();
     call(&engine, 5, "quit", json!({}));
     no_mutations(&mi);
 }

@@ -2,11 +2,11 @@
 
 GitHub 仓库：<https://github.com/bei-li16/debugtui>。当前通过 GitHub Release 分发安装包，npm 从 Release URL 安装；源码 push 和 Release 附件发布是两个独立操作。
 
-## 1.1.3 分发内容
+## 1.1.4 分发内容
 
 npm tgz 和便携 ZIP 包含 TUI、内置 GDB/OpenOCD、芯片/探针配置、SVD 及其许可证。工程通过 `builtin:arm-openocd` 使用随包工具，用户覆盖文件保存在包外。DebugTUI EXE 由本地构建产生并打包，始终不提交到 Git；单独下载 EXE 不含工具资源，应优先使用 npm 包或完整 ZIP。
 
-1.1.3 从 `codex/register-state-fixes` 发布为正式 Latest，tag 为 `v1.1.3`。更新内容和用户操作见 [发布说明](docs/release-1.1.3.md)。npm/ZIP 只收录 `docs/*.md`；历史 PDF/TeX、个人审计提示词和本地参考手册不进入运行包。修改后的 OpenOCD 使用既有已固定二进制，Release 同时提供 PROVENANCE 声明且摘要匹配的 `corresponding-source.zip`；来源固定为 v0.10.0-readonly.1 的对应源码包。发布附件另带软件验证摘要和全附件 SHA256。
+1.1.4 从 `codex/register-state-fixes` 发布为正式 Latest，tag 为 `v1.1.4`。更新内容和用户操作见 [发布说明](docs/release-1.1.4.md)。npm/ZIP 只收录 `docs/*.md`；历史 PDF/TeX、个人审计提示词和本地参考手册不进入运行包。修改后的 OpenOCD 使用既有已固定二进制，Release 同时提供 PROVENANCE 声明且摘要匹配的 `corresponding-source.zip`；来源固定为 v0.10.0-readonly.1 的对应源码包。发布附件另带软件验证摘要和全附件 SHA256。
 
 运行 `./scripts/release-assets.ps1` 构建包含工具的 npm/ZIP 附件；`-IncludeTools` 另生成可选独立工具 ZIP，`./scripts/package-tools.ps1` 仍支持单独打包。GDB/OpenOCD 来源、许可证及对应源码说明随工具保留。历史附件不变。
 

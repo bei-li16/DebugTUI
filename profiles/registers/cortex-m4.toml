@@ -828,12 +828,12 @@ group = "m_debug"
 bits = 32
 access = "rw"
 scope = "core"
-description = "Manual-only read: MATCHED is cleared by a read. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
+description = "Manual-only read: MATCHED is cleared by a read. MATCHED and LNK1ENA are RO. M4 data matching fields are limited to FUNCTION1 (DDI 0439C 9.3); support is not inferred by writing DATAVMATCH. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
 reader = { kind = "core_private", address = 3758100520 }
 access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
 source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.FUNCTION0 and field masks", line = 913, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L913" }
 confidence = "high"
-fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "CYCMATCH", segments = [{ offset = 7, width = 1 }] }, { name = "DATAVMATCH", segments = [{ offset = 8, width = 1 }] }, { name = "LNK1ENA", segments = [{ offset = 9, width = 1 }] }, { name = "DATAVSIZE", segments = [{ offset = 10, width = 2 }] }, { name = "DATAVADDR0", segments = [{ offset = 12, width = 4 }] }, { name = "DATAVADDR1", segments = [{ offset = 16, width = 4 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }] }]
+fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "CYCMATCH", segments = [{ offset = 7, width = 1 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }], access = "ro" }]
 present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 0 }
 read_side_effect = true
 
@@ -874,12 +874,12 @@ group = "m_debug"
 bits = 32
 access = "rw"
 scope = "core"
-description = "Manual-only read: MATCHED is cleared by a read. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
+description = "Manual-only read: MATCHED is cleared by a read. MATCHED and LNK1ENA are RO. M4 data matching fields are limited to FUNCTION1 (DDI 0439C 9.3); support is not inferred by writing DATAVMATCH. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
 reader = { kind = "core_private", address = 3758100536 }
 access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
 source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.FUNCTION1 and field masks", line = 917, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L917" }
 confidence = "high"
-fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "DATAVMATCH", segments = [{ offset = 8, width = 1 }] }, { name = "LNK1ENA", segments = [{ offset = 9, width = 1 }] }, { name = "DATAVSIZE", segments = [{ offset = 10, width = 2 }] }, { name = "DATAVADDR0", segments = [{ offset = 12, width = 4 }] }, { name = "DATAVADDR1", segments = [{ offset = 16, width = 4 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }] }]
+fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "DATAVMATCH", segments = [{ offset = 8, width = 1 }] }, { name = "LNK1ENA", segments = [{ offset = 9, width = 1 }], access = "ro" }, { name = "DATAVSIZE", segments = [{ offset = 10, width = 2 }] }, { name = "DATAVADDR0", segments = [{ offset = 12, width = 4 }] }, { name = "DATAVADDR1", segments = [{ offset = 16, width = 4 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }], access = "ro" }]
 present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 1 }
 read_side_effect = true
 
@@ -920,12 +920,12 @@ group = "m_debug"
 bits = 32
 access = "rw"
 scope = "core"
-description = "Manual-only read: MATCHED is cleared by a read. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
+description = "Manual-only read: MATCHED is cleared by a read. MATCHED and LNK1ENA are RO. M4 data matching fields are limited to FUNCTION1 (DDI 0439C 9.3); support is not inferred by writing DATAVMATCH. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
 reader = { kind = "core_private", address = 3758100552 }
 access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
 source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.FUNCTION2 and field masks", line = 921, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L921" }
 confidence = "high"
-fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "DATAVMATCH", segments = [{ offset = 8, width = 1 }] }, { name = "LNK1ENA", segments = [{ offset = 9, width = 1 }] }, { name = "DATAVSIZE", segments = [{ offset = 10, width = 2 }] }, { name = "DATAVADDR0", segments = [{ offset = 12, width = 4 }] }, { name = "DATAVADDR1", segments = [{ offset = 16, width = 4 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }] }]
+fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }], access = "ro" }]
 present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 2 }
 read_side_effect = true
 
@@ -966,12 +966,12 @@ group = "m_debug"
 bits = 32
 access = "rw"
 scope = "core"
-description = "Manual-only read: MATCHED is cleared by a read. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
+description = "Manual-only read: MATCHED is cleared by a read. MATCHED and LNK1ENA are RO. M4 data matching fields are limited to FUNCTION1 (DDI 0439C 9.3); support is not inferred by writing DATAVMATCH. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
 reader = { kind = "core_private", address = 3758100568 }
 access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
 source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.FUNCTION3 and field masks", line = 925, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L925" }
 confidence = "high"
-fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "DATAVMATCH", segments = [{ offset = 8, width = 1 }] }, { name = "LNK1ENA", segments = [{ offset = 9, width = 1 }] }, { name = "DATAVSIZE", segments = [{ offset = 10, width = 2 }] }, { name = "DATAVADDR0", segments = [{ offset = 12, width = 4 }] }, { name = "DATAVADDR1", segments = [{ offset = 16, width = 4 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }] }]
+fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }], access = "ro" }]
 present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 3 }
 read_side_effect = true
 

@@ -88,9 +88,9 @@ function rpc(command){return new Promise((resolve,reject)=>{const s=net.createCo
       originalR0=(await read(['r0'])).samples[0].value.hex;
       const neighbours=await read(['r1','sp','pc','xpsr']);
       const pattern=BigInt(originalR0)===0x89abcdefn?'0x12345678':'0x89abcdef';
-      const cancelled=await preview(pattern);assert.equal((await session.command('write_cancel',{draft:cancelled.draft})).outcome,'not_sent');
+      const cancelled=await preview(pattern);assert.equal(cancelled.verification_basis,'gdb_register_view');assert.equal(cancelled.physical_storage_verified,false);assert(cancelled.warning.includes('write-back cache'));assert.equal((await session.command('write_cancel',{draft:cancelled.draft})).outcome,'not_sent');
       assert.equal(BigInt.asUintN(32,BigInt((await session.command('evaluate',{expression:'$r0'})).value)),BigInt(originalR0));
-      const draft=await preview(pattern);needsRestore=true;const result=await apply(draft);
+      const draft=await preview(pattern);needsRestore=true;const result=await apply(draft);assert.equal(result.verification_basis,'gdb_register_view');assert.equal(result.physical_storage_verified,false);assert(result.warning.includes('not been independently verified'));
       assert.equal(BigInt.asUintN(32,BigInt((await session.command('evaluate',{expression:'$r0'})).value)),BigInt(pattern));
       assert.equal((await session.command('write_apply',{draft:draft.draft})).outcome,'not_sent');
       context=(await session.command('registers_list')).context;
