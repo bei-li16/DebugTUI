@@ -186,10 +186,14 @@ impl Engine {
             "sp" | "r13" => "Changing SP invalidates the stack and local-variable views.",
             _ => "Write applies to this physical core only, including when control scope is All.",
         };
+        let warning = format!(
+            "{warning} Verification reads the GDB register view; a server write-back cache can defer the physical write."
+        );
         let result = json!({"draft":token,"target":{"kind":"register","id":id},"owner":expected.core,
             "scope":"core","thread":thread,"context":expected,"elf":self.project.program.elf,
             "channel":"gdb","endpoint":self.project.target.endpoint,"writer":name,"plan":plan,
-            "warning":warning,"expires_in_ms":DRAFT_LIFETIME.as_millis(),"outcome":Outcome::NotSent});
+            "warning":warning,"verification_basis":"gdb_register_view","physical_storage_verified":false,
+            "expires_in_ms":DRAFT_LIFETIME.as_millis(),"outcome":Outcome::NotSent});
         self.write_drafts.0.insert(
             token,
             Draft {
@@ -255,7 +259,9 @@ impl Engine {
         let mut result = json!({"draft":token,"target":{"kind":"register","id":draft.register},
             "owner":draft.context.core,"scope":"core","thread":draft.thread,"context":draft.context,
             "channel":"gdb","endpoint":self.project.target.endpoint,"writer":draft.gdb_name,
-            "selected_mask":draft.plan.selected_mask,"atomic":false,"outcome":Outcome::NotSent});
+            "selected_mask":draft.plan.selected_mask,"atomic":false,"outcome":Outcome::NotSent,
+            "verification_basis":"gdb_register_view","physical_storage_verified":false,
+            "warning":"GDB register readback can reflect a server write-back cache; physical storage has not been independently verified."});
         let services = match crate::debug_access::for_project(&self.project) {
             Ok(s) => s,
             Err(error) => {

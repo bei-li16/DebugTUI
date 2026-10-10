@@ -95,7 +95,11 @@ fn all_builtin_optional_conditions_preserve_unknown_and_exact_count_boundaries()
             }
             let mut facts: BTreeMap<_, _> =
                 conditions.iter().map(|c| (c.fact.clone(), c.min)).collect();
-            if cpu == "cortex-m4" || cpu == "cortex-m7" {
+            if dependencies.iter().any(|r| {
+                r.present_if
+                    .as_ref()
+                    .is_some_and(|condition| condition.reg == "fpu.mvfr0")
+            }) {
                 // Effective observation domain, not Config::facts: declared capacities
                 // alone must no longer prove the presence of the M floating-point bank.
                 assert_eq!(

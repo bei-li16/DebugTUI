@@ -50,7 +50,10 @@ fn stm32_board_capture_replays_valid_stale_refresh_and_rendering() {
         }
     };
     let stages = capture["reads"].as_array().unwrap();
-    assert_eq!(stages.len(), 4);
+    assert!(
+        stages.len() >= 4,
+        "at least four independently captured read batches"
+    );
     for (id, stage) in stages.iter().enumerate() {
         receive(&mut app, stage, id as u64 + 1);
         assert!(
@@ -85,6 +88,27 @@ fn stm32_board_capture_replays_valid_stale_refresh_and_rendering() {
         &valid,
     )
     .unwrap();
+    if let Some(names) = capture["render_registers"].as_array() {
+        for name in names {
+            let name = name.as_str().unwrap();
+            let valid = render(&mut app, name);
+            assert!(!valid.contains("[Stale]"), "{name}: {valid}");
+            let label = &app
+                .register_view
+                .catalogue
+                .as_ref()
+                .unwrap()
+                .register(name)
+                .unwrap()
+                .name;
+            assert!(valid.contains(label), "{name}: {valid}");
+            std::fs::write(
+                Path::new(&file).with_file_name(format!("ui-module-{name}-valid.txt")),
+                valid,
+            )
+            .unwrap();
+        }
+    }
     update(&mut app, &capture["stale"]);
     assert!(
         app.register_view

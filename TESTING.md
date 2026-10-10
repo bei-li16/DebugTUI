@@ -1,5 +1,18 @@
 # DebugTUI 验证记录
 
+## Cortex-M4 浮点 / NVIC / DWT / FPB 实板续验（2026-10-11）
+
+使用 `G:\Data\GitFiles\Keil\STM32_CubeIDE\FreeRTOS_Project\debug.toml` 的现有 ELF，在 STM32F429 / CMSIS-DAP / OpenOCD 上复验。最终开发 EXE 加载自己的内置 Cortex-M4 目录，**15/15 阶段通过**；未烧录或重新构建固件，原项目配置和 ELF 的 SHA256 保持不变。命令、写入边界与尚未覆盖的用例见 [模块实板回归](tests/cases/register-modules-stm32.md)。
+
+- 原目录只定义 DWT.CTRL 和 FPB.CTRL，补齐 Cortex-M4 的 **28 项**计数器、PCSR、COMP/MASK/FUNCTION、REMAP 定义，总数由 386 到 **414**。条目按实际容量、FPB v1 布局、TRCENA 和可选功能事实判定；DWT.FUNCTION 为手动读取，MATCHED 有读后清除副作用。M3/M7/R52 目录未扩展。
+- 本轮成功读到 **200 个不同定义**：147 项安全 PPB、49 项 D/S/FPSCR 和 4 项手动 FUNCTION。PPB 与独立 Tcl `read_memory` 对照；16 个 D 寄存器和 FPSCR 与 `get_reg -force` 对照，并检查 32 个 S 别名。四模块范围为 FPU 56、NVIC 112、DWT 20、FPB 10，另核对 MPU.TYPE 与 DEMCR。ICTR 的 96 是位置上限，原厂 SVD 声明 91 个不同 IRQ；IPR91–95 的保留位置读数不证明存在对应 IRQ。
+- **5/5 临时写入已恢复**：FPDSCR.FZ、空闲 IRQ1 的优先级字节、未启用的 DWT_COMP0 和 FP_COMP0 地址、DEMCR.TRCENA。每项均验证 Preview/Cancel 不发送、Apply 一次、防重放、独立 Tcl 读回、命名目录读回以及恢复原值；相邻优先级字节和比较器控制保持不变。写通道使用临时 SVD 副本与显式暂停 core-tcl MMIO 域，不表示内置 System Regs 已声明这些 writer。
+- TRCENA=0 时 DWT 返回 FeatureDisabled，数据访问 provenance 为空；恢复后 Probe/Read 正常。越界 NVIC 项返回 Unsupported/hardware_not_implemented 且无目标访问。所有临时写入恢复后 Continue/Pause，旧值确实 Stale，四模块的 12 项重读均 Valid。
+- 浮点写入探查发现 GDB 回读可能只命中 OpenOCD 的 write-back cache，不能当作物理写成功的证据。试验 D0 writer 已撤回，生产目录仍不提供 D/S/FPSCR writer；独立恢复检查确认物理 D0 保持原值 0。通用 GDB writer 的预览、回执及 UI 现在注明 `verification_basis=gdb_register_view`、`physical_storage_verified=false`。失败原证据和独立检查保留于 `artifacts/register-modules-stm32-1791649231306-39ee751e/`，没有改写成通过。
+- 软件回归 **548 单元 + 42 写入集成通过**，默认 3 项 ignored 中的实板 UI 回放另行执行 **1/1** 通过。最终采样经过实际 App/cache/Ratatui，验证分批读值不误灰、真实 Stale 和刷新，并保存五项模块的渲染文本。严格 Clippy `--lib --bin debugtui -- -D warnings`、格式和离线目录生成一致性检查通过。首轮单元测试修正的是旧测试将所有 M4 可选项误当成 VFP 的断言，失败日志保留。
+
+最终 EXE SHA256：`00492e1940a0bc2d0186328470f1d5656acb086add3fc3a0f40d78219353b7f4`。本轮为 1.1.3 基础上的开发验证，没有替换已安装的正式版。完整实板报告、写入日志、状态采样及 UI 回放在 `artifacts/register-modules-stm32-1791650178893-5aa45061/`；汇总为 `artifacts/stm32-modules-validation.json`。尚未验收浮点运算/异常/lazy stacking 和存储写入、NVIC 中断触发/抢占、DWT 计数/watchpoint 命中、FPB 实际断点/literal/remap 改写、其他架构或多核实板。构建中间文件在本轮验证结束后清理，原始证据和会话保留。
+
 ## 构建与分发产物清理（2026-10-10）
 
 清理已结束的 Cargo 构建、旧 Claude 临时 Cargo target、通过的分发测试安装副本、生产打包 staging/verify 与 npm 下载缓存。按磁盘实际可用空间差值，C 盘从 **77.32 GiB 到 87.06 GiB**，G 盘从 **5.97 GiB 到 24.67 GiB**，合计释放约 **28.45 GiB**。文件逻辑大小会重复计算硬链接，以磁盘差值为实际释放量。

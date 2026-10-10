@@ -686,3 +686,417 @@ description = "Floating-point status, exceptions and control."
 reader = { kind = "gdb", name = "fpscr" }
 conditions = [{ fact = "vfp.present", min = 1 }]
 present_if = { reg = "fpu.mvfr0", field = "SIMDReg", op = "eq", value = 1 }
+
+[[registers]]
+id = "dwt.cyccnt"
+name = "DWT.CYCCNT"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT CYCCNT; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100484 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.CYCCNT and field masks", line = 904, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L904" }
+confidence = "high"
+fields = []
+present_if = { reg = "dwt.ctrl", field = "NOCYCCNT", op = "eq", value = 0 }
+
+[[registers]]
+id = "dwt.cpicnt"
+name = "DWT.CPICNT"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT CPICNT; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100488 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.CPICNT and field masks", line = 905, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L905" }
+confidence = "high"
+fields = [{ name = "CPICNT", segments = [{ offset = 0, width = 8 }] }]
+present_if = { reg = "dwt.ctrl", field = "NOPRFCNT", op = "eq", value = 0 }
+
+[[registers]]
+id = "dwt.exccnt"
+name = "DWT.EXCCNT"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT EXCCNT; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100492 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.EXCCNT and field masks", line = 906, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L906" }
+confidence = "high"
+fields = [{ name = "EXCCNT", segments = [{ offset = 0, width = 8 }] }]
+present_if = { reg = "dwt.ctrl", field = "NOPRFCNT", op = "eq", value = 0 }
+
+[[registers]]
+id = "dwt.sleepcnt"
+name = "DWT.SLEEPCNT"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT SLEEPCNT; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100496 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.SLEEPCNT and field masks", line = 907, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L907" }
+confidence = "high"
+fields = [{ name = "SLEEPCNT", segments = [{ offset = 0, width = 8 }] }]
+present_if = { reg = "dwt.ctrl", field = "NOPRFCNT", op = "eq", value = 0 }
+
+[[registers]]
+id = "dwt.lsucnt"
+name = "DWT.LSUCNT"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT LSUCNT; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100500 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.LSUCNT and field masks", line = 908, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L908" }
+confidence = "high"
+fields = [{ name = "LSUCNT", segments = [{ offset = 0, width = 8 }] }]
+present_if = { reg = "dwt.ctrl", field = "NOPRFCNT", op = "eq", value = 0 }
+
+[[registers]]
+id = "dwt.foldcnt"
+name = "DWT.FOLDCNT"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT FOLDCNT; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100504 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.FOLDCNT and field masks", line = 909, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L909" }
+confidence = "high"
+fields = [{ name = "FOLDCNT", segments = [{ offset = 0, width = 8 }] }]
+present_if = { reg = "dwt.ctrl", field = "NOPRFCNT", op = "eq", value = 0 }
+
+[[registers]]
+id = "dwt.pcsr"
+name = "DWT.PCSR"
+group = "m_debug"
+bits = 32
+access = "ro"
+scope = "core"
+description = "DWT PCSR; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100508 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.PCSR and field masks", line = 910, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L910" }
+confidence = "high"
+fields = []
+
+[[registers]]
+id = "dwt.comp0"
+name = "DWT.COMP0"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT COMP0; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100512 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.COMP0 and field masks", line = 911, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L911" }
+confidence = "high"
+fields = []
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 0 }
+
+[[registers]]
+id = "dwt.mask0"
+name = "DWT.MASK0"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT MASK0; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100516 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.MASK0 and field masks", line = 912, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L912" }
+confidence = "high"
+fields = [{ name = "MASK", segments = [{ offset = 0, width = 5 }] }]
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 0 }
+
+[[registers]]
+id = "dwt.function0"
+name = "DWT.FUNCTION0"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "Manual-only read: MATCHED is cleared by a read. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
+reader = { kind = "core_private", address = 3758100520 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.FUNCTION0 and field masks", line = 913, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L913" }
+confidence = "high"
+fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "CYCMATCH", segments = [{ offset = 7, width = 1 }] }, { name = "DATAVMATCH", segments = [{ offset = 8, width = 1 }] }, { name = "LNK1ENA", segments = [{ offset = 9, width = 1 }] }, { name = "DATAVSIZE", segments = [{ offset = 10, width = 2 }] }, { name = "DATAVADDR0", segments = [{ offset = 12, width = 4 }] }, { name = "DATAVADDR1", segments = [{ offset = 16, width = 4 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }] }]
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 0 }
+read_side_effect = true
+
+[[registers]]
+id = "dwt.comp1"
+name = "DWT.COMP1"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT COMP1; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100528 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.COMP1 and field masks", line = 915, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L915" }
+confidence = "high"
+fields = []
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 1 }
+
+[[registers]]
+id = "dwt.mask1"
+name = "DWT.MASK1"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT MASK1; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100532 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.MASK1 and field masks", line = 916, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L916" }
+confidence = "high"
+fields = [{ name = "MASK", segments = [{ offset = 0, width = 5 }] }]
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 1 }
+
+[[registers]]
+id = "dwt.function1"
+name = "DWT.FUNCTION1"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "Manual-only read: MATCHED is cleared by a read. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
+reader = { kind = "core_private", address = 3758100536 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.FUNCTION1 and field masks", line = 917, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L917" }
+confidence = "high"
+fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "DATAVMATCH", segments = [{ offset = 8, width = 1 }] }, { name = "LNK1ENA", segments = [{ offset = 9, width = 1 }] }, { name = "DATAVSIZE", segments = [{ offset = 10, width = 2 }] }, { name = "DATAVADDR0", segments = [{ offset = 12, width = 4 }] }, { name = "DATAVADDR1", segments = [{ offset = 16, width = 4 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }] }]
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 1 }
+read_side_effect = true
+
+[[registers]]
+id = "dwt.comp2"
+name = "DWT.COMP2"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT COMP2; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100544 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.COMP2 and field masks", line = 919, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L919" }
+confidence = "high"
+fields = []
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 2 }
+
+[[registers]]
+id = "dwt.mask2"
+name = "DWT.MASK2"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT MASK2; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100548 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.MASK2 and field masks", line = 920, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L920" }
+confidence = "high"
+fields = [{ name = "MASK", segments = [{ offset = 0, width = 5 }] }]
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 2 }
+
+[[registers]]
+id = "dwt.function2"
+name = "DWT.FUNCTION2"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "Manual-only read: MATCHED is cleared by a read. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
+reader = { kind = "core_private", address = 3758100552 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.FUNCTION2 and field masks", line = 921, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L921" }
+confidence = "high"
+fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "DATAVMATCH", segments = [{ offset = 8, width = 1 }] }, { name = "LNK1ENA", segments = [{ offset = 9, width = 1 }] }, { name = "DATAVSIZE", segments = [{ offset = 10, width = 2 }] }, { name = "DATAVADDR0", segments = [{ offset = 12, width = 4 }] }, { name = "DATAVADDR1", segments = [{ offset = 16, width = 4 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }] }]
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 2 }
+read_side_effect = true
+
+[[registers]]
+id = "dwt.comp3"
+name = "DWT.COMP3"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT COMP3; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100560 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.COMP3 and field masks", line = 923, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L923" }
+confidence = "high"
+fields = []
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 3 }
+
+[[registers]]
+id = "dwt.mask3"
+name = "DWT.MASK3"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "DWT MASK3; reset and implementation-specific values are not assumed."
+reader = { kind = "core_private", address = 3758100564 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.MASK3 and field masks", line = 924, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L924" }
+confidence = "high"
+fields = [{ name = "MASK", segments = [{ offset = 0, width = 5 }] }]
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 3 }
+
+[[registers]]
+id = "dwt.function3"
+name = "DWT.FUNCTION3"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+description = "Manual-only read: MATCHED is cleared by a read. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
+reader = { kind = "core_private", address = 3758100568 }
+access_rule = { need_halt = false, need_enable = { reg = "dcb.demcr", field = "TRCENA", op = "eq", value = 1 } }
+source = { document = "CMSIS-Core core_cm4.h", version = "6.1.0", number = "b0bbb0423b278ca632cfe1474eb227961d835fd2", section = "DWT_Type.FUNCTION3 and field masks", line = 925, url = "https://github.com/ARM-software/CMSIS_6/blob/b0bbb0423b278ca632cfe1474eb227961d835fd2/CMSIS/Core/Include/core_cm4.h#L925" }
+confidence = "high"
+fields = [{ name = "FUNCTION", segments = [{ offset = 0, width = 4 }] }, { name = "EMITRANGE", segments = [{ offset = 5, width = 1 }] }, { name = "DATAVMATCH", segments = [{ offset = 8, width = 1 }] }, { name = "LNK1ENA", segments = [{ offset = 9, width = 1 }] }, { name = "DATAVSIZE", segments = [{ offset = 10, width = 2 }] }, { name = "DATAVADDR0", segments = [{ offset = 12, width = 4 }] }, { name = "DATAVADDR1", segments = [{ offset = 16, width = 4 }] }, { name = "MATCHED", segments = [{ offset = 24, width = 1 }] }]
+present_if = { reg = "dwt.ctrl", field = "NUMCOMP", op = "gt", value = 3 }
+read_side_effect = true
+
+[[registers]]
+id = "fpb.remap"
+name = "FP_REMAP"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+reader = { kind = "core_private", address = 3758104580 }
+source = { document = "Armv7-M Architecture Reference Manual", version = "E.e", number = "DDI 0403E.e", section = "C1.11.4 FP_REMAP", page = 758, url = "https://documentation-service.arm.com/static/606dc36485368c4c2b1bf62f" }
+confidence = "high"
+conditions = [{ fact = "fpb.revision", min = 0, max = 0 }]
+fields = [{ name = "REMAP", segments = [{ offset = 5, width = 24 }] }, { name = "RMPSPT", segments = [{ offset = 29, width = 1 }] }]
+description = "FPB v1 remap support and raw base. Unsupported remap contents are not inferred; no remap writes."
+
+[[registers]]
+id = "fpb.comp0"
+name = "FP_COMP0"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+reader = { kind = "core_private", address = 3758104584 }
+source = { document = "Armv7-M Architecture Reference Manual", version = "E.e", number = "DDI 0403E.e", section = "C1.11.5 FP_COMPn (version 1)", page = 759, url = "https://documentation-service.arm.com/static/606dc36485368c4c2b1bf62f" }
+confidence = "high"
+conditions = [{ fact = "fpb.revision", min = 0, max = 0 }, { fact = "fpb.code_comparators", min = 1 }]
+fields = [{ name = "ENABLE", segments = [{ offset = 0, width = 1 }] }, { name = "COMP", segments = [{ offset = 2, width = 27 }] }, { name = "REPLACE", segments = [{ offset = 30, width = 2 }] }]
+description = "FPB v1 raw comparator; available only with observed revision/capacity. No automatic comparator or enable writes."
+
+[[registers]]
+id = "fpb.comp1"
+name = "FP_COMP1"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+reader = { kind = "core_private", address = 3758104588 }
+source = { document = "Armv7-M Architecture Reference Manual", version = "E.e", number = "DDI 0403E.e", section = "C1.11.5 FP_COMPn (version 1)", page = 759, url = "https://documentation-service.arm.com/static/606dc36485368c4c2b1bf62f" }
+confidence = "high"
+conditions = [{ fact = "fpb.revision", min = 0, max = 0 }, { fact = "fpb.code_comparators", min = 2 }]
+fields = [{ name = "ENABLE", segments = [{ offset = 0, width = 1 }] }, { name = "COMP", segments = [{ offset = 2, width = 27 }] }, { name = "REPLACE", segments = [{ offset = 30, width = 2 }] }]
+description = "FPB v1 raw comparator; available only with observed revision/capacity. No automatic comparator or enable writes."
+
+[[registers]]
+id = "fpb.comp2"
+name = "FP_COMP2"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+reader = { kind = "core_private", address = 3758104592 }
+source = { document = "Armv7-M Architecture Reference Manual", version = "E.e", number = "DDI 0403E.e", section = "C1.11.5 FP_COMPn (version 1)", page = 759, url = "https://documentation-service.arm.com/static/606dc36485368c4c2b1bf62f" }
+confidence = "high"
+conditions = [{ fact = "fpb.revision", min = 0, max = 0 }, { fact = "fpb.code_comparators", min = 3 }]
+fields = [{ name = "ENABLE", segments = [{ offset = 0, width = 1 }] }, { name = "COMP", segments = [{ offset = 2, width = 27 }] }, { name = "REPLACE", segments = [{ offset = 30, width = 2 }] }]
+description = "FPB v1 raw comparator; available only with observed revision/capacity. No automatic comparator or enable writes."
+
+[[registers]]
+id = "fpb.comp3"
+name = "FP_COMP3"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+reader = { kind = "core_private", address = 3758104596 }
+source = { document = "Armv7-M Architecture Reference Manual", version = "E.e", number = "DDI 0403E.e", section = "C1.11.5 FP_COMPn (version 1)", page = 759, url = "https://documentation-service.arm.com/static/606dc36485368c4c2b1bf62f" }
+confidence = "high"
+conditions = [{ fact = "fpb.revision", min = 0, max = 0 }, { fact = "fpb.code_comparators", min = 4 }]
+fields = [{ name = "ENABLE", segments = [{ offset = 0, width = 1 }] }, { name = "COMP", segments = [{ offset = 2, width = 27 }] }, { name = "REPLACE", segments = [{ offset = 30, width = 2 }] }]
+description = "FPB v1 raw comparator; available only with observed revision/capacity. No automatic comparator or enable writes."
+
+[[registers]]
+id = "fpb.comp4"
+name = "FP_COMP4"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+reader = { kind = "core_private", address = 3758104600 }
+source = { document = "Armv7-M Architecture Reference Manual", version = "E.e", number = "DDI 0403E.e", section = "C1.11.5 FP_COMPn (version 1)", page = 759, url = "https://documentation-service.arm.com/static/606dc36485368c4c2b1bf62f" }
+confidence = "high"
+conditions = [{ fact = "fpb.revision", min = 0, max = 0 }, { fact = "fpb.code_comparators", min = 5 }]
+fields = [{ name = "ENABLE", segments = [{ offset = 0, width = 1 }] }, { name = "COMP", segments = [{ offset = 2, width = 27 }] }, { name = "REPLACE", segments = [{ offset = 30, width = 2 }] }]
+description = "FPB v1 raw comparator; available only with observed revision/capacity. No automatic comparator or enable writes."
+
+[[registers]]
+id = "fpb.comp5"
+name = "FP_COMP5"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+reader = { kind = "core_private", address = 3758104604 }
+source = { document = "Armv7-M Architecture Reference Manual", version = "E.e", number = "DDI 0403E.e", section = "C1.11.5 FP_COMPn (version 1)", page = 759, url = "https://documentation-service.arm.com/static/606dc36485368c4c2b1bf62f" }
+confidence = "high"
+conditions = [{ fact = "fpb.revision", min = 0, max = 0 }, { fact = "fpb.code_comparators", min = 6 }]
+fields = [{ name = "ENABLE", segments = [{ offset = 0, width = 1 }] }, { name = "COMP", segments = [{ offset = 2, width = 27 }] }, { name = "REPLACE", segments = [{ offset = 30, width = 2 }] }]
+description = "FPB v1 raw comparator; available only with observed revision/capacity. No automatic comparator or enable writes."
+
+[[registers]]
+id = "fpb.comp6"
+name = "FP_COMP6"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+reader = { kind = "core_private", address = 3758104608 }
+source = { document = "Armv7-M Architecture Reference Manual", version = "E.e", number = "DDI 0403E.e", section = "C1.11.5 FP_COMPn (version 1)", page = 759, url = "https://documentation-service.arm.com/static/606dc36485368c4c2b1bf62f" }
+confidence = "high"
+conditions = [{ fact = "fpb.revision", min = 0, max = 0 }, { fact = "fpb.code_comparators", min = 6, max = 6 }, { fact = "fpb.literal_comparators", min = 1 }]
+fields = [{ name = "ENABLE", segments = [{ offset = 0, width = 1 }] }, { name = "COMP", segments = [{ offset = 2, width = 27 }] }]
+description = "FPB v1 raw comparator; available only with observed revision/capacity. No automatic comparator or enable writes."
+
+[[registers]]
+id = "fpb.comp7"
+name = "FP_COMP7"
+group = "m_debug"
+bits = 32
+access = "rw"
+scope = "core"
+reader = { kind = "core_private", address = 3758104612 }
+source = { document = "Armv7-M Architecture Reference Manual", version = "E.e", number = "DDI 0403E.e", section = "C1.11.5 FP_COMPn (version 1)", page = 759, url = "https://documentation-service.arm.com/static/606dc36485368c4c2b1bf62f" }
+confidence = "high"
+conditions = [{ fact = "fpb.revision", min = 0, max = 0 }, { fact = "fpb.code_comparators", min = 6, max = 6 }, { fact = "fpb.literal_comparators", min = 2 }]
+fields = [{ name = "ENABLE", segments = [{ offset = 0, width = 1 }] }, { name = "COMP", segments = [{ offset = 2, width = 27 }] }]
+description = "FPB v1 raw comparator; available only with observed revision/capacity. No automatic comparator or enable writes."

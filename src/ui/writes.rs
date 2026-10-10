@@ -349,10 +349,11 @@ impl App {
             // A completed write still belongs to its original owner if the stop/core changed.
             let outcome = result["outcome"].as_str().unwrap_or("unknown");
             let detail = format!(
-                "Write {outcome} · owner {} · {}\n{}",
+                "Write {outcome} · owner {} · {}\n{}\n{}",
                 result["owner"].as_str().unwrap_or(&pending.context.core),
                 pending.draft.as_deref().unwrap_or("?"),
-                error.unwrap_or_else(|| result["error"].as_str().unwrap_or(""))
+                error.unwrap_or_else(|| result["error"].as_str().unwrap_or("")),
+                result["warning"].as_str().unwrap_or("")
             );
             self.notice = detail.replace('\n', " · ");
             if let Some(popup) = &mut self.write_editor.popup {
@@ -570,6 +571,45 @@ mod tests {
     fn response(app: &App, token: &str) -> Value {
         json!({"draft":token,"context":app.register_context(),"target":{"kind":"register","id":"r0"},"owner":"default","channel":"gdb","endpoint":"localhost:3333","plan":{"selected_mask":{"bits":32,"hex":"0xffffffff"},"needs_fresh_read":false},"outcome":"not_sent"})
     }
+    #[test]
+    fn gdb_write_verification_warning_is_visible_in_preview_and_completion() {
+        let (engine, requests) = session::test_channel();
+        let mut app = app();
+        app.open_edit_value();
+        app.write_paste("42");
+        app.write_action(2, Some(&engine));
+        let preview = requests.try_recv().unwrap();
+        let mut value = response(&app, "cached-write");
+        value["warning"] = json!(
+            "GDB register readback can reflect a server write-back cache; physical storage has not been independently verified."
+        );
+        app.write_response(preview.id, &value, None);
+        assert!(
+            app.write_editor
+                .popup
+                .as_ref()
+                .unwrap()
+                .detail
+                .contains("write-back cache")
+        );
+        app.write_action(3, Some(&engine));
+        let apply = requests.try_recv().unwrap();
+        value["outcome"] = json!("verified");
+        app.write_response(apply.id, &value, None);
+        assert!(
+            app.notice.contains("verified")
+                && app.notice.contains("not been independently verified")
+        );
+        assert!(
+            app.write_editor
+                .popup
+                .as_ref()
+                .unwrap()
+                .detail
+                .contains("write-back cache")
+        );
+    }
+
     #[test]
     fn panel_edit_buttons_choose_rendered_locals_context_when_source_has_focus() {
         let (engine, requests) = session::test_channel();

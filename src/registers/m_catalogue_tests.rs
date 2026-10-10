@@ -1,5 +1,152 @@
 use super::*;
 
+#[test]
+fn m4_debug_instances_follow_observed_capacity_enable_and_read_effects() {
+    let catalogue = Catalogue::builtin("cortex-m4").unwrap();
+    assert_eq!(
+        catalogue
+            .registers
+            .iter()
+            .filter(|r| r.id.starts_with("dwt."))
+            .count(),
+        20
+    );
+    assert_eq!(
+        catalogue
+            .registers
+            .iter()
+            .filter(|r| r.id.starts_with("fpb."))
+            .count(),
+        10
+    );
+    for (id, address) in [
+        ("dwt.cyccnt", 0xe0001004),
+        ("dwt.function3", 0xe0001058),
+        ("fpb.remap", 0xe0002004),
+        ("fpb.comp7", 0xe0002024),
+    ] {
+        let register = catalogue.register(id).unwrap();
+        assert!(
+            matches!(register.reader, Reader::CorePrivate { address: actual } if actual == address)
+        );
+        assert_eq!(register.scope, Scope::Core);
+        assert!(register.source.is_some() && register.writer.is_none());
+    }
+    let mut facts = BTreeMap::from([
+        (policy::field_key("dcb.demcr", "TRCENA"), 1),
+        (policy::field_key("dwt.ctrl", "NUMCOMP"), 2),
+        (policy::field_key("dwt.ctrl", "NOCYCCNT"), 0),
+        (policy::field_key("dwt.ctrl", "NOPRFCNT"), 0),
+        ("fpb.revision".into(), 0),
+        ("fpb.code_comparators".into(), 2),
+        ("fpb.literal_comparators".into(), 0),
+    ]);
+    for id in ["dwt.cyccnt", "dwt.cpicnt", "dwt.comp1", "fpb.comp1"] {
+        let register = catalogue.register(id).unwrap();
+        assert_eq!(
+            catalogue.implementation(register, &facts).0,
+            Implementation::Yes,
+            "{id}"
+        );
+        assert!(
+            catalogue
+                .access_denial(register, &facts, true, None)
+                .is_none()
+        );
+    }
+    for id in ["dwt.comp2", "dwt.function3", "fpb.comp2", "fpb.comp6"] {
+        assert_eq!(
+            catalogue
+                .implementation(catalogue.register(id).unwrap(), &facts)
+                .0,
+            Implementation::No,
+            "{id}"
+        );
+    }
+    facts.insert(policy::field_key("dwt.ctrl", "NOCYCCNT"), 1);
+    facts.insert(policy::field_key("dwt.ctrl", "NOPRFCNT"), 1);
+    for id in ["dwt.cyccnt", "dwt.cpicnt", "dwt.foldcnt"] {
+        assert_eq!(
+            catalogue
+                .implementation(catalogue.register(id).unwrap(), &facts)
+                .0,
+            Implementation::No
+        );
+    }
+    facts.insert(policy::field_key("dcb.demcr", "TRCENA"), 0);
+    assert_eq!(
+        catalogue
+            .access_denial(catalogue.register("dwt.comp1").unwrap(), &facts, true, None)
+            .unwrap()
+            .0,
+        Reason::FeatureDisabled
+    );
+    for index in 0..4 {
+        let register = catalogue.register(&format!("dwt.function{index}")).unwrap();
+        assert_eq!(catalogue.read_policy(register), (true, true));
+        assert!(!catalogue.automatic_read(register, &facts));
+        assert_eq!(
+            register.fields.iter().any(|f| f.name == "CYCMATCH"),
+            index == 0
+        );
+    }
+    // These layouts and write capabilities must not leak to another architecture.
+    for cpu in ["cortex-m3", "cortex-m7", "cortex-r52"] {
+        assert!(
+            Catalogue::builtin(cpu)
+                .unwrap()
+                .register("dwt.function0")
+                .is_none()
+        );
+    }
+    for id in ["d0", "s0", "fpscr"] {
+        let register = catalogue.register(id).unwrap();
+        assert!(register.writer.is_none() && register.write.is_none());
+    }
+}
+
+#[test]
+fn m4_fpb_v1_literal_offsets_require_the_full_layout_and_reject_v2_fields() {
+    let catalogue = Catalogue::builtin("cortex-m4").unwrap();
+    let mut facts = BTreeMap::from([
+        ("fpb.revision".into(), 0),
+        ("fpb.code_comparators".into(), 6),
+        ("fpb.literal_comparators".into(), 2),
+    ]);
+    assert_eq!(
+        catalogue
+            .implementation(catalogue.register("fpb.comp7").unwrap(), &facts)
+            .0,
+        Implementation::Yes
+    );
+    assert_eq!(field(&catalogue, "fpb.remap", "RMPSPT", 1 << 29), 1);
+    assert_eq!(field(&catalogue, "fpb.comp0", "REPLACE", 3 << 30), 3);
+    assert!(
+        !catalogue
+            .register("fpb.comp6")
+            .unwrap()
+            .fields
+            .iter()
+            .any(|f| f.name == "REPLACE")
+    );
+    facts.insert("fpb.code_comparators".into(), 5);
+    assert_eq!(
+        catalogue
+            .implementation(catalogue.register("fpb.comp6").unwrap(), &facts)
+            .0,
+        Implementation::No
+    );
+    facts.insert("fpb.revision".into(), 1);
+    for id in ["fpb.remap", "fpb.comp0", "fpb.comp7"] {
+        assert_eq!(
+            catalogue
+                .implementation(catalogue.register(id).unwrap(), &facts)
+                .0,
+            Implementation::No
+        );
+    }
+}
+
 fn field(catalogue: &Catalogue, id: &str, name: &str, raw: u32) -> u128 {
     catalogue
         .register(id)

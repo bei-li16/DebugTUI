@@ -1043,6 +1043,14 @@ fn register_drafts_preview_cancel_apply_exact_sparse_index_and_do_not_replay() {
     let draft = preview(&engine, 2, "4294967295");
     assert_eq!(draft["plan"]["value"]["hex"], "0xffffffff");
     assert_eq!(draft["outcome"], "not_sent");
+    assert_eq!(draft["verification_basis"], "gdb_register_view");
+    assert_eq!(draft["physical_storage_verified"], false);
+    assert!(
+        draft["warning"]
+            .as_str()
+            .unwrap()
+            .contains("write-back cache")
+    );
     assert!(writes(&transcript).is_empty());
     let cancelled = ok(&engine, 4, "write_cancel", json!({"draft":draft["draft"]}));
     assert_eq!(cancelled["cancelled"], true);
@@ -1055,6 +1063,14 @@ fn register_drafts_preview_cancel_apply_exact_sparse_index_and_do_not_replay() {
     let result = ok(&engine, 8, "write_apply", json!({"draft":next["draft"]}));
     assert_eq!(result["outcome"], "verified");
     assert_eq!(result["observed"]["hex"], "0xffffffff");
+    assert_eq!(result["verification_basis"], "gdb_register_view");
+    assert_eq!(result["physical_storage_verified"], false);
+    assert!(
+        result["warning"]
+            .as_str()
+            .unwrap()
+            .contains("not been independently verified")
+    );
     assert_eq!(result["owner"], "default");
     assert_eq!(result["atomic"], false);
     assert!(

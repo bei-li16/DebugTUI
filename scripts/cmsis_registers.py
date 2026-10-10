@@ -242,6 +242,54 @@ def deltas(header, baseline):
     return result
 
 
+def m4_debug(header):
+    """M4-specific DWT/FPB v1 layout; do not assume this layout for M7 or R52."""
+    result = []
+    enable = condition("dcb.demcr", "TRCENA", "eq", 1)
+    for name in ["CYCCNT", "CPICNT", "EXCCNT", "SLEEPCNT", "LSUCNT", "FOLDCNT", "PCSR"]:
+        item = ppb(header, "DWT_Type", "DWT", name, "m_debug")
+        item["access_rule"]["need_enable"] = enable
+        if name != "PCSR":
+            item["present_if"] = condition("dwt.ctrl", "NOCYCCNT" if name == "CYCCNT" else "NOPRFCNT", "eq", 0)
+        result.append(item)
+    for index in range(4):
+        for member in ["COMP", "MASK", "FUNCTION"]:
+            item = ppb(header, "DWT_Type", "DWT", f"{member}{index}", "m_debug")
+            item["fields"] = header.fields(f"DWT_{member}", ["CYCMATCH"] if member == "FUNCTION" and index != 0 else [])
+            item["present_if"] = condition("dwt.ctrl", "NUMCOMP", "gt", index)
+            item["access_rule"]["need_enable"] = enable
+            if member == "FUNCTION":
+                item["read_side_effect"] = True
+                item["description"] = "Manual-only read: MATCHED is cleared by a read. No comparator configuration or automatic polling. DDI 0403E.e C1.8.17, physical PDF pages 746/747."
+            result.append(item)
+    remap = dict(id="fpb.remap", name="FP_REMAP", group="m_debug", bits=32,
+                 access="rw", scope="core", reader=dict(kind="core_private", address=0xE0002004),
+                 source=manual("C1.11.4 FP_REMAP", 758), confidence="high",
+                 conditions=[dict(fact="fpb.revision", min=0, max=0)],
+                 fields=[dict(name="REMAP", segments=[dict(offset=5, width=24)]),
+                         dict(name="RMPSPT", segments=[dict(offset=29, width=1)])],
+                 description="FPB v1 remap support and raw base. Unsupported remap contents are not inferred; no remap writes.")
+    result.append(remap)
+    for index in range(8):
+        # Literal comparator offsets follow NUM_CODE. Adapt only the documented M4 full layout.
+        conditions = [dict(fact="fpb.revision", min=0, max=0)]
+        if index < 6:
+            conditions.append(dict(fact="fpb.code_comparators", min=index+1))
+        else:
+            conditions += [dict(fact="fpb.code_comparators", min=6, max=6),
+                           dict(fact="fpb.literal_comparators", min=index-5)]
+        fields = [dict(name="ENABLE", segments=[dict(offset=0, width=1)]),
+                  dict(name="COMP", segments=[dict(offset=2, width=27)])]
+        if index < 6:
+            fields.append(dict(name="REPLACE", segments=[dict(offset=30, width=2)]))
+        result.append(dict(id=f"fpb.comp{index}", name=f"FP_COMP{index}", group="m_debug", bits=32,
+                           access="rw", scope="core", reader=dict(kind="core_private", address=0xE0002008+4*index),
+                           source=manual("C1.11.5 FP_COMPn (version 1)", 759), confidence="high",
+                           conditions=conditions, fields=fields,
+                           description="FPB v1 raw comparator; available only with observed revision/capacity. No automatic comparator or enable writes."))
+    return result
+
+
 def write_catalogue(path, cpu, architecture, definitions, groups=(), parents=()):
     lines = ["# Generated offline by scripts/cmsis_registers.py; see third_party/cmsis-core/source-lock.json.",
              "# CMSIS-derived facts retain upstream Apache-2.0 copyright notices in third_party/cmsis-core.",
@@ -278,6 +326,8 @@ def generate_m_catalogues(root, legacy_text):
             for old in legacy["registers"]:
                 if old["group"] != "core":
                     definitions.append(dict(old, present_if=condition("fpu.mvfr0", "SIMDReg", "eq", 1)))
+        if number == 4:
+            definitions += m4_debug(header)
         if number == 7:
             extra_groups.append(dict(id="m_cache",name="Cache / TCM configuration",parent="system"))
         write_catalogue(root/f"cortex-m{number}.toml",f"cortex-m{number}","armv7-m" if number == 3 else "armv7e-m",
