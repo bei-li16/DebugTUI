@@ -13,6 +13,7 @@ const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).d
 function outputDirectory(name, artifactRoot = process.env.DEBUGTUI_TEST_ARTIFACT_ROOT || path.join(root, 'artifacts')) {
   const directory = path.join(path.resolve(artifactRoot), `${name}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`);
   fs.mkdirSync(directory, {recursive: true});
+  fs.writeFileSync(path.join(directory, '.test-run.json'), JSON.stringify({schema:1, pid:process.pid, state:'running', started_utc:new Date().toISOString()}));
   return directory;
 }
 
@@ -29,6 +30,20 @@ function parseOptions(args, valueOptions, flagOptions = []) {
     }
   }
   return result;
+}
+
+function cleanupStorage(directory, report) {
+  if (process.platform !== 'win32' || !report.passed || report.counts.passed <= 0 ||
+      report.board_tests_executed !== false || process.env.DEBUGTUI_KEEP_TEST_PAYLOADS === '1') return;
+  const cleanup = spawnSync('pwsh', ['-NoProfile', '-File', path.join(root, 'scripts/cleanup-test-artifacts.ps1'),
+    '-Root', path.dirname(directory), '-RunDirectory', directory, '-OwnerProcessId', String(process.pid), '-Apply'],
+    {encoding:'utf8', windowsHide:true, timeout:180000, maxBuffer:16*1024*1024});
+  fs.writeFileSync(path.join(directory, 'storage-cleanup.stdout.txt'), cleanup.stdout || '');
+  fs.writeFileSync(path.join(directory, 'storage-cleanup.stderr.txt'), cleanup.stderr || '');
+  if (cleanup.error || cleanup.status !== 0) {
+    console.error('Test artifact cleanup deferred; originals retained:', cleanup.error || cleanup.stderr);
+    process.exitCode = 1;
+  }
 }
 
 class Cases {
@@ -54,6 +69,15 @@ class Cases {
     fs.writeFileSync(path.join(this.directory, 'report.json'), JSON.stringify(report, null, 2));
     console.log(`RESULT ${JSON.stringify(counts)} ${this.directory}`);
     if (counts.failed) process.exitCode = 1;
+    const marker = path.join(this.directory, '.test-run.json');
+    if (fs.existsSync(marker)) {
+      const lease = JSON.parse(fs.readFileSync(marker, 'utf8'));
+      assert.equal(lease.pid, process.pid, 'Only the test owner can complete its run');
+      fs.writeFileSync(marker, JSON.stringify({...lease, state:'completed', finished_utc:new Date().toISOString()}));
+      // Hardware captures and failed/skipped runs stay untouched. Distribution
+      // has its own strict 14/14 installer cleanup, after this report is written.
+      if (!path.basename(this.directory).startsWith('register-distribution-')) cleanupStorage(this.directory, report);
+    }
     return report;
   }
 }
@@ -124,4 +148,4 @@ function stm32ChipSelection(profile) {
   return /^\s*\[chip_profiles\]\s*(?:#.*)?$/m.test(fs.readFileSync(profile, 'utf8'))
     ? '[debug]\nchip="stm32f429"\ncores=[0]\n' : '';
 }
-module.exports = {root, quote, delay, hash, outputDirectory, parseOptions, Cases, Session, stm32ChipSelection};
+module.exports = {root, quote, delay, hash, outputDirectory, parseOptions, Cases, Session, stm32ChipSelection, cleanupStorage};

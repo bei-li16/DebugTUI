@@ -1,5 +1,18 @@
 # DebugTUI 验证记录
 
+## artifacts 去重及自动收尾（2026-10-11）
+
+历史重复副本清理 **318 个**：275 TOML、41 EXE、2 临时 npm 包，逻辑大小 **1.33 GiB**。新增 18 份按内容 SHA256 命名的无损归档约 **36.80 MiB**，原路径/原内容/归档摘要保存于 `artifacts/.fixture-store/manifest.jsonl`，可按原路径恢复。去重阶段 G 盘实测增加 **1.18 GiB**，artifacts 从 **4.13 GiB 到 2.95 GiB**，包含本轮保留的回归证据。
+
+- **20,602** 个保护文件摘要一致；18 份归档重新核对压缩与解压摘要。源码、工具链、会话、报告、原上板证据、正式附件、本地 1.1.4 EXE 与 FreeRTOS_Project TOML/ELF 保留。`system-registers-audit-r52-f429` 另有两份动态 JSON 被独立审计更新，该目录零删除；本轮 Node 回归日志的再次执行也单独记录。核对结果见 `artifacts/storage-audit-20261011-0148/dedup-after.json`。
+- 清理保护 **13/13**：预览、唯一原件、资料保留、精确恢复/拒绝覆盖、重复执行、失败/硬件拒绝、活跃 owner/子进程、未完成 lease、进行中审计、junction、越界、正式附件及损坏归档保护。报告 `artifacts/cleanup-tests-storage-69bd1dd77c8143c49f35fca45814bd0d/report.json`。既有分发清理保护 **7/7**，报告 `artifacts/cleanup-tests-5ce4d0355529403aa53f3fb950f26286/report.json`。
+- Node 驱动 **7/7**，含四项退出/管道回归与三项实际 PowerShell 收尾、负场景保留、并发共享归档回归：`artifacts/storage-node-regression-final-20261011.log`。
+- 使用已安装同款 `bin/debugtui.exe` 1.1.4 的配置 **16/16**、内置工具 **15/15**、生产分发 **14/14**，共与保护回归合计 **72 项通过**。报告分别为 `artifacts/register-configuration-1791657767917-ea9a6d4e/report.json`、`artifacts/bundled-tools-1791657779716-6445ba77/report.json`、`artifacts/register-distribution-1791658123934-55e74457/report.json`。分发升级基线为显式标注的模拟包；不冒充公网历史升级验证。
+- 配置驱动自动去重/归档 **137.61 MiB**，新增归档 **1.60 MiB**；分发驱动自动移除安装副本/cache **664.45 MiB**，随后归档大软件日志 **70.36 MiB**，新增归档 **2.65 MiB**。这些是本轮测试生成后回收的大小，不重复算作历史清理收益。
+- PowerShell/Node 语法与 Git 差异检查通过。Cargo 包装器验证失败时保留诊断产物、成功时收尾；首次模拟 target 缺少 CACHEDIR.TAG 被 Cargo 拒绝，补齐测试缓存标识后收尾通过，原失败日志保留。此处仅执行 `cargo test --help` 的命令路由验证，**没有执行 Rust 编译或重新宣称全量 Rust 通过**。最终 `cleanup-build.ps1 -Apply` 确认无 target；本轮不上板、不修改本机安装或发布新版本。
+
+收尾与恢复用法见 [分发与清理说明](docs/register-distribution.md)。Node 全部通过的软件轮次自动收尾，失败/跳过/硬件/进行中轮次保留；Cargo 使用 `scripts/test-and-clean.ps1`，只清理本轮新目录与构建产物。
+
 ## 1.1.4 正式发布验收（2026-10-11）
 
 Cargo、lockfile 和 npm 统一为 **1.1.4**，从 `codex/register-state-fixes` 发布。更新内容、目录升级和操作方法见 [1.1.4 发布说明](docs/release-1.1.4.md) 与 [USER_GUIDE.md](USER_GUIDE.md)。

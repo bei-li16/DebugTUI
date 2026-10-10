@@ -20,6 +20,12 @@ M3／M4／M7／R52／R52+ 目录编译进 EXE；npm 与 ZIP 还随包提供原�
 
 编译、测试、打包和安装验证全部结束后运行 `pwsh -NoProfile -File scripts/cleanup-build.ps1 -Apply` 清理 Cargo 的中间产物；不带 `-Apply` 只预览。脚本拒绝活动构建/调试进程和链接路径，清理 release 前核对 `bin/debugtui.exe` 与已测试 EXE 一致。代码、工具链、会话和 `artifacts` 不受影响；下次编译需要重新生成 target。
 
+通用 Node 驱动在 `Cases.finish()` 写完通过报告后自动去重本轮大于 1 MiB 的重复 TOML/EXE/临时包，并无损归档软件事件日志。每轮 `.test-run.json` 标识进程所有者；仍有子进程、未完成 lease、进行中的 `progress.json`、失败/跳过轮次、上板证据均保留。归档存储使用独占锁，允许并发测试依次收尾。`DEBUGTUI_KEEP_TEST_PAYLOADS=1` 同样关闭此自动收尾。
+
+Cargo 测试使用 `pwsh -NoProfile -File scripts/test-and-clean.ps1 test --locked --offline`，可加 `--test register_configuration` 等标准参数；通过后只清理本轮新建夹具和构建产物，失败时保留诊断材料。直接运行 Cargo 不会执行这个 PowerShell 收尾。
+
+历史去重：`pwsh -NoProfile -File scripts/cleanup-test-artifacts.ps1` 只预览，增加 `-Apply` 才执行。根目录正式附件、唯一配置、源码目录、报告和原始上板证据保留；重复文件删除前逐字节无损归档并验证 SHA256。共享 `artifacts/.fixture-store/manifest.jsonl` 记录原路径、内容摘要和归档摘要，必须保留。需要完整夹具时，用 `pwsh -NoProfile -File scripts/cleanup-test-artifacts.ps1 -RestorePath '<原文件绝对路径>'` 恢复单个文件；仅恢复清单中的缺失文件，拒绝覆盖与越界。
+
 十四项 Case 覆盖：生产 npm／ZIP／EXE／checksums；缺失 profile 的生产门禁；直接 EXE 全部内置模型及空扩展位置；ZIP 的全部模板／内置逐字段一致与非连续核心；重复初始化的客户文件；旧包基线；npm 升级与钩子；CMD／PowerShell 入口和每核 builtin/user 来源；重复安装；卸载；重新安装；EXE 与 ZIP 两种替换升级；损坏文件／同名目录 override 的错误与保留；无效 devices 的 hook 失败。
 
 默认基线是 **0.0.0-fixture 模拟包替换**，使用当前 EXE，不称为历史 Release。它作为 `actual_register_distribution_packages_init_upgrade_preservation_and_multicore_sources_are_verified` 纳入 Cargo 集成。独立 `register_extension_initialization_failure_does_not_replace_customer_files` 覆盖扩展目录被客户文件占用时的初始化失败。

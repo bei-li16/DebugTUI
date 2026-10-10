@@ -4,7 +4,7 @@
 // initialization or disconnected metadata; neither GDB nor a probe is started.
 const fs=require('node:fs'), path=require('node:path'), assert=require('node:assert/strict');
 const {spawnSync}=require('node:child_process');
-const {root,outputDirectory,parseOptions,Cases,hash}=require('./test-support/session.cjs');
+const {root,outputDirectory,parseOptions,Cases,hash,cleanupStorage}=require('./test-support/session.cjs');
 const options=parseOptions(process.argv.slice(2),['--binary','--previous-package','--previous-sha256','--previous-version']);
 const binary=path.resolve(options.binary||path.join(root,'target/debug/debugtui.exe'));
 const out=outputDirectory('register-distribution',process.env.DEBUGTUI_DISTRIBUTION_ARTIFACT_ROOT), stage=path.join(out,'project 工程'), config=path.join(out,'npm 客户配置');
@@ -240,6 +240,7 @@ function assertPreserved() { assert.deepEqual(snapshot(config),preserved,'Instal
       fs.writeFileSync(path.join(out,'cleanup.stdout.txt'),result.stdout||'');
       fs.writeFileSync(path.join(out,'cleanup.stderr.txt'),result.stderr||'');
       if(result.error||result.status!==0) {console.error('Distribution payload cleanup failed:',result.error||result.stderr);process.exitCode=1;}
+      else cleanupStorage(out,report);
     }
   }
 })();
