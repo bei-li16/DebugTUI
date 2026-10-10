@@ -60,6 +60,8 @@ if ($IncludeTools) {
 }
 $hashes = @($assets | ForEach-Object { ((Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()) + '  ' + (Split-Path $_ -Leaf) })
 [IO.File]::WriteAllText((Join-Path $artifactRoot 'SHA256SUMS.txt'), ($hashes -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
-@{version=$version;zip=$zipPath;exe=$exePath;tgz=$tgzPath;stableTgz=$stableTgzPath;assets=$assets;sha256sums=(Join-Path $artifactRoot 'SHA256SUMS.txt');verifiedDirectory=$verified} | ConvertTo-Json | Set-Content "$artifactRoot\release-assets.json" -Encoding utf8
+$verifiedExeHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+& "$PSScriptRoot\test-support\cleanup-artifacts.ps1" -Root $artifactRoot -Kind Packaging -PackagingDirectories @($staging,$verified) -Apply | Out-Null
+@{version=$version;zip=$zipPath;exe=$exePath;tgz=$tgzPath;stableTgz=$stableTgzPath;assets=$assets;sha256sums=(Join-Path $artifactRoot 'SHA256SUMS.txt');verifiedDirectory=$null;verifiedExecutableSha256=$verifiedExeHash;temporaryPayloadsRemoved=$true} | ConvertTo-Json | Set-Content "$artifactRoot\release-assets.json" -Encoding utf8
 Write-Output 'PASS portable ZIP: executable, bundled tools, version and TUI renderer.'
 $assets | ForEach-Object { $file = Get-Item -LiteralPath $_; Write-Output "$($file.Name): $($file.Length) bytes" }

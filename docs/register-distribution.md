@@ -1,10 +1,10 @@
 # 寄存器目录交付与升级自检（REG-107）
 
-本批核对内置目录与用户扩展位置在 npm、直接 EXE、ZIP 和 `--init-profiles` 的交付行为。只执行初始化、离线本地安装和未连接的 `registers_list`／切核；不启动 GDB、OpenOCD 或探针。目录有定义不证明实际 CPU、reader、可选扩展或 writer 已支持。完整工具集、最终升版、系统安装和公网 Release 仍按 REG-505 等后续任务验收。
+本文说明内置目录与用户扩展位置在 npm、直接 EXE、ZIP 和 `--init-profiles` 的交付行为。分发驱动只执行初始化、离线本地安装和未连接的 `registers_list`／切核；不启动 GDB、OpenOCD 或探针。目录有定义不证明实际 CPU、reader、可选扩展或 writer 已支持。当前正式版的完整工具、系统安装、公网 Release 和硬件验证范围见 [1.1.3 发布说明](release-1.1.3.md)；下面保留 REG-107 的历史证据。
 
 ## 交付约定与打包检查
 
-三份 M4／R52／R52+ 目录编译进 EXE；npm 与 ZIP 还随包提供原始 TOML、devices.toml 和 install.cjs。生产 `package.ps1` 检查五份必需 profile 文件，缺少任一文件拒绝生成成功记录；`release-assets.ps1` 核对解压后同一载荷的 SHA256。原有独立工具环境边界保持，包内不混入 tools／开发依赖。
+M3／M4／M7／R52／R52+ 目录编译进 EXE；npm 与 ZIP 还随包提供原始 TOML、devices.toml、install.cjs 和运行所需的内置 tools。生产 `package.ps1` 检查必需 profile 与文档文件，缺少任一文件拒绝生成成功记录；`release-assets.ps1` 核对解压后同一载荷的 SHA256。Rust 工具链、target 与测试驱动不进入运行包。
 
 直接 EXE 独立运行时不依赖旁边的内置 TOML。软件验收分别使用显式随包文件和内置 CPU 请求，将实际 API 返回的整份 Catalogue 逐字段比较，包括分组、位宽、字段、条件、别名及 reader/writer 元数据，避免只以版本号、文件数量或名称证明二者一致。
 
@@ -14,7 +14,11 @@
 
 ## 自动化软件证据
 
-`scripts/test-register-distribution.cjs --binary <EXE>` 在含中文／空格的独立源码副本运行真正的生产打包脚本，使用专用 npm cache、private prefix 与 config roots。npm 开启真实 postinstall 并离线运行；每个进程 stdout/stderr、资产 SHA256 和 JSON 报告都保存在独立 artifacts 目录。 空间不足时可通过 `DEBUGTUI_DISTRIBUTION_ARTIFACT_ROOT` 指定其他磁盘的产物目录；默认位置和全部分发断言保持不变。不改系统实际安装、客户文件或原仓库 bin。
+`scripts/test-register-distribution.cjs --binary <EXE>` 在含中文／空格的独立源码副本运行真正的生产打包脚本，使用专用 npm cache、private prefix 与 config roots。npm 开启真实 postinstall 并离线运行；每个进程 stdout/stderr、资产 SHA256 和 JSON 报告都保存在独立 artifacts 目录。空间不足时可通过 `DEBUGTUI_DISTRIBUTION_ARTIFACT_ROOT` 指定其他磁盘的产物目录。不改系统实际安装、客户文件或原仓库 bin。
+
+14 项全部通过后，驱动自动删除该轮生成的 EXE/ZIP/npm 安装副本和专用 cache，保留报告、进程日志、客户配置夹具及 `packaging-evidence`；删除清单记入 `cleanup.json`。失败轮次保留夹具供排查，需保留通过轮次的完整副本时设置 `DEBUGTUI_KEEP_TEST_PAYLOADS=1`。生产 `release-assets.ps1` 在验证通过后立即删除本轮 staging/verify 解包目录，正式附件与 SHA256 保留。
+
+编译、测试、打包和安装验证全部结束后运行 `pwsh -NoProfile -File scripts/cleanup-build.ps1 -Apply` 清理 Cargo 的中间产物；不带 `-Apply` 只预览。脚本拒绝活动构建/调试进程和链接路径，清理 release 前核对 `bin/debugtui.exe` 与已测试 EXE 一致。代码、工具链、会话和 `artifacts` 不受影响；下次编译需要重新生成 target。
 
 十四项 Case 覆盖：生产 npm／ZIP／EXE／checksums；缺失 profile 的生产门禁；直接 EXE 全部内置模型及空扩展位置；ZIP 的全部模板／内置逐字段一致与非连续核心；重复初始化的客户文件；旧包基线；npm 升级与钩子；CMD／PowerShell 入口和每核 builtin/user 来源；重复安装；卸载；重新安装；EXE 与 ZIP 两种替换升级；损坏文件／同名目录 override 的错误与保留；无效 devices 的 hook 失败。
 

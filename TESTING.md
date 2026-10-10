@@ -1,5 +1,15 @@
 # DebugTUI 验证记录
 
+## 构建与分发产物清理（2026-10-10）
+
+清理已结束的 Cargo 构建、旧 Claude 临时 Cargo target、通过的分发测试安装副本、生产打包 staging/verify 与 npm 下载缓存。按磁盘实际可用空间差值，C 盘从 **77.32 GiB 到 87.06 GiB**，G 盘从 **5.97 GiB 到 24.67 GiB**，合计释放约 **28.45 GiB**。文件逻辑大小会重复计算硬链接，以磁盘差值为实际释放量。
+
+- `pwsh -NoProfile -File scripts/test-cleanup.ps1` **7/7**：预览不删除、通过轮次只清理指定副本且保留报告/配置/打包证据、重复执行保留历史、失败轮次拒绝、普通工程拒绝、越界打包路径拒绝、嵌套 junction 全计划拒绝、活动进程拒绝。其中资料保留和重复执行作为同一案例统计。报告 `artifacts/cleanup-tests-f89b82d6fde148a198f1d9df2931d81d/report.json`。
+- 使用已测试的 `bin/debugtui.exe` 1.1.3 执行生产分发驱动 **14/14**，并确认自动清理生效、原报告及客户配置保留、本轮 staging/verify 已删除。日志 `artifacts/cleanup-1.1.3-distribution-smoke.log`；报告与打包清单留在 `artifacts/register-distribution-1791646703034-9f6cf67d/`。
+- PowerShell/Node 语法与 Git 差异检查通过；`cleanup-build.ps1 -Apply` 实际执行成功。未重新执行 Rust 全量编译，本次只改开发清理脚本和流程。正式发布附件、本机已安装 EXE、FreeRTOS_Project 配置与固件的 SHA256 保持不变；原上板报告、调试事件、审计资料、工具链与会话保留。
+
+后续收尾命令与保留夹具开关见 [分发与清理说明](docs/register-distribution.md)，持久工作要求见 [AGENTS.md](AGENTS.md)。详细磁盘分析、删除清单与保护文件核对在 `artifacts/cleanup-1.1.3-report.json`。
+
 ## 1.1.3 寄存器状态与偏好保存（2026-10-10）
 
 Cargo、lockfile 和 npm 统一为 **1.1.3**。修复能力/字段事实更新使无关有效值误过期，以及 Chip/Core 协调器将寄存器偏好 scope 当作执行范围的问题。更新和使用方法见 [发布说明](docs/release-1.1.3.md)，复验命令见 [STM32 状态回归](tests/cases/register-state-stm32.md)。

@@ -124,6 +124,8 @@ function copyProject(destination) {
   }
   fs.mkdirSync(path.join(destination,'scripts'),{recursive:true});
   for(const script of ['package.ps1','release-assets.ps1','build.ps1']) fs.copyFileSync(path.join(root,'scripts',script),path.join(destination,'scripts',script));
+  fs.mkdirSync(path.join(destination,'scripts/test-support'),{recursive:true});
+  fs.copyFileSync(path.join(root,'scripts/test-support/cleanup-artifacts.ps1'),path.join(destination,'scripts/test-support/cleanup-artifacts.ps1'));
 }
 function assertPreserved() { assert.deepEqual(snapshot(config),preserved,'Install/upgrade must retain all customer files and directories'); }
 (async()=>{
@@ -231,5 +233,13 @@ function assertPreserved() { assert.deepEqual(snapshot(config),preserved,'Instal
       assert.notEqual(result.status,0);assert((result.stderr+result.stdout).includes('Device catalogue initialization failed'));assert.deepEqual(snapshot(user),before);return {error:result.stderr.trim()};
     });
   } catch(error) {await suite.test('REG-PKG-SETUP','Prepare distribution fixture',async()=>{throw error;});}
-  finally {suite.finish();}
+  finally {
+    const report=suite.finish();
+    if(report.passed && process.env.DEBUGTUI_KEEP_TEST_PAYLOADS!=='1') {
+      const result=spawnSync('pwsh',['-NoProfile','-File',path.join(root,'scripts/test-support/cleanup-artifacts.ps1'),'-Root',out,'-Kind','Distribution','-Apply'],{encoding:'utf8',windowsHide:true,timeout:90000,maxBuffer:4*1024*1024});
+      fs.writeFileSync(path.join(out,'cleanup.stdout.txt'),result.stdout||'');
+      fs.writeFileSync(path.join(out,'cleanup.stderr.txt'),result.stderr||'');
+      if(result.error||result.status!==0) {console.error('Distribution payload cleanup failed:',result.error||result.stderr);process.exitCode=1;}
+    }
+  }
 })();
