@@ -1,5 +1,7 @@
 # DebugTUI 功能测试
 
+1.1.3 寄存器状态/显示偏好回归：`cargo test --locked` 覆盖能力事实变化保留有效值、依赖解锁重读/撤销失效、跨核心隔离，以及旧单核/多核协调入口的显示偏好保存。STM32F429 上板驱动和实际 UI 采样回放分别显式执行，九项上板用例、恢复约束与命令见 [系统寄存器状态回归](cases/register-state-stm32.md)。
+
 THA 内置板级配置：`node scripts/test-tha-tools.cjs` 使用随包 OpenOCD 离线解析 THA6104/6206/6412 的全部非空选核组合，核对物理端口、AP 通道不开放 GDB、SWD/JTAG、探针配置和非法掩码；使用同一 Jim Tcl 对复位失败、halt 超时、调试通道恢复、清理失败及 target 恢复注入测试。`cargo test --locked --lib bundled_tha` 解析三个实际 SVD；`cargo test --locked --lib devices::tests` 检查芯片切换和 MCAL 工程策略。
 
 THA6206/MCAL 实板：`node scripts/test-tha-bundled-hardware.cjs --run --binary EXE --project-root MCAL_ROOT [--build-download]` 使用工程的 `debug-builtin.toml` 和指定安装包工具，分别验证 core0/core1/双核。带 `--build-download` 会实际编译烧录，其他测试仍会暂停、运行、复位板卡；勿同时启动其他调试器。JSON 报告与协议日志在 `artifacts/tha-bundled-hardware-*`。THA6206 实测为 R52+，测试记录外部 MIDR 并检查 R52-only 注入式扩展读取器明确拒绝，不把该拒绝计作扩展寄存器功能验收通过。THA6104/6412 与其他探针仍待实板。

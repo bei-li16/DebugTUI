@@ -77,6 +77,22 @@ impl Coordinator {
             self.reply(req.id, self.info(), None);
             return true;
         }
+        // Other protocols use `scope` for their own identity (for example a
+        // register display key). Only execution requests own a control scope.
+        if !matches!(
+            req.method.as_str(),
+            method::RUN
+                | method::CONTINUE
+                | method::PAUSE
+                | method::RESTART
+                | method::STEP
+                | method::NEXT
+                | method::STEPI
+                | method::FINISH
+                | method::WAIT_STOPPED
+        ) {
+            return false;
+        }
         let scope = match req.params.get("scope").and_then(Json::as_str) {
             None => self.project.multicore.scope,
             Some("all") => ControlScope::All,
@@ -314,6 +330,32 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+    #[test]
+    fn register_preferences_keep_their_display_scope_and_control_scopes_still_validate() {
+        let (mut c, rx) = coordinator();
+        let mut request = Request::new(
+            41,
+            method::REGISTER_PREFERENCES,
+            json!({"scope":"[\"stm32f429\",\"core.0\",\"cortex-m4\"]", "preferences":{"filter":3}}),
+        );
+        let params = request.params.clone();
+        assert!(!c.begin_control(&mut request));
+        assert_eq!(request.params, params);
+        assert!(rx.try_recv().is_err());
+        for method in [
+            method::CONTINUE,
+            method::PAUSE,
+            method::STEP,
+            method::WAIT_STOPPED,
+        ] {
+            let mut request = Request::new(42, method, json!({"scope":"display-key"}));
+            assert!(c.begin_control(&mut request));
+            assert!(rx.try_iter().any(|event| matches!(event,
+                Event::Response {id:42, ok:false, error:Some(error), ..}
+                    if error == "scope must be all or core"
+            )));
+        }
     }
     #[test]
     fn group_continue_orders_both_and_core_override_is_independent() {

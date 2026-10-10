@@ -1,13 +1,14 @@
 // Local preferences protocol regression; deliberately provides no usable GDB.
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const {root, outputDirectory, parseOptions, Cases, Session, hash} = require('./test-support/session.cjs');
-const options = parseOptions(process.argv.slice(2), ['--binary']);
+const options = parseOptions(process.argv.slice(2), ['--binary'], ['--coordinator']);
 const binary = path.resolve(options.binary || path.join(root,'target/debug/debugtui.exe'));
 assert(fs.existsSync(binary), `Missing binary: ${binary}`);
 const out = outputDirectory('register-display');
 const project = path.join(out, 'project.toml');
-fs.writeFileSync(project, "version=1\n[gdb]\nexecutable='./must-not-start-gdb.exe'\n[target]\nmode='local'\n");
-const suite = new Cases(out, {layer:'actual binary, local settings protocol; no debugger or board', board_tests_executed:false, binary, binary_sha256:hash(binary)});
+fs.writeFileSync(project, "version=2\n[gdb]\nexecutable='./must-not-start-gdb.exe'\n[target]\nmode='local'\n" +
+  (options.coordinator ? "[[cores]]\nname='core0'\nendpoint='localhost:3333'\n[[cores]]\nname='core1'\nendpoint='localhost:3334'\n" : ''));
+const suite = new Cases(out, {layer:'actual binary, local settings protocol; no debugger or board', coordinator:!!options.coordinator, board_tests_executed:false, binary, binary_sha256:hash(binary)});
 const scope = core => JSON.stringify(['THA6',core,'cortex-r52','armv8-r-aarch32','builtin:cortex-r52',1]);
 const object = JSON.stringify(['d0',null]);
 const core0 = {open:['core','simd'], fields:['cpsr'], filter:2, all_definitions:true, query:'d0', formats:{[object]:{kind:'float',bits:64}}};

@@ -151,7 +151,7 @@ dependencies = [
 
 [[package]]
 name = "debugtui"
-version = "1.1.2"
+version = "1.1.3"
 dependencies = [
  "crossterm",
  "ratatui",

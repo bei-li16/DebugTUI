@@ -1,6 +1,6 @@
 # DebugTUI 使用指南
 
-本文按 **v1.1.2** 更新，核对日期为 **2026-10-09**。快速开始见 [README](README.md)，新增能力、旧配置迁移与支持边界见 [1.1.2 发布说明](docs/release-1.1.2.md)。后文保留特定工程示例及可选后端说明，只有具备相应配置和后端证明的对象才启用读取/编辑；软件验证不表示全部硬件已经验证。
+本文按 **v1.1.3** 更新，核对日期为 **2026-10-10**。快速开始见 [README](README.md)，新增能力、旧配置迁移与支持边界见 [1.1.3 发布说明](docs/release-1.1.3.md)。后文保留特定工程示例及可选后端说明，只有具备相应配置和后端证明的对象才启用读取/编辑；软件验证不表示全部硬件已经验证。
 
 **阅读入口：** [安装](#安装与升级) · [首次配置](#首次配置与启动) · [配置分层](#项目与工具配置) · [芯片与核心](#芯片与核心选择) · [常用操作](#常用调试操作) · [源码映射](#源码路径重映射) · [运行时刷新](#运行时刷新) · [多核](#多核工作区) · [构建下载](#构建与下载) · [排查问题](#常见问题)
 
@@ -19,11 +19,11 @@ npm.cmd install -g --prefer-online "https://github.com/bei-li16/DebugTUI/release
 debugtui --version
 ```
 
-该 URL 跟随 GitHub 最新正式 Release；退出正在运行的 DebugTUI 后重新运行同一命令升级。离线安装可以下载版本化 tgz 后执行 `npm.cmd install -g ./debugtui-cli-1.1.2.tgz`。卸载使用 `npm.cmd uninstall -g @debugtui/cli`；用户芯片目录和工程配置保留。
+该 URL 跟随 GitHub 最新正式 Release；退出正在运行的 DebugTUI 后重新运行同一命令升级。离线安装可以下载版本化 tgz 后执行 `npm.cmd install -g ./debugtui-cli-1.1.3.tgz`。卸载使用 `npm.cmd uninstall -g @debugtui/cli`；用户芯片目录和工程配置保留。
 
 ### 便携分发与工具边界
 
-[v1.1.2 Release](https://github.com/bei-li16/DebugTUI/releases/tag/v1.1.2) 提供 `debugtui-1.1.2-win-x64.zip`、独立 EXE、npm tgz 和 `SHA256SUMS.txt`。解压完整 ZIP 后运行 `debugtui.exe`；ZIP/npm 包含 ARM GDB、OpenOCD、STM32F429 和 THA6 SVD、芯片/探针配置与 Markdown 使用说明。独立 EXE 不含这些资源，优先使用完整 ZIP 或 npm 包。固件编译器、探针驱动、SEGGER J-Link GDB Server 及额外板级资源按工程另行准备。仓库中的历史 PDF 手册保留原版本，1.1.2 使用说明以本文及发布说明为准。
+[v1.1.3 Release](https://github.com/bei-li16/DebugTUI/releases/tag/v1.1.3) 提供 `debugtui-1.1.3-win-x64.zip`、独立 EXE、npm tgz 和 `SHA256SUMS.txt`。解压完整 ZIP 后运行 `debugtui.exe`；ZIP/npm 包含 ARM GDB、OpenOCD、STM32F429 和 THA6 SVD、芯片/探针配置与 Markdown 使用说明。独立 EXE 不含这些资源，优先使用完整 ZIP 或 npm 包。固件编译器、探针驱动、SEGGER J-Link GDB Server 及额外板级资源按工程另行准备。仓库中的历史 PDF 手册保留原版本，1.1.3 使用说明以本文及发布说明为准。
 
 `debugtui --demo` 可离线预览界面；`debugtui --snapshot ./preview.txt` 输出演示文本，不连接板卡。安装后命令找不到或版本不符时，用 `Get-Command debugtui -All` 检查 PATH 中是否存在多份程序，重新打开终端后再核对 `--version`。
 
@@ -831,6 +831,8 @@ Cancel read、`:register-cancel` 或非搜索模式的 Esc 取消当前寄存器
 方向键或 Tab／Shift+Tab 选择格式，Enter 应用，Esc 取消；菜单支持鼠标及窄窗口滚动。格式只解释现有原始位，不读取目标、不使能 FPU，也不修改样本。可选格式不表示 GDB／OpenOCD 已支持读取相应浮点或向量寄存器。
 
 展开的组和字段、筛选、目标／全部定义选择、已提交的搜索和格式保存到项目 `ui.register_views`。偏好按芯片、实际核心、CPU、架构和目录来源／版本隔离；未知芯片另绑定连接地址。搜索输入按 Enter 才保存，Esc 取消；旧进制偏好仅在首次建立视图时迁移。没有项目路径时只保留本次会话，保存失败显示错误。
+
+1.1.3 修复 Chip/Core 工程保存偏好时的 `scope must be all or core` 错误，也修复读取新能力信息后已读 MPU/FPU 值误显示 `[Stale]` 的问题。同一次暂停中读取条件未变的值保持有效；运行、切核、重连、换帧或访问条件失效后的历史值仍显示过期。当前 STM32F429 实板验证范围和刷新方法见 [1.1.3 发布说明](docs/release-1.1.3.md)。
 
 同一 owner、会话、核心及栈帧内，当前有效值与前次有效样本不同的行显示琥珀色；字段只比较自身位值。首次读取、未变化、切核／重连／换帧后的首次比较和过期值不作为当前变化高亮。格式切换只改变显示，不改变原始位或变化判断。
 

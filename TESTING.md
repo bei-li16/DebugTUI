@@ -1,5 +1,18 @@
 # DebugTUI 验证记录
 
+## 1.1.3 寄存器状态与偏好保存（2026-10-10）
+
+Cargo、lockfile 和 npm 统一为 **1.1.3**。修复能力/字段事实更新使无关有效值误过期，以及 Chip/Core 协调器将寄存器偏好 scope 当作执行范围的问题。更新和使用方法见 [发布说明](docs/release-1.1.3.md)，复验命令见 [STM32 状态回归](tests/cases/register-state-stm32.md)。
+
+- 全量 `cargo test --locked`：**545 单元 + 261 集成 = 806 通过，0 失败**，日志 `artifacts/release-1.1.3-cargo-test.log`。默认三项 ignored 中，实板 UI 回放另外显式执行并通过；Windows 剪贴板写入和 THA6206 Source-to-Watch 两项原有用例未执行。
+- 新增缓存与条件变化/核心隔离两项单元、协调器 scope 校验单元；修正原有测试中“新 ICC 事实应使无关 R0 过期”的错误预期，并保留暂停代次变化后的真实失效断言。显示偏好真实二进制协议对旧单核和双核协调入口各 **6/6**，含两客户端 **10 轮**并发保存、最新配置重合并、非法输入拒绝及零目标 I/O。旧安装版 1.1.2 的协调入口作为负对照复现原错误。
+- 格式检查、严格 Clippy `--locked --all-targets -- -D warnings` 和 Release 编译通过，编译用时 **4 分 15 秒**；日志 `artifacts/release-1.1.3-clippy-final.log`、`release-1.1.3-build.log`。Clippy 首轮发现测试构造器的字段赋值风格问题，修正后复验通过；最终缓存/UI 三项再次执行 **3/3**。
+- 最终 Release EXE 使用实际 **FreeRTOS_Project / STM32F429 / CMSIS-DAP / OpenOCD** 验证 **9/9**：12 项 PPB 读值和独立 GDB 内存读取一致，23 Core + 49 浮点定义及 D/S 别名一致，8 MPU 区域与独立 Tcl 结果一致，RNR 恢复、MPU.CTRL 不变，视图偏好保存/重开，R0 取消/Apply/独立读回/防重放/恢复，以及 Continue/Pause 的真实过期和刷新。日志 `artifacts/release-1.1.3-board.log`，原始报告/采样在 `artifacts/register-state-stm32-1791644966940-d32ee8aa/`。
+- 实板采样通过实际 App 与 Ratatui 渲染器回放，验证分批读值不会误灰、暂停代次变化后确实过期、重读恢复有效；日志 `artifacts/release-1.1.3-ui-replay.log`，渲染文本与采样保存在同一上板目录。此项不是终端鼠标交互验收。
+- 全量测试包含生产 npm/EXE/ZIP 交付的 **14/14**（模拟旧包替换基线），报告完整移至 `C:/Users/18283/AppData/Local/Temp/debugtui-1.1.3-regression/register-distribution-1791644338087-539606c0/`。最终发行 EXE 的生产交付再验收见 `artifacts/release-1.1.3-distribution.log`；公网实际 v1.1.2 升级、重复安装、CMD/PowerShell、摘要及卸载由发布后的 `scripts/test-release.ps1 -PreviousVersion 1.1.2` 验证，结果另外记入 Release 的 `validation-1.1.3.json`。
+
+最终 EXE SHA256：`09e7e3f5324a03146f11aabcb01b9ecf149c723ceffd92c8b9a62706a9c5230f`。不重新烧录现有固件，用户工程配置 SHA256 保持不变；本次未在 R52 上板，也不宣称全部 386 项目录定义或全部写通道已经硬件验收。首轮实板驱动将 GDB 的有符号 R0 输出直接与无符号模式比较而误报失败；保留初始记录，独立确认/恢复原 R0，修正为 32 位无符号比较后，开发版及最终 Release 都 **9/9** 通过。
+
 ## 1.1.2 正式发布验证（2026-10-09）
 
 Cargo、lockfile 和 npm 统一为 **1.1.2**。本版新增默认关闭文件日志、Setup 日志开关/路径编辑/F2 文件夹选择，并修复空路径重新继承 profile 日志目录的问题。更新与操作见 [发布说明](docs/release-1.1.2.md)。

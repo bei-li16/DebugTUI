@@ -3,6 +3,8 @@ use super::*;
 use crate::registers::{Catalogue, Context, Implementation, Sample, State};
 use std::collections::{BTreeMap, BTreeSet};
 #[cfg(test)]
+mod capability_cache_tests;
+#[cfg(test)]
 mod framework_tests;
 mod mpu;
 mod provenance;
@@ -833,10 +835,44 @@ impl App {
                 .unwrap_or_else(|| config.facts.clone())
         };
         if facts != self.register_view.facts {
+            let stopped = self.snapshot.state == state::STOPPED;
+            let mut changed = BTreeSet::new();
+            let mut denied = BTreeSet::new();
+            if let Some(catalogue) = &self.register_view.catalogue {
+                for register in &catalogue.registers {
+                    let policy = |facts: &BTreeMap<String, u64>| {
+                        (
+                            catalogue.implementation(register, facts).0,
+                            catalogue
+                                .access_denial(register, facts, stopped, None)
+                                .map(|(reason, _)| reason),
+                            catalogue.automatic_read(register, facts),
+                        )
+                    };
+                    let before = policy(&self.register_view.facts);
+                    let after = policy(&facts);
+                    if before != after {
+                        changed.insert(register.id.clone());
+                        if after.0 == Implementation::No || after.1.is_some() {
+                            denied.insert(register.id.clone());
+                        }
+                    }
+                }
+            }
+            let core = self.register_context().core;
             self.register_view.facts = facts;
             for sample in self.register_view.values.values_mut() {
-                sample.stale();
+                if sample.context.core == core && denied.contains(&sample.id) {
+                    sample.stale();
+                }
             }
+            // New observations can unlock a previously attempted register.
+            // Unchanged eligibility keeps both valid data and retry suppression.
+            self.register_view
+                .attempts
+                .retain(|(_, _, attempted_core, _, id)| {
+                    attempted_core != &core || !changed.contains(id)
+                });
             self.register_view.rebuild();
             self.selections[pane::REGS] = self
                 .selected(pane::REGS)
@@ -2348,9 +2384,10 @@ mod tests {
         app.register_probe_response(request.id, &json!({"probe":probe}), None);
         assert_eq!(app.register_view.facts["icc.physical.prebits"], 5);
         assert_eq!(app.project.registers.facts["icc.physical.prebits"], 7);
+        // Unrelated identity/ICC evidence does not invalidate this core value.
         assert_eq!(
             app.register_view.values[&("core:default".into(), "r0".into(), "default".into())].state,
-            State::Stale
+            State::Valid
         );
         assert_eq!(
             app.register_view.values[&("core:default".into(), "cpsr".into(), "default".into())]
@@ -2368,9 +2405,14 @@ mod tests {
         assert!(app.notice.contains("Raw evidence in Log"));
         assert!(requests.try_recv().is_err());
         app.snapshot.generation += 1;
+        app.sync_register_sample_validity();
         app.sync_register_capabilities();
         assert_eq!(app.register_view.facts["icc.physical.prebits"], 7);
         assert_eq!(app.project.registers.facts["icc.physical.prebits"], 7);
+        assert_eq!(
+            app.register_view.values[&("core:default".into(), "r0".into(), "default".into())].state,
+            State::Stale
+        );
     }
     #[test]
     fn only_visible_expanded_registers_are_read_and_pending_does_not_accumulate() {
