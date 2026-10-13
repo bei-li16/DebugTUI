@@ -612,6 +612,12 @@ impl Engine {
         self.check_register_read_cancelled()
             .map_err(|error| (Reason::Unknown, error))?;
         self.register_value_access = None;
+        if matches!(register.reader, Reader::DescriptionOnly { .. }) {
+            return Err((Reason::WriteOnly, "Write-only location has no reader; no IO sent".into()));
+        }
+        if matches!(register.reader, Reader::DescriptionUnsupported { .. }) {
+            return Err((Reason::ReaderUnsupported, "Described location has no applicable read route; no IO sent".into()));
+        }
         if self.snapshot.state == state::RUNNING
             && let Some(denial) = crate::registers::running::denial(
                 catalogue,
@@ -683,6 +689,12 @@ impl Engine {
                 return self.read_timer_register(name, bits);
             }
             Ok(match &register.reader {
+                Reader::DescriptionOnly { .. } => {
+                    return Err((Reason::WriteOnly, "Write-only location has no reader".into()));
+                }
+                Reader::DescriptionUnsupported { .. } => {
+                    return Err((Reason::ReaderUnsupported, "Described location has no applicable read route".into()));
+                }
                 Reader::Gdb { name } => self.gdb_register_value(name, register.bits)?,
                 Reader::Banked { name } => self.read_banked_register(name)?,
                 Reader::Vfp { name } => self.read_vfp_register(name, values)?,
@@ -1109,6 +1121,8 @@ pub(super) fn route_name(register: &Register) -> String {
         Reader::Alias { source, .. } => format!("alias:{source}"),
         Reader::Mmio { component, .. } => format!("mmio:{component}"),
         Reader::CorePrivate { .. } => "mmio:ppb".into(),
+        Reader::DescriptionOnly { .. } => "description_only:no_reader".into(),
+        Reader::DescriptionUnsupported { .. } => "description_unsupported:no_reader".into(),
         Reader::Backend { name } => format!("openocd:{name}"),
         Reader::Banked { name } => format!("openocd:aarch64 banked:{name}"),
         Reader::Vfp { name } => format!("openocd:aarch64 vfp:{name}"),
@@ -1133,6 +1147,45 @@ mod tests {
         let mut engine = Engine::new(project, events, Arc::new(AtomicBool::new(false)));
         engine.snapshot.state = state::STOPPED.into();
         engine
+    }
+
+    #[test]
+    fn description_only_command_never_reaches_a_register_or_memory_transport() {
+        let catalogue = Catalogue::parse(r#"
+version = 1
+cpu = "cortex-m4"
+architecture = "armv7e-m"
+[[groups]]
+id = "debug"
+name = "Debug"
+[[registers]]
+id = "dcrsr"
+name = "DCRSR"
+group = "debug"
+bits = 32
+access = "wo"
+scope = "core"
+reader = { kind = "description_only", location = { kind = "core_private", address = 0xE000EDF4 } }
+"#).unwrap();
+        let mut engine = engine();
+        engine.project.registers.tcl_endpoint = "invalid://must-not-connect".into();
+        let result = engine.read_register_value(catalogue.register("dcrsr").unwrap(), &catalogue, &mut ReadCache::default());
+        let (reason, detail) = result.unwrap_err();
+        assert_eq!(reason, Reason::WriteOnly);
+        assert!(detail.contains("no IO sent"));
+        assert!(engine.register_value_access.is_none());
+        let mut unsupported = catalogue.clone();
+        let register = unsupported.registers.iter_mut().find(|r|r.id=="dcrsr").unwrap();
+        register.access = crate::registers::Access::Rw;
+        register.reader = Reader::DescriptionUnsupported {
+            location: crate::registers::DescriptionLocation::CorePrivate { address: 0xE0041FB0 },
+        };
+        unsupported.validate().unwrap();
+        let result = engine.read_register_value(unsupported.register("dcrsr").unwrap(), &unsupported, &mut ReadCache::default());
+        let (reason, detail) = result.unwrap_err();
+        assert_eq!(reason, Reason::ReaderUnsupported);
+        assert!(detail.contains("no IO sent"));
+        assert!(engine.register_value_access.is_none());
     }
     fn server(response: &'static str) -> (String, thread::JoinHandle<String>) {
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();

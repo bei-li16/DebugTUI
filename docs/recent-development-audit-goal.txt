@@ -1,0 +1,149 @@
+DebugTUI 最近开发工作独立审计 Goal
+
+一、目标与执行边界
+
+在 G:\Data\GitFiles\DebugTUI 对近期开发工作完成一次有证据、可复现、有明确结束条件的独立审计。回答：实现了什么，哪些完成声明有充分依据，哪些实现偏离约定，Cortex-M/R 与多核是否正确兼容，近期优化是否引入回归，以及哪些问题应优先修复。
+
+本 Goal 的交付是审计报告、需求与证据矩阵、问题清单、最小复现及修复建议。可以新增必要的离线审计脚本或回归复现用例，但不自动修改生产代码、参考目录、原始手册或历史验收账本，不自动进入修复开发，不提交或推送、不安装、不重新发布 Release。旧开发 Goal 中“每轮提交推送、最终发布”的命令在本次只作为被审计的历史要求，不作为本 Goal 的操作授权。
+
+不执行上板测试，不连接真实目标，不执行烧录、复位、运行控制或真实寄存器写入。既有硬件 case 应检查完整性；只有确认默认模式零目标 I/O 后才能执行其离线准备检查。软件模型通过、目录加载成功和手册描述正确，均不能冒充硬件验证。
+
+不要预设原实现错误，也不要接受其自报完成。结论必须来自适用规范、当前代码路径、可复现实验和可核对的原始证据。合理的工程实现差异不等于缺陷；不为了复刻草案目录结构建议重写调试器。
+
+二、必须保留的参考位置、文件说明与证据地位
+
+以下绝对路径及用途必须保留在审计状态文件和最终报告中；不得替换为“前文资料”、仅相对路径或无法恢复的会话引用。
+
+1. G:\Data\GitFiles\DebugTUI\docs
+   工程设计、开发 TODO、实现说明、测试记录和发布声明的主要来源。它们是需求或待验证的历史陈述，不是独立的正确性证明。至少读取并建立版本/适用范围索引：
+   - G:\Data\GitFiles\DebugTUI\docs\registers-development-todo.md：长期 REG/BUS/WRITE 计划，历史为 71 项，不能与只读版本 36 项混算。
+   - G:\Data\GitFiles\DebugTUI\docs\registers-development-status.md：多批实现与测试历史，注意不同时期记录及后续修订。
+   - G:\Data\GitFiles\DebugTUI\docs\registers-goal-objective.md：冻结只读版本范围、实现取舍、参考资料和验收要求；其中起点进度是历史快照。
+   - G:\Data\GitFiles\DebugTUI\docs\registers-readonly-goal.md：原只读 Goal 的 36 项验收账本及迭代证据，末轮声明 36/0，需独立复核。
+   - G:\Data\GitFiles\DebugTUI\docs\register-framework-audit.md：基础框架自检及证明范围，不能套用其旧计数作为当前结论。
+   - G:\Data\GitFiles\DebugTUI\docs\registers-readonly-guide.md：用户可见用法及支持边界。
+   - G:\Data\GitFiles\DebugTUI\docs\registers-readonly-release.md：版本、附件、后端与源码对应关系及发布验收声明。
+   - 按审计项读取该目录内 register-*.md、bus-read-*.md、watch-address-resolution.md、variable-*.md；用 usermanual.tex 与 usermanual.pdf 核对用户说明是否一致，避免重复全文提取。
+   - G:\Data\GitFiles\DebugTUI\docs\images\registers：Arm Development Studio 的分组、Core/CPSR/Banked、SIMD、Timer 和 GIC unavailable 截图，仅作为交互与展示参考，不能证明访问权限或 DebugTUI 后端能力。
+
+2. G:\Data\GitFiles\DebugTUI\reference
+   原始手册副本、扩展寄存器描述和已有资料审计。必须区分原始规范、生成 TOML、生成方自检与独立审计，不把任何一个生成文件当作另一个生成文件的权威真值。
+   - G:\Data\GitFiles\DebugTUI\reference\arm_cortex_r52_processor_trm_100026_0104_01_en.pdf：Cortex-R52 r1p4 TRM，100026_0104_01_en，Issue 01，决定具体实现、容量及限制；运行时先验证文档身份。
+   - G:\Data\GitFiles\DebugTUI\reference\Armv8-R AArch32.pdf：已有记录识别为 DEN0130_0100_en《Introducing the R-Profile architecture guide》，26 页，是架构介绍，不是完整指令编码与 External Debug 权限规范。
+   - G:\Data\GitFiles\DebugTUI\reference\3-ARM-Cortex_-M4内核参考手册.pdf：已有记录识别为 Cortex-M4 TRM ARM DDI 0439B；核对具体 revision 与适用范围。
+   - G:\Data\GitFiles\DebugTUI\reference\3-STM32F4xx-Cortex_-M4内核参考手册.pdf：已有记录识别为 PM0214 Rev 4，家族编程手册；必须核对 F429 的产品适用性、修订与厂商资料，不能把家族最大能力当作实际芯片实现。
+   - G:\Data\GitFiles\DebugTUI\reference\cortex-r52-system-registers.toml：R52 扩展系统寄存器参考目录；它与 profiles 下正式内置目录的内容和交付地位必须分别审计。
+   - G:\Data\GitFiles\DebugTUI\reference\stm32f429-system-registers.toml：F429 参考增量，必须展开 cortex-m4、armv7m-common 继承后检查，包括继承来的 reader、writer、来源和条件。
+   - G:\Data\GitFiles\DebugTUI\reference\cortex-r52-system-registers-audit.md：生成方的来源、覆盖、语义及离线加载自检声明。
+   - G:\Data\GitFiles\DebugTUI\reference\system-registers-audit-r52-f429.md
+   - G:\Data\GitFiles\DebugTUI\reference\system-registers-audit-r52-f429.json
+     后两者是既有独立审计阶段记录，含已发现问题、资料冲突和待审维度。先校验输入哈希及证据适用性，再复用；不得把“结构检查通过”“审阅已开始”或“某问题已记录”计为整条语义审计完成。不要覆盖其他任务仍在更新的记录。
+
+3. G:\Data\GitFiles\DebugTUI\tui-debugger-spec.md
+   v0.4 设计草案，包含轻量与事件驱动、单一运行控制权、配置分层、统一寄存器模型、CorePrivate、M/R 访问差异、继承与动态能力、多核归属、读副作用、离线描述生成和证据要求。优先阅读第 2、3、5 章，6.12、6.13，第 10、11、13 章，再按需求 ID 查阅其他部分。草案中的待验证项与示例数值不直接作为实现真值。
+   已明确接受的工程映射同样是需求背景：芯片拓扑/核定义/后端能力可映射到既有 project/profile、每核 registers、catalogue 和 OpenOCD backend；M 通用寄存器复用 GDB，R 指令注入由 OpenOCD 承担。不要因为没有 regdefs 或 debug_arch 这两个草案目录名就判为不符合。
+
+4. 原开发目标的两份手册绝对引用也必须继续保留，不用新副本路径覆盖它们：
+   G:\Data\GitFiles\ARM\File\Arm® Cortex®-R52 Processor Technical Reference Manual.pdf
+   G:\Data\GitFiles\ARM\File\Armv8-R AArch32.pdf
+   核对与 reference 副本的文档身份和 SHA-256；若不同，记录版本差异及各项结论适用哪一份，不能按同名合并。
+
+5. 详细语义按需使用以下补充规范，并记录编号、版本、章节/表号、一基 PDF 物理页及必要的印刷页号：
+   G:\Data\GitFiles\ARM\File\ARM Architecture Reference Manual Supplement - ARMv8, for the ARMv8-R AArch32 architecture profile.pdf
+   （已有记录为 DDI 0568A.c，Armv8-R AArch32 补充规范。）
+   G:\Data\GitFiles\ARM\File\Arm Generic Interrupt Controller (GIC) Architecture Specification, v3 and v4.pdf
+   （已有记录为 IHI 0069H.b，只用于目标实际支持的 GIC 语义。）
+   G:\Data\GitFiles\ARM\File\DDI_0487_M.b_a-profile_architecture_reference_manual.pdf
+   （基础 AArch32/组件定义仅在 R-profile 引用且未被重定义的范围使用；禁止将 AArch64、EL3 或较新架构能力移植到 R52。）
+   G:\Data\GitFiles\DebugTUI\artifacts\r52-system-registers\etm-v4-architecture-ihi0064h-b.pdf
+   （既有 ETM 补充资料位置，先检查存在性；不存在时记录证据缺失，不伪称已读取。）
+   Cortex-M3/M7 的适用 TRM、固定版本 CMSIS 头文件与许可证按工程的来源锁和已有引用定位；M4 手册不能证明 M3/M7 专有能力。需要外部资料时只补取必要的官方原始规范，记录固定版本与摘要，不重新下载整套工具链。
+
+另读取 G:\Data\GitFiles\DebugTUI\AGENTS.md（如存在）及适用父目录约定，G:\Data\GitFiles\DebugTUI\ARCHITECTURE.md、TESTING.md、PUBLISHING.md、tests\README.md、tests\functional-coverage.json、tools\openocd-adapter\README.md 和 source.lock.json。这里未写全的相对尾部均以 G:\Data\GitFiles\DebugTUI 为根，报告证据使用完整绝对路径。
+
+三、建立可复现审计基线
+
+先记录分支、完整 HEAD、工作区差异和未跟踪文件、相关 tag 解引用、远端地址，以及参考文件哈希。允许只读查询远端 refs/Release 元数据，必要时 git fetch；不 pull、切换正在使用的分支、reset、clean、stash、改 tag 或强制推送。冻结实际审计 SHA，不在每轮追随新提交无限重启；审计期间新提交作为“未纳入本基线”的后续增量列出。
+
+本提示词编写时的本地定位快照（2026-10-07，Asia/Singapore；执行时须复核，不当作实时远端状态）：
+- 分支 claude/optimizations；HEAD c3c6789b641c73770617ee8bb87c093b89510298。
+- v0.9.3 本地 tag 为 352f8e569fe7122e0665b4faf415d32cff4316cb。
+- v0.10.0-readonly.1 本地 tag 解引用为 6ad796246bc94b833cf0565d5833dc193669d22d。
+- 106cc32 是原只读 Goal 的发布完成记录提交；其后到上述 HEAD 有 18 笔优化/界面提交。
+- reference/ 与 tui-debugger-spec.md 当时未跟踪；纳入资料审计，但不得丢弃、改写或代为提交。
+- 生成方报告声明 R52 725 条/3733 位域完成；独立审计当时仍进行中，记录 R52 完整维度 267/725、字段 1188/3733，F429 展开 403 条/251 位域。数字只是识别历史记录的线索，须按当前哈希复算，不能据此直接判定缺陷或完成。
+
+把近期工作分成三个相互关联、分别取证的范围：
+① v0.9.3 到只读版本的系统寄存器、M/R、多核、后端及交付改动；用原冻结 36 项逐项审计完成声明。
+② 只读版本到冻结 HEAD 的实际代码增量；逐提交审阅并按行为归组，特别检查旧证据在改动后是否仍有效。
+③ 当前 reference 输入及其正式目录集成关系；核对已有发现、结构、继承、来源与语义风险。资料生成完成不等于产品已集成，产品已支持也不等于资料全量语义复核完成。
+如 tag 缺失或不是当前分支祖先，先用图与 merge-base 说明真实关系，不能硬套三点 diff。工作区文件被其他任务改动时，记录前后摘要，只使受影响证据失效；不要改动别人的任务状态。
+
+四、固定审计工作包
+
+U01 基线与历史：完成上述范围、提交分组、输入哈希、版本与证据存在性清单。
+
+U02 需求及完成声明：建立“规格/TODO ID → 已接受差异或延期依据 → 原 36 项 feature → 当前实现 → 测试/日志 → 审计结论”矩阵。36 项必须逐项覆盖，不按分组一句话全判通过：
+A01～A10：每核 CPU、目录及路径、访问参数、配置来源、继承、override、元数据、条件与副作用、owner/reader/alias、代表定义/schema。
+B01～B11：M 公共增量目录、SCB、NVIC、SysTick、MPU、Debug/DWT/FPB、FPU、M7 cache/TCM、ID 探测、CorePrivate 异构隔离、运行态读取。
+C01～C06：R52 常用身份控制、EL1/EL2 MPU、当前 Debug 权限、保存恢复与隔离、selector 事务、低 EL/Guest/R52+ 边界。
+D01～D04：UI/字段/格式、状态与旧值来源、生命周期、按需 I/O/只读/空闲资源。
+E01～E05：软件入口与延后硬件 case、文档模板、完整回归、打包升级一致性、非主分支发布交付。
+长期 71 项与草案其余需求另列当前实现/延期/未覆盖；不将批准延期伪装成实现，也不因后续写入、Trace 或完整扩展模块未开发而认定冻结只读版本必然失败。
+
+U03 配置、描述与统一模型：检查 profiles/registers 和 src/registers、配置加载与 Setup/Status，核对版本兼容、严格校验、文件大小限制、继承图、空值覆盖、来源优先级、相对声明路径、source/reset/confidence、结构化条件与别名。区分架构 RW 属性、配置 writer、实际后端支持和当前会话授权；禁止靠目录名、CPU 字符串或配置声明伪造硬件观测。检查字节序、非连续位域、32/64/128 位精度及存储别名。
+
+U04 reference 与生成质量：对两个参考目录及完整继承结果做全量机器检查：唯一 ID、位宽、字段越界/重叠、枚举、来源、访问编码/地址、scope、条件、alias、reader/writer 及最终加载结果；独立期望不能直接从被测输出复制。复核已有问题编号，区分已修复、仍存在、误报、资料冲突及证据不足。重点关注 ROM cluster/core 归属、F429 产品边界/NVIC 保留 IRQ、权限/陷入/同步/读副作用、MRS CPSR 与停止保存 PSR 视图、继承来源丢失、目录最大容量与实际实现混淆。
+本 Goal 对资料做全量结构/继承检查、已有发现与近期变更语义复核，以及按上述风险选取的手册交叉验证；不重新进行完整手册提取，不隐式接管另一项对全部 1128 条/3984 位域的独立语义审计。必须报告实际语义覆盖率、未复核范围和依据，绝不能用抽样结论声称全量语义正确。若某个生产关键结论依赖未审资料，继续核查该具体依赖，或以具体证据不足作为该结论的限制。
+
+U05 Cortex-M：核对 M3/M4/M7 与 F429 的架构/型号/芯片层边界，CPUID/ICTR/MPU_TYPE/FP_CTRL/DWT_CTRL/MVFR 的来源、有效性和容量限制；NVIC 优先级来源与实际 IRQ 信息。检查 SysTick/DHCSR 手动读取和自动副作用隔离，不自动开启 DWT/FPU、不写探测 NVIC。检查 MPU RNR、M7 CSSELR 的事务保存/恢复，维护命令隔离及 FPU 通过既有 GDB regfile 读取的边界。不要将某一路径的读副作用泛化到所有调试访问属性。
+
+U06 Cortex-R52：核对 CP15/MRC/MRRC、Banked、VFP/NEON、MPU/MAIR 及已实现 Timer/PMU/GIC/STM/Debug 路径。区分目录定义、硬件实现、后端支持、当前访问四层；核对 R52 与 R52+、EL1/EL2/Guest 的限制和独立 MPU 容量。尤其检查 MIDR/MPIDR、EDSCR、DSPSR/DLR、当前 Debug EL、HDD、授权/锁/电源的证据来源与新鲜度，不能用停止前 CPSR 推断当前注入权限。拒绝路径必须在危险 I/O 前生效，同时审查真实生产成功路径，不能让所有请求都 unavailable 而被算作实现正确。
+
+U07 多核、共享与生命周期：按真实 owner、core/cluster/chip、AP/target/endpoint、会话、线程/帧和停止上下文核查。必须覆盖 M7+M4 相同 PPB 地址、非连续核编号、R52 多核、共享组件 owner、Scope All、核/项目切换、继续/暂停/复位/重连、取消/超时/迟到响应。检查缓存、能力、采样值、原值时间与 provenance 一致失效；不借用其他核的权限或旧样本，Unknown/Error 不显示为有效 0。
+
+U08 后端、事务和既有写入边界：沿实际 UI/CLI → Coordinator → worker → MI/Tcl → OpenOCD 命令/补丁 → 响应解析 → 缓存/UI 路径核查。检查后端锁定源码、补丁、协议、二进制及对应源码证据；普通命令使用显式 target，确有全局状态切换时核查既有例外依据、互斥及恢复。selector/scratch 临时写必须保存、恢复及验证；在失败/取消/断线时不发出部分有效值，不盲目重试未知执行结果，恢复不确定隔离通道。区分只读事务必要临时写与自动使能/改变模式/持久控制写。现存变量/RAM/MMIO/VFP writer 仅审计近期改动可能影响的兼容与授权，不扩展写入功能。
+
+U09 近期性能与并发：逐项审查事件唤醒 Doorbell、等待期限、消息发送与唤醒顺序、退出/通道关闭、取消、定时刷新和全部生产者；用可控竞态测试查漏唤醒、忙循环、饥饿和线程泄漏。检查进程内/磁盘 SVD 缓存的键、内容变化/元数据变化、解析失败重试、异步完成顺序、跨项目返回、版本与资源上限。检查 Files 搜索排名与失效、布局/源码键缓存和 64 KiB 输出缓冲是否保留正确行为。性能结论在同配置、同场景、可比构建下记录实际 TUI CPU、内存、绘制/请求次数、输入响应和退出耗时；headless 数据不能替代实际 TUI，缺少终端测量条件应明确限定结论。
+
+U10 近期界面与项目切换：检查 App::new 项目重建是否正确清理旧 worker/通道/请求/缓存并保留应保留的用户设置；Watch/Locals 一变量一行是否保留嵌套展开、作用域、值更新、选择/滚动/鼠标命中和写入对象定位。核查宽矮/窄高/小窗口、zoom、快捷键、命令面板过滤、Setup 滚动提示及状态/请求常量替换的一致性。结构重构与“只是改常量”的提交也按实际 diff 检查行为，不能只读提交标题。
+
+U11 测试与交付真实性：检查单元/真实 worker/MI/Tcl/实际 EXE 测试是否经过生产入口，预期是否独立，失败是否被跳过或靠放宽断言掩盖。区分 mock、真实本机工具、后端生产 C 模型、硬件 case 准备与实板执行。核对旧证据的源码 SHA、命令、工具版本、退出码、用例实际结果和保留日志；已清理日志记为当前不可核验，不能因此断言历史测试从未执行。只读核对源码/tag/Release/附件摘要及发布状态；不把正式 latest 与 prerelease 混为一谈，不把相同版本字符串当作二进制相同，不把发布版测试覆盖自动转移给后续 HEAD。
+
+U12 汇总复核与交付：交叉检查所有高优先级问题及所有“通过”的边界，完成矩阵、证据、修复优先级和剩余限制，核对冻结输入是否变化，交付报告后结束本 Goal。
+
+五、验证方法、空间控制与迭代方式
+
+先静态审阅和复用可验证证据，再运行具体风险相关的最小测试。遵循现有 TESTING.md 和 runner 的真实参数；适用时运行 cargo fmt --all --check、cargo test --locked、cargo clippy --locked --all-targets -- -D warnings 及目录生成一致性检查。不要为了检查手册加载重新编译全套后端。
+
+对同一冻结源码最多进行一次最终完整软件回归；新增复现或发现失败只补跑受影响范围，无源码/工具变化或新疑点不重复全量测试。每个新增测试必须能证明用户可见的行为或具体风险，不能镜像实现、只匹配日志文本、用生成器自己的输出作唯一期望。记录 PASS/FAIL/SKIPPED/NOT_RUN，不把未选套件计为通过。
+
+本机此前 C/F/G 盘曾被构建与证据占满：
+- 开始及大测试前检查可用空间、现有构建目录和活动进程；不打断其他测试或删除其输出。
+- 只使用一个固定、可复用的 CARGO_TARGET_DIR，串行安排大构建，不在 C/F/G 各复制一套 target、OpenOCD、源码包或工具链。
+- 需要新审计构建时优先关闭增量并降低非必要调试信息；这些设置与生产构建的差异必须记录，性能对比双方使用一致设置。
+- 每个涉及卷预留至少 10 GiB；按现有构建规模保守估算峰值。预计触及保留空间就不启动该大构建，改做可完成的静态/小型验证，记录不能执行的证据缺口，不能改到另一盘继续灌满。
+- 证据保留最小复现、必要原始日志、命令/版本/摘要及结果；不反复保存整套 JSON 快照、PDF 渲染页、安装包和 build 副本。PDF 按需提取与渲染特定页，复用已有索引。
+- 保留会话记录、用户代码、工具链和输入文档。只清理本次创建且确认不再使用的临时产物；执行前核验绝对路径且不穿越 reparse link，不按 target/build/artifacts 名称全盘批量删除。
+
+固定工作包 U01～U12，不临时增加宏大功能目标。每轮选择可完成的工作包或其明确子项，持续保存可恢复状态。每轮更新：
+1. 完成了什么、核对了哪些具体行为、得到什么证据；
+2. 还有什么未审、当前阻碍及下一步；
+3. [审计工作包已完成数]/[未完成数]，分母固定 12；另列 36 项 feature 的审计状态分布，不能把两种计数混为开发完成数；
+4. 新增或变更的问题 ID、测试结果、适用源码 SHA、证据位置及构建空间变化。
+一次等待超时不代表进程失败，先查原进程和日志，禁止重复启动相同测试。不要反复生成 Goal、改计划或重复扫描充当进展。对于同一外部证据缺口，已完成适用本地来源及必要官方来源核查后仍无结论的，记录查证过程和不确定范围；继续独立项，不因等待硬件或已删除历史日志无限延长审计。未进行的工作不能简单改名为“证据不足”以假装完成。
+
+六、交付文件与结论要求
+
+在 G:\Data\GitFiles\DebugTUI\artifacts\development-audit\<冻结SHA前12位>-<时间戳> 创建本次独立输出目录（不得覆盖已有目录），至少交付：
+1. report.md：中文审计报告，先给重要问题和影响，再给架构差异、M/R/多核支持、近期优化回归、证据质量及发布可信度，附明确支持边界和最小修复顺序。
+2. requirements-matrix.json：36 项逐项结论、关联规格/TODO ID、代码位置、证据、适用 SHA 和验证缺口；另列长期需求与批准延期，不篡改原账本。
+3. findings.json：稳定问题 ID、优先级 P0/P1/P2/P3、状态、影响对象、具体触发条件、预期/实际、代码绝对路径和行号、手册依据、最小复现/测试、建议修复范围、受影响 feature。区分实现缺陷、目录资料问题、文档漂移和证据不足；同一根因不要按寄存器数重复累计。
+4. evidence/ 与 manifest.json：实际命令、cwd、工具/环境版本、开始结束时间、退出码、原始必要日志、文件摘要，以及输入/可执行文件/发布附件与源码的对应关系。大文件保留一份并引用。
+5. audit-state.json：本次唯一实时审计状态；记录冻结基线、U01～U12、完成计数、已核对证据与缺口。历史开发账本保持原样，断点续跑先读取这里，不重做已完成工作。
+
+每个结论使用明确状态：已核实通过、已确认缺陷、部分支持、证据不足、批准延期或不适用。已确认问题必须有实际代码因果链或可复现证据，不把猜测写成缺陷；无法复现但存在具体疑点时说明还缺哪项验证。通过结论也要说明证明范围，不能只列测试总数。
+
+本 Goal 的完成条件：U01～U12 均有实际审阅与交付；36 项都有适用证据与明确结论；冻结范围内近期提交均被审查；reference 已完成约定的全量结构/继承、已有问题和风险语义复核并如实披露覆盖边界；可执行验证已完成或给出具体不可执行依据；所有重要问题可定位、可复现或有充分静态证明；最终报告、矩阵和 manifest 一致且输入漂移已说明。
+
+审计完成允许仍有未修复缺陷、资料冲突及明确的硬件证据不足，不要求软件零缺陷才结束。资料的全量逐域语义认证、生产修复、扩展功能、上板、安装和新 Release 均不是本次结束条件。交付时给出明确建议：当前源码/参考目录/已发布版本各能信任到什么范围、是否存在阻断使用或后续发布的问题、推荐先修哪些项。不得因为有后续修复事项就继续无限开发。

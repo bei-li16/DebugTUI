@@ -495,6 +495,8 @@ fn plan(
             }
         }
         Reader::Alias { .. } => Plan::missing("Alias root is unresolved"),
+        Reader::DescriptionOnly { .. } => Plan::missing("Write-only location has no reader"),
+        Reader::DescriptionUnsupported { .. } => Plan::missing("Described location has no applicable read route"),
         Reader::CorePrivate { address } => {
             let binding = match core_private::binding(config, &environment.channels, &context.core)
             {

@@ -368,9 +368,29 @@ pub enum Reader {
     CorePrivate {
         address: u64,
     },
+    /// Location metadata for a write-only interface. No read or write transport.
+    DescriptionOnly {
+        location: DescriptionLocation,
+    },
+    /// Hardware-readable location with no applicable tool read route. No IO.
+    DescriptionUnsupported {
+        location: DescriptionLocation,
+    },
     Alias {
         source: String,
         offset: u16,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DescriptionLocation {
+    CorePrivate { address: u64 },
+    Mmio {
+        component: String,
+        offset: u64,
+        #[serde(default, skip_serializing_if = "false_flag")]
+        require_owner_mapping: bool,
     },
 }
 
@@ -423,6 +443,10 @@ pub struct Register {
     pub read_side_effect: bool,
     #[serde(default)]
     pub fields: Vec<Field>,
+    /// Descriptive write-only payload view; never decoded from a read value or used
+    /// as writer authorization. Separate from executable `write` metadata.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub write_fields: Vec<Field>,
     #[serde(default)]
     pub conditions: Vec<Condition>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -713,7 +737,10 @@ impl Register {
         }
     }
     pub fn auto_read(&self, implementation: Implementation) -> bool {
-        self.access.readable() && !self.read_side_effect && implementation != Implementation::No
+        self.access.readable()
+            && !matches!(self.reader, Reader::DescriptionUnsupported { .. })
+            && !self.read_side_effect
+            && implementation != Implementation::No
     }
 }
 
@@ -901,6 +928,40 @@ impl Catalogue {
                 }
             }
             match &register.reader {
+                Reader::DescriptionOnly { location } | Reader::DescriptionUnsupported { location } => {
+                    if (matches!(register.reader, Reader::DescriptionOnly { .. })
+                        && register.access != Access::Wo)
+                        || (matches!(register.reader, Reader::DescriptionUnsupported { .. })
+                            && register.access == Access::Wo)
+                        || register.writer.is_some()
+                        || register.write.is_some()
+                        || register.read_side_effect
+                    {
+                        return Err(format!(
+                            "Description-only {} must be WO without reader effects or writer metadata",
+                            register.id
+                        ));
+                    }
+                    let valid = match location {
+                        DescriptionLocation::CorePrivate { address } => {
+                            register.scope == Scope::Core
+                                && matches!(register.bits, 8 | 16 | 32)
+                                && address.is_multiple_of(u64::from(register.bits / 8))
+                                && *address >= core_private::START
+                                && address.checked_add(u64::from(register.bits / 8))
+                                    .is_some_and(|end| end <= core_private::END)
+                        }
+                        DescriptionLocation::Mmio { component, offset, .. } => {
+                            identifier(component)
+                                && matches!(register.bits, 8 | 16 | 32 | 64)
+                                && offset.is_multiple_of(u64::from(register.bits / 8))
+                                && offset.checked_add(u64::from(register.bits / 8)).is_some()
+                        }
+                    };
+                    if !valid {
+                        return Err(format!("Invalid description-only location for {}", register.id));
+                    }
+                }
                 Reader::Vfp { name }
                     if vfp::Kind::parse(name).is_none_or(|kind| kind.bits() != register.bits)
                         || register.scope != Scope::Core
@@ -968,6 +1029,31 @@ impl Catalogue {
                 field.validate(register.bits)?;
                 if !fields.insert(&field.name) {
                     return Err(format!("Duplicate field {}", field.name));
+                }
+            }
+            if !register.write_fields.is_empty()
+                && (register.access == Access::Ro
+                    || register.writer.is_some()
+                    || register.write.is_some())
+            {
+                return Err(format!(
+                    "Descriptive write fields for {} require writable access without a writer or write plan",
+                    register.id
+                ));
+            }
+            let mut write_fields = BTreeSet::new();
+            let mut write_mask = 0u128;
+            for field in &register.write_fields {
+                field.validate(register.bits)?;
+                if field.access != Some(Access::Wo) || !write_fields.insert(&field.name) {
+                    return Err(format!("Invalid descriptive write field {}", field.name));
+                }
+                for segment in &field.segments {
+                    let segment_mask = mask(segment.width) << segment.offset;
+                    if write_mask & segment_mask != 0 {
+                        return Err(format!("Overlapping descriptive write field {}", field.name));
+                    }
+                    write_mask |= segment_mask;
                 }
             }
             for condition in &register.conditions {
