@@ -10,7 +10,7 @@ const binary=path.resolve(options.binary||path.join(root,'target/debug/debugtui.
 const out=outputDirectory('register-distribution',process.env.DEBUGTUI_DISTRIBUTION_ARTIFACT_ROOT), stage=path.join(out,'project 工程'), config=path.join(out,'npm 客户配置');
 const metadata=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 const cpus=['cortex-m3','cortex-m4','cortex-m7','cortex-r52','cortex-r52+'];
-const required=['profiles/registers/stm32f429.toml','docs/stm32f429-registers.md','profiles/install.cjs','profiles/devices.toml','profiles/registers/armv7m-common.toml',
+const required=['tools/debug-generic.toml','tools/devices/stm32f429.toml','docs/chip-description-host.md','profiles/registers/stm32f429.toml','docs/stm32f429-registers.md','profiles/install.cjs','profiles/devices.toml','profiles/registers/armv7m-common.toml',
   ...cpus.map(cpu=>`profiles/registers/${cpu}.toml`),'profiles/registers-readonly-multicore.toml.example',
   'profiles/registers-readonly-r52.toml.example','docs/registers-readonly-guide.md','tests/cases/registers-readonly-release.md','tests/README.md'];
 const historical=Boolean(options['previous-package']);
@@ -150,6 +150,15 @@ function assertPreserved() { assert.deepEqual(snapshot(config),preserved,'Instal
       for(const file of assets.assets) assert(fs.readFileSync(assets.sha256sums,'utf8').includes(hash(file)+'  '+path.basename(file)));
       assert.equal(hash(path.join(packed,'tools/bin/openocd/bin/openocd.exe')),hash(path.join(root,'tools/bin/openocd/bin/openocd.exe')));
       assert(!fs.existsSync(path.join(packed,'tools/install.ps1')));
+      const hostProject=path.join(out,'host-defaults.toml');
+      fs.writeFileSync(hostProject,"version=3\n[tools]\nprofile='builtin:arm-openocd'\n[debug]\nchip='stm32f429'\ncores=[0]\n");
+      const readHost=(extra=[])=>{
+        const output=success(path.join(packed,'bin/debugtui.exe'),['--project',hostProject,'--headless','--stdio',...extra],{input:'{"id":1,"method":"registers_list"}\n{"id":2,"method":"quit"}\n'});
+        const response=output.trim().split(/\r?\n/).map(JSON.parse).find(e=>e.event==='response'&&e.id===1);
+        assert.equal(response?.ok,true,JSON.stringify(response));return response.result;
+      };
+      assert.equal(readHost().catalogue.registers.length,617);
+      assert.equal(readHost(['--environment','builtin:generic-gdb']).source,'gdb');
       return {assets:assets.assets,sha256sums:assets.sha256sums};
     });
     await suite.test('REG-PKG-OMITTED','Production packer rejects missing payloads and executable tests',async()=>{
@@ -215,15 +224,19 @@ function assertPreserved() { assert.deepEqual(snapshot(config),preserved,'Instal
     await suite.test('REG-PKG-REPEAT','Same-version package reinstall invokes idempotent init',async()=>{npmSuccess(['install',...lifecycle,assets.tgz]);assertPreserved();assert.equal(hash(path.join(installed,'bin/debugtui.exe')),hash(binary));});
     await suite.test('REG-PKG-UNINSTALL','Private-prefix uninstall preserves external user data',async()=>{npmSuccess(['uninstall',...lifecycle,metadata.name]);assert(!fs.existsSync(path.join(prefix,'debugtui.cmd')));assertPreserved();});
     await suite.test('REG-PKG-REINSTALL','Fresh reinstall preserves data and restores exact package contents',async()=>{npmSuccess(['install',...lifecycle,assets.tgz]);assertPreserved();for(const file of required) assert.equal(hash(path.join(installed,file)),hash(path.join(root,file)));});
-    await suite.test('REG-PKG-EXE-ZIP-UPGRADE','Direct EXE and ZIP replacements over previous binary preserve external user data',async()=>{
+    await suite.test('REG-PKG-EXE-ZIP-UPGRADE','Direct EXE and ZIP upgrades preserve user data and add only the empty chip extension directory',async()=>{
       const upgrades=[];
       for(const kind of ['EXE','ZIP']) {
         const directory=path.join(out,`${kind} upgrade`), user=path.join(out,`${kind} upgrade config`);fs.mkdirSync(directory);const exe=path.join(directory,'debugtui.exe');fs.copyFileSync(oldExe,exe);initialize(exe,user);const before=seed(user);
         if(kind==='EXE') fs.copyFileSync(assets.exe,exe);
         else for(const entry of fs.readdirSync(path.join(out,'ZIP install'))) copyTree(path.join(out,'ZIP install',entry),path.join(directory,entry));
-        initialize(exe,user);assert.deepEqual(snapshot(user),before);assert.equal(hash(exe),hash(binary));
+        // Versions before chip discovery did not create profiles/chips. Permit
+        // exactly that empty directory; all existing paths and bytes must match.
+        const expected={...before,'profiles/chips/':'directory'};
+        initialize(exe,user);assert.deepEqual(snapshot(user),expected);assert.equal(hash(exe),hash(binary));
+        initialize(exe,user);assert.deepEqual(snapshot(user),expected,'Repeated init must not add files or change customer data');
         const lists=query(exe,user,"cpu='cortex-r52+'",true);assert(lists.every(list=>list.source==='builtin:cortex-r52+'));
-        upgrades.push({kind,previous_binary_sha256:hash(oldExe),current_binary_sha256:hash(exe)});
+        upgrades.push({kind,previous_binary_sha256:hash(oldExe),current_binary_sha256:hash(exe),created_empty_chips_directory:!Object.hasOwn(before,'profiles/chips/')});
       }
       return {upgrades};
     });

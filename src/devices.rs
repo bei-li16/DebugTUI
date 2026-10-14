@@ -9,6 +9,7 @@ use std::{
 };
 
 pub const DEFAULTS: &str = include_str!("../profiles/devices.toml");
+pub(crate) mod descriptions;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -128,7 +129,7 @@ impl Catalogue {
         Self::parse(&text)
     }
     pub fn user() -> Result<Self, String> {
-        Self::load(&ensure_user_catalogue()?)
+        Self::discovered_at(&ensure_user_catalogue()?)
     }
     /// A configured association is a default, never observed CPU identity.
     pub(crate) fn cpu_association(
@@ -151,7 +152,7 @@ impl Catalogue {
         let device = self
             .devices
             .get(&selection.chip)
-            .ok_or_else(|| format!("Unknown chip '{}'; add it in Setup > Chip", selection.chip))?;
+            .ok_or_else(|| format!("Unknown chip '{}'; install a description in profiles/chips or choose the Generic GDB profile", selection.chip))?;
         validate_device(
             &selection.chip,
             &Device {
@@ -227,10 +228,16 @@ fn publish(path: &Path, text: &str) -> Result<(), String> {
     result.map_err(|e| format!("Save catalogue {}: {e}", path.display()))
 }
 pub fn ensure_at(path: &Path) -> Result<(), String> {
+    // A failed initialization must leave an invalid customer layout untouched.
+    if path.exists() {
+        Catalogue::load(path)?;
+    }
     // Built-ins live in the executable. Leave this directory empty so future
     // upgrades can update defaults without replacing customer overrides.
     fs::create_dir_all(path.parent().unwrap_or(Path::new(".")).join("registers"))
         .map_err(|error| format!("Initialize register extension directory: {error}"))?;
+    fs::create_dir_all(path.parent().unwrap_or(Path::new(".")).join("chips"))
+        .map_err(|error| format!("Initialize chip extension directory: {error}"))?;
     if path.is_file() {
         Catalogue::load(path)?;
         return Ok(());
@@ -403,16 +410,46 @@ pub(crate) fn resolve_with_profile(
         return Ok(None);
     }
     let supplied_catalogue = catalogue.is_some();
-    let owned;
-    let catalogue = if let Some(c) = catalogue {
-        c
+    // An explicitly generic tools profile can use any target label and core IDs.
+    // It never consults installed chip descriptions or infers a CPU catalogue.
+    let generic =
+        backend.as_deref() == Some("generic-gdb") && backends.is_none() && chip_profiles.is_none();
+    let mut owned = if generic {
+        Catalogue {
+            version: 1,
+            devices: BTreeMap::from([(
+                selection.chip.clone(),
+                Device {
+                    cores: selection.cores.clone(),
+                    backend: "generic-gdb".into(),
+                    cpu: String::new(),
+                },
+            )]),
+        }
+    } else if let Some(c) = catalogue {
+        c.clone()
     } else {
-        owned = Catalogue::user()?;
-        &owned
+        Catalogue::user()?
     };
+    // A selected external description is authoritative, including new chips
+    // which have never been added to devices.toml.
+    let mut description_source = None;
+    if let (Some(settings), Some(profile)) = (&chip_profiles, profile)
+        && valid_id(&selection.chip)
+    {
+        let path = crate::config::chip_profiles::selected_path(settings, profile, &selection.chip)?;
+        if owned.discover_file(&path, &selection.chip)? {
+            description_source = Some(path);
+        }
+    }
+    let catalogue = &owned;
     catalogue.selection(&selection)?;
     let device = &catalogue.devices[&selection.chip];
-    let association = catalogue.cpu_association(&selection.chip)?;
+    let association = if generic {
+        None
+    } else {
+        catalogue.cpu_association(&selection.chip)?
+    };
     let cpu = association
         .as_ref()
         .map(|(cpu, _)| cpu.clone())
@@ -429,6 +466,9 @@ pub(crate) fn resolve_with_profile(
         })
         .transpose()?;
     let external_group = external.is_some();
+    let preferred_catalogue = external
+        .as_ref()
+        .and_then(|loaded| loaded.preferred_catalogue.clone());
     let chip_profile_path = external.as_ref().map(|loaded| loaded.path.clone());
     let memory_access_source = external
         .as_ref()
@@ -501,12 +541,61 @@ pub(crate) fn resolve_with_profile(
             selected_registers |= section.contains_key("cpu") || section.contains_key("catalogue");
         }
     }
-    if !cpu.is_empty() && !selected_registers {
+    if !selected_registers && let Some(path) = preferred_catalogue {
+        // Missing optional payloads fall back to the GDB target description.
+        // A present but malformed file is reported by the register loader.
+        let installed = match fs::symlink_metadata(&path) {
+            Ok(_) => true,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+            Err(e) => return Err(format!("Register catalogue {}: {e}", path.display())),
+        };
+        let source = format!(
+            "chip default:{}{}",
+            portable_path(chip_profile_path.as_ref().unwrap()),
+            if installed {
+                String::new()
+            } else {
+                format!(
+                    " ({} not installed; GDB target description)",
+                    portable_path(&path)
+                )
+            }
+        );
+        let path = if installed {
+            portable_path(&path)
+        } else {
+            String::new()
+        };
+        let values = toml::Value::Table(toml::Table::from_iter([
+            (
+                "cpu".into(),
+                if installed {
+                    cpu.clone()
+                } else {
+                    String::new()
+                }
+                .into(),
+            ),
+            ("catalogue".into(), path.into()),
+        ]));
+        register_layers.push(crate::config::register_sources::Layer {
+            section: source,
+            values: values.clone(),
+        });
+        let registers = raw
+            .as_table_mut()
+            .ok_or("Project must be a table")?
+            .entry("registers")
+            .or_insert_with(|| toml::Value::Table(Default::default()));
+        crate::config::merge(registers, values);
+    } else if !cpu.is_empty() && !selected_registers {
         let association_source: String = if association
             .as_ref()
             .is_some_and(|(_, source)| *source == "builtin")
         {
             "builtin:profiles/devices.toml".into()
+        } else if let Some(path) = description_source {
+            format!("chip profile:{} [chip]", portable_path(&path))
         } else if !supplied_catalogue {
             format!("user:{}", portable_path(&catalogue_path()?))
         } else {
@@ -617,9 +706,9 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
     static NEXT: AtomicUsize = AtomicUsize::new(0);
-    struct Fixture(PathBuf);
+    pub(super) struct Fixture(pub(super) PathBuf);
     impl Fixture {
-        fn new() -> Self {
+        pub(super) fn new() -> Self {
             let path = env::temp_dir().join(format!(
                 "debugtui-devices-{}-{}",
                 std::process::id(),
@@ -1026,6 +1115,12 @@ mod tests {
         fs::write(&path, "broken = [").unwrap();
         assert!(ensure_at(&path).is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(), "broken = [");
+        let invalid = Fixture::new();
+        let invalid_index = invalid.0.join("devices.toml");
+        fs::write(&invalid_index, "version=999\n").unwrap();
+        assert!(ensure_at(&invalid_index).is_err());
+        assert!(!invalid.0.join("chips").exists());
+        assert!(!invalid.0.join("registers").exists());
     }
     #[test]
     fn selection_resolves_all_eight_tha_modes_and_preserves_physical_core_identity() {

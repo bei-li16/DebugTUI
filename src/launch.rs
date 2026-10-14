@@ -51,9 +51,9 @@ const LABELS: [&str; 20] = [
 ];
 const HINTS: [&str; 20] = [
     "Project TOML stores ELF, Chip/Core, Probe and debugging preferences.\nEnter / F3: choose a configuration in this directory. F2: browse another file or directory.\nStartup loads debug.toml, offers other configurations, or creates a minimal file when none exists.",
-    "Use builtin:arm-openocd for the tools shipped with DebugTUI, or a custom profile path.\nEnter: edit. F2: choose installed or external profiles; the list shows resolved installation paths.\nProject paths stay relative to Project; bundled resources follow the installed executable.",
+    "Use builtin:arm-openocd with chip descriptions, or builtin:generic-gdb to attach to an existing GDB server.\nEnter: edit. F2: choose installed or external profiles. Generic GDB needs no chip description.\nProject paths stay relative to Project; bundled resources follow the installed executable.",
     "Enter / Left / Right: inherit profile, CMSIS-DAP, J-Link or ST-Link.\nSaved as [tools] probe; it selects an OpenOCD driver independently of Chip/Core.\nFor a legacy profile, choose the bundled profile in the offered list to apply this probe.",
-    "Enter: choose a chip from the local device catalogue, or add a new chip.\nThe catalogue declares available core IDs and a backend; Tools / profile provides its tools.\nLegacy keeps existing single-core / [[cores]] settings. No hardware action until Start.",
+    "Enter: choose an installed chip or Generic GDB (G) for a target without a description.\nFiles in user profiles/chips with [chip] metadata appear automatically; the old device index is also supported.\nGeneric connects to an existing server; Legacy keeps the selected tools and explicit cores. No hardware action until Start.",
     "Enter: select one or more core IDs supported by the chip.\nOne core creates one GDB session; multiple cores share the workspace coordinator.\nEndpoints and startup actions must be provided by the matching Tools / profile and project.",
     "Optional chip settings TOML, relative to Project. Enter: edit. F2: choose Automatic or a custom file.\nAutomatic follows Chip: user profiles/chips/<chip>.toml, then the built-in chip settings.\nClearing the custom path restores Automatic; use builtin: paths in extends for custom boards.",
     "ELF / executable provides symbols for C source, variables and breakpoints. A HEX file has no debug symbols.\nExample: ./build/firmware.elf, relative to Project. F2: browse. Use the ELF matching the flashed firmware.\nOptional for remote attachment; needed for source debugging. Selecting it does not flash the device.",
@@ -369,6 +369,28 @@ impl Document {
     fn select_profile(&mut self, input: &str) {
         let previous = self.raw.get("tools").cloned();
         self.environment(input);
+        if input == crate::bundled_tools::GENERIC_PROFILE {
+            // Selecting this mode explicitly opts out of all catalogue defaults.
+            // Keep core identities so existing watch preferences and memory
+            // channel ownership remain valid when switching an existing project.
+            self.set("registers", "cpu", "".into());
+            self.set("registers", "catalogue", "".into());
+            if let Some(cores) = self
+                .raw
+                .get_mut("cores")
+                .and_then(toml::Value::as_array_mut)
+            {
+                for core in cores {
+                    if let Some(registers) = core
+                        .get_mut("registers")
+                        .and_then(toml::Value::as_table_mut)
+                    {
+                        registers.insert("cpu".into(), "".into());
+                        registers.insert("catalogue".into(), "".into());
+                    }
+                }
+            }
+        }
         if input == crate::bundled_tools::PROFILE {
             for key in ["probe", "chip_profile"] {
                 if let Some(value) = previous.as_ref().and_then(|p| p.get(key)) {
@@ -726,7 +748,22 @@ impl Setup {
             devices::Action::Legacy => {
                 self.document.raw.as_table_mut().unwrap().remove("debug");
             }
+            devices::Action::Generic => {
+                self.document
+                    .select_profile(crate::bundled_tools::GENERIC_PROFILE);
+            }
             devices::Action::Select(selection) => {
+                if self
+                    .document
+                    .raw
+                    .get("tools")
+                    .and_then(|t| t.get("profile"))
+                    .and_then(toml::Value::as_str)
+                    == Some(crate::bundled_tools::GENERIC_PROFILE)
+                {
+                    self.document.select_profile(crate::bundled_tools::PROFILE);
+                    self.document.select_register_cpu(None);
+                }
                 self.document
                     .raw
                     .as_table_mut()
@@ -807,6 +844,7 @@ impl Setup {
             .unwrap_or_default()
             .to_owned();
         let remap_enabled = p.source_mapping_enabled();
+        let generic = profile == crate::bundled_tools::GENERIC_PROFILE;
         vec![
             displayed_path(&self.working_directory, &self.document.path),
             profile,
@@ -815,8 +853,14 @@ impl Setup {
             } else {
                 p.tools.probe
             },
-            self.selection().chip.clone(),
-            if self.selection().chip.is_empty() {
+            if generic {
+                "Generic GDB (no chip description)".into()
+            } else {
+                self.selection().chip.clone()
+            },
+            if generic && self.selection().chip.is_empty() {
+                "Single GDB session".into()
+            } else if self.selection().chip.is_empty() {
                 "(select Chip first)".into()
             } else {
                 format!("{:?}", self.selection().cores)
@@ -837,7 +881,11 @@ impl Setup {
                     } else if self.document.supports_probe() {
                         "Automatic (select Chip first)".into()
                     } else {
-                        "Legacy / uses Tools profile".into()
+                        if generic {
+                            "GDB target / no chip file".into()
+                        } else {
+                            "Legacy / uses Tools profile".into()
+                        }
                     }
                 }),
             path(&p.program.elf),
@@ -1669,7 +1717,9 @@ impl Setup {
                 path.to_owned()
             };
             crate::bundled_tools::reference(&path).filter(|r| {
-                (self.selected == 1 && r == crate::bundled_tools::PROFILE)
+                (self.selected == 1
+                    && (r == crate::bundled_tools::PROFILE
+                        || r == crate::bundled_tools::GENERIC_PROFILE))
                     || (self.selected == SVD && r.starts_with("builtin:svd/"))
             })
         } else {
@@ -2491,6 +2541,28 @@ mod tests {
             "cortex-r52"
         );
         assert_eq!(fs::read(&profile).unwrap(), before);
+    }
+
+    #[test]
+    fn generic_choice_preserves_existing_project_core_routes_and_can_return_to_chip_defaults() {
+        let fixture = Fixture::new();
+        let mut document = Document::empty(fixture.0.join("debug.toml"));
+        document.raw = toml::from_str("version=3\n[debug]\nchip='stm32f429'\ncores=[0]\n[tools]\nprofile='builtin:arm-openocd'\nprobe='cmsis-dap'\n[program]\nelf='firmware.elf'\n[[memory_access]]\nid='core-tcl'\ncores=['core.0']\ntcl_endpoint='localhost:6666'\ntarget='stm32f4x.cpu'\nwhile_running=false\n").unwrap();
+        let mut setup = Setup::new(document);
+        setup.device_action(devices::Action::Generic);
+        let p = setup.document.project().unwrap();
+        assert!(p.registers.load().unwrap().is_none());
+        assert!(p.service.is_none());
+        assert_eq!(p.cores[0].name, "core.0");
+        assert_eq!(p.memory_access[0].cores, ["core.0"]);
+        assert!(p.program.elf.ends_with("firmware.elf"));
+        assert!(setup.document.raw["tools"].get("probe").is_none());
+        assert!(!setup.document.path.exists());
+        setup.document.select_profile(crate::bundled_tools::PROFILE);
+        setup.document.select_register_cpu(None);
+        let p = setup.document.project().unwrap();
+        assert!(p.registers.catalogue.ends_with("stm32f429.toml"));
+        assert_eq!(p.registers.load().unwrap().unwrap().0.registers.len(), 617);
     }
 
     #[test]

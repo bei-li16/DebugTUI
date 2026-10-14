@@ -9,7 +9,7 @@ $outputRoot = (Resolve-Path -LiteralPath $OutputDirectory).Path
 # Runtime files only: profiles, board configs, chip descriptions, installer and bin/.
 $files = foreach ($file in Get-ChildItem -LiteralPath $toolsRoot -File -Recurse -Force) {
     $relative = $file.FullName.Substring($toolsRoot.Length + 1).Replace('\','/')
-    if (-not ($relative -in @('README.md','install.ps1','debug.toml','debug-env.toml') -or $relative -like 'bin/*' -or $relative -like 'openocd/*' -or $relative -like 'svd/*' -or $relative -like 'devices/*')) {
+    if (-not ($relative -in @('README.md','install.ps1','debug.toml','debug-env.toml','debug-generic.toml') -or $relative -like 'bin/*' -or $relative -like 'openocd/*' -or $relative -like 'svd/*' -or $relative -like 'devices/*')) {
         continue
     }
     [pscustomobject]@{ Path = $file.FullName; Entry = 'tools/' + $relative }

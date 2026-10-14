@@ -1,6 +1,23 @@
 # STM32F429 chip settings; the common profile selects the probe independently.
 backend = "stm32f4"
 
+[chip]
+cores = [0]
+backend = "stm32f4"
+cpu = "cortex-m4"
+register_catalogue = "builtin:registers/stm32f429.toml"
+
+[registers.topology]
+chip = "stm32f429"
+[registers.component_owners.ppb."core:core.0"]
+base = 0
+channel = "core-tcl"
+little_endian = true
+[registers.component_owners.dbgmcu."chip:stm32f429"]
+base = 0xE0042000
+channel = "core-tcl"
+little_endian = true
+
 [service]
 args = ["-s", "${tools_dir}/bin/openocd/scripts", "-f", "${probe_config}", "-f", "${tools_dir}/openocd/stm32f429.cfg"]
 [program]

@@ -59,10 +59,15 @@ function status(name, profile, chip, cores) {
     if (!await suite.test('CHIP-FILES-INSTALL', 'Tools installer copies chip families and probes into a path containing Chinese and spaces', async () => {
       const result = run('tools-install', 'powershell.exe', ['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(root,'tools/install.ps1'),fixture,'cmsis-dap']);
       assert.equal(result.status, 0, result.stderr);
-      const expected = ['debug-env.toml','devices/stm32f429.toml','devices/tha6104.toml','devices/tha6206.toml',
+      const expected = ['debug-env.toml','debug-generic.toml','devices/stm32f429.toml','devices/tha6104.toml','devices/tha6206.toml',
         'devices/tha6412.toml','devices/families/cortex-r52.toml','devices/families/tha6.toml','openocd/probes/cmsis-dap.cfg','openocd/probes/jlink.cfg','openocd/probes/stlink.cfg',
         'openocd/stm32f429.cfg','openocd/r52-template.cfg','openocd/tha6.cfg',
-        'svd/STM32F429.svd','svd/THA6104.svd','svd/THA6206.svd','svd/THA6412.svd'];
+        'svd/STM32F429.svd'];
+      // Local THA SVDs are optional, ignored payloads (tools/svd/README.md).
+      // Verify their bytes when provided and record absence without claiming coverage.
+      const optionalSvds = ['svd/THA6104.svd','svd/THA6206.svd','svd/THA6412.svd'];
+      const absentOptionalSvds = optionalSvds.filter(file => !fs.existsSync(path.join(root,'tools',file)));
+      expected.push(...optionalSvds.filter(file => !absentOptionalSvds.includes(file)));
       for (const file of expected) assert.equal(hash(path.join(tools,file)),hash(path.join(root,'tools',file)));
       assert.deepEqual(fs.readdirSync(tools).filter(name => /^debug-env.*\.toml$/.test(name)), ['debug-env.toml']);
       assert.deepEqual(fs.readdirSync(path.join(tools,'openocd')).filter(name => name.startsWith('stm32')), ['stm32f429.cfg']);
@@ -88,7 +93,7 @@ function status(name, profile, chip, cores) {
         }
       }
       checkPortable(fixture);
-      return {files:expected};
+      return {files:expected,absent_optional_svds:absentOptionalSvds};
     })) return;
     if (!await suite.test('CHIP-FILES-RELOCATE', 'Move the entire installed project and load its relative profile from an unrelated working directory', async () => {
       const destination = path.join(out,'重新定位 项目');

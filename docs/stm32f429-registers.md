@@ -1,8 +1,12 @@
 # STM32F429 系统寄存器描述文件
 
-DebugTUI 1.1.5 的 npm 和完整 ZIP 提供 `profiles/registers/stm32f429.toml`。它与仓库 `reference/stm32f429-system-registers.toml` 字节一致，继承同目录的 `cortex-m4.toml` 和 `armv7m-common.toml`，展开后包含 **617 项寄存器定义、1464 项普通/读取位域和 32 项写入载荷位域**。计数包含别名和架构容量位置，不等于芯片上独立实现的寄存器数量。
+DebugTUI 从 1.1.5 起通过 npm 和完整 ZIP 提供 `profiles/registers/stm32f429.toml`。它与仓库 `reference/stm32f429-system-registers.toml` 字节一致，继承同目录的 `cortex-m4.toml` 和 `armv7m-common.toml`，展开后包含 **617 项寄存器定义、1464 项普通/读取位域和 32 项写入载荷位域**。计数包含别名和架构容量位置，不等于芯片上独立实现的寄存器数量。
 
 ## 在现有工程启用
+
+**1.2.0 自动加载：**选择随包的 `stm32f429` 芯片，CPU registers 保持 **Automatic**，在工程和 profile 没有显式 CPU/catalogue 覆盖时，芯片入口会引用安装目录的 F429 描述，并提供 PPB 和 DBGMCU 的 `core-tcl` 访问映射。已显式选择 `cortex-m4` 或自定义 catalogue 的工程仍保留原选择；可在 Setup 恢复 Automatic。详细优先级、用户芯片覆盖和缺失默认目录处理见 [Host 与芯片描述](chip-description-host.md)。
+
+以下显式配置方式适用于需要固定目录副本的工程，也兼容 1.1.5：
 
 先找到完整安装包中的 `profiles/registers/`。便携版位于解压目录；npm 安装位置可在 PowerShell 查询：
 
@@ -11,7 +15,7 @@ $debugtuiPackage = Join-Path (npm.cmd root -g) '@debugtui/cli'
 Join-Path $debugtuiPackage 'profiles/registers'
 ```
 
-推荐将该目录中的 `stm32f429.toml`、`cortex-m4.toml`、`armv7m-common.toml` 三个文件一起复制到工程的 `registers/` 目录。在现有 `debug.toml` 的 `[registers]` 中合并以下两项，保留工程自己的探针、ELF、端口和访问通道配置，不重复创建已有表：
+需要工程自管副本时，将该目录中的 `stm32f429.toml`、`cortex-m4.toml`、`armv7m-common.toml` 三个文件一起复制到工程的 `registers/` 目录。在现有 `debug.toml` 的 `[registers]` 中合并以下两项，保留工程自己的探针、ELF、端口和访问通道配置，不重复创建已有表：
 
 ```toml
 [registers]

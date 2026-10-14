@@ -7,6 +7,7 @@
 ```text
 tools/
   debug-env.toml   公共 GDB/OpenOCD 环境
+  debug-generic.toml  通用 GDB 连接入口，不要求芯片描述
   debug.toml       新工程的最简配置模板
   bin/            GDB、OpenOCD、配套脚本及许可证
   devices/        STM32、THA 芯片描述与共用设置
@@ -29,6 +30,8 @@ probe = "cmsis-dap"
 Tools / profile 和 SVD file 按 **F2** 可选择包内文件或浏览外部文件，列表显示实际安装路径。内置 SVD 保存为 `builtin:svd/STM32F429.svd`；选择 Automatic 则跟随 Chip。旧 profile 下切换 Probe 会打开兼容工具选择列表；选择内置 profile 后应用探针，Esc 保留原配置。切换时只迁移内容完全一致的旧版原始 SVD，自定义文件保留。
 
 内置文件随软件升级更新。自定义芯片 TOML 可在 Setup 的 **Chip config** 中选择，或放到 DebugTUI 用户目录的 `profiles/chips/<chip>.toml`；优先级为工程指定文件、用户文件、内置文件。自定义文件可用 `extends = "builtin:devices/tha6206.toml"` 继承默认配置，再引用同目录的板级 cfg/SVD。三款 THA 已有参考工程对应的板级参数；其他 R52 板卡仍须提供自己的配置。
+
+1.2.0 支持带 `[chip]` 元数据的芯片文件自动发现，以及 `builtin:generic-gdb` 基础调试入口。F429 自动引用安装目录中的完整系统寄存器 TOML；新增芯片与目录优先级见 [Host 与芯片描述](../docs/chip-description-host.md)。
 
 ## THA 芯片
 

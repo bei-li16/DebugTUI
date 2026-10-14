@@ -236,3 +236,82 @@ fn adding_chip_description_and_catalogue_entry_does_not_change_common_profile() 
     assert_eq!(p.registers.cpu, "cortex-r52");
     assert_eq!(fs::read(f.0.join("tools/debug-env.toml")).unwrap(), common);
 }
+
+#[test]
+fn self_describing_chip_needs_no_index_and_defaults_respect_explicit_selectors() {
+    let f = Fixture::new();
+    let profile = fs::read(f.0.join("tools/debug-env.toml")).unwrap();
+    let chip = "[chip]\ncores=[0]\nbackend='stm32f1'\nregister_catalogue='f103-registers.toml'\n[target]\nendpoint='localhost:3333'\n";
+    f.write("tools/devices/stm32f103.toml", chip);
+    f.write(
+        "tools/devices/f103-registers.toml",
+        "version=1\ncpu='test-f103'\narchitecture='armv7-m'\nextends=['cortex-m3']\n",
+    );
+    let catalogue = Catalogue::parse("version=1\n[devices]\n").unwrap();
+    let load = |extra: &str| {
+        Project::from_document_with_catalogue(
+        toml::from_str(&format!("version=3\n[tools]\nprofile='../tools/debug-env.toml'\n[debug]\nchip='stm32f103'\ncores=[0]\n{extra}")).unwrap(),
+        Some(f.0.join("project/debug.toml")), None, Some(&catalogue))
+    };
+    let project = load("").unwrap();
+    assert_eq!(
+        project.registers.load().unwrap().unwrap().0.cpu,
+        "test-f103"
+    );
+    assert_eq!(project.cores[0].endpoint, "localhost:3333");
+    let report = project.register_configuration("core.0");
+    assert!(
+        report
+            .settings
+            .iter()
+            .any(|s| s.path == ["catalogue"] && s.source.starts_with("chip default:"))
+    );
+    let explicit = load("[registers]\ncpu='cortex-m4'").unwrap();
+    assert_eq!(
+        explicit.registers.load().unwrap().unwrap().0.cpu,
+        "cortex-m4"
+    );
+    assert!(explicit.registers.catalogue.as_os_str().is_empty());
+    assert!(
+        load("[registers]\ncpu=''\ncatalogue=''")
+            .unwrap()
+            .registers
+            .load()
+            .unwrap()
+            .is_none()
+    );
+    fs::remove_file(f.0.join("tools/devices/f103-registers.toml")).unwrap();
+    let fallback = load("").unwrap();
+    assert!(fallback.registers.load().unwrap().is_none());
+    assert!(
+        fallback
+            .register_configuration("core.0")
+            .settings
+            .iter()
+            .any(|s| s.source.contains("not installed; GDB"))
+    );
+    assert!(load("[registers]\ncatalogue='missing-explicit.toml'").is_err());
+    f.write("tools/devices/f103-registers.toml", "malformed TOML");
+    assert!(load("").is_err());
+    assert_eq!(fs::read(f.0.join("tools/debug-env.toml")).unwrap(), profile);
+    assert!(catalogue.devices.is_empty());
+}
+
+#[test]
+fn inherited_register_default_is_relative_to_its_declaring_chip_file() {
+    let f = Fixture::new();
+    f.write("tools/devices/stm32f429.toml", "extends='family/base.toml'");
+    f.write("tools/devices/family/base.toml", "[chip]\nbackend='stm32f4'\ncores=[0]\nregister_catalogue='registers.toml'\n[target]\nendpoint='localhost:3333'\n");
+    f.write(
+        "tools/devices/family/registers.toml",
+        "version=1\ncpu='family'\narchitecture='armv7-m'\nextends=['cortex-m4']\n",
+    );
+    let project = f.project("").unwrap();
+    assert!(
+        project
+            .registers
+            .catalogue
+            .ends_with("family/registers.toml")
+    );
+    assert_eq!(project.registers.load().unwrap().unwrap().0.cpu, "family");
+}

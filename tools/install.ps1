@@ -147,7 +147,7 @@ $binRoot = Join-Path $tools 'bin'
 $binaries = @(Get-ChildItem -LiteralPath $binRoot -File -Recurse -Force | ForEach-Object { 'bin/' + $_.FullName.Substring($binRoot.Length + 1).Replace('\', '/') })
 
 # Copy with the same layout as tools/, so every relative path in the profiles holds.
-$settings = @($profileName)
+$settings = @($profileName, 'debug-generic.toml')
 foreach ($directory in @('devices', 'openocd')) {
     $settings += @(Get-ChildItem -LiteralPath (Join-Path $tools $directory) -File -Recurse | ForEach-Object { $_.FullName.Substring($tools.Length + 1).Replace('\', '/') })
 }

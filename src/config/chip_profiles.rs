@@ -13,6 +13,27 @@ struct Directory {
     file: Option<PathBuf>,
 }
 
+pub(crate) fn selected_path(
+    settings: &toml::Value,
+    profile: &Path,
+    chip: &str,
+) -> Result<PathBuf, String> {
+    let settings: Directory = settings
+        .clone()
+        .try_into()
+        .map_err(|e| format!("chip_profiles: {e}"))?;
+    if settings.directory.as_os_str().is_empty() {
+        return Err("chip_profiles.directory must not be empty".into());
+    }
+    let base = profile
+        .parent()
+        .ok_or("Tools profile needs a parent directory")?;
+    Ok(settings
+        .file
+        .map(|path| absolute(base, &path))
+        .unwrap_or_else(|| absolute(base, &settings.directory).join(format!("{chip}.toml"))))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Probe {
@@ -24,6 +45,7 @@ pub(crate) struct Loaded {
     pub value: toml::Value,
     pub register_layers: Vec<register_sources::Layer>,
     pub memory_access_source: Option<String>,
+    pub preferred_catalogue: Option<PathBuf>,
 }
 
 struct Loader<'a> {
@@ -34,6 +56,7 @@ struct Loader<'a> {
     stack: Vec<PathBuf>,
     register_layers: Vec<register_sources::Layer>,
     memory_access_source: Option<String>,
+    preferred_catalogue: Option<PathBuf>,
 }
 
 pub(crate) fn load(
@@ -81,6 +104,7 @@ pub(crate) fn load(
         stack: Vec::new(),
         register_layers: Vec::new(),
         memory_access_source: None,
+        preferred_catalogue: None,
     };
     let mut value = loader.read(&path)?;
     let backend = value.as_table_mut().unwrap().remove("backend");
@@ -95,6 +119,7 @@ pub(crate) fn load(
         value,
         register_layers: loader.register_layers,
         memory_access_source: loader.memory_access_source,
+        preferred_catalogue: loader.preferred_catalogue,
     })
 }
 
@@ -119,7 +144,17 @@ impl Loader<'_> {
 
     fn read_document(&mut self, path: &Path) -> Result<toml::Value, String> {
         let mut value = read_toml(path)?;
+        let metadata = crate::devices::descriptions::metadata(&value, path)?;
         let table = value.as_table_mut().ok_or("Expected a TOML table")?;
+        table.remove("chip");
+        if let Some(metadata) = &metadata {
+            if metadata.backend != self.device.backend || metadata.cores != self.device.cores {
+                return Err("[chip] metadata does not match the selected device".into());
+            }
+            table
+                .entry("backend")
+                .or_insert_with(|| metadata.backend.clone().into());
+        }
         for key in table.keys() {
             if !matches!(
                 key.as_str(),
@@ -171,6 +206,33 @@ impl Loader<'_> {
         } else {
             toml::Value::Table(Default::default())
         };
+        if let Some(metadata) = metadata
+            && !metadata.register_catalogue.as_os_str().is_empty()
+        {
+            self.preferred_catalogue = Some(
+                if let Some(reference) = metadata
+                    .register_catalogue
+                    .to_str()
+                    .filter(|s| s.starts_with("builtin:"))
+                {
+                    if !reference.starts_with("builtin:registers/") {
+                        return Err(
+                            "Built-in register catalogue must use builtin:registers/<file>".into(),
+                        );
+                    }
+                    let tools = crate::bundled_tools::root()?;
+                    crate::bundled_tools::resource(
+                        &tools
+                            .parent()
+                            .ok_or("Tools need a parent directory")?
+                            .join("profiles"),
+                        reference,
+                    )?
+                } else {
+                    absolute(directory, &metadata.register_catalogue)
+                },
+            );
+        }
         expand_selection(&mut value, self.selection, self.device);
         self.expand_paths(&mut value, directory)?;
         resolve_launch_paths(&mut value, directory);

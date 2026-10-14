@@ -95,6 +95,12 @@ impl Picker {
                 .transpose()
                 .map_err(|e| format!("Tools: {e}"))?
                 .unwrap_or_default();
+            add(
+                Some(crate::bundled_tools::GENERIC_PROFILE.into()),
+                "Generic GDB / existing server (no chip description)".into(),
+                "Use registers reported by GDB, including PC/SP/status when available. Connects to target.endpoint (default 127.0.0.1:3333); start OpenOCD or another GDB server separately. Bundled GDB supports ARM; other architectures need a matching GDB executable.".into(),
+                None,
+            );
             let current = if !tools.profile.as_os_str().is_empty() {
                 tools.profile
             } else if !tools.root.as_os_str().is_empty() {
@@ -104,6 +110,7 @@ impl Picker {
             };
             if !current.as_os_str().is_empty()
                 && current != Path::new(crate::bundled_tools::PROFILE)
+                && current != Path::new(crate::bundled_tools::GENERIC_PROFILE)
             {
                 add(
                     Some(portable_path(&current)),

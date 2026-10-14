@@ -114,7 +114,7 @@ impl Setup {
         }
         let project = document.project()?;
         let loaded = project.registers.load()?;
-        let association = if project.debug.chip.is_empty() {
+        let association = if project.debug.chip.is_empty() || loaded.is_none() {
             None
         } else {
             crate::devices::Catalogue::user()?.cpu_association(&project.debug.chip)?

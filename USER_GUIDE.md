@@ -318,7 +318,7 @@ args = ["-s", "${tools_dir}/bin/openocd/scripts",
 1. Setup 的 **Chip**（Tools / profile 后）按 Enter，选择芯片。
 2. 在 **Debug cores** 中用 Space / 鼠标勾选一个或多个核心，**A** 全选、**N** 清空、**Enter / Apply** 确认；至少选择一个。单独选 `[1]` 会连接物理 core1 的端口。
 3. **Ctrl+S** 保存项目选择；**Start debugging** 才关闭上一会话并按新选择连接。多核使用现有 Scope All / Core、组运行/暂停、逐核单步和断点机制；软件组控制不等于硬件同步锁步。
-4. 新芯片：Chip → **N / Add chip**，填写名称、核心 ID 列表、backend，**Ctrl+S / Save** 追加到用户目录。例：`s32k144` / `0` / `generic`，再选择并应用。重复名称、无效或重复 ID 会提示错误；取消不会写入。
+4. 新芯片：在用户 `profiles/chips/<chip>.toml` 中提供 `[chip]` 元数据及后端配置即可自动发现；默认寄存器目录由 `register_catalogue` 关联，无须再修改 devices.toml。Chip → **N / Add chip** 仍可维护旧索引。没有芯片描述时，选择 **G / Generic GDB** 连接现有 GDB server，使用它提供的基础寄存器。详见 [通用 Host 与描述安装](docs/chip-description-host.md)。
 
 项目只记录当前选择；未选芯片的旧项目继续使用原单核或 `[[cores]]`，可在芯片选择器按 **L / Legacy** 返回旧模式：
 

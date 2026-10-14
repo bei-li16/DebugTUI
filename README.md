@@ -4,9 +4,11 @@
 
 DebugTUI 是基于 GDB/MI 的终端调试工作台，可在 PowerShell、Windows Terminal 或 VS Code 终端中使用。支持源码断点、单步、Watch、寄存器与 SVD 外设查看、单核/多核调试，以及调用工程的 Build / Download 命令。
 
-当前版本 **1.1.5**，支持 **Windows x64**。npm/完整 ZIP 内置 ARM GDB、OpenOCD、STM32F429 与 THA6104/6206/6412 芯片配置及 SVD；调试时无需 Node、Python 或 VS Code 常驻。工程保存一份 `debug.toml`，通过 Probe、Chip 和 Debug cores 选择目标。更新与升级方法见 [1.1.5 发布说明](docs/release-1.1.5.md)，THA 使用方法见 [内置工具说明](tools/README.md)，M/R 核的系统寄存器范围见 [只读指南](docs/registers-readonly-guide.md)。
+当前版本 **1.2.0**，支持 **Windows x64**。npm/完整 ZIP 内置 ARM GDB、OpenOCD、STM32F429 与 THA6104/6206/6412 芯片配置及 STM32F429 SVD；THA SVD 按本地实际文件打包，本版未附带。调试时无需 Node、Python 或 VS Code 常驻。工程保存一份 `debug.toml`，通过 Probe、Chip 和 Debug cores 选择目标。更新与升级方法见 [1.2.0 发布说明](docs/release-1.2.0.md)，THA 使用方法见 [内置工具说明](tools/README.md)，M/R 核的系统寄存器范围见 [只读指南](docs/registers-readonly-guide.md)。
 
 ## 怎么用
+
+1.2.0 提供“通用 GDB 调试 / 安装芯片描述”两种入口：没有专用描述也能使用 GDB 提供的基础寄存器；F429 自动关联完整系统寄存器目录；新芯片通过带 `[chip]` 元数据的文件发现。用法、目录和当前范围见 [调试 Host 与芯片描述](docs/chip-description-host.md)。
 
 ### 1. 安装
 

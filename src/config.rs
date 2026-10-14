@@ -826,7 +826,8 @@ impl Project {
                     .collect()
             });
         for layer in &layers {
-            let chip_default = layer.section.starts_with("chip association:");
+            let chip_default = layer.section.starts_with("chip association:")
+                || layer.section.starts_with("chip default:");
             let source = if chip_default || layer.section.starts_with("chip profile:") {
                 layer.section.clone()
             } else {
@@ -874,6 +875,13 @@ impl Project {
                 .any(|layer| layer.section.starts_with("chip association:"))
             {
                 values.as_table_mut().unwrap().remove("cpu");
+            }
+            if layers
+                .iter()
+                .any(|layer| layer.section.starts_with("chip default:"))
+            {
+                values.as_table_mut().unwrap().remove("cpu");
+                values.as_table_mut().unwrap().remove("catalogue");
             }
             register_sources.overlay(
                 &values,

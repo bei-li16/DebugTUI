@@ -1,10 +1,10 @@
 # 寄存器目录交付与升级自检（REG-107）
 
-本文说明内置目录与用户扩展位置在 npm、直接 EXE、ZIP 和 `--init-profiles` 的交付行为。分发驱动只执行初始化、离线本地安装和未连接的 `registers_list`／切核；不启动 GDB、OpenOCD 或探针。目录有定义不证明实际 CPU、reader、可选扩展或 writer 已支持。当前正式版的完整工具、系统安装、公网 Release 和硬件验证范围见 [1.1.3 发布说明](release-1.1.3.md)；下面保留 REG-107 的历史证据。
+本文说明内置目录与用户扩展位置在 npm、直接 EXE、ZIP 和 `--init-profiles` 的交付行为。分发驱动只执行初始化、离线本地安装和未连接的 `registers_list`／切核；不启动 GDB、OpenOCD 或探针。目录有定义不证明实际 CPU、reader、可选扩展或 writer 已支持。当前正式版的完整工具、安装、公网 Release 和硬件验证范围见 [1.2.0 发布说明](release-1.2.0.md)；下面保留 REG-107 的历史证据。
 
 ## 交付约定与打包检查
 
-1.1.5 另随 npm/ZIP 提供 `profiles/registers/stm32f429.toml` 和 [F429 加载说明](stm32f429-registers.md)。这份文件与已审计参考目录逐字节核对，并在 ZIP 与 npm 安装场景比较全部继承后的 617 项定义和 16 个既有 writer。F429 专用目录需显式选择；内置 `cortex-m4` 继续提供通用核心描述。运行包只收录 `bin/debugtui.exe`，其他本地备份 EXE 不进入包。
+从 1.1.5 起 npm/ZIP 提供 `profiles/registers/stm32f429.toml` 和 [F429 加载说明](stm32f429-registers.md)。这份文件与已审计参考目录逐字节核对，并在 ZIP 与 npm 安装场景比较全部继承后的 617 项定义和 16 个既有 writer。1.2.0 在无显式寄存器覆盖时由 F429 芯片文件自动关联专用目录；显式 `cortex-m4` 选择继续提供通用核心描述。Generic GDB 不要求芯片描述，新增芯片入口通过用户 `profiles/chips/` 文件发现。运行包只收录 `bin/debugtui.exe`，其他本地备份 EXE 不进入包。
 
 M3／M4／M7／R52／R52+ 目录编译进 EXE；npm 与 ZIP 还随包提供原始 TOML、devices.toml、install.cjs 和运行所需的内置 tools。生产 `package.ps1` 检查必需 profile 与文档文件，缺少任一文件拒绝生成成功记录；`release-assets.ps1` 核对解压后同一载荷的 SHA256。Rust 工具链、target 与测试驱动不进入运行包。
 

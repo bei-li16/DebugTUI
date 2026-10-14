@@ -6,6 +6,7 @@ use std::{
 };
 
 pub const PROFILE: &str = "builtin:arm-openocd";
+pub const GENERIC_PROFILE: &str = "builtin:generic-gdb";
 pub const PROJECT_TEMPLATE: &str = include_str!("../tools/debug.toml");
 pub const PROBES: &[&str] = &["cmsis-dap", "jlink", "stlink"];
 
@@ -40,6 +41,7 @@ fn root_for_executable(exe: &Path) -> Result<PathBuf, String> {
 pub fn resolve_profile(value: &Path, base: &Path) -> Result<PathBuf, String> {
     match value.to_str() {
         Some(PROFILE) => Ok(root()?.join("debug-env.toml")),
+        Some(GENERIC_PROFILE) => Ok(root()?.join("debug-generic.toml")),
         Some(s) if s.starts_with("builtin:") => Err(format!("Unknown built-in tools profile: {s}")),
         _ => Ok(absolute(base, value)),
     }
@@ -63,6 +65,8 @@ pub fn reference(path: &Path) -> Option<String> {
     let relative = path.strip_prefix(root).ok()?;
     if relative == Path::new("debug-env.toml") {
         Some(PROFILE.into())
+    } else if relative == Path::new("debug-generic.toml") {
+        Some(GENERIC_PROFILE.into())
     } else if relative.starts_with("svd") && path.is_file() {
         Some(format!("builtin:{}", portable_path(relative)))
     } else {
@@ -157,6 +161,44 @@ pub(crate) fn apply_selection(
 mod tests {
     use super::*;
     use crate::config::Project;
+    #[test]
+    fn f429_loads_the_complete_chip_catalogue_and_generic_needs_no_chip_index() {
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("debug.toml");
+        let load = |text: &str| {
+            Project::from_document_with_catalogue(
+                toml::from_str(text).unwrap(),
+                Some(base.clone()),
+                None,
+                Some(&crate::devices::Catalogue::parse("version=1\n[devices]").unwrap()),
+            )
+        };
+        let p = load("version=3\n[tools]\nprofile='builtin:arm-openocd'\n[debug]\nchip='stm32f429'\ncores=[0]").unwrap();
+        let (catalogue, source) = p.registers.load().unwrap().unwrap();
+        assert!(source.contains("stm32f429.toml"));
+        assert_eq!(catalogue.registers.len(), 617);
+        assert!(catalogue.registers.iter().any(|r| r.id == "scb.cpuid"));
+        assert!(catalogue.registers.iter().any(|r| r.id == "dbgmcu.idcode"));
+        assert_eq!(
+            p.registers.component_owners["ppb"]["core:core.0"].channel,
+            "core-tcl"
+        );
+        assert_eq!(
+            p.registers.component_owners["dbgmcu"]["chip:stm32f429"].base,
+            0xe0042000
+        );
+        for selection in ["", "[debug]\nchip='uninstalled-f103'\ncores=[0]\n"] {
+            let p = load(&format!(
+                "version=3\n{selection}[tools]\nprofile='builtin:generic-gdb'\n"
+            ))
+            .unwrap();
+            assert!(p.registers.load().unwrap().is_none());
+            assert!(p.service.is_none());
+            assert!(p.chip_profile_path.is_none());
+            assert!(p.program.svd.as_os_str().is_empty());
+            assert!(p.gdb.registers.is_empty());
+            assert_eq!(p.target.endpoint, "127.0.0.1:3333");
+        }
+    }
     #[test]
     fn builtin_selection_resolves_probe_custom_chip_and_declaring_paths() {
         let directory = env::temp_dir().join(format!("debugtui-builtin-{}", std::process::id()));

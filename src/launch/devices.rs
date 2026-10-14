@@ -5,6 +5,7 @@ pub(super) enum Action {
     None,
     Cancel,
     Legacy,
+    Generic,
     Select(Selection),
 }
 enum Mode {
@@ -33,13 +34,14 @@ const CANCEL: usize = usize::MAX - 2;
 const LEGACY: usize = usize::MAX - 3;
 const ALL: usize = usize::MAX - 4;
 const NONE: usize = usize::MAX - 5;
+const GENERIC: usize = usize::MAX - 6;
 impl Devices {
     pub fn new(previous: Selection, cores: bool) -> Result<Self, String> {
         let path = crate::devices::ensure_user_catalogue()?;
         Self::at(path, previous, cores)
     }
     fn at(path: PathBuf, previous: Selection, cores: bool) -> Result<Self, String> {
-        let catalogue = Catalogue::load(&path)?;
+        let catalogue = Catalogue::discovered_at(&path)?;
         let selected = catalogue
             .devices
             .keys()
@@ -96,6 +98,7 @@ impl Devices {
         match button {
             CANCEL => return Ok(Action::Cancel),
             LEGACY => return Ok(Action::Legacy),
+            GENERIC => return Ok(Action::Generic),
             ADD => {
                 self.mode = Mode::Add {
                     fields: [
@@ -138,7 +141,7 @@ impl Devices {
                         cpu: String::new(),
                     };
                     crate::devices::add(&self.path, &name, device)?;
-                    self.catalogue = Catalogue::load(&self.path)?;
+                    self.catalogue = Catalogue::discovered_at(&self.path)?;
                     self.mode = Mode::Chips;
                     self.selected = self
                         .catalogue
@@ -192,6 +195,7 @@ impl Devices {
                         KeyCode::Enter => self.activate(APPLY),
                         KeyCode::Char('n' | 'N') => self.activate(ADD),
                         KeyCode::Char('l' | 'L') => self.activate(LEGACY),
+                        KeyCode::Char('g' | 'G') => self.activate(GENERIC),
                         _ => Ok(Action::None),
                     };
                     return self.result(result);
@@ -256,7 +260,7 @@ impl Devices {
             .find(|(r, _)| r.contains((mouse.column, mouse.row).into()))
             .map(|(_, id)| *id);
         if let Some(id) = hit {
-            if id >= NONE {
+            if id >= GENERIC {
                 let result = self.activate(id);
                 return self.result(result);
             }
@@ -270,7 +274,7 @@ impl Devices {
     pub fn help(&self) -> String {
         let instruction = match &self.mode {
             Mode::Chips => {
-                "Enter: choose chip. N: add chip to your local catalogue. L: use legacy project cores. Esc: cancel."
+                "Enter: choose chip. G: Generic GDB, no chip description. N: add to index. L: legacy project cores. Esc: cancel."
             }
             Mode::Cores { .. } => {
                 "Space / click: toggle core. A: all. N: none. Enter: apply. At least one core is required. Esc: cancel."
@@ -372,6 +376,7 @@ impl Devices {
             Mode::Chips => vec![
                 ("Select", APPLY),
                 ("Add", ADD),
+                ("Generic GDB", GENERIC),
                 ("Legacy", LEGACY),
                 ("Cancel", CANCEL),
             ],
