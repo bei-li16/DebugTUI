@@ -385,7 +385,9 @@ pub enum Reader {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DescriptionLocation {
-    CorePrivate { address: u64 },
+    CorePrivate {
+        address: u64,
+    },
     Mmio {
         component: String,
         offset: u64,
@@ -928,7 +930,8 @@ impl Catalogue {
                 }
             }
             match &register.reader {
-                Reader::DescriptionOnly { location } | Reader::DescriptionUnsupported { location } => {
+                Reader::DescriptionOnly { location }
+                | Reader::DescriptionUnsupported { location } => {
                     if (matches!(register.reader, Reader::DescriptionOnly { .. })
                         && register.access != Access::Wo)
                         || (matches!(register.reader, Reader::DescriptionUnsupported { .. })
@@ -948,10 +951,13 @@ impl Catalogue {
                                 && matches!(register.bits, 8 | 16 | 32)
                                 && address.is_multiple_of(u64::from(register.bits / 8))
                                 && *address >= core_private::START
-                                && address.checked_add(u64::from(register.bits / 8))
+                                && address
+                                    .checked_add(u64::from(register.bits / 8))
                                     .is_some_and(|end| end <= core_private::END)
                         }
-                        DescriptionLocation::Mmio { component, offset, .. } => {
+                        DescriptionLocation::Mmio {
+                            component, offset, ..
+                        } => {
                             identifier(component)
                                 && matches!(register.bits, 8 | 16 | 32 | 64)
                                 && offset.is_multiple_of(u64::from(register.bits / 8))
@@ -959,7 +965,10 @@ impl Catalogue {
                         }
                     };
                     if !valid {
-                        return Err(format!("Invalid description-only location for {}", register.id));
+                        return Err(format!(
+                            "Invalid description-only location for {}",
+                            register.id
+                        ));
                     }
                 }
                 Reader::Vfp { name }
@@ -1051,7 +1060,10 @@ impl Catalogue {
                 for segment in &field.segments {
                     let segment_mask = mask(segment.width) << segment.offset;
                     if write_mask & segment_mask != 0 {
-                        return Err(format!("Overlapping descriptive write field {}", field.name));
+                        return Err(format!(
+                            "Overlapping descriptive write field {}",
+                            field.name
+                        ));
                     }
                     write_mask |= segment_mask;
                 }

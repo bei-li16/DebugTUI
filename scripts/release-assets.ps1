@@ -32,7 +32,7 @@ $verified = Join-Path $artifactRoot ('release-verify-' + [Guid]::NewGuid().ToStr
 [IO.Compression.ZipFile]::ExtractToDirectory($zipPath, $verified)
 $exe = Join-Path $verified 'debugtui.exe'
 if ((Get-FileHash -LiteralPath $exe).Hash -ne (Get-FileHash -LiteralPath "$projectRoot\bin\debugtui.exe").Hash) { throw 'ZIP executable differs from tested executable' }
-foreach ($required in @('profiles/install.cjs','profiles/devices.toml','profiles/single-core-project.toml.example','profiles/local-program-project.toml.example','profiles/two-core-project.toml.example','profiles/registers/armv7m-common.toml','profiles/registers/cortex-m3.toml','profiles/registers/cortex-m4.toml','profiles/registers/cortex-m7.toml','profiles/registers/cortex-r52.toml','profiles/registers/cortex-r52+.toml','profiles/registers-readonly-multicore.toml.example','profiles/registers-readonly-r52.toml.example','docs/registers-readonly-guide.md','tests/cases/registers-readonly-release.md')) {
+foreach ($required in @('profiles/install.cjs','profiles/devices.toml','profiles/single-core-project.toml.example','profiles/local-program-project.toml.example','profiles/two-core-project.toml.example','profiles/registers/stm32f429.toml','docs/stm32f429-registers.md','profiles/registers/armv7m-common.toml','profiles/registers/cortex-m3.toml','profiles/registers/cortex-m4.toml','profiles/registers/cortex-m7.toml','profiles/registers/cortex-r52.toml','profiles/registers/cortex-r52+.toml','profiles/registers-readonly-multicore.toml.example','profiles/registers-readonly-r52.toml.example','docs/registers-readonly-guide.md','tests/cases/registers-readonly-release.md')) {
     $shipped = Join-Path $verified $required
     if (-not (Test-Path -LiteralPath $shipped -PathType Leaf) -or (Get-FileHash -LiteralPath $shipped).Hash -ne (Get-FileHash -LiteralPath (Join-Path $projectRoot $required)).Hash) {
         throw "ZIP register catalogue/profile asset differs or is missing: $required"
@@ -61,7 +61,7 @@ if ($IncludeTools) {
 $hashes = @($assets | ForEach-Object { ((Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()) + '  ' + (Split-Path $_ -Leaf) })
 [IO.File]::WriteAllText((Join-Path $artifactRoot 'SHA256SUMS.txt'), ($hashes -join "`n") + "`n", [Text.UTF8Encoding]::new($false))
 $verifiedExeHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-& "$PSScriptRoot\test-support\cleanup-artifacts.ps1" -Root $artifactRoot -Kind Packaging -PackagingDirectories @($staging,$verified) -Apply | Out-Null
-@{version=$version;zip=$zipPath;exe=$exePath;tgz=$tgzPath;stableTgz=$stableTgzPath;assets=$assets;sha256sums=(Join-Path $artifactRoot 'SHA256SUMS.txt');verifiedDirectory=$null;verifiedExecutableSha256=$verifiedExeHash;temporaryPayloadsRemoved=$true} | ConvertTo-Json | Set-Content "$artifactRoot\release-assets.json" -Encoding utf8
+$cleanup = (& "$PSScriptRoot\test-support\cleanup-artifacts.ps1" -Root $artifactRoot -Kind Packaging -PackagingDirectories @($staging,$verified) -Apply) | ConvertFrom-Json
+@{version=$version;zip=$zipPath;exe=$exePath;tgz=$tgzPath;stableTgz=$stableTgzPath;assets=$assets;sha256sums=(Join-Path $artifactRoot 'SHA256SUMS.txt');verifiedDirectory=$null;verifiedExecutableSha256=$verifiedExeHash;temporaryPayloadsRemoved=$true;temporaryPayloadBytesRemoved=$cleanup.logical_bytes} | ConvertTo-Json | Set-Content "$artifactRoot\release-assets.json" -Encoding utf8
 Write-Output 'PASS portable ZIP: executable, bundled tools, version and TUI renderer.'
 $assets | ForEach-Object { $file = Get-Item -LiteralPath $_; Write-Output "$($file.Name): $($file.Length) bytes" }

@@ -1,6 +1,6 @@
 {
   "name": "@debugtui/cli",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "Lightweight native terminal debugger powered by a configurable GDB/MI environment",
   "repository": {
     "type": "git",
@@ -25,7 +25,7 @@
     "debugtui": "bin/debugtui.exe"
   },
   "files": [
-    "bin/",
+    "bin/debugtui.exe",
     "profiles/",
     "docs/*.md",
     "tests/cases/",

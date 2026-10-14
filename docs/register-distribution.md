@@ -4,6 +4,8 @@
 
 ## 交付约定与打包检查
 
+1.1.5 另随 npm/ZIP 提供 `profiles/registers/stm32f429.toml` 和 [F429 加载说明](stm32f429-registers.md)。这份文件与已审计参考目录逐字节核对，并在 ZIP 与 npm 安装场景比较全部继承后的 617 项定义和 16 个既有 writer。F429 专用目录需显式选择；内置 `cortex-m4` 继续提供通用核心描述。运行包只收录 `bin/debugtui.exe`，其他本地备份 EXE 不进入包。
+
 M3／M4／M7／R52／R52+ 目录编译进 EXE；npm 与 ZIP 还随包提供原始 TOML、devices.toml、install.cjs 和运行所需的内置 tools。生产 `package.ps1` 检查必需 profile 与文档文件，缺少任一文件拒绝生成成功记录；`release-assets.ps1` 核对解压后同一载荷的 SHA256。Rust 工具链、target 与测试驱动不进入运行包。
 
 直接 EXE 独立运行时不依赖旁边的内置 TOML。软件验收分别使用显式随包文件和内置 CPU 请求，将实际 API 返回的整份 Catalogue 逐字段比较，包括分组、位宽、字段、条件、别名及 reader/writer 元数据，避免只以版本号、文件数量或名称证明二者一致。

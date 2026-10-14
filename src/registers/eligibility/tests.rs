@@ -361,42 +361,86 @@ fn unsupported_readers_and_nested_aliases_never_become_automatic_candidates() {
     let mut source = catalogue.registers[0].clone();
     source.id = "unsupported".into();
     source.reader = Reader::DescriptionUnsupported {
-        location: DescriptionLocation::CorePrivate { address: 0xE0041FB0 },
+        location: DescriptionLocation::CorePrivate {
+            address: 0xE0041FB0,
+        },
     };
     source.writer = None;
     source.write = None;
-    source.conditions = vec![Condition { fact: "optional.present".into(), min: 1, max: Some(1) }];
+    source.conditions = vec![Condition {
+        fact: "optional.present".into(),
+        min: 1,
+        max: Some(1),
+    }];
     let mut alias = source.clone();
     alias.id = "alias".into();
     alias.conditions.clear();
-    alias.reader = Reader::Alias { source: source.id.clone(), offset: 0 };
+    alias.reader = Reader::Alias {
+        source: source.id.clone(),
+        offset: 0,
+    };
     let mut nested = alias.clone();
     nested.id = "nested".into();
-    nested.reader = Reader::Alias { source: alias.id.clone(), offset: 0 };
+    nested.reader = Reader::Alias {
+        source: alias.id.clone(),
+        offset: 0,
+    };
     catalogue.registers.extend([source, alias, nested]);
     catalogue.validate().unwrap();
 
     for (facts, expected) in [
         (BTreeMap::new(), Implementation::Unknown),
-        (BTreeMap::from([("optional.present".into(), 0)]), Implementation::No),
-        (BTreeMap::from([("optional.present".into(), 1)]), Implementation::Yes),
-        (BTreeMap::from([("optional.present".into(), 2)]), Implementation::No),
+        (
+            BTreeMap::from([("optional.present".into(), 0)]),
+            Implementation::No,
+        ),
+        (
+            BTreeMap::from([("optional.present".into(), 1)]),
+            Implementation::Yes,
+        ),
+        (
+            BTreeMap::from([("optional.present".into(), 2)]),
+            Implementation::No,
+        ),
     ] {
         for id in ["unsupported", "alias", "nested"] {
             let register = catalogue.register(id).unwrap();
             assert_eq!(catalogue.implementation(register, &facts).0, expected);
-            assert_eq!(catalogue.read_policy(register), (true, false), "retain architectural access");
-            assert!(!catalogue.automatic_read(register, &facts), "{id}: {facts:?}");
+            assert_eq!(
+                catalogue.read_policy(register),
+                (true, false),
+                "retain architectural access"
+            );
+            assert!(
+                !catalogue.automatic_read(register, &facts),
+                "{id}: {facts:?}"
+            );
         }
-        assert!(!catalogue.register("unsupported").unwrap().auto_read(expected));
+        assert!(
+            !catalogue
+                .register("unsupported")
+                .unwrap()
+                .auto_read(expected)
+        );
     }
     // Removing presence conditions must not make the missing route usable.
-    catalogue.registers.iter_mut().find(|r| r.id == "unsupported").unwrap().conditions.clear();
+    catalogue
+        .registers
+        .iter_mut()
+        .find(|r| r.id == "unsupported")
+        .unwrap()
+        .conditions
+        .clear();
     for id in ["unsupported", "alias", "nested"] {
         assert!(!catalogue.automatic_read(catalogue.register(id).unwrap(), &BTreeMap::new()));
     }
     // A real reader remains eligible through the same aliases once configured.
-    catalogue.registers.iter_mut().find(|r| r.id == "unsupported").unwrap().reader = Reader::Gdb { name: "r0".into() };
+    catalogue
+        .registers
+        .iter_mut()
+        .find(|r| r.id == "unsupported")
+        .unwrap()
+        .reader = Reader::Gdb { name: "r0".into() };
     catalogue.validate().unwrap();
     for id in ["unsupported", "alias", "nested"] {
         assert!(catalogue.automatic_read(catalogue.register(id).unwrap(), &BTreeMap::new()));

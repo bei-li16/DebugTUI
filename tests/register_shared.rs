@@ -429,7 +429,14 @@ fn four_core_cluster_chip_alias_and_unknown_owners_use_exact_routes_without_cros
 
 #[test]
 fn a_peer_run_expires_its_cluster_and_chip_but_not_another_cluster_or_private_samples() {
-    let (project, out) = fixture("boundaries", true);
+    let (mut project, out) = fixture("boundaries", true);
+    // This case pauses the peer explicitly. Disable the fixture's independent
+    // 10 ms auto-stop, which can arrive during the subsequent fresh read and
+    // correctly invalidate its shared sample a second time.
+    project
+        .gdb
+        .env
+        .insert("DEBUGTUI_TEST_PAUSE".into(), "event".into());
     let engine = coordinator::spawn(project);
     call(&engine, 1, "connect", json!({}));
     for core in 0..4 {

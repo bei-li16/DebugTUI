@@ -10,7 +10,7 @@ const binary=path.resolve(options.binary||path.join(root,'target/debug/debugtui.
 const out=outputDirectory('register-distribution',process.env.DEBUGTUI_DISTRIBUTION_ARTIFACT_ROOT), stage=path.join(out,'project 工程'), config=path.join(out,'npm 客户配置');
 const metadata=JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8'));
 const cpus=['cortex-m3','cortex-m4','cortex-m7','cortex-r52','cortex-r52+'];
-const required=['profiles/install.cjs','profiles/devices.toml','profiles/registers/armv7m-common.toml',
+const required=['profiles/registers/stm32f429.toml','docs/stm32f429-registers.md','profiles/install.cjs','profiles/devices.toml','profiles/registers/armv7m-common.toml',
   ...cpus.map(cpu=>`profiles/registers/${cpu}.toml`),'profiles/registers-readonly-multicore.toml.example',
   'profiles/registers-readonly-r52.toml.example','docs/registers-readonly-guide.md','tests/cases/registers-readonly-release.md','tests/README.md'];
 const historical=Boolean(options['previous-package']);
@@ -102,6 +102,16 @@ function parity(exe,directory,templates,multicore=false) {
   }
   return results;
 }
+function f429(exe,directory,templates) {
+  const file=path.join(templates,'stm32f429.toml');
+  assert.equal(hash(file),hash(path.join(root,'reference/stm32f429-system-registers.toml')));
+  const shipped=query(exe,directory,tomlPath(file))[0];
+  const reference=query(exe,directory,tomlPath(path.join(root,'reference/stm32f429-system-registers.toml')))[0];
+  assert.deepEqual(shipped.catalogue,reference.catalogue,'Shipped F429 inheritance must match the audited reference');
+  assert.equal(shipped.catalogue.registers.length,617);
+  assert.equal(shipped.catalogue.registers.filter(r=>r.writer).length,16);
+  return {definitions:617,writers:16,sha256:hash(file),source:shipped.source};
+}
 function extract(file,destination) {
   const entries=success('tar.exe',['-tzf',file]).split(/\r?\n/).filter(Boolean);
   for(const entry of entries) assert(!entry.startsWith('/')&&!entry.includes('\\')&&!entry.split('/').includes('..')&&!/^[A-Za-z]:/.test(entry),'Unsafe package archive path');
@@ -112,7 +122,7 @@ function copyProject(destination) {
   fs.mkdirSync(path.join(destination,'target','release'),{recursive:true});
   fs.copyFileSync(binary,path.join(destination,'target','release','debugtui.exe'));
   fs.copyFileSync(path.join(root,'package.json'),path.join(destination,'package.json'));
-  for(const item of metadata.files) if(item!=='bin/') {
+  for(const item of metadata.files) if(item!=='bin/' && item!=='bin/debugtui.exe') {
     if(item==='docs/*.md') {
       fs.mkdirSync(path.join(destination,'docs'),{recursive:true});
       for(const file of fs.readdirSync(path.join(root,'docs'),{withFileTypes:true}))
@@ -167,7 +177,7 @@ function assertPreserved() { assert.deepEqual(snapshot(config),preserved,'Instal
       const result=powershell(path.join(root,'scripts/test-support/extract-register-zip.ps1'),['-Archive',assets.zip,'-Destination',directory]);assert.equal(result.status,0,result.stderr);
       for(const file of required) assert.equal(hash(path.join(directory,file)),hash(path.join(root,file)));
       const exe=path.join(directory,'debugtui.exe');assert.equal(hash(exe),hash(binary));clean(exe,user);
-      return {catalogues:parity(exe,user,path.join(directory,'profiles/registers'),true)};
+      return {catalogues:parity(exe,user,path.join(directory,'profiles/registers'),true),f429:f429(exe,user,path.join(directory,'profiles/registers'))};
     });
     await suite.test('REG-PKG-INIT-PRESERVE','Repeated init preserves arbitrary valid/invalid and nested customer content',async()=>{
       const user=path.join(out,'init 客户');initialize(binary,user);const before=seed(user);initialize(binary,user);initialize(binary,user);assert.deepEqual(snapshot(user),before);return {customer_files:before};
@@ -200,7 +210,7 @@ function assertPreserved() { assert.deepEqual(snapshot(config),preserved,'Instal
       }
       const exe=path.join(installed,'bin/debugtui.exe');const builtins=query(exe,config,"cpu='cortex-r52'",true);assert(builtins.every(list=>list.source==='builtin:cortex-r52'));
       const users=query(exe,config,"cpu='cortex-m4'",true);assert(users.every(list=>list.source.startsWith('user:')&&list.catalogue.cpu==='customer-model'));
-      assertPreserved();return {builtins:builtins.map(list=>list.source),users:users.map(list=>list.source)};
+      assertPreserved();return {builtins:builtins.map(list=>list.source),users:users.map(list=>list.source),f429:f429(exe,config,path.join(installed,'profiles/registers'))};
     });
     await suite.test('REG-PKG-REPEAT','Same-version package reinstall invokes idempotent init',async()=>{npmSuccess(['install',...lifecycle,assets.tgz]);assertPreserved();assert.equal(hash(path.join(installed,'bin/debugtui.exe')),hash(binary));});
     await suite.test('REG-PKG-UNINSTALL','Private-prefix uninstall preserves external user data',async()=>{npmSuccess(['uninstall',...lifecycle,metadata.name]);assert(!fs.existsSync(path.join(prefix,'debugtui.cmd')));assertPreserved();});

@@ -613,10 +613,16 @@ impl Engine {
             .map_err(|error| (Reason::Unknown, error))?;
         self.register_value_access = None;
         if matches!(register.reader, Reader::DescriptionOnly { .. }) {
-            return Err((Reason::WriteOnly, "Write-only location has no reader; no IO sent".into()));
+            return Err((
+                Reason::WriteOnly,
+                "Write-only location has no reader; no IO sent".into(),
+            ));
         }
         if matches!(register.reader, Reader::DescriptionUnsupported { .. }) {
-            return Err((Reason::ReaderUnsupported, "Described location has no applicable read route; no IO sent".into()));
+            return Err((
+                Reason::ReaderUnsupported,
+                "Described location has no applicable read route; no IO sent".into(),
+            ));
         }
         if self.snapshot.state == state::RUNNING
             && let Some(denial) = crate::registers::running::denial(
@@ -690,10 +696,16 @@ impl Engine {
             }
             Ok(match &register.reader {
                 Reader::DescriptionOnly { .. } => {
-                    return Err((Reason::WriteOnly, "Write-only location has no reader".into()));
+                    return Err((
+                        Reason::WriteOnly,
+                        "Write-only location has no reader".into(),
+                    ));
                 }
                 Reader::DescriptionUnsupported { .. } => {
-                    return Err((Reason::ReaderUnsupported, "Described location has no applicable read route".into()));
+                    return Err((
+                        Reason::ReaderUnsupported,
+                        "Described location has no applicable read route".into(),
+                    ));
                 }
                 Reader::Gdb { name } => self.gdb_register_value(name, register.bits)?,
                 Reader::Banked { name } => self.read_banked_register(name)?,
@@ -1187,16 +1199,35 @@ reader = { kind = "alias", source = "alias", offset = 0 }
         let mut engine = engine();
         engine.project.registers.cpu = "cortex-m4".into();
         engine.project.registers.tcl_endpoint = "invalid://must-not-connect".into();
-        engine.project.registers.facts.insert("optional.present".into(), 1);
+        engine
+            .project
+            .registers
+            .facts
+            .insert("optional.present".into(), 1);
         for id in ["alias", "nested"] {
             for manual in [false, true] {
-                let mut cache = ReadCache { manual, ..Default::default() };
-                let (reason, detail) = engine.read_register_value(
-                    catalogue.register(id).unwrap(), &catalogue, &mut cache,
-                ).unwrap_err();
-                assert_eq!(reason, if manual { Reason::ReaderUnsupported } else { Reason::AccessRestricted });
-                if manual { assert!(detail.contains("no IO sent")); }
-                assert!(engine.register_value_access.is_none(), "{id}, manual={manual}");
+                let mut cache = ReadCache {
+                    manual,
+                    ..Default::default()
+                };
+                let (reason, detail) = engine
+                    .read_register_value(catalogue.register(id).unwrap(), &catalogue, &mut cache)
+                    .unwrap_err();
+                assert_eq!(
+                    reason,
+                    if manual {
+                        Reason::ReaderUnsupported
+                    } else {
+                        Reason::AccessRestricted
+                    }
+                );
+                if manual {
+                    assert!(detail.contains("no IO sent"));
+                }
+                assert!(
+                    engine.register_value_access.is_none(),
+                    "{id}, manual={manual}"
+                );
                 assert!(cache.values.is_empty());
                 // Rejected alias requests retain diagnostic provenance, but no
                 // transport access can have been planned, started or completed.
@@ -1207,7 +1238,8 @@ reader = { kind = "alias", source = "alias", offset = 0 }
 
     #[test]
     fn description_only_command_never_reaches_a_register_or_memory_transport() {
-        let catalogue = Catalogue::parse(r#"
+        let catalogue = Catalogue::parse(
+            r#"
 version = 1
 cpu = "cortex-m4"
 architecture = "armv7e-m"
@@ -1222,22 +1254,38 @@ bits = 32
 access = "wo"
 scope = "core"
 reader = { kind = "description_only", location = { kind = "core_private", address = 0xE000EDF4 } }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         let mut engine = engine();
         engine.project.registers.tcl_endpoint = "invalid://must-not-connect".into();
-        let result = engine.read_register_value(catalogue.register("dcrsr").unwrap(), &catalogue, &mut ReadCache::default());
+        let result = engine.read_register_value(
+            catalogue.register("dcrsr").unwrap(),
+            &catalogue,
+            &mut ReadCache::default(),
+        );
         let (reason, detail) = result.unwrap_err();
         assert_eq!(reason, Reason::WriteOnly);
         assert!(detail.contains("no IO sent"));
         assert!(engine.register_value_access.is_none());
         let mut unsupported = catalogue.clone();
-        let register = unsupported.registers.iter_mut().find(|r|r.id=="dcrsr").unwrap();
+        let register = unsupported
+            .registers
+            .iter_mut()
+            .find(|r| r.id == "dcrsr")
+            .unwrap();
         register.access = crate::registers::Access::Rw;
         register.reader = Reader::DescriptionUnsupported {
-            location: crate::registers::DescriptionLocation::CorePrivate { address: 0xE0041FB0 },
+            location: crate::registers::DescriptionLocation::CorePrivate {
+                address: 0xE0041FB0,
+            },
         };
         unsupported.validate().unwrap();
-        let result = engine.read_register_value(unsupported.register("dcrsr").unwrap(), &unsupported, &mut ReadCache::default());
+        let result = engine.read_register_value(
+            unsupported.register("dcrsr").unwrap(),
+            &unsupported,
+            &mut ReadCache::default(),
+        );
         let (reason, detail) = result.unwrap_err();
         assert_eq!(reason, Reason::ReaderUnsupported);
         assert!(detail.contains("no IO sent"));
