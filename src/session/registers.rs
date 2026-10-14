@@ -1150,6 +1150,62 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_aliases_reject_automatic_and_manual_reads_before_transport() {
+        let catalogue = Catalogue::parse(r#"
+version = 1
+cpu = "cortex-m4"
+architecture = "armv7e-m"
+[[groups]]
+id = "debug"
+name = "Debug"
+[[registers]]
+id = "unsupported"
+name = "Unsupported location"
+group = "debug"
+bits = 32
+access = "rw"
+scope = "core"
+reader = { kind = "description_unsupported", location = { kind = "core_private", address = 0xE0041FB0 } }
+conditions = [{ fact = "optional.present", min = 1, max = 1 }]
+[[registers]]
+id = "alias"
+name = "Alias"
+group = "debug"
+bits = 32
+access = "ro"
+scope = "core"
+reader = { kind = "alias", source = "unsupported", offset = 0 }
+[[registers]]
+id = "nested"
+name = "Nested alias"
+group = "debug"
+bits = 32
+access = "ro"
+scope = "core"
+reader = { kind = "alias", source = "alias", offset = 0 }
+"#).unwrap();
+        let mut engine = engine();
+        engine.project.registers.cpu = "cortex-m4".into();
+        engine.project.registers.tcl_endpoint = "invalid://must-not-connect".into();
+        engine.project.registers.facts.insert("optional.present".into(), 1);
+        for id in ["alias", "nested"] {
+            for manual in [false, true] {
+                let mut cache = ReadCache { manual, ..Default::default() };
+                let (reason, detail) = engine.read_register_value(
+                    catalogue.register(id).unwrap(), &catalogue, &mut cache,
+                ).unwrap_err();
+                assert_eq!(reason, if manual { Reason::ReaderUnsupported } else { Reason::AccessRestricted });
+                if manual { assert!(detail.contains("no IO sent")); }
+                assert!(engine.register_value_access.is_none(), "{id}, manual={manual}");
+                assert!(cache.values.is_empty());
+                // Rejected alias requests retain diagnostic provenance, but no
+                // transport access can have been planned, started or completed.
+                assert!(cache.provenance.values().all(|p| p.access.is_none()));
+            }
+        }
+    }
+
+    #[test]
     fn description_only_command_never_reaches_a_register_or_memory_transport() {
         let catalogue = Catalogue::parse(r#"
 version = 1

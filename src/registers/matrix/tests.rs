@@ -20,6 +20,33 @@ fn matrix_bounded_r52_plan_names_native_operations_without_claiming_observed_sup
 }
 
 #[test]
+fn unsupported_locations_and_aliases_are_readable_descriptions_without_automatic_plans() {
+    let mut inventory = report("cortex-m4");
+    inventory.catalogue = Some(Catalogue::load(&std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("reference/stm32f429-system-registers.toml")).unwrap());
+    let catalogue = inventory.catalogue.as_mut().unwrap();
+    let mut alias = catalogue.register("etm.lar").unwrap().clone();
+    alias.id = "etm.lar_alias".into();
+    alias.conditions.clear();
+    alias.reader = Reader::Alias { source: "etm.lar".into(), offset: 0 };
+    catalogue.registers.push(alias);
+    catalogue.validate().unwrap();
+    for present in [None, Some(0), Some(1)] {
+        inventory.environment.registers.facts.clear();
+        if let Some(value) = present {
+            inventory.environment.registers.facts.insert("stm32f429.etm_m4.present".into(), value);
+        }
+        inventory.refresh();
+        for id in ["etm.lar", "etm.lar_alias"] {
+            let row = row(&inventory, id);
+            assert!(row.readable, "architectural RW permission remains visible");
+            assert!(!row.automatic_eligible, "{id}, present={present:?}");
+            assert!(!row.plan.available);
+        }
+    }
+}
+
+#[test]
 fn matrix_stale_probe_never_overrides_configuration_or_claims_current_evidence() {
     let mut inventory = report("cortex-r52");
     inventory

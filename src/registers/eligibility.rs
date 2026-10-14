@@ -181,17 +181,20 @@ impl Catalogue {
             .unwrap_or((false, false))
     }
     pub fn automatic_read(&self, register: &Register, facts: &BTreeMap<String, u64>) -> bool {
-        let (readable, side_effect) = self.read_policy(register);
+        let Ok(dependencies) = self.read_dependencies(register) else {
+            return false;
+        };
         let implementation = self.implementation(register, facts).0;
-        readable
-            && !side_effect
+        // Permission metadata alone does not provide a reader. Check every alias
+        // dependency with the same reader/effect policy used by a direct register.
+        dependencies
+            .iter()
+            .all(|dependency| dependency.auto_read(Implementation::Yes))
             && (implementation == Implementation::Yes
                 || (implementation == Implementation::Unknown
-                    && self.read_dependencies(register).is_ok_and(|dependencies| {
-                        dependencies
-                            .iter()
-                            .all(|r| r.conditions.is_empty() && r.present_if.is_none())
-                    })))
+                    && dependencies
+                        .iter()
+                        .all(|r| r.conditions.is_empty() && r.present_if.is_none())))
     }
     pub fn eligibility(
         &self,
