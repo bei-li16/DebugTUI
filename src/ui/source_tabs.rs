@@ -603,7 +603,7 @@ pub(super) fn draw_list(f: &mut UiFrame, a: &mut App) {
             )
         );
         f.render_widget(
-            Paragraph::new(text).style(theme::selected(position == a.sources.list_index)),
+            Paragraph::new(text).style(a.row_style(position == a.sources.list_index, hit)),
             hit,
         );
         a.sources.list_hits.push((hit, index));

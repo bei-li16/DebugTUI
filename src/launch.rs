@@ -676,6 +676,7 @@ pub struct Setup {
     register_details: Option<registers::Details>,
     register_observation: Option<registers::Observation>,
     hover: Option<help::Hover>,
+    pointer: Option<ratatui::layout::Position>,
     field_help: Option<help::Popup>,
     action_hits: Vec<(Rect, usize)>,
     row_hits: Vec<(Rect, usize)>,
@@ -726,6 +727,7 @@ impl Setup {
             register_details: None,
             register_observation: None,
             hover: None,
+            pointer: None,
             field_help: None,
             action_hits: vec![],
             row_hits: vec![],
@@ -1570,6 +1572,7 @@ impl Setup {
         }))
     }
     pub fn mouse(&mut self, mouse: MouseEvent) -> Option<Launch> {
+        self.pointer = Some((mouse.column, mouse.row).into());
         if mouse.kind == MouseEventKind::Moved {
             if self.main_form() && self.editor.is_none() && !self.pending {
                 let at = (mouse.column, mouse.row).into();
@@ -1763,6 +1766,7 @@ impl Setup {
     }
     pub(crate) fn clear_hover(&mut self) {
         self.hover = None;
+        self.pointer = None;
     }
     fn help_text(&self) -> String {
         if let Some(devices) = &self.devices {
@@ -1845,6 +1849,7 @@ impl Setup {
             return;
         }
         if let Some(channels) = &mut self.channels {
+            channels.pointer = self.pointer;
             channels.draw(f);
             return;
         }
@@ -1964,12 +1969,18 @@ impl Setup {
             } else {
                 theme::TEXT
             };
-            let style = theme::control(enabled, self.selected == action, false, tone);
+            let style = theme::control(
+                enabled,
+                self.selected == action,
+                self.pointer.is_some_and(|p| hit.contains(p)),
+                tone,
+            );
             theme::button(f, hit, label, style);
             self.action_hits.push((hit, action));
             x += width + 1;
         }
         if let Some(devices) = &mut self.devices {
+            devices.pointer = self.pointer;
             devices.draw(f, rows[2]);
             f.render_widget(
                 Paragraph::new(devices.help())
@@ -1978,6 +1989,7 @@ impl Setup {
                 rows[3],
             );
         } else if let Some(mapping) = &mut self.mapping {
+            mapping.pointer = self.pointer;
             mapping.draw(f, rows[2]);
             f.render_widget(
                 Paragraph::new(mapping.help())
@@ -2005,7 +2017,13 @@ impl Setup {
                             if i == picker.selected { "›" } else { " " },
                             visible_tail(&choice.label(), inner.width.saturating_sub(4) as usize)
                         ),
-                        theme::selected(i == picker.selected),
+                        theme::row(
+                            i == picker.selected,
+                            self.pointer.is_some_and(|p| {
+                                Rect::new(inner.x, inner.y + (i - start) as u16, inner.width, 1)
+                                    .contains(p)
+                            }),
+                        ),
                     )
                 })
                 .collect();
@@ -2050,7 +2068,18 @@ impl Setup {
                             if i == browser.selected { "›" } else { " " },
                             if p.is_dir() { "▸ dir " } else { "· file" }
                         ),
-                        theme::selected(i == browser.selected),
+                        theme::row(
+                            i == browser.selected,
+                            self.pointer.is_some_and(|p| {
+                                Rect::new(
+                                    rows[2].x + 1,
+                                    rows[2].y + 1 + (i - start) as u16,
+                                    rows[2].width.saturating_sub(2),
+                                    1,
+                                )
+                                .contains(p)
+                            }),
+                        ),
                     )
                 })
                 .collect::<Vec<_>>();
@@ -2199,7 +2228,14 @@ impl Setup {
                             Style::default().fg(if enabled { theme::TEXT } else { theme::DIM }),
                         ),
                     ])
-                    .style(theme::selected(selected))
+                    .style(theme::row(
+                        selected,
+                        enabled
+                            && self.pointer.is_some_and(|p| {
+                                Rect::new(inner.x, inner.y + (i - start) as u16, inner.width, 1)
+                                    .contains(p)
+                            }),
+                    ))
                 })
                 .collect::<Vec<_>>();
             theme::lines(f, lines, inner);
@@ -2324,6 +2360,56 @@ mod tests {
     }
     pub(super) fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    #[test]
+    fn setup_action_hover_keeps_focus_and_draft_and_does_not_launch() {
+        let fixture = Fixture::new();
+        for (w, h) in [(45, 12), (80, 24), (120, 36)] {
+            let mut setup = Setup::new(Document::open(&fixture.0).unwrap());
+            let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            let hit = setup
+                .action_hits
+                .iter()
+                .find(|(_, id)| *id == SAVE)
+                .unwrap()
+                .0;
+            let selected = setup.selected;
+            let draft = setup.document.raw.clone();
+            assert!(
+                setup
+                    .mouse(MouseEvent {
+                        kind: MouseEventKind::Moved,
+                        column: hit.x + 1,
+                        row: hit.y + hit.height / 2,
+                        modifiers: KeyModifiers::NONE
+                    })
+                    .is_none()
+            );
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            assert_eq!(
+                terminal.backend().buffer()[(hit.x + 1, hit.y + hit.height / 2)].bg,
+                theme::HOVER
+            );
+            assert_eq!(setup.selected, selected);
+            assert_eq!(setup.document.raw, draft);
+            assert!(!setup.workspace_requested && !setup.quit_requested);
+            if let Ok(root) = env::var("DEBUGTUI_RENDER_DIR") {
+                fs::create_dir_all(&root).unwrap();
+                crate::ui::visual_tests::capture_buffer(
+                    Path::new(&root),
+                    &format!("audit-setup-hover-{w}x{h}"),
+                    terminal.backend().buffer(),
+                );
+            }
+            setup.clear_hover();
+            terminal.draw(|f| setup.draw(f)).unwrap();
+            assert_eq!(
+                terminal.backend().buffer()[(hit.x + 1, hit.y + hit.height / 2)].bg,
+                theme::BUTTON
+            );
+        }
     }
 
     #[test]

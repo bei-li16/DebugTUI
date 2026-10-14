@@ -453,7 +453,15 @@ pub(super) fn rows(a: &App, start: usize, height: usize) -> Vec<Line<'static>> {
                 ),
                 Span::styled(info, Style::default().fg(theme::AMBER)),
             ])
-            .style(theme::selected(i == a.selected(pane::BREAKS)))
+            .style(a.row_style(
+                i == a.selected(pane::BREAKS),
+                Rect::new(
+                    a.view_rects[pane::BREAKS].x,
+                    a.view_rects[pane::BREAKS].y + (i - start) as u16,
+                    a.view_rects[pane::BREAKS].width,
+                    1,
+                ),
+            ))
         })
         .collect()
 }
@@ -597,7 +605,7 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
                 " {name:<12} {}",
                 if i == 0 && row.width >= 65 { "" } else { value }
             ))
-            .style(theme::selected(e.field == i)),
+            .style(a.row_style(e.field == i, row)),
             row,
         );
         a.breaks.hits.push((row, i));
@@ -608,7 +616,8 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
                 let width = label.len() as u16;
                 let hit = Rect::new(x, row.y, width, 1);
                 f.render_widget(
-                    Paragraph::new(label).style(theme::chip(kind == e.options.kind, false)),
+                    Paragraph::new(label)
+                        .style(theme::chip(kind == e.options.kind, a.pointer_over(hit))),
                     hit,
                 );
                 a.breaks.kinds.push((hit, kind));

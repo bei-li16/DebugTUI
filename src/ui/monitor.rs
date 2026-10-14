@@ -949,7 +949,7 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App) {
         }
         let hit = Rect::new(inner.x + 1, y, inner.width.saturating_sub(2), 1);
         f.render_widget(
-            Paragraph::new(label).style(theme::selected(p.field == i)),
+            Paragraph::new(label).style(a.row_style(p.field == i, hit)),
             hit,
         );
         a.monitor.hits.push((hit, i));

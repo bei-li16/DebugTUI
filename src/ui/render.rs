@@ -188,6 +188,13 @@ fn scrollbar(f: &mut UiFrame, a: &App, pane: usize) {
 
 fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
     let rect = viewport(a, pane, rect);
+    if pane == pane::REGS && a.register_view.enabled() {
+        // Register headers and details are outside the scrollable data rows.
+        a.draw_registers(f, rect);
+        scrollbar(f, a, pane);
+        return;
+    }
+    a.fit_view_height(pane, rect.height);
     let max = a.view_len(pane).saturating_sub(rect.height as usize);
     a.view_tops[pane] = if pane == pane::LOG && a.log_follow {
         max
@@ -199,10 +206,6 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
     scrollbar(f, a, pane);
     if pane == pane::PERIPHERALS {
         a.draw_peripherals(f, rect);
-        return;
-    }
-    if pane == pane::REGS && a.register_view.enabled() {
-        a.draw_registers(f, rect);
         return;
     }
     if let Some(error) = &a.view_errors[pane] {
@@ -280,7 +283,10 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                         s.function,
                         s.line
                     ),
-                    theme::selected(i == selection),
+                    a.row_style(
+                        i == selection,
+                        Rect::new(rect.x, rect.y + (i - start) as u16, rect.width, 1),
+                    ),
                 )
             })
             .collect(),
@@ -341,7 +347,10 @@ fn view(f: &mut UiFrame, a: &mut App, pane: usize, rect: Rect) {
                             rect.width.saturating_sub(2) as usize
                         )
                     ),
-                    theme::selected(i == selection),
+                    a.row_style(
+                        i == selection,
+                        Rect::new(rect.x, rect.y + (i - start) as u16, rect.width, 1),
+                    ),
                 )
             })
             .collect(),
@@ -734,10 +743,12 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool, variables
         inner.height -= 1;
     }
     if a.side_pane == pane::PERIPHERALS && inner.height > 1 {
+        // Prefer one-row controls when wrapping would consume the data area.
+        let row_height = if inner.height >= 10 { button_height } else { 1 };
         let height = wrapped_height(
             &["Memory access", "↻ Read", "Edit value"],
             inner.width,
-            button_height,
+            row_height,
         )
         .min(inner.height.saturating_sub(1));
         a.write_editor.entry_hits.push((
@@ -753,7 +764,7 @@ fn side_panel(f: &mut UiFrame, a: &mut App, rect: Rect, compact: bool, variables
                 ("↻ Read", "peripheral-refresh"),
                 ("Edit value", "edit-value"),
             ],
-            height,
+            row_height,
         );
         inner.y += height;
         inner.height -= height;
@@ -1083,12 +1094,7 @@ fn completion_popup(f: &mut UiFrame, a: &mut App) {
         let selected = index == a.completion.selected;
         f.render_widget(
             Paragraph::new(format!(" {}", text)).style(
-                Style::default()
-                    .bg(if selected {
-                        theme::SELECTED
-                    } else {
-                        theme::PANEL
-                    })
+                a.row_style(selected, hit)
                     .fg(if selected { theme::TEXT } else { theme::MUTED }),
             ),
             hit,
@@ -1415,22 +1421,30 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
     let badge = format!(" {icon} {state} ");
     let width = unicode_width::UnicodeWidthStr::width(badge.as_str()) as u16;
     let brand_width = rect.width.saturating_sub(width);
+    let brand = format!(" ◈ DebugTUI v{}", env!("CARGO_PKG_VERSION"));
+    let subtitle = if a.demo {
+        "  /  PREVIEW"
+    } else {
+        "  /  DEBUG WORKSPACE"
+    };
+    let subtitle = if unicode_width::UnicodeWidthStr::width(brand.as_str())
+        + unicode_width::UnicodeWidthStr::width(subtitle)
+        + 1
+        <= usize::from(brand_width)
+    {
+        subtitle
+    } else {
+        ""
+    };
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(
-                format!(" ◈ DebugTUI v{}", env!("CARGO_PKG_VERSION")),
+                brand,
                 Style::default()
                     .fg(theme::TEXT)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled(
-                if a.demo {
-                    "  /  PREVIEW"
-                } else {
-                    "  /  DEBUG WORKSPACE"
-                },
-                Style::default().fg(theme::DIM),
-            ),
+            Span::styled(subtitle, Style::default().fg(theme::DIM)),
         ])),
         Rect::new(rect.x, rect.y, brand_width, 1),
     );
@@ -1536,6 +1550,8 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
 }
 
 pub fn draw(f: &mut UiFrame, a: &mut App) {
+    let area = f.area();
+    a.terminal_too_small = area.width < 45 || area.height < 12;
     a.hover_probes.get_mut().clear();
     a.file_search.area = Rect::default();
     a.symbol_search.bar = Rect::default();
@@ -1564,6 +1580,17 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
     a.completion.hits.clear();
     a.completion.area = Rect::default();
     a.scrollbars.fill(Rect::default());
+    if a.terminal_too_small {
+        theme::surface(f, area, theme::CANVAS);
+        f.render_widget(
+            Paragraph::new(format!(
+                "DebugTUI v{}\nEnlarge terminal to at least 45 x 12.\nCtrl+Q exits.",
+                env!("CARGO_PKG_VERSION")
+            )),
+            area,
+        );
+        return;
+    }
     let setup_register_context = a.setup.as_ref().map(|_| a.register_context());
     if let Some(setup) = &mut a.setup {
         setup.observe_register_target(
@@ -1575,18 +1602,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         setup.draw(f);
         return;
     }
-    let area = f.area();
     f.render_widget(Block::default().style(theme::base()), area);
-    if area.width < 45 || area.height < 12 {
-        f.render_widget(
-            Paragraph::new(format!(
-                "DebugTUI v{}\nEnlarge terminal to at least 45 x 12.\nCtrl+Q exits.",
-                env!("CARGO_PKG_VERSION")
-            )),
-            area,
-        );
-        return;
-    }
     let search_height = if area.height >= 30 { 3 } else { 1 };
     let button_height = control_height(f);
     let header_height = if area.height >= 24 { 2 } else { 1 };
@@ -1786,34 +1802,46 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
         PANES[a.pane]
     };
     theme::surface(f, rows[3], theme::RAISED);
-    let core_hint = if a.core_info.is_some() {
-        "  Ctrl+T Core"
+    let label = if area.width >= 140 {
+        format!(" ◇ {focus}{}  ", if a.zoom { " · zoom" } else { "" })
     } else {
-        ""
+        String::new()
     };
-    let keys = if area.width >= 110 {
-        format!(
-            " F2 Setup  / Console  Ctrl+P Help  Tab Views{core_hint}  F5 Continue  F6 Pause  F10 Step Over  F11 Step In  Ctrl+Q Exit  f Format  z Zoom"
-        )
-    } else if area.width >= 70 {
-        format!(" F2 Setup  / Console  Ctrl+P Help  Tab Views{core_hint}  Ctrl+Q Exit")
-    } else {
-        format!(" F2 Setup  / Console  ? Help{core_hint}  Ctrl+Q Exit")
+    let label_width = unicode_width::UnicodeWidthStr::width(label.as_str()) as u16;
+    let keys_rect = Rect {
+        width: rows[3].width.saturating_sub(label_width),
+        ..rows[3]
     };
+    // Keep essential shortcuts whole and reserve the focus indicator's space.
+    let mut keys = " F2 Setup  ? Help  Ctrl+Q Exit".to_owned();
+    for hint in [
+        "Tab Views",
+        "/ Console",
+        if a.snapshot.core.is_some() {
+            "Ctrl+T Core"
+        } else {
+            ""
+        },
+        "z Zoom",
+        "f Format",
+        "F5 Continue",
+        "F6 Pause",
+        "F10 Step Over",
+        "F11 Step In",
+    ] {
+        if !hint.is_empty() && keys.len() + 2 + hint.len() <= usize::from(keys_rect.width) {
+            keys.push_str("  ");
+            keys.push_str(hint);
+        }
+    }
     f.render_widget(
         Paragraph::new(keys).style(Style::default().fg(theme::MUTED)),
-        rows[3],
+        keys_rect,
     );
     if area.width >= 140 {
-        let label = format!(" ◇ {focus}{}  ", if a.zoom { " · zoom" } else { "" });
         f.render_widget(
             Paragraph::new(label.clone()).style(Style::default().fg(theme::ACCENT)),
-            Rect::new(
-                rows[3].right() - label.len() as u16,
-                rows[3].y,
-                label.len() as u16,
-                1,
-            ),
+            Rect::new(rows[3].right() - label_width, rows[3].y, label_width, 1),
         );
     }
 
@@ -1920,7 +1948,7 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
                     )
                 };
                 f.render_widget(
-                    Paragraph::new(line).style(theme::selected(i == a.palette_index)),
+                    Paragraph::new(line).style(a.row_style(i == a.palette_index, hit)),
                     hit,
                 );
                 a.palette_hits.push((hit, i));

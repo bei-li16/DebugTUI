@@ -1196,6 +1196,9 @@ impl App {
         self.sync_register_sample_validity();
         self.sync_register_absence();
         if self.side_pane != pane::REGS
+            // Editing a filter changes visible definitions several times. Wait
+            // for Enter/Escape before reading that final set of registers.
+            || self.register_view.searching
             || self.register_view.mpu_popup.is_some()
             || self.register_view.status_popup.is_some()
             || !self.register_view.enabled()
@@ -1486,10 +1489,7 @@ impl App {
             theme::empty(f, rect, "Register catalogue error", error);
             return;
         }
-        let Some(catalogue) = &self.register_view.catalogue else {
-            return;
-        };
-        if rect.height == 0 {
+        if self.register_view.catalogue.is_none() || rect.height == 0 {
             return;
         }
         let context = self.register_context();
@@ -1532,6 +1532,8 @@ impl App {
             .height
             .saturating_sub(1 + summary_height + details_height);
         self.view_rects[pane::REGS] = Rect::new(rect.x, rows_y, rect.width, height);
+        self.fit_view_height(pane::REGS, height);
+        let catalogue = self.register_view.catalogue.as_ref().unwrap();
         let mut lines = Vec::new();
         for (row_index, row) in self
             .register_view
@@ -1707,17 +1709,21 @@ impl App {
                     )
                 }
             };
-            let style = if row_index == self.selected(pane::REGS) && self.pane == pane::REGS {
-                Style::default().fg(color).bg(theme::SELECTED)
-            } else {
-                Style::default().fg(color)
-            };
+            let hit = Rect::new(
+                rect.x,
+                rows_y + (row_index - self.view_tops[pane::REGS]) as u16,
+                rect.width,
+                1,
+            );
+            let style = self
+                .row_style(
+                    row_index == self.selected(pane::REGS) && self.pane == pane::REGS,
+                    hit,
+                )
+                .fg(color);
             lines.push(Line::styled(text, style));
         }
-        f.render_widget(
-            Paragraph::new(lines),
-            Rect::new(rect.x, rows_y, rect.width, height),
-        );
+        theme::lines(f, lines, Rect::new(rect.x, rows_y, rect.width, height));
         if details_height > 0 {
             let detail = if let Some(index) =
                 self.register_view.register_index(self.selected(pane::REGS))
@@ -1842,6 +1848,81 @@ mod tests {
             timestamp_ms: 23,
             source: format!("gdb:{id}"),
         }
+    }
+    fn scb_app() -> App {
+        let mut project = Project::default();
+        project.registers.catalogue =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("profiles/registers/stm32f429.toml");
+        let mut app = App::new(project, false);
+        app.snapshot.state = state::STOPPED.into();
+        app.select_pane(pane::REGS);
+        app.zoom = true;
+        app.register_view.query = "scb".into();
+        app.register_view.rebuild();
+        app
+    }
+    fn assert_register_row_visible(app: &App, terminal: &Terminal<TestBackend>, expected: &str) {
+        let top = app.view_tops[pane::REGS];
+        let rect = app.view_rects[pane::REGS];
+        let selected = app.selected(pane::REGS);
+        assert!(
+            (top..top + usize::from(rect.height)).contains(&selected),
+            "{expected}: selected {selected} outside visible rows {top}..{}",
+            top + usize::from(rect.height)
+        );
+        let y = rect.y + (selected - top) as u16;
+        let line: String = (rect.x..rect.right())
+            .map(|x| terminal.backend().buffer()[(x, y)].symbol())
+            .collect();
+        assert!(
+            line.contains(expected),
+            "expected {expected} in selected row: {line}"
+        );
+    }
+    #[test]
+    fn scb_tail_navigation_keeps_selected_register_in_rendered_rows() {
+        for (width, height) in [(80, 24), (120, 36), (200, 20)] {
+            for navigation in [KeyCode::End, KeyCode::PageDown, KeyCode::Down] {
+                let mut app = scb_app();
+                let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+                terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+                for _ in 0..app.register_view.rows.len() {
+                    app.key(KeyEvent::new(navigation, KeyModifiers::NONE), None);
+                    terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+                }
+                assert_eq!(app.selection, app.register_view.rows.len() - 1);
+                assert_register_row_visible(&app, &terminal, "SCB.CPACR");
+                // A subsequent redraw must not clamp the tail out of view again.
+                terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+                assert_register_row_visible(&app, &terminal, "SCB.CPACR");
+            }
+        }
+    }
+    #[test]
+    fn scb_tail_fields_and_scrollbar_reach_last_row() {
+        let mut app = scb_app();
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+        app.key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE), None);
+        app.key(KeyEvent::new(KeyCode::Right, KeyModifiers::NONE), None);
+        terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+        app.key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE), None);
+        terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+        assert_register_row_visible(&app, &terminal, "CP11");
+        let (top, thumb, _) = app.scrollbar_thumb(pane::REGS);
+        assert_eq!(top + thumb, usize::from(app.scrollbars[pane::REGS].height));
+        app.key(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE), None);
+        terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+        app.drag_scrollbar(pane::REGS, app.scrollbars[pane::REGS].bottom() - 1, 0);
+        terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+        let rect = app.view_rects[pane::REGS];
+        let line: String = (rect.x..rect.right())
+            .map(|x| terminal.backend().buffer()[(x, rect.bottom() - 1)].symbol())
+            .collect();
+        assert!(
+            line.contains("CP11"),
+            "scrollbar must expose final field: {line}"
+        );
     }
     #[test]
     fn vfp_editor_uses_native_width_and_requires_this_cores_independent_writer() {
@@ -2413,6 +2494,55 @@ mod tests {
             app.register_view.values[&("core:default".into(), "r0".into(), "default".into())].state,
             State::Stale
         );
+    }
+    #[test]
+    fn editing_register_search_defers_io_until_the_final_filter_is_accepted() {
+        for accept in [false, true] {
+            let mut app = scb_app();
+            let (engine, requests) = engine();
+            let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+            terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+            app.start_register_search();
+            for key in [
+                KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL),
+                KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE),
+                KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE),
+                KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE),
+            ] {
+                app.register_key(key, Some(&engine));
+                terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+                assert!(
+                    !app.ensure_registers(Some(&engine)),
+                    "Intermediate search dispatched IO"
+                );
+                assert!(requests.try_recv().is_err());
+            }
+            app.register_key(
+                KeyEvent::new(
+                    if accept { KeyCode::Enter } else { KeyCode::Esc },
+                    KeyModifiers::NONE,
+                ),
+                Some(&engine),
+            );
+            terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+            assert!(app.ensure_registers(Some(&engine)));
+            let sent: Vec<_> = requests.try_iter().collect();
+            let read = sent
+                .iter()
+                .find(|request| request.method == method::REGISTERS_READ)
+                .unwrap();
+            assert_eq!(
+                read.params["ids"],
+                json!(["scb.aircr", "scb.cpuid", "scb.icsr", "scb.vtor"])
+            );
+            assert_eq!(
+                sent.iter()
+                    .filter(|request| request.method == method::REGISTER_PREFERENCES)
+                    .count(),
+                usize::from(accept)
+            );
+            assert!(!app.ensure_registers(Some(&engine)));
+        }
     }
     #[test]
     fn only_visible_expanded_registers_are_read_and_pending_does_not_accumulate() {

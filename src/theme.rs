@@ -77,6 +77,26 @@ pub fn lines(f: &mut Frame, lines: Vec<Line<'static>>, rect: Rect) {
     }
     f.render_widget(Paragraph::new(lines), rect);
 }
+/// Wrap descriptions by terminal cells, including long paths and CJK text.
+pub fn wrapped_lines(lines: Vec<String>, width: usize) -> Vec<Line<'static>> {
+    use unicode_width::UnicodeWidthChar;
+    let mut result = vec![];
+    for line in lines {
+        let mut text = String::new();
+        let mut used = 0;
+        for c in line.chars() {
+            let n = c.width().unwrap_or(0);
+            if used + n > width && !text.is_empty() {
+                result.push(Line::from(std::mem::take(&mut text)));
+                used = 0;
+            }
+            text.push(c);
+            used += n;
+        }
+        result.push(Line::from(text));
+    }
+    result
+}
 pub fn section(title: impl Into<Line<'static>>) -> Block<'static> {
     Block::default()
         .borders(Borders::TOP)
@@ -93,9 +113,19 @@ pub fn card(title: impl Into<Line<'static>>, focused: bool) -> Block<'static> {
         .title_style(Style::default().fg(ACCENT).add_modifier(Modifier::BOLD))
 }
 pub fn selected(active: bool) -> Style {
+    row(active, false)
+}
+/// Keyboard selection remains visible when the pointer crosses another row.
+pub fn row(selected: bool, hovered: bool) -> Style {
     Style::default()
-        .fg(if active { ACCENT } else { TEXT })
-        .bg(if active { SELECTED } else { PANEL })
+        .fg(if selected { ACCENT } else { TEXT })
+        .bg(if selected {
+            SELECTED
+        } else if hovered {
+            HOVER
+        } else {
+            PANEL
+        })
 }
 pub fn chip(active: bool, hover: bool) -> Style {
     control(true, active, hover, TEXT)

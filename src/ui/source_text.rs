@@ -529,7 +529,7 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
     {
         let hit = Rect::new(inner.x, inner.y + i as u16, inner.width, 1);
         f.render_widget(
-            Paragraph::new(*label).style(theme::selected(i == selected)),
+            Paragraph::new(*label).style(a.row_style(i == selected, hit)),
             hit,
         );
         a.source_text.menu_hits.push((hit, i == 1));

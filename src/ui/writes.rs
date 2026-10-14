@@ -20,6 +20,10 @@ struct Popup {
     field: usize,
     preview: Option<Value>,
     detail: String,
+    rendered_detail: String,
+    detail_scroll: usize,
+    detail_max: usize,
+    detail_area: Rect,
     expired: bool,
     address: String,
     count: String,
@@ -126,6 +130,10 @@ impl App {
             field: 0,
             preview: None,
             detail: reason,
+            rendered_detail: String::new(),
+            detail_scroll: 0,
+            detail_max: 0,
+            detail_area: Rect::default(),
             expired: false,
             address,
             count: "1".into(),
@@ -369,6 +377,17 @@ impl App {
         };
         match key.code {
             KeyCode::Esc => self.write_action(4, engine),
+            KeyCode::PageDown => {
+                popup.detail_scroll = popup
+                    .detail_scroll
+                    .saturating_add(usize::from(popup.detail_area.height).max(1))
+                    .min(popup.detail_max)
+            }
+            KeyCode::PageUp => {
+                popup.detail_scroll = popup
+                    .detail_scroll
+                    .saturating_sub(usize::from(popup.detail_area.height).max(1))
+            }
             KeyCode::Tab | KeyCode::Down => popup.field = (popup.field + 1) % popup.fields(),
             KeyCode::BackTab | KeyCode::Up => {
                 popup.field = (popup.field + popup.fields() - 1) % popup.fields()
@@ -456,6 +475,18 @@ impl App {
         if !self.write_editor.modal() {
             return false;
         }
+        let popup = self.write_editor.popup.as_mut().unwrap();
+        if popup.detail_area.contains((mouse.column, mouse.row).into()) {
+            match mouse.kind {
+                MouseEventKind::ScrollDown => {
+                    popup.detail_scroll = (popup.detail_scroll + 3).min(popup.detail_max)
+                }
+                MouseEventKind::ScrollUp => {
+                    popup.detail_scroll = popup.detail_scroll.saturating_sub(3)
+                }
+                _ => {}
+            }
+        }
         if mouse.kind == MouseEventKind::Down(event::MouseButton::Left)
             && let Some((_, field)) = self
                 .write_editor
@@ -482,20 +513,10 @@ pub(super) fn draw(f: &mut UiFrame, app: &mut App) {
     let card = theme::card(" Edit value · Tab select · Esc cancel ", true);
     let inner = card.inner(rect);
     f.render_widget(card, rect);
-    let input = if popup.input.text.len() > usize::from(inner.width.saturating_sub(8)) {
-        popup
-            .input
-            .text
-            .chars()
-            .rev()
-            .take(usize::from(inner.width.saturating_sub(8)))
-            .collect::<String>()
-            .chars()
-            .rev()
-            .collect::<String>()
-    } else {
-        popup.input.text.clone()
-    };
+    let input = source_tabs::fit(
+        &popup.input.text,
+        usize::from(inner.width.saturating_sub(8)),
+    );
     let mut labels = vec![
         format!("Value: {input}"),
         format!(
@@ -521,7 +542,13 @@ pub(super) fn draw(f: &mut UiFrame, app: &mut App) {
         labels.push(format!("Address: {}", popup.address));
         labels.push(format!("Byte count: {}", popup.count));
     }
-    let rows = usize::from(inner.height.min(labels.len() as u16));
+    let rows = usize::from(
+        inner
+            .height
+            .saturating_sub(3)
+            .max(1)
+            .min(labels.len() as u16),
+    );
     let first = popup.field.saturating_sub(rows.saturating_sub(1));
     for (field, label) in labels.iter().enumerate().skip(first).take(rows) {
         let hit = Rect::new(inner.x, inner.y + (field - first) as u16, inner.width, 1);
@@ -533,18 +560,60 @@ pub(super) fn draw(f: &mut UiFrame, app: &mut App) {
             && app.write_editor.pending.is_none();
         let disabled =
             field == 2 && !available || field == 3 && (!available || popup.preview.is_none());
-        f.render_widget(
-            Paragraph::new(label.clone()).style(if disabled {
-                Style::default().fg(theme::MUTED)
-            } else {
-                theme::selected(field == popup.field)
-            }),
-            hit,
-        );
+        let style = if disabled {
+            // A disabled action still needs a visible keyboard focus indicator.
+            theme::selected(field == popup.field).fg(theme::MUTED)
+        } else {
+            app.row_style(field == popup.field, hit)
+        };
+        f.render_widget(Paragraph::new(label.clone()).style(style), hit);
         app.write_editor.hits.push((hit, field));
     }
     if inner.height > rows as u16 {
-        f.render_widget(Paragraph::new(format!("{} · {} bits · selected core {}\n{}\nCtrl+U clears the input. Editing invalidates the preview.", popup.candidate.title, popup.candidate.bits, popup.context.core, popup.detail)).wrap(Wrap { trim: false }).style(Style::default().fg(theme::MUTED)), Rect::new(inner.x, inner.y + rows as u16, inner.width, inner.height - rows as u16));
+        let width = if popup.candidate.bits == 0 {
+            "width unknown".into()
+        } else {
+            format!("{} bits", popup.candidate.bits)
+        };
+        let details = format!(
+            "{} · {width} · core {}\n{}\nCtrl+U clears input. Editing invalidates preview.",
+            popup.candidate.title, popup.context.core, popup.detail
+        );
+        let lines = theme::wrapped_lines(
+            details.lines().map(str::to_owned).collect(),
+            usize::from(inner.width),
+        );
+        let total = lines.len();
+        let body = Rect::new(
+            inner.x,
+            inner.y + rows as u16,
+            inner.width,
+            inner.height.saturating_sub(rows as u16 + 1),
+        );
+        let popup = app.write_editor.popup.as_mut().unwrap();
+        if popup.rendered_detail != popup.detail {
+            popup.detail_scroll = 0;
+            popup.rendered_detail.clone_from(&popup.detail);
+        }
+        popup.detail_max = total.saturating_sub(usize::from(body.height));
+        popup.detail_scroll = popup.detail_scroll.min(popup.detail_max);
+        popup.detail_area = body;
+        f.render_widget(
+            Paragraph::new(lines)
+                .scroll((popup.detail_scroll as u16, 0))
+                .style(Style::default().fg(theme::MUTED)),
+            body,
+        );
+        f.render_widget(
+            Paragraph::new(format!(
+                "PgUp/PgDn details · {}-{}/{}",
+                popup.detail_scroll + 1,
+                (popup.detail_scroll + usize::from(body.height)).min(total),
+                total
+            ))
+            .style(Style::default().fg(theme::ACCENT)),
+            Rect::new(inner.x, inner.bottom() - 1, inner.width, 1),
+        );
     }
 }
 
@@ -570,6 +639,115 @@ mod tests {
     }
     fn response(app: &App, token: &str) -> Value {
         json!({"draft":token,"context":app.register_context(),"target":{"kind":"register","id":"r0"},"owner":"default","channel":"gdb","endpoint":"localhost:3333","plan":{"selected_mask":{"bits":32,"hex":"0xffffffff"},"needs_fresh_read":false},"outcome":"not_sent"})
+    }
+    #[test]
+    fn unicode_write_input_keeps_its_tail_and_disabled_action_keeps_focus() {
+        let mut app = app();
+        app.open_edit_value();
+        app.write_editor.popup.as_mut().unwrap().input.text =
+            "长字符输入的结尾必须保持可见".repeat(4) + "末尾42";
+        let mut terminal = Terminal::new(TestBackend::new(45, 12)).unwrap();
+        terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+        let hit = app
+            .write_editor
+            .hits
+            .iter()
+            .find(|(_, field)| *field == 0)
+            .unwrap()
+            .0;
+        let mut line = String::new();
+        let mut x = hit.x;
+        while x < hit.right() {
+            let symbol = terminal.backend().buffer()[(x, hit.y)].symbol();
+            line.push_str(symbol);
+            x += unicode_width::UnicodeWidthStr::width(symbol).max(1) as u16;
+        }
+        assert!(line.contains("末尾42"), "Input tail hidden: {line}");
+        app.write_editor.popup.as_mut().unwrap().field = 3;
+        terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+        let hit = app
+            .write_editor
+            .hits
+            .iter()
+            .find(|(_, field)| *field == 3)
+            .unwrap()
+            .0;
+        assert_eq!(
+            terminal.backend().buffer()[(hit.x, hit.y)].bg,
+            theme::SELECTED
+        );
+        assert_eq!(terminal.backend().buffer()[(hit.x, hit.y)].fg, theme::MUTED);
+    }
+    #[test]
+    fn write_details_scroll_without_hiding_controls_or_sending_requests() {
+        let (engine, requests) = session::test_channel();
+        for (w, h) in [(45, 12), (80, 24), (120, 36)] {
+            let mut app = app();
+            app.select_pane(pane::MEMORY);
+            app.open_edit_value();
+            app.write_editor.popup.as_mut().unwrap().detail =
+                "预览证据和错误原因需要完整可读，长路径也不能截断。\n".repeat(12)
+                    + "END-OF-WRITE-EVIDENCE";
+            let mut terminal = Terminal::new(TestBackend::new(w, h)).unwrap();
+            terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+            assert!(app.write_editor.popup.as_ref().unwrap().detail_area.height >= 2);
+            // Tab reaches every control even when the details share a tiny window.
+            for _ in 0..7 {
+                let field = app.write_editor.popup.as_ref().unwrap().field;
+                assert!(
+                    app.write_editor
+                        .hits
+                        .iter()
+                        .any(|(_, index)| *index == field)
+                );
+                app.key(
+                    KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE),
+                    Some(&engine),
+                );
+                terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+            }
+            let mut seen = String::new();
+            for _ in 0..100 {
+                seen.extend(
+                    terminal
+                        .backend()
+                        .buffer()
+                        .content
+                        .iter()
+                        .map(|c| c.symbol()),
+                );
+                app.key(
+                    KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE),
+                    Some(&engine),
+                );
+                terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+                let popup = app.write_editor.popup.as_ref().unwrap();
+                if popup.detail_scroll == popup.detail_max {
+                    seen.extend(
+                        terminal
+                            .backend()
+                            .buffer()
+                            .content
+                            .iter()
+                            .map(|c| c.symbol()),
+                    );
+                    break;
+                }
+            }
+            assert!(seen.contains("END-OF-WRITE-EVIDENCE"));
+            assert!(app.write_editor.popup.as_ref().unwrap().detail_scroll > 0);
+            if let Ok(root) = std::env::var("DEBUGTUI_RENDER_DIR") {
+                visual_tests::capture_buffer(
+                    Path::new(&root),
+                    &format!("audit-write-details-{w}x{h}"),
+                    terminal.backend().buffer(),
+                );
+            }
+            app.write_editor.popup.as_mut().unwrap().detail = "New preview evidence".into();
+            terminal.draw(|f| super::super::draw(f, &mut app)).unwrap();
+            assert_eq!(app.write_editor.popup.as_ref().unwrap().detail_scroll, 0);
+            assert!(requests.try_recv().is_err());
+        }
     }
     #[test]
     fn gdb_write_verification_warning_is_visible_in_preview_and_completion() {

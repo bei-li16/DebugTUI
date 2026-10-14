@@ -31,12 +31,13 @@ pub(super) struct Channels {
     source: String,
     pub message: String,
     hits: Vec<(Rect, usize)>,
+    pub(super) pointer: Option<ratatui::layout::Position>,
 }
 impl Channels {
     pub fn new(project: &Project, overridden: bool) -> Self {
         Self {
             channels: project.memory_access.clone(), cores: project.cores.clone(),
-            selected: 0, field: 0, editor: None, hits: vec![],
+            selected: 0, field: 0, editor: None, hits: vec![], pointer: None,
             source: if overridden { "project override".into() } else { format!("inherited from {}", project.tools.profile.display()) },
             message: "Apply stores a project override. Save config / Start writes it; the tools profile is preserved.".into(),
         }
@@ -194,6 +195,7 @@ impl Channels {
         Action::None
     }
     pub fn mouse(&mut self, mouse: MouseEvent) -> Action {
+        self.pointer = Some((mouse.column, mouse.row).into());
         if mouse.kind == MouseEventKind::Down(MouseButton::Left)
             && let Some((_, field)) = self
                 .hits
@@ -256,7 +258,10 @@ impl Channels {
             let style = if !enabled {
                 Style::default().fg(theme::DIM)
             } else {
-                theme::selected(self.field == field)
+                theme::row(
+                    self.field == field,
+                    self.pointer.is_some_and(|p| hit.contains(p)),
+                )
             };
             frame.render_widget(Paragraph::new(text).style(style), hit);
             if enabled {

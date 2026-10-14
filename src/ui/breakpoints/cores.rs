@@ -178,8 +178,10 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App) {
             parts[1].width,
             1,
         );
+        a.hover_probes.borrow_mut().push(row);
+        let hover = a.pointer.is_some_and(|p| row.contains(p));
         f.render_widget(
-            Paragraph::new(label).style(theme::selected(i == e.field)),
+            Paragraph::new(label).style(theme::row(i == e.field, hover)),
             row,
         );
         e.hits.push((row, i));

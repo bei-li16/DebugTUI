@@ -478,16 +478,8 @@ impl App {
             spans.extend(self.numeric_spans(&item, changed, error));
             let selected = self.formats.selected.as_ref() == Some(&item.key)
                 || (self.pane == pane && self.selected(pane) == row);
-            let bg = if selected {
-                theme::SELECTED
-            } else {
-                theme::PANEL
-            };
-            theme::lines(
-                f,
-                vec![Line::from(spans).style(Style::default().bg(bg))],
-                hit,
-            );
+            let style = self.row_style(selected, hit);
+            theme::lines(f, vec![Line::from(spans).style(style)], hit);
             self.formats.hits.push(item);
         }
     }
@@ -548,9 +540,12 @@ impl App {
                 let value = number(raw, self.base_for(&item.key, item.default))
                     .unwrap_or_else(|| raw.clone());
                 f.render_widget(
-                    Paragraph::new(value).style(theme::selected(
-                        self.formats.selected.as_ref() == Some(&item.key),
-                    )),
+                    Paragraph::new(value).style(
+                        self.row_style(
+                            self.formats.selected.as_ref() == Some(&item.key),
+                            item.rect,
+                        ),
+                    ),
                     item.rect,
                 );
                 self.formats.hits.push(item);
@@ -568,12 +563,21 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
         let card = theme::card(" Appearance · Esc close ", true);
         let inner = card.inner(r);
         f.render_widget(card, r);
-        let labels = [
-            "0  Off — static feedback",
-            "1  Subtle — brief, quiet feedback (default)",
-            "2  Full — sweeps, traces and particle accents",
-            "u  Toggle Unicode / ASCII effect glyphs",
-        ];
+        let labels = if inner.width < 62 {
+            [
+                "0  Off · static feedback",
+                "1  Subtle · brief feedback (default)",
+                "2  Full · animated accents",
+                "u  Switch Unicode / ASCII glyphs",
+            ]
+        } else {
+            [
+                "0  Off — static feedback",
+                "1  Subtle — brief, quiet feedback (default)",
+                "2  Full — sweeps, traces and particle accents",
+                "u  Toggle Unicode / ASCII effect glyphs",
+            ]
+        };
         for (i, label) in labels.iter().enumerate() {
             let hit = Rect::new(
                 inner.x + 1,
@@ -587,10 +591,10 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
                     Motion::Subtle => 1,
                     Motion::Full => 2,
                 };
-            f.render_widget(Paragraph::new(*label).style(theme::selected(active)), hit);
+            f.render_widget(Paragraph::new(*label).style(a.row_style(active, hit)), hit);
             a.formats.appearance_hits.push((hit, i));
         }
-        f.render_widget(Paragraph::new(format!("Glyphs: {}\nCopper / graphite · no target polling\nSettings saved to this project's [ui] section.",if a.project.ui.unicode {"Unicode"} else {"ASCII"})).style(Style::default().fg(theme::MUTED)).wrap(Wrap{trim:false}),Rect::new(inner.x+1,inner.y+6,inner.width.saturating_sub(2),inner.height.saturating_sub(6)));
+        f.render_widget(Paragraph::new(format!("Glyphs: {}\nSlate / blue · no target polling\nSettings saved to this project's [ui] section.",if a.project.ui.unicode {"Unicode"} else {"ASCII"})).style(Style::default().fg(theme::MUTED)).wrap(Wrap{trim:false}),Rect::new(inner.x+1,inner.y+6,inner.width.saturating_sub(2),inner.height.saturating_sub(6)));
     }
     if let Some(item) = a.formats.popup.clone() {
         let options = item.choices();
@@ -627,7 +631,7 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
                 1,
             );
             f.render_widget(
-                Paragraph::new(label.clone()).style(theme::selected(i == a.formats.index)),
+                Paragraph::new(label.clone()).style(a.row_style(i == a.formats.index, hit)),
                 hit,
             );
             a.formats.menu_hits.push((hit, i));
@@ -637,7 +641,7 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
             let hit = Rect::new(inner.x + 1, inner.y + 6, inner.width.saturating_sub(2), 1);
             f.render_widget(
                 Paragraph::new("r  Memory access / Live refresh…")
-                    .style(Style::default().fg(theme::ACCENT)),
+                    .style(a.row_style(false, hit).fg(theme::ACCENT)),
                 hit,
             );
             a.formats.refresh_rect = hit;

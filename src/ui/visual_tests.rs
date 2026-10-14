@@ -272,7 +272,12 @@ fn wide_workspace_aligns_project_core_search_and_shared_execution_toolbar() {
 // Optional color-preserving output for visual QA. Not included in runtime packages.
 pub(super) fn capture(root: &Path, name: &str, a: &mut App, width: u16, height: u16) {
     let t = terminal(a, width, height);
-    let cells: Vec<_> = t.backend().buffer().content.iter().map(|c| {
+    capture_buffer(root, name, t.backend().buffer());
+}
+pub(crate) fn capture_buffer(root: &Path, name: &str, buffer: &ratatui::buffer::Buffer) {
+    let width = buffer.area.width;
+    let height = buffer.area.height;
+    let cells: Vec<_> = buffer.content.iter().map(|c| {
         let color = |color| match color { Color::Rgb(r,g,b) => format!("#{r:02x}{g:02x}{b:02x}"), _ => "inherit".into() };
         json!({"s":c.symbol(), "fg":color(c.fg), "bg":color(c.bg), "bold":c.modifier.contains(Modifier::BOLD)})
     }).collect();

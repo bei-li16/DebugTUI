@@ -14,6 +14,7 @@ pub(super) struct Mapping {
     error: String,
     selected: usize,
     hits: Vec<(Rect, usize)>,
+    pub(super) pointer: Option<ratatui::layout::Position>,
 }
 const APPLY: usize = usize::MAX;
 const RESCAN: usize = usize::MAX - 1;
@@ -27,6 +28,7 @@ impl Mapping {
             error: String::new(),
             selected: 0,
             hits: vec![],
+            pointer: None,
         };
         view.rescan();
         view
@@ -154,6 +156,7 @@ impl Mapping {
         Action::None
     }
     pub fn mouse(&mut self, mouse: MouseEvent) -> Action {
+        self.pointer = Some((mouse.column, mouse.row).into());
         if mouse.kind == MouseEventKind::ScrollDown {
             return self.key(KeyCode::Down);
         }
@@ -203,7 +206,14 @@ impl Mapping {
                         if i == self.selected { "›" } else { " " },
                         visible_tail(&c.from, inner.width.saturating_sub(16) as usize)
                     );
-                    Line::styled(label, theme::selected(i == self.selected))
+                    let hit = Rect::new(inner.x, inner.y + (i - start) as u16, inner.width, 1);
+                    Line::styled(
+                        label,
+                        theme::row(
+                            i == self.selected,
+                            self.pointer.is_some_and(|p| hit.contains(p)),
+                        ),
+                    )
                 })
                 .collect();
             theme::lines(
@@ -258,7 +268,12 @@ impl Mapping {
                 .min(inner.right().saturating_sub(x));
             let hit = Rect::new(x, inner.bottom() - 1, width, 1);
             f.render_widget(
-                Paragraph::new(label).style(Style::default().bg(theme::RAISED)),
+                Paragraph::new(label).style(theme::control(
+                    true,
+                    false,
+                    self.pointer.is_some_and(|p| hit.contains(p)),
+                    theme::TEXT,
+                )),
                 hit,
             );
             self.hits.push((hit, index));

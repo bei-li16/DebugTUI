@@ -633,7 +633,7 @@ pub(super) fn draw(f: &mut UiFrame, app: &mut App) {
     for (field, label) in labels.iter().enumerate().skip(first).take(rows) {
         let hit = Rect::new(inner.x, inner.y + (field - first) as u16, inner.width, 1);
         f.render_widget(
-            Paragraph::new(label.clone()).style(theme::selected(field == popup.field)),
+            Paragraph::new(label.clone()).style(app.row_style(field == popup.field, hit)),
             hit,
         );
         app.memory_panel.hits.push((hit, field));

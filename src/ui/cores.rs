@@ -88,7 +88,13 @@ pub(super) fn draw(f: &mut UiFrame, a: &mut App, rect: Rect) {
             state::READY => "READY",
             _ => "OFF",
         };
-        let label = format!("{} · {badge}", core.name);
+        let suffix = format!(" · {badge}");
+        let name = source_tabs::fit(
+            &core.name,
+            usize::from(width.saturating_sub(2))
+                .saturating_sub(unicode_width::UnicodeWidthStr::width(suffix.as_str())),
+        );
+        let label = format!("{name}{suffix}");
         let hit = Rect::new(x, rect.y, width, rect.height);
         let selected = core.index == active;
         let mut style = theme::control(true, selected, a.pointer_over(hit), color(core.index));

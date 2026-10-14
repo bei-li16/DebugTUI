@@ -69,6 +69,8 @@ mod effects;
 mod formats;
 mod highlight;
 #[cfg(test)]
+mod layout_audit_tests;
+#[cfg(test)]
 mod live_watch_tests;
 mod memory;
 mod memory_access;
@@ -80,7 +82,7 @@ mod search;
 mod source_tabs;
 mod source_text;
 #[cfg(test)]
-mod visual_tests;
+pub(crate) mod visual_tests;
 mod watch;
 mod writes;
 pub use render::draw;
@@ -506,10 +508,12 @@ pub struct App {
     notice: String,
     demo: bool,
     quitting: bool,
+    terminal_too_small: bool,
     source_rect: Rect,
     side_rect: Rect,
     console_input_rect: Rect,
     view_rects: [Rect; 11],
+    view_heights: [u16; 11],
     view_tops: [usize; 11],
     log_follow: bool,
     pane_hits: Vec<(Rect, usize)>,
@@ -592,11 +596,13 @@ impl App {
             notice: "F2 / :setup selects a project and debug environment; ? for help".into(),
             demo,
             quitting: false,
+            terminal_too_small: false,
             source_rect: Rect::default(),
             side_rect: Rect::default(),
             console_input_rect: Rect::default(),
             console_view: console::ConsoleView::default(),
             view_rects: [Rect::default(); 11],
+            view_heights: [0; 11],
             view_tops: [0; 11],
             log_follow: true,
             pane_hits: vec![],
@@ -738,6 +744,7 @@ impl App {
         self.console_input_rect = old.console_input_rect;
         self.watch_input_rect = old.watch_input_rect;
         self.view_rects = old.view_rects;
+        self.view_heights = old.view_heights;
         self.scrollbars = old.scrollbars;
         self.pane_hits = old.pane_hits;
         self.action_hits = old.action_hits;
@@ -1269,6 +1276,9 @@ impl App {
             self.submit(engine, method::QUIT, json!({}));
             return false;
         }
+        if self.terminal_too_small && key.code != KeyCode::Esc {
+            return false;
+        }
         if let Some(setup) = &mut self.setup {
             self.launch = setup.key(key);
             if setup.quit_requested {
@@ -1604,6 +1614,9 @@ impl App {
         self.hover_probes.borrow_mut().push(rect);
         self.pointer.is_some_and(|p| rect.contains(p))
     }
+    fn row_style(&self, selected: bool, rect: Rect) -> Style {
+        theme::row(selected, self.pointer_over(rect))
+    }
     /// True when moving the pointer from `before` changed no hover state drawn
     /// in the last frame.
     fn hover_unchanged(&self, before: Option<ratatui::layout::Position>) -> bool {
@@ -1919,6 +1932,33 @@ impl App {
             }
         }
     }
+    /// Preserve an already-visible keyboard selection when a viewport shrinks.
+    /// A manually scrolled view whose selection is elsewhere keeps its position.
+    fn fit_view_height(&mut self, pane: usize, height: u16) {
+        let previous = self.view_heights[pane];
+        if height > 0 {
+            self.view_heights[pane] = height;
+        }
+        let top = self.view_tops[pane];
+        let selected = self.selected(pane);
+        let max = self.view_len(pane).saturating_sub(usize::from(height));
+        self.view_tops[pane] = if self.pane == pane
+            && !matches!(pane, pane::ASM | pane::LOG)
+            && height > 0
+            && previous > height
+            && (top..top.saturating_add(usize::from(previous))).contains(&selected)
+        {
+            top.min(selected)
+                .max(
+                    selected
+                        .saturating_add(1)
+                        .saturating_sub(usize::from(height)),
+                )
+                .min(max)
+        } else {
+            top.min(max)
+        };
+    }
     fn scrollbar_thumb(&self, pane: usize) -> (usize, usize, usize) {
         let height = self.scrollbars[pane].height as usize;
         let visible = self.view_rects[pane].height as usize;
@@ -1947,7 +1987,7 @@ impl App {
     }
     fn mouse(&mut self, mouse: MouseEvent, engine: Option<&EngineHandle>) {
         self.pointer = Some((mouse.column, mouse.row).into());
-        if self.quitting {
+        if self.quitting || self.terminal_too_small {
             return;
         }
         if let Some(setup) = &mut self.setup {

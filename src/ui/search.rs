@@ -572,7 +572,7 @@ pub(super) fn draw_symbols(f: &mut UiFrame, a: &mut App) {
             source_tabs::fit(&location, hit.width.saturating_sub(2) as usize)
         );
         f.render_widget(
-            Paragraph::new(text).style(theme::selected(index == a.symbol_search.selected)),
+            Paragraph::new(text).style(a.row_style(index == a.symbol_search.selected, hit)),
             hit,
         );
         a.symbol_search.hits.push((hit, index));

@@ -504,8 +504,10 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         body,
     );
     popup.close = Rect::new(inner.x, inner.bottom() - 1, inner.width, 1);
+    app.hover_probes.borrow_mut().push(popup.close);
+    let hover = app.pointer.is_some_and(|p| popup.close.contains(p));
     f.render_widget(
-        Paragraph::new("↑↓ scroll · Esc / Close").style(Style::default().fg(theme::ACCENT)),
+        Paragraph::new("↑↓ scroll · Esc / Close").style(theme::row(false, hover).fg(theme::ACCENT)),
         popup.close,
     );
 }

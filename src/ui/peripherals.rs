@@ -965,11 +965,7 @@ impl App {
             if stale && !live {
                 spans.push(Span::styled("  cached", Style::default().fg(theme::DIM)));
             }
-            let line = Line::from(spans).style(Style::default().bg(if index == selected {
-                theme::SELECTED
-            } else {
-                theme::PANEL
-            }));
+            let line = Line::from(spans).style(self.row_style(index == selected, hit));
             theme::lines(f, vec![line], hit);
         }
     }

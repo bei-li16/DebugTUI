@@ -514,11 +514,7 @@ impl App {
                 spans
             };
             let selected = self.pane == pane && self.selected(pane) == row;
-            let bg = if selected {
-                theme::SELECTED
-            } else {
-                theme::PANEL
-            };
+            let bg = self.row_style(selected, hit).bg.unwrap_or(theme::PANEL);
             theme::lines(
                 f,
                 vec![Line::from(spans).style(Style::default().bg(bg))],

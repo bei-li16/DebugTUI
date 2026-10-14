@@ -27,6 +27,7 @@ pub(super) struct Devices {
     selected: usize,
     error: String,
     hits: Vec<(Rect, usize)>,
+    pub(super) pointer: Option<ratatui::layout::Position>,
 }
 const APPLY: usize = usize::MAX;
 const ADD: usize = usize::MAX - 1;
@@ -55,6 +56,7 @@ impl Devices {
             selected,
             error: String::new(),
             hits: vec![],
+            pointer: None,
         };
         if cores {
             view.choose()?;
@@ -238,6 +240,7 @@ impl Devices {
         Action::None
     }
     pub fn mouse(&mut self, mouse: MouseEvent) -> Action {
+        self.pointer = Some((mouse.column, mouse.row).into());
         if matches!(
             mouse.kind,
             MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
@@ -360,7 +363,10 @@ impl Devices {
                     if i == self.selected { ">" } else { " " },
                     visible_tail(label, inner.width.saturating_sub(2) as usize)
                 ))
-                .style(theme::selected(i == self.selected)),
+                .style(theme::row(
+                    i == self.selected,
+                    self.pointer.is_some_and(|p| hit.contains(p)),
+                )),
                 hit,
             );
             self.hits.push((
@@ -376,7 +382,14 @@ impl Devices {
             Mode::Chips => vec![
                 ("Select", APPLY),
                 ("Add", ADD),
-                ("Generic GDB", GENERIC),
+                (
+                    if inner.width < 48 {
+                        "Generic"
+                    } else {
+                        "Generic GDB"
+                    },
+                    GENERIC,
+                ),
                 ("Legacy", LEGACY),
                 ("Cancel", CANCEL),
             ],
@@ -393,7 +406,12 @@ impl Devices {
             let width = (label.len() as u16 + 2).min(inner.right().saturating_sub(x));
             let hit = Rect::new(x, inner.bottom() - 1, width, 1);
             f.render_widget(
-                Paragraph::new(format!(" {label} ")).style(Style::default().bg(theme::RAISED)),
+                Paragraph::new(format!(" {label} ")).style(theme::control(
+                    true,
+                    false,
+                    self.pointer.is_some_and(|p| hit.contains(p)),
+                    theme::TEXT,
+                )),
                 hit,
             );
             self.hits.push((hit, id));
@@ -408,6 +426,26 @@ mod tests {
     use ratatui::{Terminal, backend::TestBackend};
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
+    }
+    #[test]
+    fn chip_picker_cancel_label_and_hit_fit_the_minimum_terminal() {
+        let fixture = super::super::tests::Fixture::new();
+        let path = fixture.0.join("devices.toml");
+        fs::write(&path, crate::devices::DEFAULTS).unwrap();
+        let mut view = Devices::at(path, Selection::default(), false).unwrap();
+        let mut terminal = Terminal::new(TestBackend::new(45, 12)).unwrap();
+        terminal
+            .draw(|f| view.draw(f, Rect::new(0, 3, 45, 6)))
+            .unwrap();
+        let rect = view.hits.iter().find(|(_, id)| *id == CANCEL).unwrap().0;
+        let text: String = (rect.x..rect.right())
+            .map(|x| terminal.backend().buffer()[(x, rect.y)].symbol())
+            .collect();
+        assert!(
+            text.contains("Cancel"),
+            "Cancel was clipped: {text:?}, {rect:?}"
+        );
+        assert!(rect.width >= 8 && rect.right() <= 44);
     }
     #[test]
     fn add_chip_reopen_toggle_cores_and_mouse_apply() {

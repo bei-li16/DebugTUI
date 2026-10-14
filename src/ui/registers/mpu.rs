@@ -479,23 +479,7 @@ fn cache_content(
     lines
 }
 pub(super) fn wrap(lines: Vec<String>, width: usize) -> Vec<Line<'static>> {
-    use unicode_width::UnicodeWidthChar;
-    let mut result = vec![];
-    for line in lines {
-        let mut text = String::new();
-        let mut used = 0;
-        for c in line.chars() {
-            let n = c.width().unwrap_or(0);
-            if used + n > width && !text.is_empty() {
-                result.push(Line::from(std::mem::take(&mut text)));
-                used = 0;
-            }
-            text.push(c);
-            used += n;
-        }
-        result.push(Line::from(text));
-    }
-    result
+    theme::wrapped_lines(lines, width)
 }
 pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
     let context = app.register_context();
@@ -701,8 +685,10 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
         let start = inner.width * button as u16 / 4;
         let end = inner.width * (button as u16 + 1) / 4;
         let r = Rect::new(inner.x + start, inner.bottom() - 1, end - start, 1);
+        app.hover_probes.borrow_mut().push(r);
+        let hover = app.pointer.is_some_and(|p| r.contains(p));
         f.render_widget(
-            Paragraph::new(*label).style(theme::selected(button == popup.button)),
+            Paragraph::new(*label).style(theme::row(button == popup.button, hover)),
             r,
         );
         popup.hits.push((r, button));
