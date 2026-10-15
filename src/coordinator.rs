@@ -8,6 +8,8 @@ use crate::{
 
 mod breakpoints;
 mod control;
+#[cfg(test)]
+mod queue_tests;
 mod registers;
 mod server_log;
 use serde_json::{Value as Json, json};
@@ -548,8 +550,15 @@ impl Coordinator {
                 }
                 Err(_) => true,
             };
-            // Every producer rings the inbox, so with nothing queued the only
-            // other reason to run is a step deadline.
+            // advance() may have just completed a batch or replied inline.
+            // Requests already moved into our queue have no new producer to
+            // ring the inbox. Keep draining runnable work before sleeping.
+            // A pending worker/group wait still sleeps until its event/deadline.
+            backlog |= self.batch.is_none()
+                && (!self.queue.is_empty()
+                    || (self.group_stop.is_some()
+                        && !self.exiting
+                        && !self.cancellation.load(Ordering::Relaxed)));
             if idle && !backlog {
                 self.inbox.wait(self.next_deadline());
             }
