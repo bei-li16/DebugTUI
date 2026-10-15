@@ -34,7 +34,7 @@ pub(super) fn new_session() -> u64 {
 }
 
 impl Engine {
-    fn register_access_denial(
+    pub(super) fn register_access_denial(
         &self,
         catalogue: &Catalogue,
         register: &Register,
@@ -433,6 +433,14 @@ impl Engine {
             } else if !readable {
                 sample.reason = Reason::WriteOnly;
                 sample.detail = "Register or alias dependency is write-only; no read sent".into();
+            } else if catalogue.read_dependencies(register).is_ok_and(|deps| {
+                deps.iter()
+                    .any(|r| matches!(r.reader, Reader::DescriptionUnsupported { .. }))
+            }) {
+                sample.state = State::Unsupported;
+                sample.reason = Reason::ReaderUnsupported;
+                sample.detail =
+                    "Described location has no applicable read route; no IO sent".into();
             } else if sample.owner.is_none() {
                 sample.state = State::Unavailable;
                 sample.detail = "Register owner is unknown; configure chip/cluster topology".into();
@@ -528,6 +536,9 @@ impl Engine {
                     }
                 }
             }
+            if manual && let Some(provenance) = &mut sample.provenance {
+                provenance.acquisition = crate::registers::provenance::Acquisition::ManualRead;
+            }
             samples.push(sample);
             if self.register_context() != context
                 || self.snapshot.state != read_state
@@ -551,7 +562,9 @@ impl Engine {
         }
         self.store_register_samples(&samples, &catalogue);
         self.publish();
-        Ok(json!({"context":context,"samples":samples}))
+        Ok(
+            json!({"context":context,"statistics":crate::registers::statistics::summarize(&catalogue, &samples),"samples":samples}),
+        )
     }
     pub(super) fn store_register_samples(&mut self, samples: &[Sample], catalogue: &Catalogue) {
         for sample in samples {
@@ -976,7 +989,7 @@ impl Engine {
             .ok_or_else(|| (Reason::Unknown, format!("GDB did not return {name}")))?;
         RawValue::parse(&value.string("value"), bits).map_err(|error| (Reason::Unknown, error))
     }
-    fn gdb_register_index(&mut self, name: &str) -> Result<usize, (Reason, String)> {
+    pub(super) fn gdb_register_index(&mut self, name: &str) -> Result<usize, (Reason, String)> {
         if self.reg_names.is_empty() {
             let response = self
                 .mi("-data-list-register-names")

@@ -8,6 +8,14 @@
 
 ## 有效能力与原始值分别保留
 
+### 芯片描述中的只读 discovery
+
+Probe 使用当前已解析的 catalogue（含继承和芯片覆盖），缺少的寄存器不会回退到 CPU 模板。每步检查访问权限、读副作用、presence/capability 条件、owner、halt 和 NeedEnable；未知条件、只写项和无 reader 项不发送数据读取。有限的 R52 命名 GDB 兼容路线只接受与架构模板完全一致的 reader/位宽/scope，仍需通过芯片策略检查。
+
+目录可以声明 `[discovery].registers` 有序寄存器 ID 列表，以及 `[[discovery.rules]]` 的 `fact`、`description`、`requires` 字段条件列表。每个条件复用 `{ reg, field, op, value }`，全部满足时产生值为 1 的事实；不满足或缺失时保持未知。上限为 128 个附加读取、64 条规则、每条 64 个条件。规则不包含命令或 writer，所有地址和读取方式仍取自寄存器定义。继承合并读取顺序，重复 fact 定义报错；最终验证使用覆盖后的字段和权限。
+
+规则的证据只来自当前停止上下文、物理 frame 0、正确 owner 和实际成功响应。配置中的同名 fact 不能替代 discovery 证据。较新的失败样本、身份变化和停止代次变化撤销依据；使能字段也检查其自身的前置条件，避免旧 ITCTRL 在 TRCENA 关闭后继续授权。原始 probe 和当前有效事实分别保留。
+
 - ICTR.INTLINESNUM 的合法实现编码为 0～7，bank 数为字段值加 1，中断线数上限为 bank 数乘 32。最后一组上限为 256，但这些型号最多 240 个外部 IRQ。这个上限不能当作实际中断列表或所有位均已实现的证据。[M4 TRM DDI 0439B §6.3.2，物理 PDF 页 65](https://documentation-service.arm.com/static/5f19da2a20b7cf4bc524d99a)
 - MPU 容量来自 MPU_TYPE.DREGION。校验 unified MPU、IREGION 和保留位，以及适配的实现编码；M3/M4 为 0 或 8，M7 为 0、8 或 16。有效零容量表示没有 MPU；非法编码、读失败或身份未知保持 Unknown，不依据厂商芯片名填写容量。[M3 TRM](https://documentation-service.arm.com/static/5e8e107f88295d1e18d34714)、[M4 TRM §5.1](https://documentation-service.arm.com/static/5f19da2a20b7cf4bc524d99a)、[M7 配置选项](https://developer.arm.com/-/media/Arm%20Developer%20Community/PDF/Processor%20Datasheets/Arm-Cortex-M7-Processor-Datasheet.pdf?hash=5C37DFAA43B532B8BD2DB277685F76007FCFEAE5&la=en&revision=35233191-7cdb-429e-9170-e07ad9d87c7a)
 - DWT 未使能显示 NeedEnable，容量 Unknown，不将被门控的零值解码成“不存在”。FPB 容量保留完整的非连续 NUM_CODE 位，未知 revision 不授权实例。FPU 的零值/失败保持 Unknown；本批仅接受已核实的正向 MVFR0 编码，GDB 名称和访问能力仍独立检查。

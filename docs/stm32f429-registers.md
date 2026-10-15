@@ -4,6 +4,10 @@ DebugTUI 从 1.1.5 起通过 npm 和完整 ZIP 提供 `profiles/registers/stm32f
 
 ## 在现有工程启用
 
+目录现提供只读 ETM/TPIU discovery：先核对 M4 CPUID 及 ROM 表项 PRESENT/FORMAT/offset，再读取受 TRCENA 保护的 CID/PID/DEVTYPE。TPIU 需要匹配 Arm part 0x9A1 及 M4 DEVID；ETM 需要匹配 part 0x925，并进一步核对 ETMv3.5 IDR、CCR、CCER 和 PDSR 的供电证据。Host 不包含 F429 地址或芯片识别分支。判据来自 Arm 100166_0001、DDI0440C 和 RM0090，并保存在此芯片 TOML 的 discovery 规则中。
+
+识别成功后只读 ITCTRL，以区分未知模式和明确未使能模式；不写 TRCENA、ETMCR、ITCTRL 或锁寄存器。ETM LAR 保留 `description_unsupported`；MVFR2、DWT PCSR、SCS PID5/6/7、ITM 软件锁等未获证明的项继续保留未知说明。SysTick CTRL、DHCSR、DWT FUNCTION 和 FPSCR 的自动读取保护、NVIC 容量边界和 FIFO/集成模式条件仍有效。
+
 **1.2.0 自动加载：**选择随包的 `stm32f429` 芯片，CPU registers 保持 **Automatic**，在工程和 profile 没有显式 CPU/catalogue 覆盖时，芯片入口会引用安装目录的 F429 描述，并提供 PPB 和 DBGMCU 的 `core-tcl` 访问映射。已显式选择 `cortex-m4` 或自定义 catalogue 的工程仍保留原选择；可在 Setup 恢复 Automatic。详细优先级、用户芯片覆盖和缺失默认目录处理见 [Host 与芯片描述](chip-description-host.md)。
 
 以下显式配置方式适用于需要固定目录副本的工程，也兼容 1.1.5：

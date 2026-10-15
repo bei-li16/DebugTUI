@@ -13,6 +13,7 @@ pub enum Phase {
 #[serde(rename_all = "snake_case")]
 pub enum Acquisition {
     Catalogue,
+    ManualRead,
     CapabilityProbe,
     MpuRegions,
     SelectorBank,

@@ -123,8 +123,10 @@ impl Loader {
         }
         let mut groups: Vec<Group> = Vec::new();
         let mut registers: Vec<Register> = Vec::new();
+        let mut discovery = super::discovery::Discovery::default();
         for parent in parents {
             let inherited = self.parent(&parent, base)?;
+            discovery.merge(inherited.discovery)?;
             for group in inherited.groups {
                 Self::merge_group(&mut groups, group, &label)?;
             }
@@ -193,6 +195,8 @@ impl Loader {
         }
         child.groups = groups;
         child.registers = registers;
+        discovery.merge(std::mem::take(&mut child.discovery))?;
+        child.discovery = discovery;
         child
             .validate()
             .map_err(|error| format!("{label}: {error}"))?;

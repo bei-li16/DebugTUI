@@ -280,15 +280,25 @@ impl Catalogue {
                     })
             })
             .collect();
+        let discovery_observations = self.discovery.decode(&field_observations);
         let conditions: Vec<_> = dependencies
             .iter()
             .flat_map(|r| {
                 r.conditions.iter().map(|condition| {
-                    let observation = probe.and_then(|p| p.facts.get(&condition.fact)).cloned();
+                    let discovery = self
+                        .discovery
+                        .rules
+                        .iter()
+                        .any(|r| r.fact == condition.fact);
+                    let observation = if discovery {
+                        discovery_observations.get(&condition.fact).cloned()
+                    } else {
+                        probe.and_then(|p| p.facts.get(&condition.fact)).cloned()
+                    };
                     let configured_value = declared.get(&condition.fact).copied();
                     let source = if observation.is_some() {
                         Source::Observation
-                    } else if configured_value.is_some() {
+                    } else if configured_value.is_some() && !discovery {
                         Source::Configuration
                     } else {
                         Source::Unknown

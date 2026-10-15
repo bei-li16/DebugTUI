@@ -199,11 +199,18 @@ impl Catalogue {
                 self, probe, samples, context,
             ));
         }
+        let fields = self.field_observations(probe, samples, context, topology);
+        // Configured or cached discovery results never replace current evidence.
+        for rule in &self.discovery.rules {
+            facts.remove(&rule.fact);
+        }
         facts.extend(
-            self.field_observations(probe, samples, context, topology)
+            self.discovery
+                .decode(&fields)
                 .into_iter()
-                .map(|(key, (value, _))| (key, value)),
+                .map(|(k, v)| (k, v.value)),
         );
+        facts.extend(fields.into_iter().map(|(key, (value, _))| (key, value)));
         facts
     }
     pub(super) fn field_observations<'a>(
@@ -310,7 +317,37 @@ impl Catalogue {
                 }
             }
         }
+        // A stale enable observation cannot authorize a child after its own
+        // prerequisite changes in the same stopped context (e.g. trace power).
+        loop {
+            let values = fields.iter().map(|(k, (v, _))| (k.clone(), *v)).collect();
+            let before = fields.len();
+            fields.retain(|_, (_, sample)| {
+                self.read_dependencies(self.register(&sample.id).unwrap())
+                    .is_ok_and(|deps| {
+                        deps.iter().all(|r| {
+                            r.access_rule
+                                .need_enable
+                                .iter()
+                                .chain(r.present_if.iter())
+                                .all(|c| c.evaluate(&values) == Some(true))
+                        })
+                    })
+            });
+            if fields.len() == before {
+                break;
+            }
+        }
         fields
+    }
+
+    pub(crate) fn discovery_facts(
+        &self,
+        probe: &capabilities::Probe,
+        topology: &Topology,
+    ) -> BTreeMap<String, capabilities::Fact> {
+        self.discovery
+            .decode(&self.field_observations(Some(probe), &[], &probe.context, topology))
     }
 
     pub fn has_presence_rule(&self, register: &Register) -> bool {

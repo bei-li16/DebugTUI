@@ -4,6 +4,10 @@
 
 ## 计数与界面
 
+`registers_probe` 和 `registers_read` 响应新增 `statistics`：区分样本状态、阻断原因、采集来源、未发 I/O 项数，以及去重的实际请求/已响应请求数。自动目录读取仍标为 `catalogue`，显式手工读取标为 `manual_read`，能力探测为 `capability_probe`。别名共享的同一请求不重复计数；已规划但未开始的请求不计作实际 I/O。
+
+状态弹窗分别显示当前 probe 与当前上下文最新样本的统计，并将已知无 reader 的项直接归为 Reader unsupported。两个集合可能重叠，也不构成会话累计 I/O 总数；自动读取跳过一项不能推出先前 probe/manual 没有访问过它。ETM LAR 的无读取路线诊断优先于未知能力提示。
+
 System Regs 的 Total 是目录全部定义；Shown 是目标／全部定义、分类和搜索筛选后已展开的寄存器行，包括滚动范围外的行，排除组标题和字段；Valid 是这些行中当前暂停、会话、停止代次、实际 owner 和适用帧均匹配且有原始值的样本。继续运行或上下文过期后旧值可保留，但不计 Valid。
 
 点击 Status、按 `t` 或执行 `:register-status` 查看可读定义数量及八种互斥状态：Not read、Valid、Not implemented、Unavailable、Reader unsupported、Error、Write only、Stale。Readable definitions 按访问属性和已知实现判断，并不等于读取成功。方向键、PageUp/PageDown、Home/End、滚轮可浏览；Esc、Enter 或 Close 关闭。查看统计不会访问目标。

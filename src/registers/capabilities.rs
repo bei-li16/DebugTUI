@@ -34,6 +34,15 @@ pub struct Probe {
     pub notes: Vec<String>,
 }
 impl Probe {
+    /// Runtime callers must keep the selected, resolved chip definitions.
+    pub(crate) fn decode_with_catalogue(&mut self, catalogue: &Catalogue, topology: &Topology) {
+        if super::m_profile::adapted_cpu(&catalogue.cpu) {
+            super::m_profile::decode(self, catalogue);
+        } else {
+            self.decode();
+        }
+        self.facts.extend(catalogue.discovery_facts(self, topology));
+    }
     fn observed(&self, id: &str) -> Option<&Sample> {
         let owner = format!("core:{}", self.context.core);
         self.samples.iter().find(|s| {

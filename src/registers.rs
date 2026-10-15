@@ -19,6 +19,7 @@ pub mod banked;
 pub mod capabilities;
 mod catalogue_loader;
 mod core_config;
+pub mod discovery;
 pub mod m_cache;
 pub mod m_profile;
 pub mod running;
@@ -39,6 +40,7 @@ pub mod provenance;
 pub mod r52_core;
 pub mod r52_debug;
 pub mod selector;
+pub mod statistics;
 pub mod stm;
 pub mod timer;
 pub mod vfp;
@@ -281,6 +283,9 @@ pub struct Catalogue {
     pub meta: Option<metadata::Document>,
     #[serde(default)]
     pub groups: Vec<Group>,
+    /// Bounded, read-only discovery resolved with the selected chip catalogue.
+    #[serde(default, skip_serializing_if = "discovery::Discovery::is_empty")]
+    pub discovery: discovery::Discovery,
     #[serde(default)]
     pub registers: Vec<Register>,
 }
@@ -1100,6 +1105,7 @@ impl Catalogue {
             }
         }
         self.validate_policy()?;
+        self.discovery.validate(self)?;
         Ok(())
     }
 }

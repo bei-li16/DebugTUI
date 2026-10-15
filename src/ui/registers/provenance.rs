@@ -6,6 +6,7 @@ pub(super) fn details(label: &str, provenance: &Provenance) -> Vec<String> {
         "Read method: {}",
         match provenance.acquisition {
             Acquisition::Catalogue => "catalogue read",
+            Acquisition::ManualRead => "explicit manual read",
             Acquisition::CapabilityProbe => "capability probe",
             Acquisition::MpuRegions => "MPU regions",
             Acquisition::SelectorBank => "selector bank",

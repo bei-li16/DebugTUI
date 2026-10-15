@@ -473,6 +473,11 @@ fn a_peer_run_expires_its_cluster_and_chip_but_not_another_cluster_or_private_sa
         json!({"ids":["cluster","cluster_alias"]}),
     );
     assert_eq!(fresh["samples"][0]["state"], "valid");
+    assert_eq!(fresh["statistics"]["states"]["valid"], 2);
+    assert_eq!(
+        fresh["statistics"]["unique_requests"], 1,
+        "the shared alias retains one actual IO request after coordinator filtering"
+    );
     assert_eq!(reads(&out), before + 1);
     select(&engine, 3);
     call(&engine, 7, "continue", json!({"scope":"core"}));

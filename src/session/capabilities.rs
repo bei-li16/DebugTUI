@@ -44,7 +44,15 @@ impl Engine {
         if !is_m && current.0.architecture != "armv8-r-aarch32" {
             return Err("This capability probe is adapted for M3/M4/M7 and R52 AArch32".into());
         }
-        let catalogue = Catalogue::builtin(if is_m { &current.0.cpu } else { "cortex-r52" })?;
+        let catalogue = current.0.clone();
+        let catalogue_source = current.1.clone();
+        // Legacy named R52 IDs are an alternate route only for the exact
+        // architectural reader, width and owner. Chip policies still apply.
+        let r52_routes = if is_m {
+            None
+        } else {
+            Some(Catalogue::builtin("cortex-r52")?)
+        };
         let services = crate::debug_access::for_project(&self.project)?;
         let mut leases = services
             .iter()
@@ -72,14 +80,20 @@ impl Engine {
                 "CMSIS pinned sources and Arm DDI 0403/0439/0489 define the M ID fields; ICTR is an upper bound, not a real IRQ list".into()];
         }
         let mut values = super::registers::ReadCache::default();
-        let ids = if is_m {
+        let core_ids = if is_m {
             crate::registers::m_profile::PROBE_IDS
         } else {
             PROBE_IDS
         };
-        for &id in ids {
+        let mut ids: Vec<&str> = core_ids.to_vec();
+        for id in &catalogue.discovery.registers {
+            if !ids.contains(&id.as_str()) {
+                ids.push(id);
+            }
+        }
+        for id in ids {
             self.check_register_read_cancelled()?;
-            if is_m && catalogue.register(id).is_none() {
+            if catalogue.register(id).is_none() {
                 continue;
             }
             let register = catalogue
@@ -162,9 +176,48 @@ impl Engine {
                 _ => None,
             }.map(|(reason, detail)| (reason, detail.to_string()))
             };
+            values.facts = Some(catalogue.observation_facts_for_owners(
+                &self.project.registers.facts,
+                Some(&probe),
+                &[],
+                &context,
+                &self.register_topology(),
+            ));
+            let eligibility = catalogue
+                .eligibility_with_owners(
+                    register,
+                    &self.project.registers.facts,
+                    Some(&probe),
+                    &[],
+                    &context,
+                    &self.register_topology(),
+                )
+                .with_catalogue_source(&catalogue_source);
+            sample.implementation = eligibility.implementation;
+            sample.eligibility = Some(eligibility);
+            let denied = denied
+                .or_else(|| {
+                    crate::registers::discovery::denial(
+                        &catalogue,
+                        register,
+                        values.facts.as_ref().unwrap(),
+                    )
+                })
+                .or_else(|| {
+                    self.register_access_denial(
+                        &catalogue,
+                        register,
+                        values.facts.as_ref().unwrap(),
+                    )
+                });
             if let Some((reason, detail)) = denied {
-                sample.state = if reason == Reason::ReaderUnsupported {
+                sample.state = if matches!(
+                    reason,
+                    Reason::ReaderUnsupported | Reason::HardwareNotImplemented
+                ) {
                     State::Unsupported
+                } else if reason == Reason::WriteOnly {
+                    State::NotRead
                 } else {
                     State::Unavailable
                 };
@@ -189,9 +242,18 @@ impl Engine {
                 let result = if native {
                     sample.source = self.register_sample_origin(register, &catalogue).1;
                     self.read_register_value(register, &catalogue, &mut values)
-                } else if !is_m && self.reg_names.iter().any(|n| n == id) {
+                } else if r52_routes
+                    .as_ref()
+                    .and_then(|c| c.register(id))
+                    .is_some_and(|r| {
+                        r.reader == register.reader
+                            && r.bits == register.bits
+                            && r.scope == register.scope
+                    })
+                    && self.gdb_register_index(id).is_ok()
+                {
                     sample.source = format!("gdb:{id}");
-                    self.gdb_register_value(id, 32)
+                    self.gdb_register_value(id, register.bits)
                 } else {
                     self.read_register_value(register, &catalogue, &mut values)
                 };
@@ -224,11 +286,7 @@ impl Engine {
                 }
             }
             probe.samples.push(sample);
-            if is_m {
-                crate::registers::m_profile::decode(&mut probe, &catalogue);
-            } else {
-                probe.decode();
-            }
+            probe.decode_with_catalogue(&catalogue, &self.register_topology());
             if self.register_context() != context || self.snapshot.state != state::STOPPED {
                 self.snapshot.register_probe = None;
                 return Err("Context changed; discarded capability probe".into());
@@ -310,7 +368,7 @@ impl Engine {
         }
         self.publish();
         Ok(
-            json!({"context":context,"probe":probe,"facts":self.effective_register_facts(),"configured_facts":self.project.registers.facts,"fact_source":"configuration_and_current_target_observation",
+            json!({"context":context,"statistics":crate::registers::statistics::summarize(&catalogue, &probe.samples),"probe":probe,"facts":self.effective_register_facts(),"configured_facts":self.project.registers.facts,"fact_source":"configuration_and_current_target_observation",
                 "configured_tools":{"gdb":self.project.gdb.executable,"service":self.project.service.as_ref().map(|s| &s.command),"source":"effective worker configuration; executable versions and hashes require host verification"}}),
         )
     }

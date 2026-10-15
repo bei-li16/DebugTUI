@@ -15,6 +15,21 @@ fn shared(sample: &Sample) -> bool {
         .is_some_and(|owner| owner.starts_with("cluster:") || owner.starts_with("chip:"))
 }
 impl Coordinator {
+    fn decode_probe(
+        catalogue: Option<&crate::registers::Catalogue>,
+        probe: &mut crate::registers::capabilities::Probe,
+        topology: &Topology,
+    ) {
+        if let Some(catalogue) = catalogue {
+            probe.decode_with_catalogue(catalogue, topology);
+        } else {
+            probe.facts.clear();
+            probe.identity = None;
+            probe
+                .notes
+                .push("Selected catalogue unavailable; capability facts discarded".into());
+        }
+    }
     pub(super) fn filter_register_matrix(
         &self,
         core: usize,
@@ -25,7 +40,7 @@ impl Coordinator {
         self.filter_shared_samples(core, &mut report.observations);
         if let Some(probe) = &mut report.probe {
             self.filter_shared_samples(core, &mut probe.samples);
-            probe.decode();
+            Self::decode_probe(report.catalogue.as_ref(), probe, &self.register_topology());
         }
         report.owner_generations = self.shared_epochs.clone();
         report.refresh();
@@ -53,6 +68,7 @@ impl Coordinator {
         for owner in &owners {
             *self.shared_epochs.entry(owner.clone()).or_default() += 1;
         }
+        let topology = self.register_topology();
         for engine in &mut self.engines {
             for sample in &mut engine.snapshot.register_samples {
                 if sample
@@ -73,7 +89,7 @@ impl Coordinator {
                         sample.stale();
                     }
                 }
-                probe.decode();
+                Self::decode_probe(engine.register_catalogue.as_ref(), probe, &topology);
             }
             Self::shared_legacy_projection(&mut engine.snapshot);
             if !engine.exited && !engine.unresponsive {
@@ -113,7 +129,11 @@ impl Coordinator {
         self.filter_shared_samples(core, &mut snapshot.register_samples);
         if let Some(probe) = &mut snapshot.register_probe {
             self.filter_shared_samples(core, &mut probe.samples);
-            probe.decode();
+            Self::decode_probe(
+                self.engines[core].register_catalogue.as_ref(),
+                probe,
+                &self.register_topology(),
+            );
         }
         Self::shared_legacy_projection(snapshot);
     }
@@ -163,11 +183,33 @@ impl Coordinator {
         self.accept_shared_response(core, started, &mut wrapper);
         probe.samples = serde_json::from_value(wrapper["samples"].clone())
             .expect("Validated probe sample response");
-        probe.decode();
+        Self::decode_probe(
+            self.engines[core].register_catalogue.as_ref(),
+            &mut probe,
+            &self.register_topology(),
+        );
         let configured = serde_json::from_value(result["configured_facts"].clone())
             .unwrap_or_else(|_| self.project.registers.facts.clone());
-        result["facts"] = json!(probe.effective(&configured));
+        result["facts"] = json!(
+            self.engines[core]
+                .register_catalogue
+                .as_ref()
+                .map(|catalogue| catalogue.observation_facts_for_owners(
+                    &configured,
+                    Some(&probe),
+                    &[],
+                    &probe.context,
+                    &self.register_topology()
+                ))
+                .unwrap_or_default()
+        );
         result["probe"] = json!(probe);
+        if let Some(catalogue) = &self.engines[core].register_catalogue {
+            result["statistics"] = json!(crate::registers::statistics::summarize(
+                catalogue,
+                &probe.samples
+            ));
+        }
         self.engines[core].snapshot.register_probe = Some(probe);
     }
     pub(super) fn accept_shared_response(
@@ -234,6 +276,13 @@ impl Coordinator {
             *value = json!(sample);
         }
         Self::shared_legacy_projection(&mut self.engines[core].snapshot);
+        if result.get("statistics").is_some()
+            && let Some(catalogue) = &self.engines[core].register_catalogue
+            && let Ok(samples) = serde_json::from_value::<Vec<Sample>>(result["samples"].clone())
+        {
+            result["statistics"] =
+                json!(crate::registers::statistics::summarize(catalogue, &samples));
+        }
     }
     fn shared_legacy_projection(snapshot: &mut Snapshot) {
         for variable in &mut snapshot.registers {

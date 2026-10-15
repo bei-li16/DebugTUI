@@ -78,6 +78,22 @@ impl RegisterView {
         if !self.catalogue.as_ref().unwrap().read_policy(register).0 {
             return Category::WriteOnly;
         }
+        if self
+            .catalogue
+            .as_ref()
+            .unwrap()
+            .read_dependencies(register)
+            .is_ok_and(|deps| {
+                deps.iter().any(|r| {
+                    matches!(
+                        r.reader,
+                        crate::registers::Reader::DescriptionUnsupported { .. }
+                    )
+                })
+            })
+        {
+            return Category::ReaderUnsupported;
+        }
         let Some(sample) = self.sample(project, context, index) else {
             return Category::NotRead;
         };
@@ -211,6 +227,35 @@ pub(in crate::ui) fn draw(f: &mut UiFrame, app: &mut App) {
     text.push("Shown excludes collapsed groups and fields. Valid requires the current owner and stop context.".into());
     if let Some(catalogue) = &app.register_view.catalogue {
         text.push(catalogue.confidence_summary());
+        if let Some(probe) = app
+            .snapshot
+            .register_probe
+            .as_ref()
+            .filter(|p| p.context == context)
+        {
+            let stats = crate::registers::statistics::summarize(catalogue, &probe.samples);
+            text.push(format!(
+                "Current capability probe: {} definitions / {} requests / {} responded / {} no IO",
+                stats.definitions, stats.unique_requests, stats.responded_requests, stats.no_io
+            ));
+        }
+        let current: Vec<_> = app
+            .snapshot
+            .register_samples
+            .iter()
+            .filter(|s| s.context == context)
+            .cloned()
+            .collect();
+        let stats = crate::registers::statistics::summarize(catalogue, &current);
+        text.push(format!(
+            "Latest current samples by acquisition: {:?}",
+            stats.acquisitions
+        ));
+        text.push(format!(
+            "Latest current samples by cause: {:?}",
+            stats.causes
+        ));
+        text.push("Probe and latest samples overlap; counts are not lifetime IO totals. A skipped automatic read does not erase a prior probe/manual request.".into());
     }
     text.push(format!(
         "Core {} / frame {} / stop {} / session {}",

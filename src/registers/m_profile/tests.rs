@@ -75,6 +75,132 @@ fn probe(catalogue: &Catalogue, cpuid: u64) -> Probe {
     }
 }
 
+fn f429_discovery_fixture() -> (Catalogue, Probe) {
+    let c = Catalogue::load(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("profiles/registers/stm32f429.toml"),
+    )
+    .unwrap();
+    let mut p = probe(&c, 0x410fc241);
+    p.samples.push(sample(&c, "dcb.demcr", 1 << 24));
+    for id in &c.discovery.registers {
+        let value = match id.as_str() {
+            "rom.tpiu" => 0xfff41003,
+            "rom.etm" => 0xfff42003,
+            "tpiu.devid" => 0xca1,
+            _ => c.register(id).unwrap().reset.unwrap_or(0),
+        };
+        p.samples.push(sample(&c, id, value));
+    }
+    (c, p)
+}
+
+#[test]
+fn discovery_rejects_stale_wrong_owner_unproven_and_failed_identity_samples() {
+    let (c, p) = f429_discovery_fixture();
+    let key = "stm32f429.etm_m4.present";
+    assert_eq!(
+        c.observation_facts(&BTreeMap::new(), Some(&p), &[], &context())[key],
+        1
+    );
+    let configured = BTreeMap::from([(key.into(), 1)]);
+    assert!(
+        !c.observation_facts(&configured, None, &[], &context())
+            .contains_key(key)
+    );
+    for mode in 0..8 {
+        let mut changed = p.clone();
+        let s = changed
+            .samples
+            .iter_mut()
+            .find(|s| s.id == "etm.pidr0")
+            .unwrap();
+        match mode {
+            0 => s.context.generation += 1,
+            1 => s.owner = Some("core:other".into()),
+            2 => s.provenance.as_mut().unwrap().access = None,
+            3 => {
+                s.provenance
+                    .as_mut()
+                    .unwrap()
+                    .access
+                    .as_mut()
+                    .unwrap()
+                    .phase = Phase::Started
+            }
+            4 => s.state = State::Error,
+            5 => s.view = SampleView::SelectedFrame,
+            6 => s.value = Some(RawValue::from_integer(0, 32).unwrap()),
+            7 => {
+                s.provenance.as_mut().unwrap().catalogue_reader = Reader::CorePrivate { address: 0 }
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            !c.observation_facts(&configured, Some(&changed), &[], &context())
+                .contains_key(key),
+            "mode {mode}"
+        );
+    }
+    let mut failed = sample(&c, "etm.pidr0", 0);
+    failed.timestamp_ms = 20;
+    failed.state = State::Error;
+    assert!(
+        !c.observation_facts(&configured, Some(&p), &[failed], &context())
+            .contains_key(key)
+    );
+}
+
+#[test]
+fn statistics_distinguish_automatic_manual_probe_and_deduplicate_alias_io() {
+    let (c, p) = f429_discovery_fixture();
+    let mut automatic = sample(&c, "scb.cpuid", 0x410fc241);
+    automatic.provenance.as_mut().unwrap().acquisition = Acquisition::Catalogue;
+    let mut manual = sample(&c, "dcb.demcr", 1 << 24);
+    manual.provenance.as_mut().unwrap().acquisition = Acquisition::ManualRead;
+    let mut skipped = sample(&c, "fpu.mvfr2", 0);
+    skipped.state = State::NotRead;
+    skipped.value = None;
+    skipped.provenance.as_mut().unwrap().access = None;
+    skipped.provenance.as_mut().unwrap().acquisition = Acquisition::Catalogue;
+    let mut samples = vec![automatic.clone(), automatic, manual, skipped];
+    samples.push(
+        p.samples
+            .iter()
+            .find(|s| s.id == "etm.idr")
+            .unwrap()
+            .clone(),
+    );
+    let stats = super::super::statistics::summarize(&c, &samples);
+    assert_eq!(stats.definitions, 5);
+    assert_eq!(stats.unique_requests, 3);
+    assert_eq!(stats.responded_requests, 3);
+    assert_eq!(stats.no_io, 1);
+    assert_eq!(stats.acquisitions["catalogue"], 3);
+    assert_eq!(stats.acquisitions["manual_read"], 1);
+    assert_eq!(stats.acquisitions["capability_probe"], 1);
+}
+
+#[test]
+fn trace_disable_revokes_previously_enabled_integration_mode_in_the_same_stop() {
+    let (c, mut p) = f429_discovery_fixture();
+    let itctrl = p
+        .samples
+        .iter_mut()
+        .find(|s| s.id == "tpiu.itctrl")
+        .unwrap();
+    itctrl.value = Some(RawValue::from_integer(1, 32).unwrap());
+    let register = c.register("tpiu.itatbctr0").unwrap();
+    let enabled = c.observation_facts(&BTreeMap::new(), Some(&p), &[], &context());
+    assert_eq!(enabled[&field_key("tpiu.itctrl", "MODE")], 1);
+    assert!(c.access_denial(register, &enabled, true, None).is_none());
+    let mut disabled = sample(&c, "dcb.demcr", 0);
+    disabled.timestamp_ms = 20;
+    let facts = c.observation_facts(&BTreeMap::new(), Some(&p), &[disabled], &context());
+    assert!(!facts.contains_key(&field_key("tpiu.itctrl", "MODE")));
+    assert!(!facts.contains_key("stm32f429.tpiu.m4_variant"));
+    assert!(c.access_denial(register, &facts, true, None).is_some());
+}
+
 #[test]
 fn m7_cache_facts_require_adapted_clidr_ctr_and_matching_physical_identity() {
     let c = Catalogue::builtin("cortex-m7").unwrap();

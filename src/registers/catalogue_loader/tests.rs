@@ -30,6 +30,49 @@ fn base() -> String {
 }
 
 #[test]
+fn discovery_inherits_and_rejects_missing_fields_duplicate_facts_and_unsafe_sources() {
+    let root = fixture();
+    let discovery = "[discovery]\nregisters=['r0']\n[[discovery.rules]]\nfact='fixture.present'\ndescription='Read-only identity evidence'\nrequires=[{reg='r0',field='ID',op='eq',value=1}]\n";
+    let parent = base().replace("[meta]", &(discovery.to_owned() + "[meta]"))
+        + "[[registers.fields]]\nname='ID'\nsegments=[{offset=0,width=8}]\n";
+    fs::write(root.join("base.toml"), parent).unwrap();
+    let child = header("child", "'base'");
+    fs::write(root.join("child.toml"), &child).unwrap();
+    let loaded = Catalogue::load(&root.join("child.toml")).unwrap();
+    assert_eq!(loaded.discovery.registers, ["r0"]);
+    assert_eq!(loaded.discovery.rules.len(), 1);
+    assert_eq!(
+        Catalogue::parse(&toml::to_string(&loaded).unwrap())
+            .unwrap()
+            .discovery
+            .rules
+            .len(),
+        1
+    );
+    fs::write(
+        root.join("child.toml"),
+        child.replace("[meta]", &(discovery.to_owned() + "[meta]")),
+    )
+    .unwrap();
+    assert!(
+        Catalogue::load(&root.join("child.toml"))
+            .unwrap_err()
+            .contains("Ambiguous inherited")
+    );
+    for mode in 0..4 {
+        let mut bad = loaded.clone();
+        match mode {
+            0 => bad.discovery.rules[0].requires[0].field = "missing".into(),
+            1 => bad.registers[0].read_side_effect = true,
+            2 => bad.discovery.rules[0].requires.clear(),
+            3 => bad.discovery.registers.push("missing".into()),
+            _ => unreachable!(),
+        }
+        assert!(bad.validate().is_err());
+    }
+}
+
+#[test]
 fn catalogue_inheritance_resolves_files_named_parents_origins_and_flattened_roundtrip() {
     let root = fixture();
     let before = base();

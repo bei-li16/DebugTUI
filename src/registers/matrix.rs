@@ -195,6 +195,11 @@ impl Report {
                 Support::ConditionsExcluded
             } else if !readable {
                 Support::WriteOnly
+            } else if catalogue.read_dependencies(register).is_ok_and(|deps| {
+                deps.iter()
+                    .any(|r| matches!(r.reader, Reader::DescriptionUnsupported { .. }))
+            }) {
+                Support::ReaderUnsupported
             } else if let Some(sample) = sample {
                 if !current {
                     Support::Stale

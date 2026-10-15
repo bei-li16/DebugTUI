@@ -185,12 +185,17 @@ fn register_eligibility_sources_survive_success_expiry_and_retained_values() {
     let engine = session::spawn(project);
     ok(&engine, 1, "connect", json!({}));
     let listed = ok(&engine, 2, "registers_list", json!({}));
-    ok(
+    let probe = ok(
         &engine,
         3,
         "registers_probe",
         json!({"context":listed["context"]}),
     );
+    fs::write(
+        transcript.parent().unwrap().join("probe.json"),
+        serde_json::to_vec_pretty(&probe).unwrap(),
+    )
+    .unwrap();
     let read = ok(
         &engine,
         4,
@@ -901,11 +906,24 @@ fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() 
         "registers_probe",
         json!({"context":first["context"]}),
     );
+    fs::write(
+        transcript.parent().unwrap().join("probe.json"),
+        serde_json::to_vec_pretty(&probe).unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         reads(&transcript).len(),
-        10,
-        "Scope All must not broadcast reads"
+        6,
+        "Scope All must not broadcast reads; chip CPSR condition blocks its initial read and dependent Hyp probes"
     );
+    let cpsr = probe["probe"]["samples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["id"] == "cpsr")
+        .unwrap();
+    assert_eq!(cpsr["reason"], "hardware_not_implemented");
+    assert!(cpsr["provenance"]["access"].is_null());
     assert!(
         probe["probe"]["samples"]
             .as_array()
@@ -927,7 +945,7 @@ fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() 
         first_read["samples"][0]["eligibility"]["conditions"][0]["source"],
         "observation"
     );
-    assert_eq!(reads(&transcript).len(), 11);
+    assert_eq!(reads(&transcript).len(), 7);
     ok(&engine, 7, "select_core", json!({"index":1}));
     let second = ok(&engine, 8, "registers_list", json!({}));
     assert!(second["probe"].is_null());
@@ -957,7 +975,7 @@ fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() 
         )
         .is_err()
     );
-    assert_eq!(reads(&transcript).len(), 11);
+    assert_eq!(reads(&transcript).len(), 7);
     let probe = ok(
         &engine,
         10,
@@ -971,7 +989,7 @@ fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() 
             .iter()
             .all(|s| s["owner"] == "core:core1")
     );
-    assert_eq!(reads(&transcript).len(), 21);
+    assert_eq!(reads(&transcript).len(), 13);
     let second_read = ok(
         &engine,
         23,
@@ -988,6 +1006,6 @@ fn multicore_probe_uses_worker_generation_and_reads_one_owner_under_scope_all() 
         second_read["samples"][0]["eligibility"]["conditions"][0]["source"],
         "observation"
     );
-    assert_eq!(reads(&transcript).len(), 22);
+    assert_eq!(reads(&transcript).len(), 14);
     ok(&engine, 11, "quit", json!({}));
 }

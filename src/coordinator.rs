@@ -56,6 +56,7 @@ struct EngineEntry {
     name: String,
     endpoint: String,
     handle: EngineHandle,
+    register_catalogue: Option<crate::registers::Catalogue>,
     snapshot: Snapshot,
     revision: u64,
     exited: bool,
@@ -146,6 +147,12 @@ impl Coordinator {
             .map(|(i, c)| EngineEntry {
                 name: c.name.clone(),
                 endpoint: c.endpoint.clone(),
+                register_catalogue: project
+                    .registers_for_core(&c.name)
+                    .load()
+                    .ok()
+                    .flatten()
+                    .map(|(c, _)| c),
                 handle: session::spawn_with(
                     if multi {
                         derive_project(&project, c, i)
