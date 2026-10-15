@@ -1429,8 +1429,7 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
     };
     let subtitle = if unicode_width::UnicodeWidthStr::width(brand.as_str())
         + unicode_width::UnicodeWidthStr::width(subtitle)
-        + 1
-        <= usize::from(brand_width)
+        < usize::from(brand_width)
     {
         subtitle
     } else {

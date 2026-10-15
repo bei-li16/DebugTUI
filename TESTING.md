@@ -1,5 +1,16 @@
 # DebugTUI 验证记录
 
+## 1.2.2 主分支集成验证（2026-10-15）
+
+`main` 快进合入 `codex/register-state-fixes` 截至 `e5b2c27` 的 115 个提交。版本统一为 1.2.2；描述文件、工具配置和测试代码与该基线一致。严格 Clippy 发现标题宽度判断的 `int_plus_one` 警告，将 `x + 1 <= width` 改为等价的 `x < width`，随后重新验证最终代码。
+
+- `pwsh -NoProfile -File scripts/test-and-clean.ps1 test --locked --offline`：**864 通过、0 失败、3 忽略**，覆盖 23 组 Rust 测试结果，含实际程序的目录、权限、读取、写入、多核、选择器与生产分发集成测试。该全量结果在等价 Clippy 修正之前；日志：`artifacts/release-1.2.2/cargo-test.log`。修正后的库回归、严格检查和最终 EXE 验证另记入发布附件。
+- 忽略项：Windows 剪贴板写入、需 `DEBUGTUI_REGISTER_UI_REPLAY` 的 STM32 采样回放，以及 THA6206 Source-to-Watch 实板环境；本轮没有新增实板认证。
+- 等价宽度判断修正后的最终库测试 **572 通过、0 失败、3 忽略**；`cargo fmt --all -- --check` 和 `cargo clippy --locked --offline --all-targets -- -D warnings` 通过。初次 Clippy 诊断保留，最终日志为 `cargo-lib-final.log` 与 `clippy.log`。
+- Cargo 内的生产 npm/EXE/ZIP 分发驱动 **14/14**，使用模拟旧包基线。最终 Release EXE 的真实 1.2.1 升级、公网下载及其余发布验证以附件 `validation-1.2.2.json` 分别记录，不混用两种升级基线。
+
+测试与打包完成后按 `AGENTS.md` 清理本轮中间产物，保留源码、工具链、正式附件、对应源码和原始证据。
+
 ## 1.2.0 发布验证（2026-10-14）
 
 本版交付芯片描述自动发现、Generic GDB 入口和 F429 系统寄存器默认关联。升版前同一功能实现通过离线 Cargo **849 项、0 失败、3 个原有忽略项**和严格 Clippy，原始证据位于 `artifacts/host-adaptation-report/`。仅版本与发布文档更新后，正式 release EXE 重新执行 Host 专项、工具安装、内置工具和生产分发检查，并使用经公开摘要核验的真实 1.1.5 包测试升级。发布后从公网 Latest URL 验证安装、升级、重复安装、入口、渲染、配置保留及卸载。
