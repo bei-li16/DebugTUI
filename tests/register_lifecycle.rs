@@ -56,7 +56,7 @@ fn wait_response(engine: &EngineHandle, id: u64, method: &str, expected_ok: bool
         } = engine
             .events
             .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .unwrap()
+            .unwrap_or_else(|error| panic!("Waiting for {method} request {id}: {error}"))
         {
             if id != found {
                 continue;
@@ -396,6 +396,7 @@ fn multicore_selected_caches_shared_reset_and_console_expire_every_affected_work
 }
 fn multicore_reset(reset_error: bool) {
     let (mut project, out) = fixture(&format!("multicore-{reset_error}"));
+    project.session.log_dir = Some(out.join("logs"));
     project.cores = vec![
         Core {
             name: "core0".into(),

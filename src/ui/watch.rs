@@ -368,7 +368,15 @@ impl App {
                     json!(node.path)
                 )
             },
-            name: node.value.name.clone(),
+            name: if node.path.is_empty() {
+                node.value
+                    .image_origin
+                    .as_ref()
+                    .map(|o| format!("[{}] {}", o.image, node.value.name))
+                    .unwrap_or_else(|| node.value.name.clone())
+            } else {
+                node.value.name.clone()
+            },
             raw: (pane == pane::WATCH)
                 .then(|| self.watch_sample(&node.key()))
                 .flatten()
@@ -406,7 +414,15 @@ impl App {
             },
             key,
             root: node.root.into(),
-            name: node.value.name.clone(),
+            name: if node.path.is_empty() {
+                node.value
+                    .image_origin
+                    .as_ref()
+                    .map(|o| format!("[{}] {}", o.image, node.value.name))
+                    .unwrap_or_else(|| node.value.name.clone())
+            } else {
+                node.value.name.clone()
+            },
             raw,
             changed,
             error,
@@ -740,6 +756,30 @@ mod tests {
         let mut t = Terminal::new(TestBackend::new(160, 42)).unwrap();
         t.draw(|f| draw(f, a)).unwrap();
         t
+    }
+    #[test]
+    fn image_owner_is_rendered_without_changing_expression_keys_or_removal() {
+        let mut a = app(&["debug_domain_id"]);
+        a.snapshot.watches[0].image_origin = Some(crate::session::ImageValueOrigin {
+            image: "vm0".into(),
+            revision: "v1".into(),
+            channel: "ahb".into(),
+        });
+        let terminal = render(&mut a);
+        let buffer = terminal.backend().buffer();
+        let text = buffer
+            .content
+            .iter()
+            .map(|c| c.symbol())
+            .collect::<String>();
+        assert!(text.contains("[vm0]"));
+        assert!(
+            a.formats
+                .hits
+                .iter()
+                .any(|h| h.key == "watch:debug_domain_id")
+        );
+        assert_eq!(a.watch.remove_hits[0].1, "debug_domain_id");
     }
     fn click(a: &mut App, rect: Rect, engine: &EngineHandle) {
         a.mouse(

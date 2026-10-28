@@ -640,6 +640,14 @@ impl App {
         } else {
             Ok(None)
         };
+        let isolated_proof = self.snapshot.image_state.as_ref().is_some_and(|state| {
+            state.error.is_empty()
+                && state.images.iter().any(|i| {
+                    result["image_origin"]["image"].as_str() == Some(i.id.as_str())
+                        && result["image_origin"]["image_revision"].as_str()
+                            == Some(i.content_revision.as_str())
+                })
+        });
         let Some(sample) = self.monitor.samples.get_mut(&pending.key) else {
             return true;
         };
@@ -655,7 +663,8 @@ impl App {
                     && self.snapshot.state == state::STOPPED
                     && result["selection_epoch"].as_u64() == Some(pending.epoch)
                     && !binding.binding_id.is_empty()
-                    && result["source"] == "gdb_typed_address"
+                    && (result["source"] == "gdb_typed_address"
+                        || (result["source"] == "isolated_image_typed_address" && isolated_proof))
                     && result["state"] == state::STOPPED
                     && result["thread"].as_str().is_some_and(|t| !t.is_empty())
                     && result["frame_address"]
@@ -783,6 +792,17 @@ impl App {
         false
     }
     pub(super) fn apply_live_watch(&mut self, live: crate::live_watch::LiveWatchSample) {
+        if let Some(state) = &self.snapshot.image_state {
+            if !state.error.is_empty()
+                || !state.images.iter().any(|i| {
+                    Some(&i.id) == live.image.as_ref() && i.content_revision == live.image_revision
+                })
+            {
+                return;
+            }
+        } else if live.image.is_some() {
+            return;
+        }
         if self.snapshot.state != state::RUNNING
             || live.generation != self.snapshot.generation
             || live.core != self.snapshot.core.as_ref().map(|c| c.index)
@@ -829,7 +849,13 @@ impl App {
                 value: live.value,
                 text: live
                     .value
-                    .map(|v| format!("{v} <raw {}-bit>", live.bits))
+                    .map(|v| {
+                        if let Some(image) = &live.image {
+                            format!("{v} <{image} raw {}-bit; last-known>", live.bits)
+                        } else {
+                            format!("{v} <raw {}-bit>", live.bits)
+                        }
+                    })
                     .unwrap_or_default(),
                 error: live.error,
                 changed: previous.zip(live.value).is_some_and(|(a, b)| a != b),

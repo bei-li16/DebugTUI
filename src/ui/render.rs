@@ -33,6 +33,38 @@ fn project_bar(f: &mut UiFrame, a: &mut App, rect: Rect) {
     );
     toolbar(f, a, buttons, &PROJECT_ACTIONS, rect.height);
     let (note, color) = a.fx.task_label(&a.snapshot.state).unwrap_or_else(|| {
+        if let Some(images) = &a.snapshot.image_state {
+            let execution = images
+                .execution
+                .image
+                .as_deref()
+                .unwrap_or(&images.execution.state);
+            let frame = images
+                .selected_frame
+                .image
+                .as_deref()
+                .unwrap_or(&images.selected_frame.state);
+            let when = if a.snapshot.state == state::RUNNING {
+                "last known"
+            } else {
+                "stopped"
+            };
+            return (
+                if images.error.is_empty() {
+                    format!(
+                        "Exec: {execution} · Browse: {} · Frame: {frame} · {when}",
+                        a.browsed_image().unwrap_or("none")
+                    )
+                } else {
+                    images.error.clone()
+                },
+                if images.error.is_empty() {
+                    theme::DIM
+                } else {
+                    theme::RED
+                },
+            );
+        }
         (
             "Setup: edit & restart · output in Console".into(),
             theme::DIM,
@@ -1378,6 +1410,10 @@ fn hint(command: &str) -> &str {
         "frame" => "Select a stack frame",
         "find" => "Find text in source",
         "elf" => "Load symbols from ELF",
+        "images" => "List resident images and current image identity",
+        "guest" => "Inspect a saved Guest stack and locals, without changing the CPU",
+        "guest-return" => "Return after HVC on the selected core; real stops take priority",
+        "guest-return-cancel" => "Remove only the owned return breakpoint; no target control",
         "refresh" => "Refresh stopped views / retry loading",
         "build" => "Build: run configured command in Source root (F2 config)",
         "appearance" => "Animation intensity and compatible effect glyphs",
@@ -1435,6 +1471,43 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
     } else {
         ""
     };
+    let identity = a
+        .snapshot
+        .image_state
+        .as_ref()
+        .map(|images| {
+            let execution = images
+                .execution
+                .image
+                .as_deref()
+                .unwrap_or(&images.execution.state);
+            let frame = images
+                .selected_frame
+                .image
+                .as_deref()
+                .unwrap_or(&images.selected_frame.state);
+            let browse = a.browsed_image().unwrap_or("none");
+            let available = usize::from(brand_width).saturating_sub(
+                unicode_width::UnicodeWidthStr::width(brand.as_str()) + subtitle.len(),
+            );
+            let full = format!(
+                "  Exec: {execution} · Browse: {browse} · Frame: {frame}{}",
+                if state == state::RUNNING {
+                    " · last known"
+                } else {
+                    ""
+                }
+            );
+            let compact = format!("  E:{execution} B:{browse} F:{frame}");
+            if unicode_width::UnicodeWidthStr::width(full.as_str()) <= available {
+                full
+            } else if unicode_width::UnicodeWidthStr::width(compact.as_str()) <= available {
+                compact
+            } else {
+                String::new()
+            }
+        })
+        .unwrap_or_default();
     f.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(
@@ -1444,6 +1517,7 @@ fn header(f: &mut UiFrame, a: &App, rect: Rect) {
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(subtitle, Style::default().fg(theme::DIM)),
+            Span::styled(identity, Style::default().fg(theme::MUTED)),
         ])),
         Rect::new(rect.x, rect.y, brand_width, 1),
     );
@@ -1599,6 +1673,10 @@ pub fn draw(f: &mut UiFrame, a: &mut App) {
             a.snapshot.state == state::STOPPED,
         );
         setup.draw(f);
+        return;
+    }
+    if a.guest_view.open {
+        a.guest_draw(f);
         return;
     }
     f.render_widget(Block::default().style(theme::base()), area);

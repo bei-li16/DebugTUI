@@ -7,6 +7,7 @@ impl Breakpoint {
         let location = b.string("original-location");
         let file = b.string("fullname");
         Self {
+            debug_file: b.string("file"),
             id: b.string("number"),
             location: if location.is_empty() {
                 b.string("what")
@@ -45,6 +46,7 @@ impl Breakpoint {
             Kind::Code
         };
         Options {
+            image: self.image.clone(),
             group: self.group.clone(),
             location: self.location.clone(),
             kind,
@@ -58,7 +60,54 @@ impl Breakpoint {
 
 impl Engine {
     fn insert_breakpoint(&mut self, o: &Options, restoring: bool) -> Result<Record, String> {
-        let r = self.insert_breakpoint_raw(o, restoring)?;
+        self.validate_image_break_condition(&o.condition)?;
+        let mut actual = o.clone();
+        if !o.kind.is_data() {
+            let (location, image) =
+                self.resolve_image_breakpoint(&o.location, o.image.as_deref())?;
+            actual.location = location;
+            actual.image = image;
+        } else if let Some((image, text)) =
+            self.image_global_selection(&o.location, o.image.as_deref())?
+        {
+            if self
+                .snapshot
+                .image_state
+                .as_ref()
+                .and_then(|s| s.selected_frame.image.as_deref())
+                != Some(image.id.as_str())
+            {
+                return Err("A named data breakpoint requires its image's current physical frame; GDB cannot safely watch protected memory in another domain".into());
+            }
+            let (typed, _) = self.with_image_globals(&image, |query| {
+                memory::watch::resolve_typed_watch(query, &text, &[], &image.elf)
+            })?;
+            let ty = match typed["bits"].as_u64() {
+                Some(8) => "unsigned char",
+                Some(16) => "unsigned short",
+                Some(32) => "unsigned int",
+                Some(64) => "unsigned long long",
+                _ => return Err("Data breakpoint requires a scalar object".into()),
+            };
+            actual.location = format!(
+                "*({ty}*)0x{:x}",
+                typed["address"]
+                    .as_u64()
+                    .ok_or("Data breakpoint has no stable address")?
+            );
+            actual.image = Some(image.id);
+        }
+        let r = self.insert_breakpoint_raw(&actual, restoring)?;
+        if let Some(image) = &actual.image {
+            let id = ["bkpt", "wpt", "hw-rwpt", "hw-awpt"]
+                .iter()
+                .find_map(|key| r.data.field(key))
+                .map(|v| v.string("number"))
+                .filter(|id| valid_id(id))
+                .ok_or("GDB returned no breakpoint identity")?;
+            self.breakpoint_images
+                .insert(id, (image.clone(), o.location.clone()));
+        }
         if let Some(group) = &o.group {
             let id = ["bkpt", "wpt", "hw-rwpt", "hw-awpt"]
                 .iter()
@@ -81,7 +130,11 @@ impl Engine {
             return self.mi(&format!(
                 "-break-insert {} {} {} {} -i {} {} {}",
                 if o.temporary { "-t" } else { "" },
-                if o.kind == Kind::Hardware { "-h" } else { "" },
+                if o.kind == Kind::Hardware || !self.project.images.is_empty() {
+                    "-h"
+                } else {
+                    ""
+                },
                 if o.enabled { "" } else { "-d" },
                 if restoring { "-f" } else { "" },
                 o.ignore_count,
@@ -136,6 +189,7 @@ impl Engine {
     }
     pub(super) fn restore_breakpoints(&mut self) {
         self.breakpoint_groups.clear();
+        self.breakpoint_images.clear();
         self.unresolved_breakpoints.clear();
         for (index, spec) in self.saved_breakpoints.clone().iter().enumerate() {
             let o = spec.options();
@@ -145,6 +199,7 @@ impl Engine {
                     format!("Restore breakpoint {}: {error}", o.location),
                 );
                 self.unresolved_breakpoints.push(Breakpoint {
+                    image: o.image,
                     id: format!("restore-{}", index + 1),
                     group: o.group,
                     location: o.location,
@@ -207,6 +262,7 @@ impl Engine {
         match (existing, desired) {
             (Some(b), Some(o)) => {
                 if b.location != o.location
+                    || b.image != o.image
                     || b.options().kind != o.kind
                     || b.temporary != o.temporary
                 {
@@ -251,6 +307,7 @@ impl Engine {
             .map_err(|e| format!("Breakpoint changed in GDB, but saving the project failed: {e}"))
     }
     fn update_breakpoint(&mut self, b: &Breakpoint, o: &Options) -> Result<(), String> {
+        self.validate_image_break_condition(&o.condition)?;
         if let Some(index) = self
             .unresolved_breakpoints
             .iter()
@@ -332,12 +389,23 @@ impl Engine {
                             "access" | "read-write" => Kind::Access,
                             _ => return Err("Data access must be read, write or read-write".into()),
                         }
+                    } else if let Some(kind) = p.get("kind") {
+                        match kind.as_str() {
+                            Some("hardware") => Kind::Hardware,
+                            Some("code") => Kind::Code,
+                            _ => return Err("Code breakpoint kind must be code or hardware".into()),
+                        }
                     } else if p.get("hardware").and_then(Json::as_bool).unwrap_or(false) {
                         Kind::Hardware
                     } else {
                         Kind::Code
                     };
                     let o = Options {
+                        image: match p.get("image") {
+                            None | Some(Json::Null) => None,
+                            Some(Json::String(id)) if !id.is_empty() => Some(id.clone()),
+                            _ => return Err("Image must be a nonempty id or null".into()),
+                        },
                         group: None,
                         location: text(if method == method::DATA_BREAK {
                             "expression"

@@ -6,6 +6,8 @@
 
 工程地址：[bei-li16/DebugTUI](https://github.com/bei-li16/DebugTUI)。许可证为 [Apache-2.0](LICENSE)，第三方声明见 [NOTICE](NOTICE) 和 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
+开发分支的 Bao＋每核 VM 多 ELF 配置、保存 Guest 栈和 HVC 返回操作见 [Bao 多 ELF 调试](docs/bao-multi-elf.md)；[验收记录](docs/bao-multi-elf-development.md) 区分已实测能力与未完成项目，尚不属于已安装正式版的能力承诺。
+
 ## 安装与升级
 
 发行包面向 Windows x64。npm 用于安装/升级，实际运行的是原生 EXE，不需要 Node、Python 或 VS Code 常驻；便携 ZIP 方式无需安装 Node。npm 和完整 ZIP 已包含 ARM GDB、OpenOCD 及默认配置；目标调试另外需要实际探针、驱动和板级配置，本机编译需要工程工具链。其他架构可选择外部 GDB/工具环境。

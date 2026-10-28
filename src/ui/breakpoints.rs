@@ -21,11 +21,31 @@ const KINDS: [Kind; 5] = [
     Kind::Access,
 ];
 struct Editor {
+    images: Vec<String>,
     number: Option<String>,
     options: Options,
     ignore: String,
     field: usize,
     error: String,
+}
+impl Editor {
+    fn cycle_image(&mut self, backward: bool) {
+        if self.number.is_some() || self.images.is_empty() {
+            return;
+        }
+        let count = self.images.len() + 1;
+        let index = self
+            .options
+            .image
+            .as_ref()
+            .and_then(|id| self.images.iter().position(|i| i == id))
+            .map_or(0, |i| i + 1);
+        let next = (index + if backward { count - 1 } else { 1 }) % count;
+        self.options.image = next
+            .checked_sub(1)
+            .and_then(|i| self.images.get(i))
+            .cloned();
+    }
 }
 #[derive(Default)]
 pub(super) struct Breaks {
@@ -124,6 +144,12 @@ impl App {
         self.completion.invalidate();
         self.select_pane(pane::BREAKS);
         self.breaks.editor = Some(Editor {
+            images: self
+                .snapshot
+                .image_state
+                .as_ref()
+                .map(|s| s.images.iter().map(|i| i.id.clone()).collect())
+                .unwrap_or_default(),
             number,
             ignore: options.ignore_count.to_string(),
             options,
@@ -202,7 +228,7 @@ impl App {
         } else {
             method::BREAK
         };
-        let p = json!({"number":editor.number,"location":o.location,"expression":o.location,"hardware":o.kind == Kind::Hardware,
+        let p = json!({"number":editor.number,"image":o.image,"location":o.location,"expression":o.location,"hardware":o.kind == Kind::Hardware,
             "access":match o.kind { Kind::Read => "read", Kind::Access => "access", _ => "write" },
             "enabled":o.enabled,"condition":o.condition,"ignore_count":count,"temporary":o.temporary});
         self.break_send(engine, method, p);
@@ -290,11 +316,12 @@ impl App {
             return true;
         }
         let mut activate = false;
+        let count = if editor.images.is_empty() { 8 } else { 9 };
         match key.code {
-            KeyCode::Tab | KeyCode::Down => editor.field = (editor.field + 1) % 8,
-            KeyCode::BackTab | KeyCode::Up => editor.field = (editor.field + 7) % 8,
+            KeyCode::Tab | KeyCode::Down => editor.field = (editor.field + 1) % count,
+            KeyCode::BackTab | KeyCode::Up => editor.field = (editor.field + count - 1) % count,
             KeyCode::Enter => activate = true,
-            KeyCode::Char(' ') if matches!(editor.field, 0 | 2 | 5 | 6 | 7) => activate = true,
+            KeyCode::Char(' ') if matches!(editor.field, 0 | 2 | 5 | 6 | 7 | 8) => activate = true,
             KeyCode::Left | KeyCode::Right if editor.field == 0 => {
                 if editor.number.is_none() {
                     let index = KINDS
@@ -307,6 +334,9 @@ impl App {
                         editor.options.temporary = false;
                     }
                 }
+            }
+            KeyCode::Left | KeyCode::Right if editor.field == 6 && !editor.images.is_empty() => {
+                editor.cycle_image(key.code == KeyCode::Left)
             }
             KeyCode::Backspace | KeyCode::Delete | KeyCode::Char(_) => {
                 let field = match editor.field {
@@ -357,9 +387,12 @@ impl App {
             5 if e.number.is_none() && !e.options.kind.is_data() => {
                 e.options.temporary = !e.options.temporary
             }
-            6 => self.apply_break_editor(engine),
-            7 => self.breaks.editor = None,
-            _ => e.field = (e.field + 1) % 8,
+            6 if !e.images.is_empty() => {
+                e.cycle_image(false);
+            }
+            n if n == if e.images.is_empty() { 6 } else { 7 } => self.apply_break_editor(engine),
+            n if n == if e.images.is_empty() { 7 } else { 8 } => self.breaks.editor = None,
+            _ => e.field = (e.field + 1) % if e.images.is_empty() { 8 } else { 9 },
         }
     }
     pub(super) fn break_dialog_mouse(
@@ -392,7 +425,7 @@ impl App {
             {
                 let field = *field;
                 self.breaks.editor.as_mut().unwrap().field = field;
-                if matches!(field, 2 | 5 | 6 | 7) {
+                if matches!(field, 2 | 5 | 6 | 7 | 8) {
                     self.activate_break_field(engine);
                 }
             }
@@ -440,6 +473,11 @@ pub(super) fn rows(a: &App, start: usize, height: usize) -> Vec<Line<'static>> {
                 )
             } else {
                 b.location.clone()
+            };
+            let display = if let Some(image) = &b.image {
+                format!("[{image}] {display}")
+            } else {
+                display
             };
             Line::from(vec![
                 Span::styled(format!(" {marker} "), Style::default().fg(state)),
@@ -538,7 +576,7 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
         .style(Style::default().fg(theme::MUTED)),
         parts[0],
     );
-    let values = [
+    let mut values = vec![
         ("Type", e.options.kind.label().to_owned()),
         (
             if e.options.kind.is_data() {
@@ -588,11 +626,23 @@ pub(super) fn popup(f: &mut UiFrame, a: &mut App) {
         ),
         ("", "Cancel  ·  Esc".into()),
     ];
+    if !e.images.is_empty() {
+        values.insert(
+            6,
+            (
+                "Image",
+                e.options
+                    .image
+                    .clone()
+                    .unwrap_or_else(|| "Automatic · current frame, then unique image".into()),
+            ),
+        );
+    }
     let visible = parts[1].height as usize;
     let start = e
         .field
         .saturating_sub(visible.saturating_sub(1))
-        .min(8usize.saturating_sub(visible));
+        .min(values.len().saturating_sub(visible));
     for (i, (name, value)) in values.iter().enumerate().skip(start).take(visible) {
         let row = Rect::new(
             parts[1].x,
@@ -809,5 +859,39 @@ mod tests {
         a.break_paste("*(uint32_t *)0x20000000");
         a.breaks.editor.as_mut().unwrap().options.kind = Kind::Access;
         super::super::visual_tests::capture(root, "breakpoint-editor", &mut a, 120, 36);
+    }
+    #[test]
+    fn image_choice_cycles_both_directions_and_is_sent_with_original_location() {
+        let (engine, rx) = session::test_channel();
+        let mut a = fixture();
+        a.open_break_editor(false, false);
+        let e = a.breaks.editor.as_mut().unwrap();
+        e.images = vec!["bao".into(), "vm0".into()];
+        e.field = 6;
+        e.options.location = "debug_domain_marker".into();
+        key(&mut a, KeyCode::Right, &engine);
+        assert_eq!(
+            a.breaks.editor.as_ref().unwrap().options.image.as_deref(),
+            Some("bao")
+        );
+        key(&mut a, KeyCode::Right, &engine);
+        assert_eq!(
+            a.breaks.editor.as_ref().unwrap().options.image.as_deref(),
+            Some("vm0")
+        );
+        key(&mut a, KeyCode::Left, &engine);
+        assert_eq!(
+            a.breaks.editor.as_ref().unwrap().options.image.as_deref(),
+            Some("bao")
+        );
+        for field in 0..9 {
+            a.breaks.editor.as_mut().unwrap().field = field;
+            render(&mut a, 45, 12);
+            assert!(a.breaks.hits.iter().any(|(_, i)| *i == field));
+        }
+        a.apply_break_editor(Some(&engine));
+        let request = rx.try_recv().unwrap();
+        assert_eq!(request.params["image"], "bao");
+        assert_eq!(request.params["location"], "debug_domain_marker");
     }
 }

@@ -67,6 +67,7 @@ mod console;
 mod cores;
 mod effects;
 mod formats;
+mod guest;
 mod highlight;
 #[cfg(test)]
 mod layout_audit_tests;
@@ -127,7 +128,7 @@ fn pane_shortcut(key: &KeyEvent) -> Option<usize> {
     };
     Some(PANE_ORDER[index])
 }
-const COMMANDS: [&str; 54] = [
+const COMMANDS: [&str; 58] = [
     "edit-value",
     "cores",
     "core NAME_OR_INDEX",
@@ -171,6 +172,10 @@ const COMMANDS: [&str; 54] = [
     "frame NUMBER",
     "find TEXT",
     "elf PATH",
+    "images",
+    "guest IMAGE",
+    "guest-return IMAGE",
+    "guest-return-cancel",
     "refresh",
     "register-probe",
     "register-cancel",
@@ -545,6 +550,7 @@ pub struct App {
     memory_panel: memory::MemoryView,
     write_editor: writes::Editor,
     breaks: breakpoints::Breaks,
+    guest_view: guest::GuestView,
 }
 impl App {
     pub fn new(project: Project, demo: bool) -> Self {
@@ -575,6 +581,7 @@ impl App {
             source_text: source_text::SourceText::default(),
             file_search: search::FileSearch::default(),
             symbol_search: search::SymbolSearch::default(),
+            guest_view: guest::GuestView::default(),
             logs: VecDeque::new(),
             console: VecDeque::new(),
             input: String::new(),
@@ -642,6 +649,7 @@ impl App {
             a.snapshot.state = "DEMO / STOPPED".into();
             a.snapshot.stop_reason = "breakpoint-hit".into();
             a.snapshot.frame = Frame {
+                debug_file: String::new(),
                 level: 0,
                 function: "update_value".into(),
                 file: a.source_file.clone(),
@@ -651,6 +659,7 @@ impl App {
             a.snapshot.stack = vec![
                 a.snapshot.frame.clone(),
                 Frame {
+                    debug_file: String::new(),
                     level: 1,
                     function: "process_items".into(),
                     line: 11,
@@ -778,6 +787,27 @@ impl App {
         match event {
             Event::LiveWatch { sample } => self.apply_live_watch(sample),
             Event::Snapshot { snapshot } => {
+                let mut snapshot = snapshot;
+                if let Some(image) = snapshot
+                    .image_state
+                    .as_ref()
+                    .and_then(|s| s.selected_frame.image.as_deref())
+                {
+                    snapshot.frame.file = crate::images::qualified_source(
+                        Some(image),
+                        if snapshot.frame.file.is_empty()
+                            || crate::images::scoped_expression(&snapshot.frame.file)
+                                .ok()
+                                .is_some_and(|(id, _)| id.is_some())
+                            || snapshot.frame.debug_file.is_empty()
+                        {
+                            &snapshot.frame.file
+                        } else {
+                            &snapshot.frame.debug_file
+                        },
+                    );
+                }
+                self.guest_snapshot(&snapshot);
                 // Files may have appeared or moved since the last stop.
                 self.source_keys.get_mut().clear();
                 self.write_snapshot(&snapshot);
@@ -804,6 +834,15 @@ impl App {
                 self.reconcile_watch_selection(&snapshot);
                 self.reconcile_break_selection(&snapshot, core_changed);
                 let memory_owner_changed = core_changed
+                    || snapshot
+                        .image_state
+                        .as_ref()
+                        .map(crate::images::State::cache_key)
+                        != self
+                            .snapshot
+                            .image_state
+                            .as_ref()
+                            .map(crate::images::State::cache_key)
                     || snapshot.memory_selection_epoch != self.snapshot.memory_selection_epoch
                     || snapshot.register_session != self.snapshot.register_session
                     || snapshot.core.as_ref().map(|c| (&c.name, &c.endpoint))
@@ -861,7 +900,19 @@ impl App {
                         .and_then(Value::as_u64)
                         .filter(|n| *n <= 100);
                 }
-                if channel != "mi>" && channel != "mi<" {
+                if !matches!(
+                    channel.as_str(),
+                    "mi>"
+                        | "mi<"
+                        | "guest-mi>"
+                        | "guest-mi<"
+                        | "guest-rsp>"
+                        | "guest-memory>"
+                        | "symbol-mi>"
+                        | "symbol-mi<"
+                        | "global-mi>"
+                        | "global-mi<"
+                ) {
                     for line in text.lines() {
                         self.log_at(format!("[{channel}] {line}"), &timestamp);
                     }
@@ -873,6 +924,9 @@ impl App {
                 result,
                 error,
             } => {
+                if self.guest_response(id, &result, error.as_deref()) {
+                    return false;
+                }
                 if self.register_probe_response(id, &result, error.as_deref()) {
                     return false;
                 }
@@ -1162,6 +1216,7 @@ impl App {
                 let path = unquote(arg);
                 self.load_source(&path);
                 self.select_pane(pane::SOURCE);
+                if let Some(image)=self.browsed_image() {self.notice=format!("Browsing {image}; physical execution context is unchanged");}
             }
             "find" => {
                 if !arg.is_empty() {
@@ -1184,6 +1239,10 @@ impl App {
                 let path = unquote(arg);
                 self.submit(engine, method::SET_ELF, json!({"path":path}));
             }
+            "images" => self.submit(engine, "images", json!({})),
+            "guest" => self.open_guest(engine, arg),
+            "guest-return" => self.submit(engine, "return_guest", json!({"image":arg})),
+            "guest-return-cancel" => self.submit(engine, "cancel_guest_return", json!({})),
             "help" => self.open_help(true),
             _ => self.notice = format!("Unknown workstation command: {name}. Use ? for help."),
         }
@@ -1288,6 +1347,9 @@ impl App {
                 self.document = setup.document.clone();
                 self.setup = None;
             }
+            return false;
+        }
+        if self.guest_key(key, engine) {
             return false;
         }
         if self.register_status_key(key)
@@ -1647,6 +1709,8 @@ impl App {
         if self.flush_write_cancels(engine) {
             return true;
         }
+        let image_navigation =
+            !self.project.images.is_empty() && matches!(self.main_pane, pane::FILES | pane::ASM);
         if self.demo
             || self.setup.is_some()
             || self.quitting
@@ -1660,7 +1724,8 @@ impl App {
             || !self.pending_commands.is_empty()
             || (self.snapshot.state != state::STOPPED
                 && !(self.snapshot.state == state::RUNNING && self.side_pane == pane::REGS)
-                && !(self.snapshot.state == state::READY && self.main_pane == pane::FILES))
+                && !(self.snapshot.state == state::READY && self.main_pane == pane::FILES)
+                && !image_navigation)
         {
             return false;
         }
@@ -1682,7 +1747,10 @@ impl App {
             panes.push(self.side_pane);
         }
         for pane in panes {
-            if self.snapshot.state != state::STOPPED && pane != pane::FILES {
+            if self.snapshot.state != state::STOPPED
+                && pane != pane::FILES
+                && !(image_navigation && pane == pane::ASM)
+            {
                 continue;
             }
             let (method, params) = match pane {
@@ -1693,7 +1761,11 @@ impl App {
             let stamp = if pane == pane::FILES {
                 "files".into()
             } else {
-                self.view_stamp()
+                if image_navigation {
+                    format!("{}:{}", self.view_stamp(), self.snapshot.state)
+                } else {
+                    self.view_stamp()
+                }
             };
             if self.view_stamps[pane].as_ref() == Some(&stamp) {
                 continue;
@@ -1986,6 +2058,9 @@ impl App {
         self.set_view_top(pane, top);
     }
     fn mouse(&mut self, mouse: MouseEvent, engine: Option<&EngineHandle>) {
+        if self.guest_mouse(mouse, engine) {
+            return;
+        }
         self.pointer = Some((mouse.column, mouse.row).into());
         if self.quitting || self.terminal_too_small {
             return;

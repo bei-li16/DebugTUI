@@ -12,6 +12,8 @@ fn sample(value: u64, core: Option<usize>, generation: u64) -> Event {
             timestamp: "2026-09-20 16:43:37.659".into(),
             core,
             generation,
+            image: None,
+            image_revision: String::new(),
         },
     }
 }
@@ -111,6 +113,47 @@ fn read_failures_clear_live_badge_and_explicit_policies_take_precedence() {
         .insert("single|watch:uart_cnt".into(), Default::default());
     a.monitor.invalidate();
     a.update(super::live_watch_tests::sample(5, None, 7));
+    assert!(a.watch_sample("watch:uart_cnt").is_none());
+}
+#[test]
+fn image_live_samples_require_matching_revision_and_snapshot_changes_expire_old_values() {
+    let mut a = app();
+    let image = crate::images::Loaded {
+        id: "vm0".into(),
+        elf: "guest0.elf".into(),
+        primary: false,
+        domain: crate::images::Domain::Guest,
+        bits: 32,
+        machine: 40,
+        has_debug_info: true,
+        content_revision: "v1".into(),
+        executable_ranges: vec![],
+        allocated_ranges: vec![],
+    };
+    a.snapshot.image_state = Some(crate::images::State {
+        symbols_loaded: true,
+        images: vec![image],
+        ..Default::default()
+    });
+    a.update(sample(1, None, 7));
+    assert!(a.watch_sample("watch:uart_cnt").is_none());
+    let Event::LiveWatch { mut sample } = sample(42, None, 7) else {
+        panic!()
+    };
+    sample.image = Some("vm0".into());
+    sample.image_revision = "stale".into();
+    a.update(Event::LiveWatch {
+        sample: sample.clone(),
+    });
+    assert!(a.watch_sample("watch:uart_cnt").is_none());
+    sample.image_revision = "v1".into();
+    a.update(Event::LiveWatch { sample });
+    assert!(watch_line(&mut a).contains("vm0 raw 32-bit; last-known"));
+    let mut next = a.snapshot.clone();
+    next.image_state.as_mut().unwrap().images[0].content_revision = "v2".into();
+    a.update(Event::Snapshot {
+        snapshot: Box::new(next),
+    });
     assert!(a.watch_sample("watch:uart_cnt").is_none());
 }
 /// Replay actual hardware events through the real App and Watch renderer.

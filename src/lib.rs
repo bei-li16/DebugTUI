@@ -5,6 +5,7 @@ pub mod config;
 pub mod coordinator;
 pub(crate) mod debug_access;
 pub mod devices;
+pub mod images;
 pub mod launch;
 pub mod live_watch;
 pub(crate) mod logging;

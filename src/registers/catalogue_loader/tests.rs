@@ -30,6 +30,54 @@ fn base() -> String {
 }
 
 #[test]
+fn parsed_declarations_never_cache_file_origins_parent_contents_or_mutated_results() {
+    let root = fixture();
+    let parent = root.join("base.toml");
+    let first = root.join("first.toml");
+    let second = root.join("second.toml");
+    let original = base();
+    fs::write(&parent, &original).unwrap();
+    let child = header("leaf", "'base'");
+    fs::write(&first, &child).unwrap();
+    fs::write(&second, &child).unwrap();
+    let mut a = Catalogue::load(&first).unwrap();
+    a.registers[0].bits = 8;
+    let b = Catalogue::load(&second).unwrap();
+    assert_eq!(b.registers[0].bits, 32);
+    assert!(
+        b.registers[0]
+            .definition_origin
+            .as_ref()
+            .unwrap()
+            .inheritance[0]
+            .ends_with("second.toml")
+    );
+    assert!(
+        b.registers[0]
+            .definition_origin
+            .as_ref()
+            .unwrap()
+            .declared_in
+            .ends_with("base.toml")
+    );
+
+    let modified = fs::metadata(&parent).unwrap().modified().unwrap();
+    let replacement = original.replace("bits=32", "bits=64");
+    assert_eq!(original.len(), replacement.len());
+    fs::write(&parent, &replacement).unwrap();
+    fs::File::options()
+        .write(true)
+        .open(&parent)
+        .unwrap()
+        .set_times(fs::FileTimes::new().set_modified(modified))
+        .unwrap();
+    assert_eq!(Catalogue::load(&first).unwrap().registers[0].bits, 64);
+
+    fs::write(&parent, original.replace("extends=[]", "extends=['first']")).unwrap();
+    assert!(Catalogue::load(&first).unwrap_err().contains("cycle"));
+}
+
+#[test]
 fn discovery_inherits_and_rejects_missing_fields_duplicate_facts_and_unsafe_sources() {
     let root = fixture();
     let discovery = "[discovery]\nregisters=['r0']\n[[discovery.rules]]\nfact='fixture.present'\ndescription='Read-only identity evidence'\nrequires=[{reg='r0',field='ID',op='eq',value=1}]\n";

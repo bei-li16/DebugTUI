@@ -40,13 +40,33 @@ impl Engine {
         } else {
             expression.into()
         };
+        if !local {
+            let isolated = match self.image_global_selection(expression, None) {
+                Ok(Some((image, text))) => {
+                    Some(self.read_image_watch_tree(&image, expression, &text))
+                }
+                Ok(None) => None,
+                Err(error) => Some(Err(error)),
+            };
+            if let Some(result) = isolated {
+                let mut value = result.unwrap_or_else(|error| Variable {
+                    name: expression.into(),
+                    value: error,
+                    error: true,
+                    ..Default::default()
+                });
+                mark_changes(&mut value, old.as_ref());
+                return value;
+            }
+        }
         let result = self.mi(&format!("-var-create - * {}", mi::quote(expression)));
         let mut value = match result {
             Ok(record) => {
                 let object = record.data.string("name");
                 let expansions = self.watch_expansions.get(&key).cloned().unwrap_or_default();
                 let mut remaining = MAX_NODES;
-                let value = self.read_watch_node(
+                let value = read_node(
+                    &mut |command| self.mi(command),
                     expression,
                     &record.data,
                     vec![],
@@ -77,93 +97,6 @@ impl Engine {
         };
         mark_changes(&mut value, old.as_ref());
         value
-    }
-
-    fn read_watch_node(
-        &mut self,
-        name: &str,
-        data: &Value,
-        path: Vec<usize>,
-        expansions: &BTreeMap<Vec<usize>, usize>,
-        remaining: &mut usize,
-    ) -> Variable {
-        *remaining = remaining.saturating_sub(1);
-        let child_count = data.string("numchild").parse().unwrap_or(0);
-        let mut tree = WatchTree {
-            path,
-            type_name: data.string("type"),
-            child_count,
-            ..Default::default()
-        };
-        let mut value = data.string("value");
-        let mut error = false;
-        if value.is_empty() && child_count == 0 && !tree.type_name.is_empty() {
-            // GDB may create an unreadable scalar successfully with value="".
-            // Ask the object for its diagnostic instead of showing a valid-looking type.
-            match self.mi(&format!(
-                "-var-evaluate-expression {}",
-                mi::quote(&data.string("name"))
-            )) {
-                Ok(record) => {
-                    value = record.data.string("value");
-                    if value.is_empty() {
-                        value = "<unavailable>".into();
-                    }
-                }
-                Err(message) => {
-                    value = message;
-                    error = true;
-                }
-            }
-        }
-        if value.is_empty() {
-            value = format!("<{}>", tree.type_name);
-        }
-        error |= value.contains("<error reading variable")
-            || matches!(value.as_str(), "<unavailable>" | "<optimized out>");
-        if let Some(&count) = expansions.get(&tree.path).filter(|_| child_count > 0) {
-            tree.expanded = true;
-            let count = count.min(child_count).min(*remaining);
-            if tree.path.len() < MAX_DEPTH && count > 0 {
-                match self.mi(&format!(
-                    "-var-list-children --all-values {} 0 {count}",
-                    mi::quote(&data.string("name"))
-                )) {
-                    Ok(record) => {
-                        if let Some(children) = record.data.field("children") {
-                            for (index, child) in children.items().iter().take(count).enumerate() {
-                                if *remaining == 0 {
-                                    break;
-                                }
-                                let child = child.field("child").unwrap_or(child);
-                                let mut path = tree.path.clone();
-                                path.push(index);
-                                tree.children.push(self.read_watch_node(
-                                    &child.string("exp"),
-                                    child,
-                                    path,
-                                    expansions,
-                                    remaining,
-                                ));
-                            }
-                        }
-                    }
-                    Err(message) => {
-                        value = message;
-                        error = true;
-                    }
-                }
-            }
-            tree.has_more = tree.children.len() < child_count;
-            tree.limited = tree.has_more && (*remaining == 0 || tree.path.len() >= MAX_DEPTH);
-        }
-        Variable {
-            name: name.into(),
-            value,
-            error,
-            tree: Some(tree),
-            ..Default::default()
-        }
     }
 
     pub(super) fn expand_watch(&mut self, params: &Json) -> Result<Json, String> {
@@ -273,6 +206,94 @@ impl Engine {
     }
 }
 
+pub(super) fn read_node(
+    query: &mut dyn FnMut(&str) -> Result<Record, String>,
+    name: &str,
+    data: &Value,
+    path: Vec<usize>,
+    expansions: &BTreeMap<Vec<usize>, usize>,
+    remaining: &mut usize,
+) -> Variable {
+    *remaining = remaining.saturating_sub(1);
+    let child_count = data.string("numchild").parse().unwrap_or(0);
+    let mut tree = WatchTree {
+        path,
+        type_name: data.string("type"),
+        child_count,
+        ..Default::default()
+    };
+    let mut value = data.string("value");
+    let mut error = false;
+    if value.is_empty() && child_count == 0 && !tree.type_name.is_empty() {
+        // GDB may create an unreadable scalar successfully with value="".
+        // Ask the object for its diagnostic instead of showing a valid-looking type.
+        match query(&format!(
+            "-var-evaluate-expression {}",
+            mi::quote(&data.string("name"))
+        )) {
+            Ok(record) => {
+                value = record.data.string("value");
+                if value.is_empty() {
+                    value = "<unavailable>".into();
+                }
+            }
+            Err(message) => {
+                value = message;
+                error = true;
+            }
+        }
+    }
+    if value.is_empty() {
+        value = format!("<{}>", tree.type_name);
+    }
+    error |= value.contains("<error reading variable")
+        || matches!(value.as_str(), "<unavailable>" | "<optimized out>");
+    if let Some(&count) = expansions.get(&tree.path).filter(|_| child_count > 0) {
+        tree.expanded = true;
+        let count = count.min(child_count).min(*remaining);
+        if tree.path.len() < MAX_DEPTH && count > 0 {
+            match query(&format!(
+                "-var-list-children --all-values {} 0 {count}",
+                mi::quote(&data.string("name"))
+            )) {
+                Ok(record) => {
+                    if let Some(children) = record.data.field("children") {
+                        for (index, child) in children.items().iter().take(count).enumerate() {
+                            if *remaining == 0 {
+                                break;
+                            }
+                            let child = child.field("child").unwrap_or(child);
+                            let mut path = tree.path.clone();
+                            path.push(index);
+                            tree.children.push(read_node(
+                                query,
+                                &child.string("exp"),
+                                child,
+                                path,
+                                expansions,
+                                remaining,
+                            ));
+                        }
+                    }
+                }
+                Err(message) => {
+                    value = message;
+                    error = true;
+                }
+            }
+        }
+        tree.has_more = tree.children.len() < child_count;
+        tree.limited = tree.has_more && (*remaining == 0 || tree.path.len() >= MAX_DEPTH);
+    }
+    Variable {
+        name: name.into(),
+        value,
+        error,
+        tree: Some(tree),
+        ..Default::default()
+    }
+}
+
 fn find_node<'a>(root: &'a mut Variable, path: &[usize]) -> Option<&'a mut Variable> {
     let mut node = root;
     for &index in path {
@@ -281,7 +302,7 @@ fn find_node<'a>(root: &'a mut Variable, path: &[usize]) -> Option<&'a mut Varia
     Some(node)
 }
 
-fn mark_changes(value: &mut Variable, old: Option<&Variable>) {
+pub(super) fn mark_changes(value: &mut Variable, old: Option<&Variable>) {
     value.changed = old.is_some_and(|old| old.name == value.name && old.value != value.value);
     if let Some(tree) = &mut value.tree {
         let old_tree = old

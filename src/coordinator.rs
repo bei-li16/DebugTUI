@@ -427,7 +427,18 @@ impl Coordinator {
             return;
         };
         if let Some(config) = &self.project.live_watch {
-            match crate::live_watch::spawn_with(config, names, self.inbox.clone()) {
+            let live = if self.project.images.is_empty() {
+                crate::live_watch::spawn_with(config, names, self.inbox.clone())
+            } else {
+                let mut project = self.project.clone();
+                project.preference_core = Some(self.engines[self.active].name.clone());
+                crate::live_watch::spawn_images(
+                    &project,
+                    &self.engines[self.active].snapshot,
+                    self.inbox.clone(),
+                )
+            };
+            match live {
                 Ok(h) => self.live_watch = Some(h),
                 Err(e) => self.log("error", format!("Live Watch unavailable: {e}")),
             }
@@ -453,6 +464,18 @@ impl Coordinator {
         }
         match event {
             Event::LiveWatch { mut sample } => {
+                if let Some(state) = &self.engines[*core].snapshot.image_state {
+                    if !state.error.is_empty()
+                        || !state.images.iter().any(|i| {
+                            Some(&i.id) == sample.image.as_ref()
+                                && i.content_revision == sample.image_revision
+                        })
+                    {
+                        return;
+                    }
+                } else if sample.image.is_some() {
+                    return;
+                }
                 if !names.contains(&sample.expression)
                     || !self.engines[*core]
                         .snapshot
@@ -1031,6 +1054,24 @@ impl Coordinator {
         }
     }
     fn begin(&mut self, mut req: Request) {
+        if matches!(req.method.as_str(), method::CONNECT | method::RECONNECT)
+            && !self.project.images.is_empty()
+        {
+            let validation = self.engines.iter().try_for_each(|entry| {
+                let mut project = self.project.clone();
+                project.preference_core = Some(entry.name.clone());
+                project.prepare()?;
+                crate::images::inspect_project(&project).map(|_| ())
+            });
+            if let Err(error) = validation {
+                self.reply(
+                    req.id,
+                    Json::Null,
+                    Some(format!("Symbol image preflight: {error}")),
+                );
+                return;
+            }
+        }
         if self.multi() && self.begin_breakpoint_edit(&req) {
             return;
         }

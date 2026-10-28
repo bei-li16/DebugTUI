@@ -22,12 +22,13 @@ mod channels;
 mod choices;
 mod devices;
 mod help;
+mod images;
 pub(crate) mod registers;
 mod remap;
 mod scroll;
 use choices::{Choice, Picker};
 
-const LABELS: [&str; 20] = [
+const LABELS: [&str; 21] = [
     "Project",
     "Tools / profile",
     "Probe",
@@ -46,10 +47,11 @@ const LABELS: [&str; 20] = [
     "CPU registers",
     "Register catalogue",
     "Memory channels",
+    "Symbol images",
     "Start debugging",
     "Save config",
 ];
-const HINTS: [&str; 20] = [
+const HINTS: [&str; 21] = [
     "Project TOML stores ELF, Chip/Core, Probe and debugging preferences.\nEnter / F3: choose a configuration in this directory. F2: browse another file or directory.\nStartup loads debug.toml, offers other configurations, or creates a minimal file when none exists.",
     "Use builtin:arm-openocd with chip descriptions, or builtin:generic-gdb to attach to an existing GDB server.\nEnter: edit. F2: choose installed or external profiles. Generic GDB needs no chip description.\nProject paths stay relative to Project; bundled resources follow the installed executable.",
     "Enter / Left / Right: inherit profile, CMSIS-DAP, J-Link or ST-Link.\nSaved as [tools] probe; it selects an OpenOCD driver independently of Chip/Core.\nFor a legacy profile, choose the bundled profile in the offered list to apply this probe.",
@@ -68,6 +70,7 @@ const HINTS: [&str; 20] = [
     "Enter: choose a built-in or user CPU preset, Automatic, or the original GDB register list.\nA project catalogue file takes precedence over the CPU preset. Selection does not prove hardware or backend support.\nUser presets live in the local profiles/registers directory and are preserved during upgrades.",
     "Optional TOML architecture register catalogue. Enter: type a path. F2: browse.\nRelative paths are resolved against Project; a path inherited from Tools remains relative to that profile.\nBlank uses the selected CPU preset. Catalogue selection only changes the draft until Start.",
     "Enter: configure the target, TCL endpoint, label and core restrictions of each memory access channel.\nRunning reads must be supported by the chosen OpenOCD bus/AP target. Core access can remain stopped-only.\nApply creates a project override; Save config or Start persists it. The tools profile is never rewritten.",
+    "Enter: configure resident ELF images, core restrictions, source roots and relocation.\nProgram / ELF remains the primary executable. Additional symbols are loaded before connecting.\nEach stopped PC is matched to executable sections; overlaps remain explicitly ambiguous.",
     "Start with the reviewed settings: Enter, F5 or Ctrl+R. The previous session is closed first.\nThe configuration is saved to Project before the new session starts.\nFor a new project, select Tools / profile, Probe, Chip, Debug cores and the matching ELF.",
     "Save config / Ctrl+S writes the draft to Project without starting GDB or connecting to hardware.\nA missing Project TOML is created; the referenced tools profile is never rewritten.\nStart also saves the configuration. Use Exit to leave without saving draft edits.",
 ];
@@ -89,10 +92,11 @@ const ELF_PREFIX: usize = 14;
 const CPU: usize = 15;
 const CATALOGUE: usize = 16;
 const CHANNELS: usize = 17;
-const START: usize = 18;
-const SAVE: usize = 19;
-const WORKSPACE: usize = 20;
-const EXIT: usize = 21;
+const IMAGES: usize = 18;
+const START: usize = 19;
+const SAVE: usize = 20;
+const WORKSPACE: usize = 21;
+const EXIT: usize = 22;
 
 fn displayed_path(base: &Path, path: &Path) -> String {
     let value = relative_path(base, path);
@@ -673,6 +677,7 @@ pub struct Setup {
     mapping: Option<remap::Mapping>,
     devices: Option<devices::Devices>,
     channels: Option<channels::Channels>,
+    symbol_images: Option<images::Images>,
     register_details: Option<registers::Details>,
     register_observation: Option<registers::Observation>,
     hover: Option<help::Hover>,
@@ -724,6 +729,7 @@ impl Setup {
             mapping: None,
             devices: None,
             channels: None,
+            symbol_images: None,
             register_details: None,
             register_observation: None,
             hover: None,
@@ -807,6 +813,45 @@ impl Setup {
         }
         self.message =
             "Memory access draft updated. Save config persists it; Start applies it to a session."
+                .into();
+        Ok(())
+    }
+    fn image_action(&mut self, action: images::Action) -> Result<(), String> {
+        match action {
+            images::Action::None => return Ok(()),
+            images::Action::Cancel => self.symbol_images = None,
+            images::Action::Apply(mut images) => {
+                for image in &mut images {
+                    if image.elf.is_absolute() {
+                        image.elf = relative_path(self.document.base(), &image.elf).into();
+                    }
+                    if image.source_root.is_absolute() {
+                        image.source_root =
+                            relative_path(self.document.base(), &image.source_root).into();
+                    }
+                    for map in &mut image.source_map {
+                        if map.to.is_absolute() {
+                            map.to = relative_path(self.document.base(), &map.to).into();
+                        }
+                    }
+                }
+                let mut document = self.document.clone();
+                document.raw.as_table_mut().unwrap().insert(
+                    "images".into(),
+                    toml::Value::try_from(images).map_err(|e| e.to_string())?,
+                );
+                if let Err(error) = document.project() {
+                    if let Some(dialog) = &mut self.symbol_images {
+                        dialog.message = error.clone();
+                    }
+                    return Err(error);
+                }
+                self.document = document;
+                self.symbol_images = None;
+            }
+        }
+        self.message =
+            "Symbol image draft updated. Ctrl+S saves; Start loads symbols before connecting."
                 .into();
         Ok(())
     }
@@ -948,6 +993,7 @@ impl Setup {
             },
             path(&p.registers.catalogue),
             format!("{} channels · Enter: configure", p.memory_access.len()),
+            format!("{} resident images · Enter: configure", p.images.len()),
             "F5 / Enter".into(),
             "Ctrl+S / Enter".into(),
         ]
@@ -1123,6 +1169,10 @@ impl Setup {
     }
     pub fn paste(&mut self, text: &str) {
         self.hover = None;
+        if let Some(images) = &mut self.symbol_images {
+            images.paste(text);
+            return;
+        }
         if let Some(channels) = &mut self.channels {
             channels.paste(text);
             return;
@@ -1192,6 +1242,11 @@ impl Setup {
         if let Some(channels) = &mut self.channels {
             let action = channels.key(key);
             self.channel_action(action)?;
+            return Ok(None);
+        }
+        if let Some(images) = &mut self.symbol_images {
+            let action = images.key(key);
+            self.image_action(action)?;
             return Ok(None);
         }
         if let Some(devices) = &mut self.devices {
@@ -1345,6 +1400,9 @@ impl Setup {
                     &self.document.project()?,
                     self.document.raw.get("memory_access").is_some(),
                 ))
+            }
+            KeyCode::Enter if self.selected == IMAGES => {
+                self.symbol_images = Some(images::Images::new(self.document.project()?));
             }
             KeyCode::Enter if matches!(self.selected, SOURCE_REMAP | ON_EXIT | PROBE) => {
                 self.cycle(false)?
@@ -1634,6 +1692,13 @@ impl Setup {
             }
             return None;
         }
+        if let Some(images) = &mut self.symbol_images {
+            let action = images.mouse(mouse);
+            if let Err(error) = self.image_action(action) {
+                self.message = error;
+            }
+            return None;
+        }
         if let Some(devices) = &mut self.devices {
             let action = devices.mouse(mouse);
             self.device_action(action);
@@ -1761,6 +1826,7 @@ impl Setup {
             && self.mapping.is_none()
             && self.devices.is_none()
             && self.channels.is_none()
+            && self.symbol_images.is_none()
             && self.register_details.is_none()
             && self.field_help.is_none()
     }
@@ -1851,6 +1917,10 @@ impl Setup {
         if let Some(channels) = &mut self.channels {
             channels.pointer = self.pointer;
             channels.draw(f);
+            return;
+        }
+        if let Some(images) = &mut self.symbol_images {
+            images.draw(f);
             return;
         }
         let screen = f.area();
@@ -2823,14 +2893,14 @@ mod tests {
         assert_eq!(setup.selected, SOURCE_REMAP);
         setup.selected = START;
         setup.key(key(KeyCode::BackTab));
-        assert_eq!(setup.selected, CHANNELS);
+        assert_eq!(setup.selected, IMAGES);
         let message = setup.message.clone();
         // Even a stale selection or mouse hit cannot open or edit a disabled field.
         setup
             .row_hits
             .push((Rect::new(x as u16, y as u16, 1, 1), ELF_PREFIX));
         setup.mouse(click);
-        assert_eq!(setup.selected, CHANNELS);
+        assert_eq!(setup.selected, IMAGES);
         setup.selected = ELF_PREFIX;
         for code in [KeyCode::Enter, KeyCode::F(2), KeyCode::Left, KeyCode::Right] {
             setup.key(key(code));
@@ -3575,7 +3645,7 @@ mod tests {
             document.set("source_remap", "enabled", remap.into());
             let mut setup = Setup::new(document);
             assert_eq!(setup.selected, 0);
-            let last = CHANNELS;
+            let last = IMAGES;
             setup.key(key(KeyCode::Up));
             assert_eq!(setup.selected, last);
             setup.key(key(KeyCode::Down));

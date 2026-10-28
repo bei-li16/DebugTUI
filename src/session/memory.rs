@@ -5,8 +5,8 @@ use crate::registers::{
     Context,
     provenance::{ByteOrder, Route},
 };
-mod expression;
-mod watch;
+pub(super) mod expression;
+pub(super) mod watch;
 pub(super) use watch::WatchBinding;
 
 struct ReadBoundary {
@@ -81,7 +81,7 @@ impl Engine {
         }
         self.memory_read_not_cancelled()
     }
-    fn memory_transaction(
+    pub(super) fn memory_transaction(
         &mut self,
         channel: &str,
         endpoint: &str,

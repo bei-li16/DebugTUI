@@ -151,7 +151,17 @@ impl App {
             frame: next.frame.level,
         };
         if let Some(popup) = &mut self.write_editor.popup
-            && (popup.context != context || next.state != state::STOPPED)
+            && (popup.context != context
+                || next.state != state::STOPPED
+                || next
+                    .image_state
+                    .as_ref()
+                    .map(crate::images::State::cache_key)
+                    != self
+                        .snapshot
+                        .image_state
+                        .as_ref()
+                        .map(crate::images::State::cache_key))
         {
             if let Some(preview) = popup.preview.take()
                 && let Some(token) = preview["draft"].as_str()

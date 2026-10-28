@@ -2,7 +2,9 @@
 
 GitHub 仓库：<https://github.com/bei-li16/debugtui>。当前通过 GitHub Release 分发安装包，npm 从 Release URL 安装；源码 push 和 Release 附件发布是两个独立操作。
 
-## 1.2.4 分发内容
+## 1.3.1 发布与安装
+
+1.3.1 将本地 1.3.0 的 Bao＋每核 VM 常驻多 ELF、镜像归属、保存 Guest 上下文及 HVC 返回能力纳入正式分发，同时修复 Symbol images 的编辑反馈和跨字段提交。正式版通过 GitHub Release 分发，并保持固定名称 npm 附件供 Latest URL 安装。安装步骤、验证范围及限制见 [1.3.1 说明](docs/release-1.3.1.md)。运行包沿用只收录 Markdown 的规则；更新后的完整 TeX/PDF 手册作为独立附件发布，OpenOCD 对应源码及 SHA256 同时交付。1.3.0 实板基线与 1.3.1 新 EXE 的编辑、软件和分发验证分别列明，不混记不同二进制的结果。
 
 npm tgz 和便携 ZIP 包含 TUI、内置 GDB/OpenOCD、芯片/探针配置、SVD 及其许可证。工程通过 `builtin:arm-openocd` 使用随包工具，用户覆盖文件保存在包外。DebugTUI EXE 由本地构建产生并打包，始终不提交到 Git；单独下载 EXE 不含工具资源，应优先使用 npm 包或完整 ZIP。
 

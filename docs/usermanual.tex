@@ -5,25 +5,26 @@
 \usepackage{fontspec}
 \setmainfont{Times New Roman}
 \setsansfont{Arial}
-\setmonofont{Consolas}[Scale=0.88]
+% Consolas aliases U+002D/U+2010; use distinct ASCII glyphs for copyable commands.
+\setmonofont{Courier New}[Scale=0.81]
 \setCJKmainfont{SimSun}[BoldFont=SimHei,ItalicFont=SimSun]
 \setCJKsansfont{Microsoft YaHei}
 \setCJKmonofont{SimSun}
 \usepackage{graphicx,xcolor,booktabs,tabularx,longtable,array}
 \usepackage{amsmath,enumitem,listings,fancyhdr,tikz}
 \usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,calc}
-\usepackage[unicode,colorlinks=true,linkcolor=teal!60!black,urlcolor=teal!60!black]{hyperref}
+\usepackage[unicode,hypertexnames=false,colorlinks=true,linkcolor=teal!60!black,urlcolor=teal!60!black]{hyperref}
 \usepackage{xurl}
 \usepackage{bookmark,float,needspace}
 \definecolor{ink}{HTML}{253444}
 \definecolor{accent}{HTML}{A65028}
 \definecolor{pale}{HTML}{F2F5F7}
 \definecolor{line}{HTML}{B7C8D2}
-\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={基于 v0.9.3 源码及 STM32F429、THA6206 与 Bao 调试资料}}
+\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={v1.3.1 文档；Bao 与 VM 常驻多 ELF 和镜像编辑；保留历史实板资料}}
 \ctexset{section={format=\Large\bfseries\color{ink}},subsection={format=\large\bfseries\color{ink}}}
 \pagestyle{fancy}\fancyhf{}
 \fancyhead[L]{\small\sffamily DebugTUI / User Manual}
-\fancyhead[R]{\small v0.9.3 · 2026-10-03}
+\fancyhead[R]{\small v1.3.1 增补 · 2026-10-28}
 \fancyfoot[L]{\footnotesize 本地源码与测试证据版}
 \fancyfoot[R]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
@@ -65,10 +66,10 @@
 \end{tikzpicture}
 \vfill
 \begin{tabular}{@{}ll}
-工程版本 & 0.9.3，兼容旧配置；芯片选择使用 version = 3\\
-分析基线 & v0.9.3 发布前工作树；历史测试保留原日期\\
-修订范围 & v0.8.3（\code{8c74f72}）至 v0.9.3 的变更\\
-修订日期 & 2026-10-03（Asia/Shanghai）\\
+工程版本 & 1.3.1；工程配置使用 version = 3\\
+分析基线 & 1.3.0 多 ELF 实板基线 + 1.3.1 镜像编辑修复\\
+修订范围 & Bao/VM 常驻多 ELF 增补；其余历史章节保留日期\\
+修订日期 & 2026-10-28（Asia/Singapore）\\
 适用平台 & 当前发布及本地验证：Windows x64\\
 文档文件 & \code{docs/usermanual.tex} / \code{docs/usermanual.pdf}
 \end{tabular}
@@ -79,13 +80,13 @@
 \addcontentsline{toc}{section}{阅读说明与证据范围}
 本手册面向使用者、芯片适配人员和维护者。内容以本地工程的 Rust 实现、TOML 配置、板级脚本、测试脚本和实际日志为依据，覆盖从终端操作到探针、芯片的完整链路。第三方 OpenOCD/GDB 二进制按可见版本、配置及接口分析，不将二进制分发目录误当作 DebugTUI 自研代码。
 
-本次以 2026-10-03 的 v0.9.3 发布前工作树核对，以 \code{438a730} 为上一个已提交基线，包含其上的 0.8.7 至 0.9.3 改动。版本号不表示远端 Release 已更新。工程行为以当前代码为准，实板结论以报告中记录的 EXE 哈希、固件和日期为准。
+本次以 2026-10-28 的 1.3.0 安装版多 ELF 实板验收为基线，补充 Bao 与每核 VM 的配置、操作、限制，并纳入 1.3.1 的镜像编辑反馈修复。旧版“不支持多镜像”的表述已修正。其余章节沿用此前手册的专题和历史记录，并非对 0.9.3 以来所有功能重新作全量审计。远端发布状态以 GitHub Release 为准；工程行为以当前代码为准，实板结论以报告中记录的 EXE 哈希、固件和日期为准，不把 1.3.0 的 EXE 验收数字改记为 1.3.1 的新实板结果。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{27mm}Y@{}}\toprule
 证据类别 & 本手册的使用方式\\\midrule
 当前源码 & 功能、默认值、路由和约束的首要依据；与旧 README 冲突时采用代码事实。\\
-源码验证 & 覆盖至 2026-10-03 的 0.9.3；补充重映射、芯片目录、统一核心选择、圆角填色与配置页焦点。测试数量、二进制与限制分开列明，见第\ref{sec:evidence}节。\\
-本地实板 & 保留 STM32、THA6206 与 Bao 的各阶段证据；新增 2026-09-29 的 THA6206 三种核心选择及 Bao smoke 单/双 GDB 编译下载回归。本文修订未重新操作板卡。\\
+源码验证 & Bao 多 ELF 增补按 1.3.0 核对，安装版 Rust 库测试 606 项、集成 7 项通过，原有 3 项忽略单列；旧章节继续保留各自版本，见第\ref{sec:evidence}节。\\
+本地实板 & 保留 STM32、THA6206 历史证据；新增 2026-10-28 已安装 1.3.0 的 THA6206 双核 Bao/VM 与真实终端 74 项通过记录，见第\ref{sec:bao-130-validation}节。本次编辑和编译手册未再次操作板卡。\\
 仓库历史说明 & 历史说明须与本机可见原始记录、产物和日期对应；具体证据见各适配章节，不把配置配方当作实板结果。\\
 外部资料 & 核对 MI/RSP、探针协议、CoreSight/ADI、Trace 和芯片接口；通用架构能力不等于本地已实现或已验证。\\\bottomrule
 \end{tabularx}
@@ -108,7 +109,7 @@ DebugTUI 是基于 GDB/MI2 的原生终端调试工作台。Ratatui 绘制字符
 数据检查 & 系统寄存器、Watch、Locals、Memory、CMSIS-SVD 外设/寄存器/位域、独立进制设置。\\
 断点 & 普通/硬件/临时代码断点，写/读/读写数据观察点，启停、条件、忽略次数、命中数、跨重连恢复。\\
 实时观察 & 可见项选择显式内存通道；OpenOCD TCL 能力允许时在运行中读内存；另有旧式 ELF 原始全局量 Live Watch。\\
-多核 & 每核独立 GDB，会话组控制、断点联停、单步隔离、共享复位、显式多核断点关联。\\
+多核与多 ELF & 每核独立物理 GDB，会话组控制、断点联停、单步隔离、共享复位；1.3.0 可为每核常驻 Bao 与所属 VM 符号，见第\ref{sec:bao-symbols}节。\\
 工程操作 & Setup 项目/芯片/核心选择、示例、ELF 路径映射、字段帮助；Build/Download 外部命令、环境引用、偏好保存、日志和清理。\\
 自动化 & 标准输入/输出 JSONL、脚本串行执行、结构化快照、响应、日志与实时采样事件。\\\bottomrule
 \end{tabularx}
@@ -119,7 +120,7 @@ GDB 解释 ELF/DWARF、表达式、栈和 CPU 寄存器。OpenOCD 或 J-Link GDB
 SVD 是寄存器描述，不是 Flash 算法，也不建立探针连接。旧式 Live Watch 自行读取 ELF 符号表，仅识别有限的原始全局对象；它不能替代 GDB 类型系统。
 
 \subsection{未提供或不能泛化的能力}
-当前没有专用 FreeRTOS 任务浏览器、RTT/SWO/ETM 跟踪面板、内置源码编辑器、DAP（Debug Adapter Protocol）服务或多人共享调试会话。能调试 FreeRTOS 固件，不等于能枚举和切换全部 RTOS 任务。软件多核协调不保证硬件同时停止或周期级同步；各核目前共享 GDB 程序、ELF、Source root 和 SVD。
+当前没有专用 FreeRTOS 任务浏览器、RTT/SWO/ETM 跟踪面板、内置源码编辑器、DAP（Debug Adapter Protocol）服务或多人共享调试会话。能调试 FreeRTOS 固件，不等于能枚举和切换全部 RTOS 任务。软件多核协调不保证硬件同时停止或周期级同步。基础配置仍共享 GDB 工具和默认程序/描述；1.3.0 可用 \code{[[images]]} 为不同核心绑定额外 ELF、独立 Source root 和映射。镜像预先常驻不等于运行中热替换 ELF，也不等于支持所有异构 CPU、迁移 vCPU 或 SMP Guest。
 \src{\path{Cargo.toml}；\path{src/main.rs}；\path{src/session.rs}；\path{src/coordinator.rs}；\path{src/ui.rs}。}
 
 \subsection{v0.8.3 至 v0.9.3 的修订}
@@ -141,6 +142,9 @@ CI 与芯片适配资料 & 保留并整合流水线 ELF 源码映射、THA6206 G
 Bao 外部适配更新 & 迁移至芯片/核心选择，Run 与整片复位分离；WSL 构建、产物校验清单、烧录退出码和日志修正，见第\ref{sec:bao-build-current}节。\\
 本地 THA6206 板级修正 & 说明外部参考工程 OpenOCD 的 DBGRESET、复位顺序和 EDRCR.CSE 位修正，单列验证范围；该脚本不包含在 DebugTUI 程序包中。\\\bottomrule
 \end{tabularx}
+
+\subsection{1.3.0：Bao 与 VM 常驻多 ELF 增补}
+每核在连接前加载 Bao 与对应 Guest ELF；真实停止后识别执行镜像，Source、Files、Symbols、反汇编、Watch 与断点保留镜像归属。源码浏览不会重连、复位、下载或改变物理执行位置；运行中不为识别镜像额外暂停。有效诊断快照还可只读查看挂起 Guest 的源码、寄存器、栈和局部变量，并在完整 HVC32 边界返回 Guest。配置、命令、状态与限制集中在第\ref{sec:bao-symbols}至\ref{sec:bao-130-validation}节，日常入口为 B 的 \code{debug-multi-images.toml}。
 
 \newsection{安装、首次启动与日常工作流}
 \subsection{准备材料}
@@ -221,10 +225,11 @@ Project 字段以\textbf{启动工作目录}为相对路径基准。例如 \path
 \toprule 字段 & 示例或入口 & 用途与填写规则\\\midrule\endfirsthead
 \toprule 字段 & 示例或入口 & 用途与填写规则\\\midrule\endhead
 Project & \code{./debug.toml}；F2/F3 & 项目配置的读写目标，按启动目录解析。选择已有文件会更新整张配置表；新路径在保存前只是草稿。\\
-Tools / profile & \code{.vscode/debug-env.toml}；F2 & 引用工具/服务/动作配置，相对项目目录。留空使用独立 GDB 配置，不自动获得芯片复位和下载能力。\\
+Tools / profile & \path{.vscode/debug-env.toml}；F2 & 引用工具/服务/动作配置，相对项目目录。留空使用独立 GDB 配置，不自动获得芯片复位和下载能力。\\
 Chip & Enter；目录选择 & 本地芯片能力声明；选择型号或新增客户型号。Legacy 保留原配置模式。\\
 Debug cores & Enter；核心复选 & 选择该芯片支持的物理核心子集；至少一个。未选择 Chip 时灰显。配置示例见第\ref{sec:device-catalogue}节。\\
 Program / ELF & \code{build/firmware.elf}；F2 & 与目标固件匹配的符号文件，相对项目目录；不是自动烧录命令。无有效调试信息时无法完整进行 C 源码调试。\\
+Symbol images & Enter；镜像编辑器 & 1.3.0 的多 ELF 工程入口；维护 ID、ELF、核心、域、源码根/映射、偏移和内存通道。Apply 更新草稿，Save 保存，Start 才建立符号会话，见第\ref{sec:bao-image-config}节。\\
 Source root & \code{.}；F2 & 本地源码定位根及 Build/Download 工作目录；相对项目目录。\\
 Build command & \code{.\build.bat} & 可选构建命令；在 Source root 执行。保存、应用示例或单纯启动 Setup 不会执行它。\\
 Download command & \code{.\flash.bat} & 可选下载命令；在 Source root 执行，使用工程自己的烧录脚本或工具。先核对输入产物和目标。\\
@@ -968,7 +973,7 @@ A：Bao 实板记录 & \path{D:/LiBo/Files/DATA/FreeRTOS/BAOHyp/analysis}\\\bott
 \end{tabularx}
 M 和 S 是两个独立目录，不应因为名字相同就视为同一份工具或固件。B 的 profile 通过相对路径引用 S；迁移时如改用 M，需要同时核对 GDB、OpenOCD、SVD、下载器及工作目录。M 基于 \code{50ff448}，B 基于 \code{b25150e} 的 \code{dev/tha6xxx-init} 分支；两者均存在本地修改，底层移植分析来自 2026-09-21 可见工作树；本节的芯片目录和 Bao 启动/构建更新另按 2026-10-02 当前文件核对。不能只 checkout 这两个提交就假定得到全部示例。
 
-\notice{此前章节资料包含配置静态核对、历史实板和离线 ELF/GDB 检查；本版另补 2026-09-23 的 MCAL 实板回归，见第\ref{sec:tha-086-validation}节。它实际下载了配套 HEX，不覆盖 Bao 固件。后文另列 9 月 29 日 Bao smoke 的单/双 GDB 实板流程；双 VM 加逐核 Guest 符号仍保留独立验收边界。}
+\notice{此前章节资料包含配置静态核对、历史实板和离线 ELF/GDB 检查；2026-09-23 的 MCAL 实板回归见第\ref{sec:tha-086-validation}节。它实际下载了配套 HEX，不覆盖 Bao 固件。9 月 29 日 Bao smoke 单/双 GDB 与 10 月 28 日 1.3.0 的 dual 多 ELF 分别验收；最新范围见第\ref{sec:bao-130-validation}节。}
 
 \subsection{与 STM32F429 适配的关键差异}
 \noindent\begin{tabularx}{\linewidth}{@{}P{25mm}P{49mm}Y@{}}\toprule
@@ -1271,11 +1276,11 @@ Bao 为静态划分资源的 Hypervisor；本地 THA6xxx 移植选择 \code{armv
 入口 & 固件组织 & 当前 DebugTUI 连接\\\midrule
 \code{debug.toml} & \code{tha6206-smoke}；一个单 vCPU Guest，affinity=1，位于 CPU0 & 格式 3；当前本地选择 [0,1]，Setup 可改为 [0]、[1] 或 [0,1]。\\
 \code{debug-dual.toml} & \code{tha6206-dual}；两个 VM，每个一 vCPU，分别 affinity=1/2 & 格式 3；当前选择 [0]，已有两核模板，可在 Setup 选择双核。\\
-逐核 Guest 符号 & 与所选 smoke/dual 镜像一致 & 在现有模板补充各核 Guest ELF；不再要求复制工程只为更改核心子集。详见第\ref{sec:bao-multigdb}节。\\\bottomrule
+\path{debug-multi-images.toml} & \code{tha6206-dual}；Bao + VM0/VM1 诊断构建 & 1.3.0 推荐入口：core.0 常驻 Bao+VM0，core.1 常驻 Bao+VM1；配置及实板验证见第\ref{sec:bao-symbols}节。\\\bottomrule
 \end{tabularx}
 双 VM 不是一个具有两个 vCPU 的 SMP Guest；两个物理核在运行，也不自动意味着出现两个 TUI 核标签。只观察 VM0 时，单 GDB 完全可以启动两核固件；要独立查看 VM1 的 PC、栈、C 断点，则需要 core1 的调试连接。
 
-上述选择是 2026-10-02 文件快照，用户后续保存会改变所选核心；固件类型由 ELF 和 tasks 的 Config 决定，不能由核心标签数推断。
+前两行的核心选择是 2026-10-02 文件快照；多 ELF 行按 2026-10-28 的参考工程核对。用户后续保存会改变所选核心；固件类型由 ELF 和 tasks 的 Config 决定，不能由核心标签数推断。参考项目属于外部 Bao 工作树，安装 DebugTUI 不会自动在任意目录生成这份项目。
 
 当前启动流程依赖平台的双核同步。不要为了“只调一个 Guest”直接把 \code{platform.cpu_num} 改为 1：现有初始化调用关系中这可能绕开必需的 SoC 初始化。单 vCPU 配置与减少物理 CPU 数不是同一个改动。
 \src{B：\path{src/platform/tha6xxx/platform.mk}、\path{src/platform/tha6xxx/platform.c}、\path{src/platform/tha6xxx/tha6xxx_desc.c}、\path{configs/tha6206-smoke/config.c}、\path{configs/tha6206-dual/config.c}；\href{https://github.com/bao-project/bao-hypervisor}{Bao 上游项目}。}
@@ -1365,45 +1370,166 @@ core1-only 在 Setup 直接选 [1]，无需再复制配置并手改端口。前�
 \src{B：\path{debug.toml}、\path{debug-dual.toml}、\path{scripts/tha6206/debug-env.toml}，2026-10-02 文件快照。}
 
 \subsection{同时保留 Bao 与 Guest 的 C 符号}\label{sec:bao-symbols}
-主 \code{program.elf} 应保留 \code{bao.elf}，这样 \code{init}、\code{_barrier}、异常处理和 Hypervisor 栈可正常解析。单独载入 Bao ELF 不会自动得到由 incbin 嵌入的 Guest 调试信息。用 GDB \code{add-symbol-file} 增加相应 Guest ELF，而不要用 \code{symbol-file} 替换掉 Bao 符号。
+\textbf{1.3.0 已提供常驻多 ELF 调试。}主 \code{program.elf} 保留 \code{bao.elf}，另用 \code{[[images]]} 声明 Bao、VM0 和 VM1。每个物理核的 GDB 在连接目标前装入主 ELF 与该核绑定的额外符号；底层使用 GDB 的 \code{add-symbol-file} 能力。Guest 的 incbin 只嵌入程序字节，不会把其 DWARF 自动并入 Bao，所以仍须提供各 Guest ELF。
 
-将项目现有 \code{[gdb]} 表增加 \code{cwd="."}，确保以下相对路径以 B 为工作目录。\code{add-symbol-file} 是一条完整命令；长行仅在排版时折行。
-\par\noindent\begin{minipage}{\linewidth}\begin{lstlisting}
-# core0 session, dual image:
-add-symbol-file "build/tha6xxx/tha6206-dual/guest/guest0.elf" 0x10020000
-info address guest_main
-info line guest_main
-list guest_main
-hbreak guest_main
+真实停止后，DebugTUI 用 PC、ELF 可执行 section 和停止前程序 CPSR 识别执行镜像；选中调用者帧时另识别帧的归属。Bao 与 VM 的符号持续保留，跨 HVC/虚拟中断时无需先移除一个 ELF 再加载另一个。\textbf{浏览另一个镜像只改变显示，不使 CPU 跳转，也不隐式暂停、复位、下载或重连。}运行中显示最后已知身份，不提供逐指令 Trace。
 
-# core1 session instead:
-add-symbol-file "build/tha6xxx/tha6206-dual/guest/guest1.elf" 0x10028000
-\end{lstlisting}\end{minipage}\par
-这只添加调试符号，不会下载 Guest 或使目标跳转。地址参数对应 Guest 的运行时 .text 基址；本例 Guest ELF 已按 RAM 地址链接，其他段沿用 ELF 中的地址。若改了链接布局，先核对 ELF section，必要时用 \code{-s} 指定其他段，不能一律填 Flash 装载地址或猜测入口。smoke 对应 \path{build/tha6xxx/tha6206-smoke/guest/guest.elf}，按其 .text/配置入口 \code{0x10030000} 加载，可观察 \code{guest_start}、\code{guest_heartbeat}。
-
-dual 的两份 ELF 都定义 \code{guest_main}、\code{irq_handler}。每条 GDB 只加载当前物理核对应的 Guest ELF，避免同名符号歧义。将命令放到该核 \code{init} 数组，可在重连时重新加载。若只在 Console 临时添加，重启 GDB 后需再执行。
-
-2026-09-21 的离线检查使用当时 dual Bao ELF，分别增加 Guest0/Guest1 ELF：GDB 能解析 \code{guest_main} 到 \code{configs/tha6206-dual/guest.c} 第 133 行；Guest0 地址为 \code{0x10020230}，Guest1 为 \code{0x100281B4}，并能经源码映射显示 C 文本。这说明当前文件的符号/路径可解析，不代表已验证板上每条 C 单步。Guest 使用优化编译，行与指令并非严格一一对应。
-\src{B：\path{scripts/tha6206-build.sh}、\path{configs/tha6206-dual/guest.c}、\path{configs/tha6206-dual/start.S}；GDB 官方 \href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/Files.html}{Files / add-symbol-file}。}
-
-\subsection{现有项目切换双 GDB 与补充 Guest 符号}\label{sec:bao-multigdb}
-9 月 29 日迁移后，B 的 smoke/dual 项目均已有格式 3 与两个核模板。调试同一固件时只需在 Setup 选 [0]、[1] 或 [0,1]，不再复制 debug-core0/core1/multi 文件。smoke 与 dual 保留两个项目，是因为固件与任务参数不同。CLI 可在启动前选择：
+以下为本地已安装版本的日常入口，在 B 根目录执行：
 \begin{lstlisting}
-debugtui --project .\debug.toml --chip tha6206 --cores 0,1 --setup
-debugtui --project .\debug-dual.toml --chip tha6206 --cores 0,1 --setup
+debugtui --version
+# debugtui 1.3.1
+debugtui --project .\debug-multi-images.toml
 \end{lstlisting}
-保存后重启会话应用。保留两核模板原有的 startup\_order、after\_connect 和 run；不要重新叠加旧单 GDB 的 Run 复位序列。双核会话须按实际端口连接到 core.0/core.1，并保持 Scope All/Core 与当前检查核心的区别。
+直接运行 \code{debugtui} 仍读取当前目录默认项目 \code{debug.toml} 并进入 Setup；默认文件若是旧单 ELF 配置，不会自动变成多 ELF 工程。可在 Setup 的 Project 行选择 \code{debug-multi-images.toml}，也可使用上面的显式命令。PowerShell 独立终端即可使用，无需 VS Code、外部 Python 服务或另外安装辅助 GDB。
 
-要同时调试 dual 的 Guest C 代码，按第\ref{sec:bao-symbols}节在两个已有核模板的 init 数组分别追加 Guest0/Guest1 的 add-symbol-file 命令，设项目 gdb.cwd 为 \code{.}。每条 GDB 只加载其核对应的 Guest ELF，主 program.elf 仍是 Bao。这里的相对 Guest 路径供 GDB 解析，需与所选 Config、RAM 链接地址及同次构建产物一致。保存于 init 的符号命令会随重连重新执行；Console 临时添加不会自动持久化。
+\subsection{Symbol images 与每核镜像配置}\label{sec:bao-image-config}
+在 Setup 选 \textbf{Symbol images}，Enter 打开镜像编辑器。先选 Image，维护 ID、ELF file、Source root、Cores、Program domain、Section offset、Source maps 和 Global memory channel；Add/Remove 管理条目，Apply to draft 更新工程草稿，Save config 保存，Start 应用到新的符号会话。文本字段 Enter 后进入编辑，1.3.1 显示 Editing 标题和插入光标，长路径窗口跟随光标；Enter 确认，Esc 撤销，Ctrl+U 清空。编辑本身不连接目标、不下载固件；高级 section 地址与 saved\_context 诊断声明在 TOML 中维护，编辑器会保留它们。
 
-\begin{enumerate}
-\item 先核对两核 connect、每核 PC/CPSR 和共享 Reset 后的启动状态，再验证 Run All、Pause All、Continue All 与当前核单步。
-\item 各核 \code{info line guest_main} 必须落在各自 RAM 区间；源码映射只改查找路径，不改符号地址。不能因两个 ELF 都有同名函数就认为其地址相同。
-\item 新建断点默认只属于当前核。需要多核命中时，通过 Breaks 的 Cores 关联，并确认各核实际解析出的代码位置和硬件断点资源。
-\item 做“对端是否独立运行”的隔离测试时，使用 Core 范围并关闭 halt\_peers；否则软件联停可能影响结果。调试器的联停策略与 Bao MPU 隔离是不同机制。
-\end{enumerate}
-\notice{已验证范围：9 月 29 日 Bao smoke 的 core0 单 GDB、core0+1 双 GDB 编译下载链路已通过。dual 固件的双 VM 隔离测试仍是较早记录；dual + 双 GDB + 每核 Guest C 符号的完整组合尚无同等级回归，见第\ref{sec:bao-current-evidence}节。}
-DebugTUI 当前没有 VM 列表、自动 vCPU 上下文切换或完整多镜像管理器。一核固定一个 VM 时，可用逐核 init 添加符号；迁移/复用 vCPU 或 SMP Guest 需要重新定义会话和符号策略。
+以下片段应\textbf{合并到已有、可正常连接的 Bao 工程}，不是完整板级 profile。本地 \path{debug-multi-images.toml} 已包含端口、启动动作、AHB 通道、Build/Download 和下文的 Guest 诊断配置。已有同名 TOML 表不可重复追加。
+\begin{lstlisting}
+version = 3
+
+[tools]
+profile = "builtin:arm-openocd"
+probe = "cmsis-dap"
+
+[debug]
+chip = "tha6206"
+cores = [0, 1]
+
+[program]
+elf = "bin/tha6xxx/tha6206-dual/bao.elf"
+source_root = "."
+
+[[images]]
+id = "bao"
+elf = "bin/tha6xxx/tha6206-dual/bao.elf"
+source_root = "."
+domain = "hyp"
+memory_channel = "ahb"
+
+[[images]]
+id = "vm0"
+elf = "build/tha6xxx/tha6206-dual/guest/guest0.elf"
+source_root = "."
+cores = ["core.0"]
+domain = "guest"
+memory_channel = "ahb"
+
+[[images]]
+id = "vm1"
+elf = "build/tha6xxx/tha6206-dual/guest/guest1.elf"
+source_root = "."
+cores = ["core.1"]
+domain = "guest"
+memory_channel = "ahb"
+
+[[source_map]]
+from = "/mnt/d/"
+to = "D:/"
+
+[source_remap]
+enabled = true
+\end{lstlisting}
+Bao 未限制 cores，适用于本项目全部核；VM0/VM1 分别只属于 core.0/core.1。镜像 ID 必须唯一，\code{program.elf} 与主镜像 Bao 对应；旧单 ELF 工程可不声明 images。这里的核心名是会话名，与 \code{[debug].cores} 的物理索引分开。双 VM 不是 SMP Guest，也没有因此支持迁移/复用 vCPU 的自动调度发现。
+
+ELF、Source root 和映射目标的相对路径以工程 TOML 为基准。参考 Guest 按 RAM 运行地址链接，\code{offset} 默认 0，不填 Flash 的嵌入位置；其他布局可显式配置 offset/sections，主 ELF 保持其链接地址。先核对同次构建的 Bao ELF、Guest ELF、HEX、源码提交及 SHA 清单，源码映射不能修正错误的固件或重定位。
+
+镜像还可独立声明 \code{[[images.source_map]]}，位置放在所属 \code{[[images]]} 后、下一个镜像前。相同远端前缀可分别映射至不同本地目录；同前缀优先使用镜像规则，再使用公共规则，按最长前缀匹配。Source remap 为 No 时两类规则均停用。正斜杠、反斜杠和混合路径均可匹配，包括带盘符的 Windows 路径。命中映射但本地文件缺失时明确报错，不借用别的镜像同名文件；相对 DWARF 文件名用本 ELF 编译目录定位，不能唯一定位时不猜测。
+
+\subsection{源码、栈、Watch 与断点的镜像归属}\label{sec:bao-image-workflow}
+\noindent\begin{tabularx}{\linewidth}{@{}P{34mm}Y@{}}\toprule
+入口 & 操作与含义\\\midrule
+\code{:images} & 查看当前核的常驻镜像、内容版本及识别状态。\code{:core core.0} / \code{:core core.1} 或 Ctrl+T 选择物理核；Scope 是运行控制范围。\\
+Files / Symbols & 各 ELF 独立查询，结果带 \code{@bao:} / \code{@vm0:} 归属；Symbols 可输入 \code{@vm0:guest_main} 限定镜像。\\
+Source / \code{:open} & \code{:open @vm0:configs/tha6206-dual/guest.c} 显式浏览 VM0 源码，标签显示镜像并独立记住位置；不改变物理选中帧。标题区分 Exec、Browse 和 Frame。\\
+Asm / \code{:disasm} & \code{:disasm @vm0:guest_main} 浏览该 ELF 的指令并标明来源；运行中默认 PC 是 last-known，ELF 指令不证明板上字节一致。\\
+Watch / Locals & 普通名称默认属于物理选中帧镜像；\code{@bao:debug_domain_id}、\code{@vm0:debug_domain_id} 显式指定全局变量。成员和数组保留相同归属。\\
+Breaks / \code{:break} & \code{:break @vm0:guest_main} 从 VM0 ELF 解析精确地址，在当前物理核建立硬件代码断点；断点编辑器也有 Image 项。持久定义保存 ID 与原名称，重连后重解析。\\\bottomrule
+\end{tabularx}
+
+Files、Symbols 与 ELF 反汇编在运行中也可使用，不访问物理调试端口。停止时 Asm 默认使用当前镜像的物理 GDB；显式其他镜像使用离线 ELF。辅助 GDB 只同步 gdb.init 中独立的架构声明，不执行其中的复位、下载或连接动作。参考 Bao 的 \code{set architecture armv8-r} 用于正确解码 HVC、ERET 等指令。
+
+多个 objfile 的同名全局可能被 GDB 绑定到主 ELF，MPU 也可能阻止当前 CPU 读取另一域。1.3.0 用单 ELF 的辅助 GDB 提供类型，再经镜像 \code{memory_channel} 读取实板内存；为空时可沿用 \code{saved_context.channel}，缺少可用通道时报错。THA6206 参考值为工程/芯片 Memory channels 中的 \code{ahb}。当前隔离求值限 ARM32 小端 DWARF 的只读 C/C++ 子集。
+
+当前执行镜像的表达式可组合局部值、整数寄存器和全局值，例如 \code{input + debug_domain_id}。寄存器来自真实物理顶层，辅助展开到调用者时核对帧地址，不修改物理 GDB 选中帧。显式其他镜像只读其全局作用域，不能借用执行镜像的局部变量或寄存器；挂起 Guest 的局部值须进入下节的 Guest 视图。浮点寄存器、GDB 便捷变量及隔离表达式赋值尚不支持，不可恢复的值显示 unavailable 或 \code{<optimized out>}。
+
+多镜像代码断点默认用硬件，避免 Bao 启动复制 Guest 时覆盖软件断点。资源属于实际核心/后端，由后端报告耗尽；多 ELF 不会增加硬件槽位。地址重叠时无法把单一硬件地址比较器冒充镜像专属断点。命名数据断点限当前物理帧镜像；条件可用局部参数或明确类型地址，命名全局条件因归属不可靠而拒绝。多核关联仍需显式设置 Cores，并核对每核的符号地址。
+
+启用已有 \code{[live_watch]} 后，8/16/32 位全局标量可通过声明 \code{while_running=true} 的通道轮询。显式 \code{@vm0:变量} 绑定 VM0；普通名称绑定最后一次停止镜像，显示 last-known，数值仍从内存采样。切核、停止代次或 ELF 内容改变会丢弃旧响应；这不是连续执行轨迹，也不是跨核原子快照。
+
+\subsection{在 Bao 中查看挂起 Guest 的保存上下文}\label{sec:bao-guest-context}
+物理 CPU 停在 Bao 异常处理时，当前寄存器和栈属于 EL2，GDB 同时有 Guest 符号也不会自动恢复 Guest SP/LR 和调用栈。需要 Bao 提供真实、有效的保存上下文。本地参考工程使用诊断构建：
+\begin{lstlisting}
+pwsh -NoProfile -File scripts/tha6206-build.ps1 `
+  -Config tha6206-dual -DebugGuestContext
+pwsh -NoProfile -File scripts/tha6206-download.ps1 `
+  -Config tha6206-dual
+debugtui --project .\debug-multi-images.toml
+\end{lstlisting}
+\code{-DebugGuestContext} 在 VM\_EXIT 保存完成后捕获真实 Guest r0--r12、banked SP/LR、返回 PC、保存 CPSR 和 CPU/VM/vCPU 身份，VM\_ENTRY 前使快照失效。\code{bao_v1} ABI 为 112 字节；不是从 Bao 当前栈猜测 Guest 寄存器，也不补造原先未保存的 x[13]。该选项增加诊断 RAM 和异常路径指令，普通发布固件可不启用。参考汇编另提供只在调试节的 CFI，物理栈在不可恢复的异常边界结束，该 CFI 本身不改变装载程序字节。
+
+以下子表放在 \code{id="vm0"} 的镜像条目中、下一个 \code{[[images]]} 之前；本地参考项目已配置。memory 是允许读取的 Guest 私有及共享区，不能为绕过校验任意放宽。
+\begin{lstlisting}
+[images.saved_context]
+provider = "bao_v1"
+symbol = "bao_debug_guest_contexts"
+index = 0
+cpu = 0
+vm = 0
+vcpu = 0
+channel = "ahb"
+memory = [
+  { start = 0x10020000, size = 0x8000 },
+  { start = 0x10030000, size = 0x1000 },
+]
+\end{lstlisting}
+VM1 的 index/cpu/vm 均为 1，\textbf{vcpu 仍为 0}；其私有 RAM 起点改为 \code{0x10028000}，大小仍为 \code{0x8000}，共享区相同。这是当前 dual 固件布局，其他固件须按自己的 ABI、VM 配置和 ELF 核对。
+
+停在对应核有效的 HVC/IRQ 保存窗口内，输入 \code{:guest vm0}；只有一个候选时可用 \code{:guest}。Guest 视图独立显示保存 PC/SP/CPSR、源码、调用栈及局部变量。上下箭头或鼠标选择 Guest 逻辑帧，PgUp/PgDn 浏览源码，Esc 返回物理 Bao 视图。物理 GDB 帧选择保持不变，切核、继续执行或停止代次变化后旧视图失效。
+
+附带 GDB 没有 Python；DebugTUI 启动同工具链辅助 GDB，经本机只读 RSP 提供真实保存寄存器，经配置 AHB 通道读取实板内存。它不连接物理 GDB 端口，不接受继续、单步、写入和断点命令。缺少有效快照、保存尚未完成/已开始恢复、身份不符、SP 越界、ELF 改变时拒绝解析；优化消除的局部和未捕获的浮点上下文不补造。
+
+\subsection{从 HVC 返回 Guest 与运行中取消}\label{sec:bao-guest-return}
+在完整保存的 HVC32 边界输入 \code{:guest-return vm0}，或在 Guest 视图按 r。DebugTUI 为\textbf{当前物理核}建立自有临时硬件返回断点后继续；真实用户断点、异常或显式 Pause 优先，操作中断时保留真正停止原因，清理自己的临时资源，不自动越过其他停止。这不是所有 IRQ/异常边界通用的自动单步跨域。
+
+\code{:guest-return-cancel} 可在运行中取消，不额外暂停或继续。GDB all-stop 运行时不能正常发送删除远端断点请求，DebugTUI 先核对当前 GDB 连接、OpenOCD 核端口和 TCL 路由，再禁用自有记录、删除唯一自有的物理断点并读回核对；若与用户断点共址，保留物理位置及用户条件。禁用记录在下一次真实停止时删除，结果中 \code{logical_cleanup_pending} 表示仍待这一步收尾。无法证明路由或所有权时明确报错，不隐式 halt。测试用 \code{-DebugReturnTests} 仅制造确定的等待窗口和 UDF 负例，\textbf{日常仅需 -DebugGuestContext}。
+
+部分 GDB 在硬件断点耗尽时先回复 running 再报告插入失败，且没有 stopped 通知。1.3.0 对可信后端错误作只读线程状态核对，确认实际已停才恢复 STOPPED，并只清理本操作的临时资源。普通 Continue 也采用此恢复路径，不额外复位或重连。
+
+\subsection{从旧逐核符号配置迁移及能力边界}\label{sec:bao-multigdb}
+旧版可在各核 init 手工执行 \code{add-symbol-file}，这只能补充 GDB 符号，不提供可靠的镜像归属和挂起 Guest 视图。1.3.0 推荐改用 images，并从该项目的逐核 init 移除重复的 Guest add-symbol-file，保留原有板级 startup\_order、after\_connect 和 run。单 ELF 工程不必迁移，原有 Build/Download 成功后重连、重载符号的流程仍适用。
+
+参考多 ELF 项目先连接 core1，再由 core0 统一复位并清 \code{_barrier}。组控制设置为 \code{scope="all"} 和 \code{halt_peers=false}。启动动作与跨域源码显示不同，只有明确的运行控制、Build/Download 或重连会执行相应动作。需要单核隔离验证时显式用 \code{:scope core}，不要用浏览镜像代替选择物理核心。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{36mm}Y@{}}\toprule
+情况 & 1.3.0 行为/限制\\\midrule
+运行中新增或替换 ELF & 本版镜像在连接前常驻；未提供运行中热增/热换 objfile。修改声明后须明确建立新的符号会话，不宣称维持原运行状态完成热替换。\\
+unknown / ambiguous & 无法唯一确认镜像时不猜测，不展示旧局部值或假物理栈；仍可显式浏览 ELF 文件。\\
+同路径 ELF 改变 & 标记 stale，停止使用旧地址/类型求值和写入预览；先确认板上固件匹配，再明确重启符号会话。\\
+跨 HVC/虚拟 IRQ & 正常停止位置属于 Bao/VM 时自动识别源码；挂起 Guest 的栈/局部只在有效快照窗口可恢复，原生异常栈不能保证无限展开。\\
+多个域的变量写入 & 隔离表达式目前只读，不借错误 objfile 执行赋值；命名全局断点条件也不宣称隔离求值。\\
+运行中观察 & 最后已知身份与内存采样，不是 Trace；AHB 与 CPU 缓存的一致性由平台决定，多个读取不是原子快照。\\\bottomrule
+\end{tabularx}
+
+Headless 提供 \code{images}、\code{guest_context}、\code{return_guest} 和 \code{cancel_guest_return}。例如 guest\_context 参数为 \texttt{\{"image":"vm0","level":1,} \texttt{"expressions":["handled","tick"]\}}；结果包括物理停止上下文、镜像版本、保存序列、只读来源和不可用值。方法的异步完成仍须遵守 JSONL 响应与目标状态规则。
+
+\subsection{1.3.0 安装版的 THA6206 实板验收}\label{sec:bao-130-validation}
+2026-10-28 使用 Release 构建并通过完整 npm 包全局安装的 1.3.0，在 THA6206 双核板执行下表回归。测试过程使用两条物理 GDB 和一个共享 OpenOCD；连续跨域流程核对物理进程不变。普通诊断固件用于主要功能，取消/异常控制负例使用独立测试固件，结束后已恢复普通 \code{-DebugGuestContext} 固件。本次编辑手册只引用已有原始证据，不重新烧录。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{36mm}P{20mm}Y@{}}\toprule
+类别 & 结果 & 实际覆盖\\\midrule
+资源、符号、边界 & 27/27 & 硬件断点耗尽恢复；同名函数/全局/类型；帧归属及边界。\\
+双核跨域主流程 & 13/13 & Bao、VM0、VM1，20 次 HVC、虚拟 IRQ、混合表达式与物理进程连续性。\\
+导航与运行中 Watch & 10/10 & 各镜像文件/符号/反汇编；标量采样的镜像、核心及版本绑定。\\
+真实终端与全局入口 & 12/12 & ConPTY 操作 9 项；直接调用已安装 debugtui 的版本、真实子进程与 VM 源码浏览 3 项。\\
+两核控制负例 & 12/12 & 每核 6 项：运行中取消、用户共址条件断点、显式 Pause/重试、实际 UDF 异常优先。\\\midrule
+实板/终端合计 & 74/74 & 0 失败、0 跳过；不把软件模拟项计入实板。\\
+软件/分发/本机 & 10 / 14 / 21 & 分别为模拟多镜像 10 项、分发 14 项、本机 GDB 21 组；全部通过，独立于实板计数。\\
+Rust Release & 606 + 7 & 库测试通过 606 项、集成通过 7 项；原有 3 项忽略，不改记为通过。\\\bottomrule
+\end{tabularx}
+原有忽略项涉及 Windows 剪贴板写入、缺失 STM32 UI replay 及需要显式环境的 THA6206 源码选区测试；新实板/TUI 回归按自己的报告验收，不用新结果覆盖历史未执行项。已安装 EXE 的 SHA-256 为 \path{e18469afc910c8ffdea4e40a5af615b936265d7588efce364721ab11bd98979a}。这些结果证明当前最小 dual Guest 参考场景，不等于通用 RTOS/SMP/迁移 vCPU 的验收。
+\src{T：\path{artifacts/validation-1.3.0.json} 及其中列出的原始 report.json、固件摘要、终端/进程证据；\path{docs/bao-multi-elf.md}、\path{docs/bao-multi-elf-development.md}；B：\path{debug-multi-images.toml}、\path{scripts/tha6206-build.ps1}。实现：\path{src/images.rs}、\path{src/session/images.rs}、\path{src/session/image_values.rs}、\path{src/session/guest/}、\path{src/launch/images.rs}、\path{src/ui/guest/}。}
 
 \subsection{运行时观察：状态块、Timer、IPC 与 UART}
 Bao profile 已配置 \code{[[memory_access]] id="ahb"}，TCL 6666，target=\code{AHB_3}，允许运行中读取。CPU 在启用 MPU 后可能无法直接读某些 RCC/PORT 地址，而 AP3 仍可观察总线侧数据；不要为让 GDB 读寄存器方便而随意扩大 Guest 的设备权限。
@@ -1454,7 +1580,7 @@ UART & VM0 77 字节、VM1 0 字节，原始串口记录可复核；不等于 RX
 每项负向测试从健康状态重启，避免前一项异常污染下一项。目录中保留的 \code{pre-reset-fix} 失败记录用于解释屏障修正，不计入最终七项通过结果。smoke 的另组记录在 A 的 \path{tha6206-board-debug/}：2026-09-21 的 TOML 编译/下载、55956 字节 Flash 对照、心跳变化和 67 字节 Bao UART banner，支持最小入口的构建下载链路。
 \src{A：\path{tha6206-dual-board/verification.json}、\path{first-functional.json}、\path{final-functional.json}、\path{final-healthy-start.json}、\path{isolation-*.json}、\path{artifact-sha256.json}（后五项在同一 dual-board 目录）；\path{tha6206-board-debug/} 的 2026-09-21 记录。}
 
-\subsection{9 月 29 日编译下载故障与当前证据}\label{sec:bao-current-evidence}
+\subsection{9 月 29 日编译下载故障与历史证据}\label{sec:bao-current-evidence}
 \path{session-20260929-134940-542.log} 的失败发生在 WSL 启动/路径转换阶段，编译器尚未运行，Download 也未执行。独立 \code{/bin/true} 同样返回 \code{Wsl/Service/E_UNEXPECTED}，Windows 同时段有虚拟内存不足记录。确认发行版停止后执行 wsl --shutdown，再启动后恢复；这是当次宿主故障的证据与恢复步骤，不是所有编译错误的统一根因，也不能在有运行作业时盲目关闭全部 WSL。
 
 另修复了包装脚本吞掉原始 WSL 错误、编码不一致和烧录器退出码的判断。诊断顺序是：先看 Console/会话任务输出定位宿主或编译器，再看 bao.sha256 的产物校验，最后看独立 flash 日志；不要把构建失败后留下的旧镜像继续作为新结果调试。
@@ -1540,6 +1666,8 @@ ui.formats / refresh & 空映射 & 数值格式 / 按核按项的读取策略。
 \code{backend / backends} & 工具环境中的单后端标识/多后端覆盖分组，与用户目录中芯片的 backend 匹配。\\
 \code{[core_targets."N"]} & 工具环境提供该物理核的 endpoint 和可选 ready 字符串；也可放入所选 backend 分组。\\
 \code{[[cores]]} & name 唯一；远程 endpoint 唯一；startup\_order 默认 0。可配 init、after\_connect、run、watch、breakpoints。\\
+\code{[[images]]} & 1.3.0 的常驻镜像：唯一 id、elf、可选 cores、domain、source\_root/source\_map、offset/sections、memory\_channel；配置及限制见第\ref{sec:bao-image-config}节。\\
+\code{[images.saved_context]} & 所属 Guest 的显式快照 ABI、身份、索引、通道和允许内存区；只读 Guest 视图见第\ref{sec:bao-guest-context}节。\\
 \code{[multicore]} & scope 默认 core；halt\_peers 默认 true；共享复位由 restart\_core 和 restart 数组定义。\\
 \code{[[memory_access]]} & 唯一 id、label、tcl\_endpoint、target、while\_running；cores 可选限制通道可用于哪些核。\\
 \code{[live_watch]} & tcl\_endpoint、bus\_target、elf、正数 interval\_ms；工程配置，非环境表。\\
@@ -1738,7 +1866,7 @@ Windows Job 设置 KILL\_ON\_JOB\_CLOSE，应用异常结束时回收自有进�
 \src{\path{src/session.rs}: connect、sync\_target\_state、wait\_for\_stop、disconnect、project\_task；\path{src/process.rs}；\path{src/ui.rs}: SWITCH\_QUIT。}
 
 \newsection{多核工作区与跨核断点}\label{sec:multi}
-STM32F429 是单核例子；本节配置用于多核平台的实现说明，不应向 F429 虚构第二个 CPU。每核有独立 GDB 进程和 endpoint，但共享程序/描述文件以及可选 Server。
+STM32F429 是单核例子；本节配置用于多核平台的实现说明，不应向 F429 虚构第二个 CPU。每核有独立物理 GDB 进程和 endpoint，并可共享 Server。传统配置共享默认程序/描述；1.3.0 可通过 images 按核心绑定 Bao/Guest ELF，见第\ref{sec:bao-image-config}节。
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
 [[cores]]
@@ -1865,7 +1993,10 @@ select\_core / cores & index 或 name / 空参数 & 多核切核/查看核列表
 control\_scope & scope=all/core & 多核改变本会话范围，不写回 TOML。\\
 console & command & 原生 GDB；一般要求 READY/STOPPED，部分执行别名特殊路由。\\
 complete & text；可选 expression: bool & 符号/命令补全，不执行输入。\\
-set\_elf & path & 仅单核且已断开；多核在 Setup 修改共享 ELF。\\
+images & \texttt{\{\}} & 当前核的常驻镜像和识别状态；运行时身份为最后已知。\\
+guest\_context & image；可选 level、expressions & 在有效的物理停止窗口只读查看 Guest 保存寄存器、栈和局部值。\\
+return\_guest / cancel\_guest\_return & image / 空参数 & 当前核完整 HVC32 返回与取消；物理状态/资源约束见第\ref{sec:bao-guest-return}节。\\
+set\_elf & path & 仅单核且已断开；多 ELF 在 Setup 维护主 ELF 与 images 后重新 Start，不提供运行中热替换。\\
 build / download & \texttt{\{\}} & 执行配置动作；headless 无 UI 下载确认。\\
 ui\_preferences & Ui 对象 & 保存 UI 配置，无 MI；建议先读取工程并完整合并。\\\bottomrule
 \end{longtable}
@@ -1905,7 +2036,7 @@ ui\_preferences & Ui 对象 & 保存 UI 配置，无 MI；建议先读取工程�
 退出 & 明确板上保持/恢复策略，无自有进程或监听残留。\\\bottomrule
 \end{tabularx}
 
-对于 RISC-V 需要自备匹配的 GDB 和服务；对于不同 ELF/SVD 的异构核，当前共享文件限制使其不能完整适配。对于 Cortex-R/A，复位初态某些浮点寄存器不可读可配置 gdb.registers；总线值与核缓存之间的一致性由芯片/服务配置保证。
+对于 RISC-V 需要自备匹配的 GDB 和服务；1.3.0 的 images 允许按核绑定不同 ELF，但不代表已适配不同架构、不同 SVD 的全部异构核；本次隔离求值实测限 ARM32 小端。对于 Cortex-R/A，复位初态某些浮点寄存器不可读可配置 gdb.registers；总线值与核缓存之间的一致性由芯片/服务配置保证。
 \src{\path{docs/examples/multicore-access.md}；\path{src/config.rs}。}
 
 \newsection{日志、诊断与常见故障}\label{sec:diagnostics}
@@ -2042,7 +2173,7 @@ node ./scripts/test-functional.cjs --binary ./target/release/debugtui.exe --only
 \end{longtable}
 
 \subsection{源码测试与历史证据复核}
-以下按执行阶段记录结果，不把不同时点的测试数量相加。初版的 137 项记录属于 v0.8.3；9 月 21 日的 THA6206/Bao 文档补充曾做配置离线加载、Guest ELF 解析和产物哈希核对。9 月 23 日补充了已安装 v0.8.6 的 MCAL 回归；9 月 27--29 日新增功能验收、源码重映射、芯片选择及 Bao 构建下载证据。下面保留各自原日期；2026-10-03 的界面、分发验证不是重新跑过这些硬件测试。
+以下按执行阶段记录结果，不把不同时点的测试数量相加。初版的 137 项记录属于 v0.8.3；9 月 21 日的 THA6206/Bao 文档补充曾做配置离线加载、Guest ELF 解析和产物哈希核对。9 月 23 日补充了已安装 v0.8.6 的 MCAL 回归；9 月 27--29 日新增功能验收、源码重映射、芯片选择及 Bao 构建下载证据。下面保留各自原日期；2026-10-03 的界面、分发验证不是重新跑过这些硬件测试。最新 1.3.0 的独立结果见第\ref{sec:bao-130-validation}节，不覆盖此前失败或未执行项。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{38mm}Y@{}}\toprule
 阶段 & 已记录的结果及边界\\\midrule
@@ -2062,6 +2193,7 @@ v0.8.3 初版源码 & 137 项单元测试、1 项 CLI 集成测试通过，0 失
 9 月 29 日界面 & 0.9.1 为 181 单元 + 1 集成通过、2 忽略；严格 Clippy、Release、Bao Setup 选择/保存通过。EXE 已本地安装，芯片目录哈希未改变。\\
 10 月 3 日 v0.9.3 & 185 单元 + 1 集成通过、2 忽略；CLI 12/12、隔离 npm 生命周期 7/7 通过。全局 EXE 与构建哈希一致，15 份工程及芯片目录文件不变；Bao 隔离项目 core0/core1/双核选择与保存通过，无实板操作。\\
 10 月 3 日终端 & 键盘、搜索、配置页、缩放、退出 8/8 通过；独立事件探针未收到该宿主注入的 SGR 鼠标记录，Files 原生用例改用 Tab。此结果不包含真实终端鼠标的端到端验收；鼠标命中保留 App 测试覆盖。\\
+10 月 28 日 1.3.0 & 全局安装版 THA6206 Bao/VM 实板与终端 74/74；Rust 606 库测试 + 7 集成通过、3 忽略，软件 10、分发 14、本机 GDB 21 组分别通过。EXE/固件摘要及限制见第\ref{sec:bao-130-validation}节与 \path{artifacts/validation-1.3.0.json}。\\
 保留的失败 & 旧 ConPTY 通用终端 7/8 及 10 月 3 日首次 TERM-03 鼠标注入失败报告仍保留，不改记为通过；应用内部鼠标命中测试不能替代此端到端结果。\\\bottomrule
 \end{longtable}
 \src{\path{TESTING.md} 的对应日期记录；\path{artifacts/devices-tha6206-1790653885250-7b45250a/report.json}；\path{artifacts/ui-controls-20260929/install.json}；\path{artifacts/terminal-20260929-203508-1db44c3a/report.json}。}
@@ -2085,12 +2217,12 @@ v0.8.3 初版源码 & 137 项单元测试、1 项 CLI 集成测试通过，0 失
 \subsection{分发和许可证}
 package.json 的 files 包含 EXE、profiles、docs、内置 tools、说明与许可证，开发脚本及构建缓存不进入 npm 包。TUI 以 Apache-2.0 分发；GDB、OpenOCD、SEGGER 工具及 SVD 遵从各自许可证，不能用应用许可证替代第三方条款。
 
-\code{scripts/package.ps1} 核对 npm/EXE 版本并拒绝开发/工具依赖泄入 TUI 包；\code{scripts/package-tools.ps1} 检查 GDB/OpenOCD 主程序存在，按实际 \path{bin/} 内容与配置目录生成 \path{debugtui-tools-arm-win-x64.zip}；\path{openocd-adapter/} 源码不进入该包。安装器同样按实际工具目录复制，无需依赖清单。
+\path{scripts/package.ps1} 核对 npm/EXE 版本并拒绝开发/工具依赖泄入 TUI 包；\path{scripts/package-tools.ps1} 检查 GDB/OpenOCD 主程序存在，按实际 \path{bin/} 内容与配置目录生成 \path{debugtui-tools-arm-win-x64.zip}；\path{openocd-adapter/} 源码不进入该包。安装器同样按实际工具目录复制，无需依赖清单。
 \src{\path{Cargo.toml}、\path{Cargo.lock}、\path{package.json}；\path{scripts/}；\path{scripts/package-tools.ps1}；\path{NOTICE}、\path{THIRD_PARTY_NOTICES.md}、\path{licenses/}。}
 
 \newsection{已知问题、实现限制与维护建议}\label{sec:limits}
 环境侧另有尚未关闭的 J-Link 长会话故障，见第\ref{sec:jlink-duration}节。它与下述已确认的 UI/解析实现问题分开管理；当前手册未把“疑似 clone”作为已证实的软件定时限制，也没有以其他探针的通过记录关闭该故障。
-以下结论区分已确认缺陷、设计限制和历史资料偏差；本文只编写手册，不顺带修复产品行为。
+以下旧专题保留 0.9.3 手册当时的缺陷、设计限制和历史资料偏差，未在本次多 ELF 文档增补中逐项重新验收。1.3.0 多 ELF 的当前边界集中于第\ref{sec:bao-multigdb}节，不能用旧专题推定后来功能仍未实现；本文只更新手册，不改动产品行为。
 
 \subsection{已确认的下载进度解析缺陷}
 本地原始 GDB 报文含匿名 tuple：
@@ -2144,6 +2276,7 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{src/launch/choices.rs} & 调试项目 TOML 筛选、Projects 列表和可选 Examples；不保存或启动进程。\\
 \path{src/launch/devices.rs} & Chip 列表、Add chip 表单、核心复选、Legacy 和草稿选择。\\
 \path{src/launch/remap.rs} & ELF 目录选择、父子层级、匹配预览、重新扫描和取消。\\
+\path{src/launch/images.rs} & 1.3.0 的 Symbol images 草稿编辑器；不连接目标，高级声明保存时保留。\\
 \path{src/clipboard.rs} & Windows 原生 Unicode 剪贴板、失败清理与其他平台工具回退。\\
 \path{src/config.rs} & 全配置模型、默认值、递归合并、校验、路径解析、偏好写锁。\\
 \path{src/devices.rs} & 用户目录初始化/追加锁、能力校验、backend 合并、模板展开与所选核派生。\\
@@ -2154,6 +2287,10 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{src/session/watch.rs} & GDB variable object 树、分页、展开映射和变化标记。\\
 \path{src/session/memory.rs} & watch\_resolve、命名内存读、宽度/对齐/端序校验、TCP 缓存。\\
 \path{src/session/symbols.rs} & 停止态 GDB 符号索引请求、来源/位置与查询范围。\\
+\path{src/images.rs}、\path{src/session/images.rs} & 多 ELF 定义、可执行地址/域识别、内容版本、连接前装载与失效检查。\\
+\path{src/session/image_navigation.rs} & 按镜像限定文件/符号/ELF 反汇编，保留来源和独立源码映射。\\
+\path{src/session/image_values.rs} & 单 ELF 类型与实板内存通道结合，隔离同名全局和混合表达式。\\
+\path{src/session/guest/}、\path{src/ui/guest/} & 真实 Guest 保存 ABI、只读 RSP、Guest 帧视图及 HVC 返回/取消的资源管理。\\
 \path{src/coordinator.rs} & 多 Session 工作区、共享 Server、Batch/Step 队列、核选择、派生配置。\\
 \path{src/coordinator/control.rs} & Scope、顺序 Run、共享 reset、断点联停和单步隔离。\\
 \path{src/coordinator/breakpoints.rs} & group 注解、成员路由、真实编号映射、undo 队列。\\
@@ -2200,7 +2337,7 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{artifacts/} & 本地历史测试和发布产物，Git 忽略；不是自动化测试全部成功的推定依据。\\
 \path{.dev/}、\path{target/}、\path{bin/} & 本地工具缓存、Rust 输出及分发 EXE，不是自研模块。\\
 根目录 Markdown & README/ARCHITECTURE/TESTING/PUBLISHING；需按版本和源码交叉核对。\\
-\path{docs/} & 单一 LaTeX 手册、对应 PDF 和重建脚本；验证记录统一在根目录 TESTING.md，视觉中间产物在 artifacts。\\\bottomrule
+\path{docs/} & LaTeX 手册、对应 PDF、重建脚本及专题文档；Bao 多 ELF 使用说明与分阶段验收分别在 bao-multi-elf.md、bao-multi-elf-development.md，原始证据在 artifacts。\\\bottomrule
 \end{tabularx}
 
 \newsection{命令行速查与术语}
@@ -2272,7 +2409,7 @@ watch / watchpoint & Watch 表达式观察 / 硬件或 GDB 数据断点，删除
 \end{enumerate}
 
 \subsection{从 LaTeX 重建 PDF}
-本文是单一、可独立编译的 LaTeX 源文件，流程图全部使用 TikZ 矢量绘制，不依赖本地 artifacts 截图。需要 XeLaTeX、ctex、fontspec、TikZ、listings 等包，字体为 Windows 的 SimSun、SimHei、Microsoft YaHei、Times New Roman、Arial、Consolas。其他平台需替换字体设置。
+本文是单一、可独立编译的 LaTeX 源文件，流程图全部使用 TikZ 矢量绘制，不依赖本地 artifacts 截图。需要 XeLaTeX、ctex、fontspec、TikZ、listings 等包，字体为 Windows 的 SimSun、SimHei、Microsoft YaHei、Times New Roman、Arial、Courier New。等宽字体选用可区分 ASCII 连字符的 Courier New，避免复制命令后参数中的减号变成 Unicode 连字符。其他平台需替换字体设置并核对命令复制结果。
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
 # From repository root:
@@ -2284,7 +2421,7 @@ xelatex -interaction=nonstopmode -halt-on-error usermanual.tex
 xelatex -interaction=nonstopmode -halt-on-error usermanual.tex
 \end{lstlisting}
 \end{minipage}\par
-三轮编译稳定目录、页码和交叉引用。随附脚本在 docs 下创建独立临时目录，成功后仅复制 PDF 并清理该次中间文件；失败时保留临时日志以便定位。需要图形化质量检查时，将最终 PDF 全页渲染为 PNG，检查裁切、遮挡、缺字、表格续页、箭头与标注，然后删除本次临时渲染产物。
+三轮编译稳定目录、页码和交叉引用。随附脚本在 docs 下创建独立临时目录，成功后仅复制 PDF 并清理该次中间文件；失败时保留临时日志以便定位。没有系统 XeLaTeX 时，也可使用支持 XeTeX 的 Tectonic：例如 \code{tectonic --keep-logs --reruns 2 --outdir <临时目录> docs/usermanual.tex}，首次运行需要下载其 TeX 资源，Windows 字体要求相同。2026-10-28 增补使用隔离缓存的 Tectonic 0.17.0 构建；编译器来源和摘要保留在本轮文档验证记录，未将工具加入 DebugTUI 运行依赖。需要图形化质量检查时，将最终 PDF 全页渲染为 PNG，检查裁切、遮挡、缺字、表格续页、箭头与标注，然后删除本次临时渲染产物。
 
 本文中的实板日志不因 PDF 编译而重新生成；复现硬件行为必须另行准备相同芯片、探针、工具、固件和 profile。文档构建结果不替代源码测试和实板验证。
 

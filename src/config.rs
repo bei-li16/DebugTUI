@@ -148,6 +148,8 @@ impl BreakpointKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct BreakpointOptions {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
     /// Stable identity shared by linked per-core breakpoint records.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
@@ -161,6 +163,7 @@ pub struct BreakpointOptions {
 impl Default for BreakpointOptions {
     fn default() -> Self {
         Self {
+            image: None,
             group: None,
             location: String::new(),
             kind: BreakpointKind::Code,
@@ -201,6 +204,8 @@ pub struct Project {
     pub service: Option<Service>,
     pub actions: Actions,
     pub program: Program,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<crate::images::Image>,
     pub session: Session,
     pub watch: Vec<String>,
     pub breakpoints: Vec<BreakpointSpec>,
@@ -944,6 +949,7 @@ impl Project {
             p.program.elf = absolute(&base, &p.program.elf);
         }
         p.program.source_root = absolute(&base, &p.program.source_root);
+        crate::images::absolute_paths(&mut p.images, &base);
         if !p.program.svd.as_os_str().is_empty() {
             p.program.svd = crate::bundled_tools::resolve_svd(&p.program.svd, &base)?;
         }
@@ -964,6 +970,7 @@ impl Project {
         Ok(p)
     }
     pub fn validate(&self) -> Result<(), String> {
+        crate::images::validate(self)?;
         self.registers.validate()?;
         self.writes.validate(&self.memory_access, &self.cores)?;
         if std::iter::once(&self.source_remap.from)
@@ -1115,6 +1122,10 @@ impl Project {
     }
     pub fn prepare(&mut self) -> Result<(), String> {
         self.validate()?;
+        for image in &mut self.images {
+            image.elf = fs::canonicalize(&image.elf)
+                .map_err(|e| format!("Image {} ({}): {e}", image.id, image.elf.display()))?;
+        }
         if self.target.mode != "local" && self.target.endpoint.is_empty() && self.cores.is_empty() {
             return Err(
                 "Set --connect HOST:PORT or target.endpoint; use --local for a local inferior"
@@ -1152,9 +1163,11 @@ impl Project {
         !self.tasks.download.trim().is_empty() || !self.actions.download.is_empty()
     }
     pub fn source_mapping_enabled(&self) -> bool {
-        self.source_remap
-            .enabled
-            .unwrap_or(!self.source_remap.from.is_empty() || !self.source_map.is_empty())
+        self.source_remap.enabled.unwrap_or(
+            !self.source_remap.from.is_empty()
+                || !self.source_map.is_empty()
+                || self.images.iter().any(|i| !i.source_map.is_empty()),
+        )
     }
     pub fn effective_source_maps(&self) -> Vec<SourceMap> {
         if !self.source_mapping_enabled() {
@@ -1184,6 +1197,12 @@ impl Project {
         maps
     }
     pub fn source_path(&self, file: &str) -> Option<PathBuf> {
+        if crate::images::scoped_expression(file)
+            .ok()
+            .is_some_and(|(id, _)| id.is_some())
+        {
+            return self.image_source_path(file, None);
+        }
         let normalized = crate::source::normalized(file);
         for map in self.effective_source_maps() {
             let from = crate::source::normalized(&map.from);
@@ -1207,6 +1226,48 @@ impl Project {
         ]
         .into_iter()
         .find(|p| p.is_file())
+    }
+    pub fn image_source_path(&self, file: &str, image: Option<&str>) -> Option<PathBuf> {
+        let (explicit, file) = crate::images::scoped_expression(file).ok()?;
+        let id = explicit.or(image);
+        if let Some(id) = id {
+            if id == "main" && !self.images.iter().any(|i| i.id == id) {
+                return self.source_path(file);
+            }
+            let mut definition = self.images.iter().find(|i| i.id == id)?.clone();
+            if !self.source_mapping_enabled() {
+                definition.source_map.clear();
+            }
+            let matched = definition.source_map.iter().any(|m| {
+                crate::source::suffix(
+                    &crate::source::normalized(file),
+                    &crate::source::normalized(&m.from),
+                )
+                .is_some()
+            });
+            let own = crate::images::source_path(&definition, file);
+            if matched || own.is_some() {
+                return own;
+            }
+            let maps = self.effective_source_maps();
+            if !maps.iter().any(|m| {
+                crate::source::suffix(
+                    &crate::source::normalized(file),
+                    &crate::source::normalized(&m.from),
+                )
+                .is_some()
+            }) {
+                return None;
+            }
+            return crate::images::source_path(
+                &crate::images::Image {
+                    source_map: maps,
+                    ..Default::default()
+                },
+                file,
+            );
+        }
+        self.source_path(file)
     }
     pub fn save_preferences(
         &self,

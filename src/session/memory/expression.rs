@@ -4,7 +4,11 @@
 
 const ERROR: &str = "Watch memory expression must use read-only C/C++ syntax without calls, assignments or debugger variables";
 
-pub(super) fn validate(text: &str) -> Result<(), String> {
+pub(in crate::session) fn validate(text: &str) -> Result<(), String> {
+    parse(text).map(|_| ())
+}
+
+fn parse(text: &str) -> Result<Parser<'_>, String> {
     if text.is_empty()
         || text.len() > 256
         || !text.is_ascii()
@@ -15,18 +19,66 @@ pub(super) fn validate(text: &str) -> Result<(), String> {
         return Err(ERROR.into());
     }
     let tokens = tokens(text)?;
-    let mut parser = Parser { tokens, next: 0 };
+    let mut parser = Parser {
+        tokens,
+        next: 0,
+        value_roots: Vec::new(),
+    };
     parser.expression(1, 0)?;
     if parser.next != parser.tokens.len() {
         return Err(ERROR.into());
     }
-    Ok(())
+    Ok(parser)
+}
+
+/// Qualify expression values at global scope without changing cast types,
+/// member names or an existing namespace prefix. Used only for another image,
+/// whose lexical frame must never be borrowed from the executing image.
+pub(in crate::session) fn qualify_globals(text: &str) -> Result<String, String> {
+    let parsed = parse(text)?;
+    let mut result = String::new();
+    let mut from = 0;
+    for index in parsed.value_roots {
+        if index
+            .checked_sub(1)
+            .is_some_and(|i| parsed.tokens[i] == "::")
+        {
+            continue;
+        }
+        let token = parsed.tokens[index];
+        if matches!(token, "true" | "false" | "nullptr") {
+            continue;
+        }
+        let at = token.as_ptr() as usize - text.as_ptr() as usize;
+        result.push_str(&text[from..at]);
+        result.push_str("::");
+        from = at;
+    }
+    result.push_str(&text[from..]);
+    Ok(result)
 }
 
 fn identifier(text: &str) -> bool {
     text.as_bytes()
         .first()
         .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
+}
+
+/// Names that may refer to lexical roots, excluding member names. The parser
+/// still validates the complete expression before an isolated evaluation.
+pub(in crate::session) fn roots(text: &str) -> Result<Vec<&str>, String> {
+    let tokens = tokens(text)?;
+    Ok(tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(i, token)| {
+            (identifier(token)
+                && !i
+                    .checked_sub(1)
+                    .is_some_and(|p| matches!(tokens[p], "." | "->")))
+            .then_some(*token)
+        })
+        .collect())
 }
 
 fn tokens(text: &str) -> Result<Vec<&str>, String> {
@@ -106,6 +158,7 @@ fn tokens(text: &str) -> Result<Vec<&str>, String> {
 struct Parser<'a> {
     tokens: Vec<&'a str>,
     next: usize,
+    value_roots: Vec<usize>,
 }
 impl Parser<'_> {
     fn take(&mut self, token: &str) -> bool {
@@ -147,12 +200,16 @@ impl Parser<'_> {
                 }
             }
         } else if self.take("::") {
+            self.value_roots.push(self.next);
             self.name()?;
         } else if self
             .tokens
             .get(self.next)
             .is_some_and(|t| identifier(t) || t.as_bytes().first().is_some_and(u8::is_ascii_digit))
         {
+            if identifier(self.tokens[self.next]) {
+                self.value_roots.push(self.next);
+            }
             self.next += 1;
         } else {
             return Err(ERROR.into());
@@ -182,16 +239,45 @@ impl Parser<'_> {
         let mut i = self.next;
         let mut name = false;
         let mut pointer = false;
+        let mut scalar = true;
         while let Some(token) = self.tokens.get(i) {
             match *token {
-                ")" if name && pointer => return Some(i),
+                ")" if name && (pointer || scalar) => return Some(i),
                 "*" if name => pointer = true,
                 "::" if name && !pointer => {
                     if !self.tokens.get(i + 1).is_some_and(|t| identifier(t)) {
                         return None;
                     }
                 }
-                t if identifier(t) && !pointer => name = true,
+                t if identifier(t) && !pointer => {
+                    name = true;
+                    scalar &= matches!(
+                        t,
+                        "unsigned"
+                            | "signed"
+                            | "char"
+                            | "short"
+                            | "int"
+                            | "long"
+                            | "bool"
+                            | "_Bool"
+                            | "float"
+                            | "double"
+                            | "const"
+                            | "volatile"
+                            | "uint8_t"
+                            | "uint16_t"
+                            | "uint32_t"
+                            | "uint64_t"
+                            | "int8_t"
+                            | "int16_t"
+                            | "int32_t"
+                            | "int64_t"
+                            | "uintptr_t"
+                            | "intptr_t"
+                            | "size_t"
+                    );
+                }
                 "const" | "volatile" | "restrict" | "__restrict" | "__restrict__" if pointer => {}
                 _ => return None,
             }
@@ -221,6 +307,31 @@ fn precedence(token: &str) -> Option<u8> {
 mod tests {
     use super::*;
     #[test]
+    fn global_scope_qualifies_values_without_changing_types_or_members() {
+        for (text, expected) in [
+            (
+                "global + array[index].member",
+                "::global + ::array[::index].member",
+            ),
+            (
+                "((const volatile struct ns::T *)ptr)->field + ns::value",
+                "((const volatile struct ns::T *)::ptr)->field + ::ns::value",
+            ),
+            ("(uint32_t)(value + 1)", "(uint32_t)(::value + 1)"),
+            ("::value + ::ns::other", "::value + ::ns::other"),
+            (
+                "value == true || other == false || ptr == nullptr",
+                "::value == true || ::other == false || ::ptr == nullptr",
+            ),
+            ("*(unsigned int *)0x10020000", "*(unsigned int *)0x10020000"),
+        ] {
+            assert_eq!(qualify_globals(text).unwrap(), expected);
+        }
+        for text in ["next()", "value = 2", "value++", "$pc"] {
+            assert!(qualify_globals(text).is_err());
+        }
+    }
+    #[test]
     fn readonly_watch_syntax_preserves_members_indices_and_typed_pointer_casts() {
         for expression in [
             "counter",
@@ -237,6 +348,8 @@ mod tests {
             "a < b && c != 0",
             "a / 2 % 4",
             "*(uint32_t *)0x20000000UL",
+            "(unsigned long)&bao_debug_guest_contexts[0]",
+            "(uint32_t)(counter + 1)",
         ] {
             assert!(validate(expression).is_ok(), "{expression}");
         }

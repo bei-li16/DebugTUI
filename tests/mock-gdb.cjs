@@ -26,6 +26,11 @@ const memoryBase = BigInt(process.env.DEBUGTUI_TEST_RAM_BASE || '0x20000000');
 for (let i = 0; i < 4098; i++) memory.set(memoryBase + BigInt(i), 0xaa);
 variables?.initialize(memory);
 const frame = () => {
+  if (process.env.DEBUGTUI_TEST_IMAGE_FRAME_FILE) {
+    const frames=JSON.parse(fs.readFileSync(process.env.DEBUGTUI_TEST_IMAGE_FRAME_FILE,'utf8'));
+    const f=frames[activeEndpoint]||frames.default;
+    return `frame={level="${frameLevel}",addr="${f.pc}",func="${f.function||'main'}",file="${f.file||'sample.c'}",line="${f.line||10}"}`;
+  }
   const pc = process.env.DEBUGTUI_TEST_WATCH_RESOLVE && process.env.DEBUGTUI_TEST_CONTEXT_FILE ? JSON.parse(fs.readFileSync(process.env.DEBUGTUI_TEST_CONTEXT_FILE, 'utf8')).pc || '0x100000008' : '0x100000008';
   return `frame={level="${frameLevel}",addr="${pc}",func="main",file="sample.c",line="${line}"}`;
 };
@@ -49,6 +54,18 @@ readline.createInterface({ input: process.stdin }).on('line', input => {
   const [, token, cmd] = match;
   fs.appendFileSync(transcript, cmd + '\n');
   const done = data => send(`${token}^done${data ? ',' + data : ''}`);
+  if (process.env.DEBUGTUI_TEST_IMAGE_FRAME_FILE) {
+    if (/^-data-evaluate-expression --thread "?\d+"? --frame \d+ "\$(?:cpsr|pc)"$/.test(cmd)) {
+      const frames=JSON.parse(fs.readFileSync(process.env.DEBUGTUI_TEST_IMAGE_FRAME_FILE,'utf8'));
+      const current=frames[activeEndpoint]||frames.default;
+      return done(`value="${cmd.endsWith('"$pc"')?current.pc:current.cpsr}"`);
+    }
+    if (cmd.startsWith('-interpreter-exec console "add-symbol-file ')) {
+      if (process.env.DEBUGTUI_TEST_IMAGE_FAIL && cmd.includes(process.env.DEBUGTUI_TEST_IMAGE_FAIL)) return send(`${token}^error,msg="Fixture rejected additional image"`);
+      return done();
+    }
+    if (/^-interpreter-exec console "(?:directory |set substitute-path )/.test(cmd)) return done();
+  }
   if (cmd.startsWith('-data-read-memory-bytes ') && process.env.DEBUGTUI_TEST_OWNER_MEMORY_FILE) {
     const read = /^-data-read-memory-bytes ("?)(0x[0-9a-f]+)\1 (\d+)$/.exec(cmd);
     if (!read) return send(`${token}^error,msg="Invalid owner fixture read"`);

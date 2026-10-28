@@ -23,7 +23,13 @@ use std::{
 mod banked;
 mod breakpoints;
 mod capabilities;
+mod execution_failure;
 mod gic;
+mod guest;
+mod image_navigation;
+mod image_symbols;
+mod image_values;
+mod images;
 mod memory;
 pub(crate) use memory::literal_address;
 mod memory_writes;
@@ -91,6 +97,8 @@ mod register_selection_tests {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Frame {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub debug_file: String,
     pub level: u32,
     pub function: String,
     pub file: String,
@@ -100,6 +108,7 @@ pub struct Frame {
 impl Frame {
     fn from_mi(v: &Value) -> Self {
         Self {
+            debug_file: v.string("file"),
             level: v.string("level").parse().unwrap_or(0),
             function: v.string("func"),
             file: {
@@ -119,6 +128,14 @@ pub struct Variable {
     pub error: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tree: Option<WatchTree>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_origin: Option<ImageValueOrigin>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ImageValueOrigin {
+    pub image: String,
+    pub revision: String,
+    pub channel: String,
 }
 /// Native GDB variable-object metadata. Child paths are relative to a Watch root,
 /// never GDB object names (which are deliberately short-lived).
@@ -135,6 +152,10 @@ pub struct WatchTree {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Breakpoint {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub debug_file: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -236,6 +257,8 @@ pub mod state {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Snapshot {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image_state: Option<crate::images::State>,
     pub state: String,
     pub stop_reason: String,
     pub frame: Frame,
@@ -282,6 +305,7 @@ pub struct CoreStatus {
 impl Default for Snapshot {
     fn default() -> Self {
         Self {
+            image_state: None,
             state: state::DISCONNECTED.into(),
             stop_reason: String::new(),
             frame: Frame::default(),
@@ -366,6 +390,7 @@ impl Request {
                     | method::MEMORY_READ
                     | method::MEMORY_DUMP
                     | method::PERIPHERAL_READ
+                    | "guest_context"
             )
     }
 }
@@ -618,6 +643,12 @@ struct Engine {
     register_session: u64,
     register_access_fault: Option<String>,
     write_drafts: writes::Drafts,
+    guest_return: Option<guest::ReturnOperation>,
+    execution_failure: Option<String>,
+    image_locations:
+        std::collections::HashMap<String, Result<Vec<image_symbols::Location>, String>>,
+    image_source_files: std::collections::HashMap<String, Vec<(String, String)>>,
+    breakpoint_images: std::collections::HashMap<String, (String, String)>,
     write_peers: Vec<CoreStatus>,
     console_capture: Option<String>,
     exiting: bool,
@@ -769,6 +800,10 @@ impl Engine {
             watch_expansions: Default::default(),
             memory_connections: Default::default(),
             memory_context_epoch: 0,
+            guest_return: None,
+            image_locations: Default::default(),
+            image_source_files: Default::default(),
+            breakpoint_images: Default::default(),
             watch_bindings: Default::default(),
             watch_binding_serial: 0,
             rpc_echo: Default::default(),
@@ -781,6 +816,7 @@ impl Engine {
             register_catalogue,
             register_session: registers::new_session(),
             register_access_fault: None,
+            execution_failure: None,
             write_drafts: Default::default(),
             write_peers: vec![],
             console_capture: None,
@@ -853,6 +889,12 @@ impl Engine {
                         Ok(r) => self.record(r),
                         Err(_) => break,
                     }
+                }
+                if let Err(error) = self.reconcile_execution_failure() {
+                    self.log(
+                        "error",
+                        format!("Execution state reconciliation failed: {error}"),
+                    );
                 }
                 if self.refresh_pending && self.snapshot.state == state::STOPPED {
                     self.refresh_pending = false;
@@ -942,6 +984,7 @@ impl Engine {
                 if r.kind == '*' && r.class == "running" {
                     self.state(state::RUNNING);
                 } else if r.kind == '*' && r.class == "stopped" {
+                    self.guest_return_stop(&r);
                     if r.data.string("reason").starts_with("exited") {
                         self.snapshot.generation += 1;
                         self.snapshot.frame = Frame::default();
@@ -981,6 +1024,9 @@ impl Engine {
                     self.invalidate_register_samples();
                     self.publish();
                 } else if matches!(r.kind, '~' | '@' | '&') {
+                    if matches!(r.kind, '~' | '&') {
+                        self.execution_diagnostic(r.data.text());
+                    }
                     if r.kind == '~'
                         && let Some(capture) = &mut self.console_capture
                     {
@@ -1269,12 +1315,15 @@ impl Engine {
             return Err("A session already exists. Disconnect before reconnecting.".into());
         }
         self.project.prepare()?;
+        // File-only preflight must precede any optional recovery access to a board.
+        crate::images::inspect_project(&self.project)?;
         crate::debug_access::recover(&self.project)?;
         self.register_session = registers::new_session();
         self.watch_bindings.clear();
         self.register_access_fault = None;
         self.register_catalogue = self.project.registers.load();
         self.snapshot = Snapshot::default();
+        self.guest_return = None;
         self.snapshot.register_session = self.register_session;
         self.reg_names.clear();
         self.refresh_pending = false;
@@ -1303,7 +1352,12 @@ impl Engine {
             );
         }
         let result = self.connect_inner();
-        if result.is_err() {
+        if let Err(error) = &result {
+            if let Some(images) = &mut self.snapshot.image_state {
+                images.symbols_loaded = false;
+                images.error =
+                    format!("Image session startup failed; GDB resources released: {error}");
+            }
             self.gdb.take();
             self.connected_gdb_endpoint = None;
             self.server.take();
@@ -1312,6 +1366,7 @@ impl Engine {
         result
     }
     fn connect_inner(&mut self) -> Result<Json, String> {
+        self.prepare_images()?;
         self.start_server()?;
         self.state(state::STARTING_GDB);
         let mut c = Command::new(&self.project.gdb.executable);
@@ -1399,6 +1454,7 @@ impl Engine {
                 mi::quote(&portable_path(&map.to))
             ))?;
         }
+        self.load_images()?;
         self.commands(
             &self.project.gdb.init.clone(),
             Duration::from_millis(self.project.session.timeout_ms),
@@ -1571,6 +1627,7 @@ impl Engine {
     }
     fn refresh(&mut self) -> Result<(), String> {
         self.stopped()?;
+        self.finish_guest_return()?;
         let r = self.mi("-stack-info-frame")?;
         if let Some(f) = r.data.field("frame") {
             let frame = Frame::from_mi(f);
@@ -1583,6 +1640,29 @@ impl Engine {
             self.snapshot.frame = frame;
         }
         self.invalidate_register_samples();
+        // Establish identity before asking GDB to unwind. An unknown PC must
+        // never acquire a plausible stack/locals from another resident objfile.
+        self.refresh_images()?;
+        if self
+            .snapshot
+            .image_state
+            .as_ref()
+            .is_some_and(|s| !s.error.is_empty() || s.selected_frame.state != "resolved")
+        {
+            self.snapshot.locals.clear();
+            self.snapshot.watches.clear();
+            self.snapshot.frame.file.clear();
+            self.snapshot.frame.line = 0;
+            self.snapshot.frame.function.clear();
+            self.snapshot.stack.clear();
+            if matches!(self.register_catalogue, Ok(None)) {
+                self.snapshot.registers.clear();
+            }
+            self.refresh_legacy_registers()?;
+            self.refresh_breakpoints()?;
+            self.publish();
+            return Ok(());
+        }
         if let Ok(r) = self.mi("-stack-list-frames 0 31") {
             self.snapshot.stack = r
                 .data
@@ -1596,6 +1676,8 @@ impl Engine {
                 })
                 .unwrap_or_default();
         }
+        self.qualify_image_sources();
+        self.snapshot.locals.clear();
         if let Ok(r) = self.mi("-stack-list-variables --simple-values") {
             self.snapshot.locals = r
                 .data
@@ -1634,6 +1716,12 @@ impl Engine {
             }
         }
         self.refresh_watches();
+        self.refresh_legacy_registers()?;
+        self.refresh_breakpoints()?;
+        self.publish();
+        Ok(())
+    }
+    fn refresh_legacy_registers(&mut self) -> Result<(), String> {
         // Catalogue mode reads only what the UI/headless client explicitly asks
         // for. Preserve the original dynamic GDB list for projects without one.
         if matches!(self.register_catalogue, Ok(None)) {
@@ -1691,8 +1779,6 @@ impl Engine {
                 }
             }
         }
-        self.refresh_breakpoints()?;
-        self.publish();
         Ok(())
     }
     fn refresh_breakpoints(&mut self) -> Result<(), String> {
@@ -1708,6 +1794,22 @@ impl Engine {
                     .map(|v| {
                         let mut b = Breakpoint::from_mi(v);
                         b.group = self.breakpoint_groups.get(&b.id).cloned();
+                        if let Some((image, location)) = self.breakpoint_images.get(&b.id) {
+                            b.image = Some(image.clone());
+                            b.location = location.clone();
+                        } else if let Ok(address) = literal_address(&b.address)
+                            && let Some(state) = &self.snapshot.image_state
+                        {
+                            b.image = crate::images::resolve(&state.images, address, None).image;
+                        }
+                        b.file = crate::images::qualified_source(
+                            b.image.as_deref(),
+                            if b.debug_file.is_empty() {
+                                &b.file
+                            } else {
+                                &b.debug_file
+                            },
+                        );
                         b
                     })
                     .collect()
@@ -1715,12 +1817,16 @@ impl Engine {
             .unwrap_or_default();
         self.breakpoint_groups
             .retain(|id, _| self.snapshot.breakpoints.iter().any(|b| &b.id == id));
+        self.breakpoint_images
+            .retain(|id, _| self.snapshot.breakpoints.iter().any(|b| &b.id == id));
         self.snapshot
             .breakpoints
             .extend(self.unresolved_breakpoints.clone());
+        self.qualify_image_breakpoint_sources();
         Ok(())
     }
     fn disconnect(&mut self) -> Result<Json, String> {
+        self.guest_return = None;
         self.watch_bindings.clear();
         self.connected_gdb_endpoint = None;
         self.memory_connections.clear();
@@ -1782,6 +1888,9 @@ impl Engine {
             }
             self.gdb.take();
         }
+        if let Some(images) = &mut self.snapshot.image_state {
+            images.symbols_loaded = false;
+        }
         if let Some(server) = &mut self.server {
             let deadline = Instant::now() + Duration::from_secs(3);
             while server.child.try_wait().ok().flatten().is_none() && Instant::now() < deadline {
@@ -1820,6 +1929,20 @@ impl Engine {
         Ok(())
     }
     fn execute(&mut self, method: &str, p: &Json) -> Result<Json, String> {
+        if matches!(
+            method,
+            method::EVALUATE
+                | method::COMPLETE
+                | method::WATCH_EXPAND
+                | method::LOCAL_EXPAND
+                | method::WATCH_RESOLVE
+                | method::WRITE_PREVIEW
+                | method::WRITE_APPLY
+                | "guest_context"
+                | "return_guest"
+        ) {
+            self.guard_image_context()?;
+        }
         if matches!(
             method,
             method::REGISTERS_READ
@@ -1889,6 +2012,11 @@ impl Engine {
                 result
             }
             method::STATUS => Ok(serde_json::to_value(&self.snapshot).unwrap()),
+            "images" => self.image_inventory(),
+            "image_locations" => self.image_location_inventory(p),
+            "guest_context" => self.guest_context(p),
+            "return_guest" => self.begin_guest_return(p),
+            "cancel_guest_return" => self.cancel_guest_return(),
             method::REGISTERS_LIST => self.registers_list(),
             method::REGISTERS_MATRIX => self.register_matrix(),
             method::REGISTERS_PROBE => self.probe_register_capabilities(p),
@@ -2078,6 +2206,11 @@ impl Engine {
             }
             method::EVALUATE => {
                 self.stopped()?;
+                if let Some((image, expression)) =
+                    self.image_global_selection(&text("expression"), p["image"].as_str())?
+                {
+                    return self.evaluate_image_global(&image, &expression);
+                }
                 let r = self.mi(&format!(
                     "-data-evaluate-expression {}",
                     mi::quote(&text("expression"))
@@ -2200,6 +2333,9 @@ impl Engine {
                 Ok(json!({"memory":r.data}))
             }
             method::DISASSEMBLE => {
+                if !self.project.images.is_empty() {
+                    return self.image_disassemble(p);
+                }
                 self.stopped()?;
                 let address = text("address");
                 let address = if address.is_empty() {
@@ -2231,8 +2367,17 @@ impl Engine {
                 self.publish();
                 Ok(json!({"assembly":self.snapshot.assembly}))
             }
-            method::SYMBOLS => self.symbols(&text("query")),
+            method::SYMBOLS => {
+                if self.project.images.is_empty() {
+                    self.symbols(&text("query"))
+                } else {
+                    self.image_symbols(p)
+                }
+            }
             method::FILES => {
+                if !self.project.images.is_empty() {
+                    return self.image_files(p);
+                }
                 let r = self.mi("-file-list-exec-source-files")?;
                 let mut files: Vec<String> = r
                     .data
@@ -2282,6 +2427,20 @@ impl Engine {
                 self.write_drafts.clear();
                 let command = text("command");
                 let trimmed = command.trim();
+                if !self.project.images.is_empty()
+                    && matches!(
+                        trimmed.split_whitespace().next(),
+                        Some(
+                            "file"
+                                | "symbol-file"
+                                | "add-symbol-file"
+                                | "remove-symbol-file"
+                                | "exec-file"
+                        )
+                    )
+                {
+                    return Err("Resident images are managed by the project. Update Symbol images in Setup so symbols and context remain consistent".into());
+                }
                 match trimmed {
                     "c" | "continue" => {
                         return self.execute(method::CONTINUE, &Json::Null);

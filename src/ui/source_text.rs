@@ -141,7 +141,11 @@ impl App {
             return;
         }
         // Reuse the normal Watch path: selected core, current frame, persistence and errors.
-        self.watch_input = expression.into();
+        self.watch_input = if self.source_is_frame() {
+            expression.into()
+        } else {
+            crate::images::qualified_source(self.browsed_image(), expression)
+        };
         self.select_pane(pane::WATCH);
         self.add_watch_input(engine);
     }

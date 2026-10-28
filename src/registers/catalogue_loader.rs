@@ -6,6 +6,43 @@ pub const MAX_INHERITANCE_DEPTH: usize = 3;
 const MAX_GRAPH_NODES: usize = 16;
 const MAX_GRAPH_BYTES: usize = 16 * 1024 * 1024;
 
+/// Share only parsed declarations, before origins, inheritance or board/runtime
+/// facts are attached. Files and every parent are still read on each load.
+/// Exact content equality also catches same-size rewrites and restored mtimes.
+fn declarations(text: &str, label: &str) -> Result<Catalogue, String> {
+    use std::{
+        collections::VecDeque,
+        sync::{Mutex, OnceLock},
+    };
+    const MAX_ENTRIES: usize = 4;
+    const MAX_TEXT_BYTES: usize = 8 * 1024 * 1024;
+    static CACHE: OnceLock<Mutex<VecDeque<(String, Catalogue)>>> = OnceLock::new();
+    let mut cache = CACHE
+        .get_or_init(Mutex::default)
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(index) = cache.iter().position(|(source, _)| source == text) {
+        let entry = cache.remove(index).unwrap();
+        let result = entry.1.clone();
+        cache.push_back(entry);
+        return Ok(result);
+    }
+    // Serializing cold parses avoids duplicate large allocations when several
+    // core workers open the same catalogue at the same time. No recursive load
+    // happens inside this lock; graph resolution follows after it is released.
+    let parsed: Catalogue = toml::from_str(text.trim_start_matches('\u{feff}'))
+        .map_err(|error| format!("{label}: {error}"))?;
+    while cache.len() >= MAX_ENTRIES
+        || cache.iter().map(|(source, _)| source.len()).sum::<usize>() + text.len() > MAX_TEXT_BYTES
+    {
+        if cache.pop_front().is_none() {
+            break;
+        }
+    }
+    cache.push_back((text.into(), parsed.clone()));
+    Ok(parsed)
+}
+
 #[derive(Default)]
 struct Loader {
     stack: Vec<String>,
@@ -109,8 +146,7 @@ impl Loader {
         if self.nodes > MAX_GRAPH_NODES || self.bytes > MAX_GRAPH_BYTES {
             return Err("Catalogue inheritance graph exceeds resource limits".into());
         }
-        let mut child: Catalogue = toml::from_str(text.trim_start_matches('\u{feff}'))
-            .map_err(|error| format!("{label}: {error}"))?;
+        let mut child = declarations(text, &label)?;
         if let Some(meta) = &child.meta {
             meta.validate()?;
         }

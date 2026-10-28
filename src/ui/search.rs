@@ -26,6 +26,7 @@ struct SearchKey {
     query: String,
     core: Option<usize>,
     epoch: u64,
+    image_context: Option<String>,
 }
 
 pub(super) struct SymbolSearch {
@@ -189,6 +190,11 @@ impl App {
             query: self.symbol_search.query.trim().into(),
             core: self.snapshot.core.as_ref().map(|c| c.index),
             epoch: self.symbol_search.epoch,
+            image_context: self
+                .snapshot
+                .image_state
+                .as_ref()
+                .map(crate::images::State::cache_key),
         }
     }
 
@@ -213,7 +219,10 @@ impl App {
         if self.symbol_search.requested.as_ref() == Some(&key) {
             return false;
         }
-        if !self.demo && !matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED) {
+        if !self.demo
+            && self.project.images.is_empty()
+            && !matches!(self.snapshot.state.as_str(), state::READY | state::STOPPED)
+        {
             let hint = "Pause/connect to search ELF symbols; existing results remain usable.";
             let changed = self.symbol_search.hint != hint;
             self.symbol_search.hint = hint.into();

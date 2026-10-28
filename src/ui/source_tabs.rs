@@ -2,6 +2,7 @@ use super::*;
 
 pub(super) struct SourceDocument {
     pub file: String,
+    image: Option<String>,
     key: String,
     line: usize,
     top: usize,
@@ -33,26 +34,55 @@ impl App {
     /// so results are kept: canonicalizing is a file system call each time.
     /// Snapshots and project switches clear them.
     pub(super) fn source_key(&self, file: &str) -> String {
-        if let Some(key) = self.source_keys.borrow().get(file) {
+        let file = self.owned_source(file);
+        if let Some(key) = self.source_keys.borrow().get(&file) {
             return key.clone();
         }
         let resolved = self
             .project
-            .source_path(file)
+            .image_source_path(&file, None)
             .and_then(|p| fs::canonicalize(p).ok());
         let path = resolved
             .map(|p| p.to_string_lossy().into_owned())
-            .unwrap_or_else(|| file.into());
+            .unwrap_or_else(|| file.clone());
         let path = path.replace('\\', "/");
         let key = if cfg!(windows) {
             path.to_lowercase()
         } else {
             path
         };
+        let key = crate::images::qualified_source(
+            crate::images::scoped_expression(&file)
+                .ok()
+                .and_then(|(id, _)| id),
+            &key,
+        );
         self.source_keys
             .borrow_mut()
             .insert(file.to_owned(), key.clone());
         key
+    }
+
+    fn owned_source(&self, file: &str) -> String {
+        if crate::images::scoped_expression(file)
+            .ok()
+            .is_some_and(|(id, _)| id.is_some())
+        {
+            return file.into();
+        }
+        crate::images::qualified_source(
+            self.snapshot
+                .image_state
+                .as_ref()
+                .and_then(|s| s.selected_frame.image.as_deref()),
+            file,
+        )
+    }
+
+    pub(super) fn browsed_image(&self) -> Option<&str> {
+        self.sources
+            .active
+            .and_then(|i| self.sources.documents[i].image.as_deref())
     }
 
     fn save_source_position(&mut self) {
@@ -68,6 +98,7 @@ impl App {
         self.sources.frame_key = key.clone();
         self.sources.documents.push(SourceDocument {
             file: self.source_file.clone(),
+            image: None,
             key,
             line: self.source_line,
             top: self.source_top,
@@ -88,15 +119,20 @@ impl App {
 
     pub(super) fn load_source(&mut self, file: &str) {
         self.save_source_position();
-        let key = self.source_key(file);
+        let file = self.owned_source(file);
+        let image = crate::images::scoped_expression(&file)
+            .ok()
+            .and_then(|(id, _)| id.map(str::to_owned));
+        let key = self.source_key(&file);
         let index =
             if let Some(index) = self.sources.documents.iter().position(|doc| doc.key == key) {
                 // Keep the debugger's latest spelling for source breakpoints/source maps.
-                self.sources.documents[index].file = file.into();
+                self.sources.documents[index].file = file;
                 index
             } else {
                 self.sources.documents.push(SourceDocument {
-                    file: file.into(),
+                    file,
+                    image,
                     key,
                     line: 0,
                     top: 0,
@@ -110,7 +146,7 @@ impl App {
         if self.demo && file == "demo/sample.c" {
             return DEMO_SOURCE.lines().map(str::to_owned).collect();
         }
-        if let Some(path) = self.project.source_path(file) {
+        if let Some(path) = self.project.image_source_path(file, None) {
             match fs::metadata(&path) {
                 Ok(meta) if meta.len() > 2 * 1024 * 1024 => {
                     vec!["Source file exceeds 2 MiB; use an external editor.".into()]
@@ -369,14 +405,17 @@ fn basename(file: &str) -> &str {
 
 fn label(documents: &[SourceDocument], index: usize) -> String {
     let document = &documents[index];
-    let name = basename(&document.file);
-    if documents
+    let raw = crate::images::scoped_expression(&document.file)
+        .map(|(_, f)| f)
+        .unwrap_or(&document.file);
+    let name = basename(raw);
+    let label = if documents
         .iter()
         .enumerate()
-        .any(|(i, d)| i != index && basename(&d.file) == name)
+        .any(|(i, d)| i != index && d.image == document.image && basename(&d.file) == name)
     {
         // Show the shortest path suffix that distinguishes identical basenames.
-        let normalized = document.file.replace('\\', "/");
+        let normalized = raw.replace('\\', "/");
         let mut suffix = name.to_owned();
         for part in normalized.rsplit('/').skip(1) {
             suffix = format!("{part}/{suffix}");
@@ -391,7 +430,12 @@ fn label(documents: &[SourceDocument], index: usize) -> String {
         suffix
     } else {
         name.into()
-    }
+    };
+    document
+        .image
+        .as_ref()
+        .map(|id| format!("[{id}] {label}"))
+        .unwrap_or(label)
 }
 
 pub(super) fn fit(text: &str, width: usize) -> String {
@@ -751,6 +795,131 @@ mod tests {
         let request = requests.try_recv().unwrap();
         assert_eq!(request.method, method::DELETE_BREAK);
         assert_eq!(request.params["number"], "17");
+    }
+
+    #[test]
+    fn image_qualified_tabs_use_new_stop_mapping_and_browsing_never_changes_physical_frame() {
+        use crate::{
+            config::SourceMap,
+            images::{Image, Resolution, State},
+        };
+        let (mut a, first, second) = fixture();
+        let one = Path::new(&first).parent().unwrap().to_path_buf();
+        let two = Path::new(&second).parent().unwrap().to_path_buf();
+        a.project.program.source_root = one.clone();
+        a.project.source_map = vec![SourceMap {
+            from: "/ci/shared".into(),
+            to: one.clone(),
+        }];
+        a.project.images = vec![
+            Image {
+                id: "bao".into(),
+                source_root: one.clone(),
+                source_map: vec![SourceMap {
+                    from: "/ci/shared".into(),
+                    to: one.clone(),
+                }],
+                ..Default::default()
+            },
+            Image {
+                id: "vm0".into(),
+                source_root: two.clone(),
+                source_map: vec![SourceMap {
+                    from: "/ci/shared".into(),
+                    to: two.clone(),
+                }],
+                ..Default::default()
+            },
+        ];
+        a.snapshot.image_state = Some(State {
+            selected_frame: Resolution {
+                image: Some("bao".into()),
+                ..Default::default()
+            },
+            execution: Resolution {
+                image: Some("bao".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        });
+        stop(&mut a, "/ci/shared/main.c", 12);
+        assert!(a.source[0].contains("one"));
+        let mut next = a.snapshot.clone();
+        next.generation += 1;
+        let state = next.image_state.as_mut().unwrap();
+        state.execution.image = Some("vm0".into());
+        state.selected_frame.image = Some("vm0".into());
+        next.frame.file = first.clone();
+        next.frame.debug_file = "/ci/shared/main.c".into();
+        a.update(Event::Snapshot {
+            snapshot: Box::new(next),
+        });
+        assert!(
+            a.source[0].contains("two"),
+            "must use new image even when physical GDB fullname points to the other root"
+        );
+        assert_eq!(a.browsed_image(), Some("vm0"));
+        assert!(a.source_is_frame());
+        assert_eq!(a.sources.documents.len(), 2);
+        let physical = a.snapshot.frame.clone();
+        let (engine, requests) = session::test_channel();
+        a.command(Some(&engine), ":open @bao:/ci/shared/main.c");
+        assert!(a.source[0].contains("one"));
+        assert_eq!(a.browsed_image(), Some("bao"));
+        assert!(!a.source_is_frame());
+        assert!(requests.try_recv().is_err());
+        assert_eq!(a.snapshot.frame.file, physical.file);
+        a.source_line = 11;
+        a.snapshot.breakpoints.push(session::Breakpoint {
+            id: "77".into(),
+            file: "@vm0:/ci/shared/main.c".into(),
+            line: 12,
+            enabled: true,
+            ..Default::default()
+        });
+        a.toggle_break(Some(&engine));
+        let request = requests.try_recv().unwrap();
+        assert_eq!(request.method, method::BREAK);
+        assert_eq!(request.params["location"], "@bao:/ci/shared/main.c:12");
+        a.activate_source(1);
+        assert!(a.source[0].contains("two"));
+        assert!(a.source_is_frame());
+        let text = render(&mut a, 160, 45);
+        assert!(text.contains("[bao]"));
+        assert!(text.contains("[vm0]"));
+        fs::write(one.join("only-one.c"), "wrong image fallback").unwrap();
+        assert!(
+            a.project
+                .source_path("@vm0:/ci/shared/only-one.c")
+                .is_none()
+        );
+        assert!(a.project.source_path("@vm0:only-one.c").is_none());
+        assert!(
+            a.project
+                .source_path("@missing:/ci/shared/main.c")
+                .is_none()
+        );
+        assert_eq!(
+            a.project.source_path(r"@vm0:\ci\shared\main.c").unwrap(),
+            two.join("main.c")
+        );
+        a.project.source_remap.enabled = Some(false);
+        assert!(a.project.source_path("@vm0:/ci/shared/main.c").is_none());
+        assert_eq!(
+            a.project.source_path("@vm0:main.c").unwrap(),
+            two.join("main.c")
+        );
+        // The engine's qualified fullname includes the correct comp_dir;
+        // the UI must not replace it with the shorter raw DWARF filename.
+        let mut next = a.snapshot.clone();
+        next.generation += 1;
+        next.frame.file = format!("@vm0:{second}");
+        next.frame.debug_file = "missing-basename.c".into();
+        a.update(Event::Snapshot {
+            snapshot: Box::new(next),
+        });
+        assert!(a.source[0].contains("two"));
+        assert_eq!(a.snapshot.frame.file, format!("@vm0:{second}"));
     }
 
     #[test]

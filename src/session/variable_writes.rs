@@ -144,6 +144,17 @@ impl Engine {
         let expression = target["expression"]
             .as_str()
             .ok_or("Variable root expression required")?;
+        if target["pane"] == "watch"
+            && self
+                .snapshot
+                .watches
+                .iter()
+                .any(|v| v.name == expression && v.image_origin.is_some())
+        {
+            return Err(
+                "Isolated image globals are read-only; no physical GDB assignment was sent".into(),
+            );
+        }
         variable_lvalue(expression)?;
         match target["pane"].as_str() {
             Some("watch") if self.watch_names.iter().any(|e| e == expression) => {}
@@ -500,6 +511,13 @@ impl Engine {
             return Err("Variable fields use the native member path, not register masks".into());
         }
         self.variable_target(&p["target"])?;
+        if let Some(expression) = p["target"]["expression"].as_str()
+            && self.image_global_selection(expression, None)?.is_some()
+        {
+            return Err(
+                "Isolated image globals are read-only; no physical GDB assignment was sent".into(),
+            );
+        }
         let input: Input = serde_json::from_value(p["input"].clone()).map_err(|e| e.to_string())?;
         let services = crate::debug_access::for_project(&self.project)?;
         let _leases = services

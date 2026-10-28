@@ -4,7 +4,7 @@
 
 DebugTUI 是基于 GDB/MI 的终端调试工作台，可在 PowerShell、Windows Terminal 或 VS Code 终端中使用。支持源码断点、单步、Watch、寄存器与 SVD 外设查看、单核/多核调试，以及调用工程的 Build / Download 命令。
 
-当前版本 **1.2.4**，支持 **Windows x64**。npm/完整 ZIP 内置 ARM GDB、OpenOCD、STM32F429 与 THA6104/6206/6412 芯片配置及 STM32F429 SVD；THA SVD 按本地实际文件打包，本版未附带。调试时无需 Node、Python 或 VS Code 常驻。工程保存一份 `debug.toml`，通过 Probe、Chip 和 Debug cores 选择目标。更新与升级方法见 [1.2.4 发布说明](docs/release-1.2.4.md)，THA 使用方法见 [内置工具说明](tools/README.md)，M/R 核的系统寄存器范围见 [只读指南](docs/registers-readonly-guide.md)。
+当前版本 **1.3.1**，支持 **Windows x64**，新增 Bao＋每核 VM 的多 ELF 调试。npm/完整 ZIP 内置 ARM GDB、OpenOCD、STM32F429 与 THA6104/6206/6412 芯片配置及 STM32F429 SVD；THA SVD 按本地实际文件打包。调试时无需 Node、Python 或 VS Code 常驻。工程保存一份 `debug.toml`，通过 Probe、Chip 和 Debug cores 选择目标。更新与安装方法见 [1.3.1 说明](docs/release-1.3.1.md)，多 ELF 用法见 [Bao＋VM 调试](docs/bao-multi-elf.md)。
 
 ## 怎么用
 
@@ -20,6 +20,8 @@ debugtui --version
 ```
 
 也可以下载 [Release 中的便携 ZIP](https://github.com/bei-li16/DebugTUI/releases/latest)，解压后运行 `debugtui.exe`。无板卡时可先用 `debugtui --demo` 预览。
+
+公网地址跟随最新正式 Release；需要固定版本时，将 `latest/download` 换成 `download/v1.3.1`。TeX/PDF 完整手册作为独立 Release 附件提供。
 
 ### 2. 准备工程
 

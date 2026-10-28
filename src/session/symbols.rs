@@ -10,14 +10,22 @@ pub(crate) struct Symbol {
     pub description: String,
 }
 
-fn parse_symbols(record: &Record, kind: &str) -> Vec<Symbol> {
+pub(super) fn parse_symbols(record: &Record, kind: &str) -> Vec<Symbol> {
+    parse_symbols_with_path(record, kind, |file| match file.string("fullname") {
+        full if !full.is_empty() => full,
+        _ => file.string("filename"),
+    })
+}
+
+pub(super) fn parse_symbols_with_path(
+    record: &Record,
+    kind: &str,
+    path: impl Fn(&Value) -> String,
+) -> Vec<Symbol> {
     let mut found = Vec::new();
     if let Some(files) = record.data.field("symbols").and_then(|v| v.field("debug")) {
         for file in files.items() {
-            let path = match file.string("fullname") {
-                full if !full.is_empty() => full,
-                _ => file.string("filename"),
-            };
+            let path = path(file);
             if let Some(symbols) = file.field("symbols") {
                 for entry in symbols.items() {
                     let name = entry.string("name");

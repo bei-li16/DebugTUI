@@ -15,6 +15,8 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+mod images;
+pub(crate) use images::spawn_images;
 
 pub(crate) fn connect(endpoint: &str) -> Result<TcpStream, String> {
     crate::debug_access::check_endpoint(endpoint)?;
@@ -207,6 +209,10 @@ pub struct LiveWatchSample {
     pub timestamp: String,
     pub core: Option<usize>,
     pub generation: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub image_revision: String,
 }
 impl Drop for LiveWatchHandle {
     fn drop(&mut self) {
@@ -295,6 +301,8 @@ pub fn spawn_with(
                             timestamp: Stamp::now().wall,
                             core: None,
                             generation: 0,
+                            image: None,
+                            image_revision: String::new(),
                         },
                     });
                 }
@@ -318,6 +326,8 @@ pub fn spawn_with(
                                 timestamp: Stamp::now().wall,
                                 core: None,
                                 generation: 0,
+                                image: None,
+                                image_revision: String::new(),
                             },
                         });
                     }
@@ -354,9 +364,9 @@ fn parse_value(text: &str) -> Option<u64> {
     }
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct Symbol {
-    address: u64,
-    size: u64,
+pub(crate) struct Symbol {
+    pub address: u64,
+    pub size: u64,
 }
 struct SymbolTable {
     symbols: HashMap<String, Symbol>,
@@ -367,6 +377,9 @@ impl SymbolTable {
         Self::parse(&data)
     }
     fn parse(data: &[u8]) -> Result<Self, String> {
+        Self::parse_objects(data, true)
+    }
+    fn parse_objects(data: &[u8], scalar_only: bool) -> Result<Self, String> {
         if data.get(..4) != Some(b"\x7fELF") {
             return Err("Not an ELF file".into());
         }
@@ -455,11 +468,13 @@ impl SymbolTable {
                         number(s, 8, 4)?,
                     )
                 };
-                if !matches!(info >> 4, 1 | 2)
+                if !(matches!(info >> 4, 1 | 2) || (!scalar_only && info >> 4 == 0))
                     || info & 15 != 1
                     || index == 0
                     || index >= 0xff00
-                    || !matches!(size, 1 | 2 | 4)
+                    || size == 0
+                    || size > 128 * 1024 * 1024
+                    || (scalar_only && !matches!(size, 1 | 2 | 4))
                 {
                     continue;
                 }
@@ -489,6 +504,29 @@ impl SymbolTable {
         }
         Ok(Self { symbols })
     }
+}
+
+pub(crate) fn image_objects(
+    image: &crate::images::Image,
+    loaded: &crate::images::Loaded,
+) -> Result<HashMap<String, Symbol>, String> {
+    let data = fs::read(&image.elf).map_err(|e| e.to_string())?;
+    let mut table = SymbolTable::parse_objects(&data, false)?.symbols;
+    table.retain(|_, symbol| {
+        let Some(range) = loaded.allocated_ranges.iter().find(|r| {
+            r.linked_start <= symbol.address
+                && symbol
+                    .address
+                    .checked_add(symbol.size)
+                    .zip(r.linked_start.checked_add(r.end - r.start))
+                    .is_some_and(|(end, section_end)| end <= section_end)
+        }) else {
+            return false;
+        };
+        symbol.address = range.start + (symbol.address - range.linked_start);
+        true
+    });
+    Ok(table)
 }
 struct Section {
     kind: u64,
