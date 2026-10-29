@@ -59,6 +59,12 @@ impl FieldCondition {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct AccessRule {
+    /// Permanent restriction of the declared host access path, including manual reads.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deny: Option<String>,
+    /// Current physical field observations required for access, not implementation claims.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<FieldCondition>,
     /// Omitted keeps the conservative stopped-only policy. False is limited to memory readers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub need_halt: Option<bool>,
@@ -70,13 +76,32 @@ pub struct AccessRule {
 }
 impl AccessRule {
     pub fn is_empty(&self) -> bool {
-        self.need_halt.is_none() && self.min_el.is_none() && self.need_enable.is_none()
+        self.deny.is_none()
+            && self.requires.is_empty()
+            && self.need_halt.is_none()
+            && self.min_el.is_none()
+            && self.need_enable.is_none()
     }
 }
 
 impl Catalogue {
     pub(super) fn validate_policy(&self) -> Result<(), String> {
         for register in &self.registers {
+            if register.access_rule.requires.len() > 64
+                || register.access_rule.deny.as_ref().is_some_and(|reason| {
+                    reason.trim().is_empty()
+                        || reason.len() > 4096
+                        || reason.chars().any(char::is_control)
+                })
+            {
+                return Err(format!("Invalid access restriction for {}", register.id));
+            }
+            if register.writer.is_some() && self.declared_read_denial(register).is_some() {
+                return Err(format!(
+                    "{} cannot attach a writer to a restricted access path",
+                    register.id
+                ));
+            }
             if register.access_rule.min_el.is_some_and(|el| el > 3) {
                 return Err(format!("Invalid minimum Debug EL for {}", register.id));
             }
@@ -97,6 +122,7 @@ impl Catalogue {
                 .present_if
                 .iter()
                 .chain(register.access_rule.need_enable.iter())
+                .chain(register.access_rule.requires.iter())
             {
                 let source = self.register(&condition.reg).ok_or_else(|| {
                     format!(
@@ -153,6 +179,7 @@ impl Catalogue {
                 .present_if
                 .iter()
                 .chain(register.access_rule.need_enable.iter())
+                .chain(register.access_rule.requires.iter())
             {
                 height = height.max(1 + visit(catalogue, &c.reg, active, done, depth + 1)?);
             }
@@ -240,6 +267,9 @@ impl Catalogue {
             let Some(register) = self.register(&sample.id) else {
                 continue;
             };
+            if self.declared_read_denial(register).is_some() {
+                continue;
+            }
             let expected_owner = topology.owner(register.scope, &context.core);
             if sample.state != State::Valid
                 || sample.context != *context
@@ -330,6 +360,7 @@ impl Catalogue {
                                 .need_enable
                                 .iter()
                                 .chain(r.present_if.iter())
+                                .chain(r.access_rule.requires.iter())
                                 .all(|c| c.evaluate(&values) == Some(true))
                         })
                     })
@@ -353,6 +384,28 @@ impl Catalogue {
     pub fn has_presence_rule(&self, register: &Register) -> bool {
         self.read_dependencies(register)
             .is_ok_and(|deps| deps.iter().any(|r| r.present_if.is_some()))
+    }
+    /// Shared by automatic reads, manual reads, discovery, UI and capability inventory.
+    /// An explicit path restriction takes precedence over a missing reader diagnosis.
+    pub fn declared_read_denial(&self, register: &Register) -> Option<(Reason, String)> {
+        let dependencies = self.read_dependencies(register).ok()?;
+        for dependency in &dependencies {
+            if let Some(reason) = &dependency.access_rule.deny {
+                return Some((
+                    Reason::AccessRestricted,
+                    format!("{}: {reason}; no IO sent", dependency.id),
+                ));
+            }
+        }
+        dependencies
+            .iter()
+            .any(|r| matches!(r.reader, Reader::DescriptionUnsupported { .. }))
+            .then(|| {
+                (
+                    Reason::ReaderUnsupported,
+                    "Described location has no applicable read route; no IO sent".into(),
+                )
+            })
     }
     pub fn access_denial(
         &self,
@@ -384,6 +437,9 @@ impl Catalogue {
         current_debug_el: Option<u8>,
         checked_el2_backend: bool,
     ) -> Option<(Reason, String)> {
+        if let Some(denial) = self.declared_read_denial(register) {
+            return Some(denial);
+        }
         let dependencies = match self.read_dependencies(register) {
             Ok(d) => d,
             Err(e) => return Some((Reason::Unknown, e)),
@@ -405,6 +461,29 @@ impl Catalogue {
             ));
         }
         for r in dependencies {
+            for condition in &r.access_rule.requires {
+                match condition.evaluate(facts) {
+                    Some(true) => {}
+                    value => {
+                        return Some((
+                            if value.is_some() {
+                                Reason::AccessRestricted
+                            } else {
+                                Reason::Unknown
+                            },
+                            format!(
+                                "Required access evidence {} is {}; no IO sent",
+                                condition.description(),
+                                if value.is_some() {
+                                    "not satisfied"
+                                } else {
+                                    "unknown"
+                                }
+                            ),
+                        ));
+                    }
+                }
+            }
             if let Some(min_el) = r.access_rule.min_el {
                 match current_debug_el {
                     None if checked_el2_backend && min_el <= 2 => {}

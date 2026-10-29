@@ -195,7 +195,9 @@ impl Engine {
                 .with_catalogue_source(&catalogue_source);
             sample.implementation = eligibility.implementation;
             sample.eligibility = Some(eligibility);
-            let denied = denied
+            let denied = catalogue
+                .declared_read_denial(register)
+                .or(denied)
                 .or_else(|| {
                     crate::registers::discovery::denial(
                         &catalogue,

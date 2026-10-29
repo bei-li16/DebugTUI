@@ -164,7 +164,12 @@ impl Engine {
         let elf = self.project.program.elf.clone();
         let result = resolve_typed_watch(
             &mut |command| {
-                self.finish_memory_read(boundary)?;
+                // Deleting the temporary GDB var-object is host bookkeeping,
+                // and must finish even after cancellation or a context change.
+                // All expression/target queries still require the read boundary.
+                if !command.starts_with("-var-delete ") {
+                    self.finish_memory_read(boundary)?;
+                }
                 self.mi(command)
             },
             expression,

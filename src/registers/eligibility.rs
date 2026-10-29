@@ -161,7 +161,8 @@ impl Catalogue {
         } else if !conditional {
             (
                 Implementation::Unknown,
-                "Target identity not yet verified".into(),
+                "Implementation is not established by access permission or a successful read"
+                    .into(),
             )
         } else {
             (
@@ -249,6 +250,13 @@ impl Catalogue {
                             .need_enable
                             .iter()
                             .map(|c| ("need_enable", c)),
+                    )
+                    .chain(
+                        register
+                            .access_rule
+                            .requires
+                            .iter()
+                            .map(|c| ("requires", c)),
                     )
                     .map(|(kind, condition)| {
                         let value = facts.get(&condition.key()).copied();

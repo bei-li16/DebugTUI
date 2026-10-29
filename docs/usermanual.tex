@@ -20,11 +20,11 @@
 \definecolor{accent}{HTML}{A65028}
 \definecolor{pale}{HTML}{F2F5F7}
 \definecolor{line}{HTML}{B7C8D2}
-\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={v1.3.2 文档；镜像配置直接保存、继承与 ELF 联动；保留 Bao/VM 历史实板资料}}
+\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={v1.3.3；F429 受控读取、通用访问策略与 STM32 FreeRTOS 实板验证}}
 \ctexset{section={format=\Large\bfseries\color{ink}},subsection={format=\large\bfseries\color{ink}}}
 \pagestyle{fancy}\fancyhf{}
 \fancyhead[L]{\small\sffamily DebugTUI / User Manual}
-\fancyhead[R]{\small v1.3.2 增补 · 2026-10-29}
+\fancyhead[R]{\small v1.3.3 · 2026-10-30}
 \fancyfoot[L]{\footnotesize 本地源码与测试证据版}
 \fancyfoot[R]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
@@ -66,10 +66,10 @@
 \end{tikzpicture}
 \vfill
 \begin{tabular}{@{}ll}
-工程版本 & 本地 1.3.2；工程配置使用 version = 3\\
-分析基线 & 1.3.0 多 ELF 实板基线 + 1.3.2 配置编辑回归\\
-修订范围 & 镜像保存、继承、ELF 联动及当前 Setup 操作\\
-修订日期 & 2026-10-29（Asia/Singapore）\\
+工程版本 & 1.3.3；工程配置 version = 3\\
+分析基线 & 基于 1.3.2（\code{24959e5}）；1.3.3 修订见附录~\ref{sec:um-development}\\
+修订范围 & 1.0--1.3 功能、配置和 API；多 ELF、寄存器与证据边界\\
+修订日期 & 2026-10-30（Asia/Singapore）\\
 适用平台 & 当前发布及本地验证：Windows x64\\
 文档文件 & \code{docs/usermanual.tex} / \code{docs/usermanual.pdf}
 \end{tabular}
@@ -82,21 +82,26 @@
 
 本次按本地 1.3.2 更新 Symbol images 的直接保存、Source root 继承、高级设置折叠和主 ELF 联动，并修正过时的 Setup 入口及写入 UI 说明。Bao 与每核 VM 的实板结论继续引用 2026-10-28 的 1.3.0 安装版验收。其余章节保留各专题的原日期与历史记录，并非对 0.9.3 以来所有功能重新作全量审计。远端发布状态以 GitHub Release 为准；实板结论以报告中的 EXE 哈希、固件和日期为准，1.3.2 的配置软件回归不改记为新的实板结果。
 
+1.3.3 在正式 1.3.2（\code{24959e5}）上合并寄存器修订。新结构化访问条件、禁止规则及独立 Access restricted 分类需要配套新 Host 与描述；1.3.2 及更早安装包不包含这些行为。
+
+2026-10-30 编译的 1.3.3 Release 已执行 STM32F429 / FreeRTOS 工程实板验证，详见附录~\ref{sec:um-development}。正式包沿用同一份已验证 EXE，各版本历史结果继续保留原范围，实际发布附件和摘要以 GitHub Release 为准。
+
 \noindent\begin{tabularx}{\linewidth}{@{}P{27mm}Y@{}}\toprule
 证据类别 & 本手册的使用方式\\\midrule
 当前源码 & 功能、默认值、路由和约束的首要依据；与旧 README 冲突时采用代码事实。\\
-源码验证 & 1.3.2 已有库测试 615 项通过、3 项忽略，以及镜像编辑、持久化和分发回归，见第\ref{sec:setup-132-validation}节；1.3.0 的 606 项库测试、7 项集成及旧章节结果保留原版本。\\
-本地实板 & 保留 STM32、THA6206 历史证据；新增 2026-10-28 已安装 1.3.0 的 THA6206 双核 Bao/VM 与真实终端 74 项通过记录，见第\ref{sec:bao-130-validation}节。本次编辑和编译手册未再次操作板卡。\\
+源码验证 & 合并基线已有 913 项 Rust 通过、3 项原有忽略及严格 Clippy 通过；本轮核对源码摘要，并以新 Release EXE 重跑 Host 7 项、多 ELF 10 项及固件比较辅助 4 项，详见开发附录。正式 1.3.2 的镜像配置回归保留于第\ref{sec:setup-132-validation}节。\\
+本地实板 & 新增本地 1.3.3 的 F429 / FreeRTOS 验证，见开发附录；THA6206 双核 Bao/VM 的已安装 1.3.0 实板记录仍见第\ref{sec:bao-130-validation}节，未在本轮重测 THA 硬件。\\
+历史发布记录 & 1.0--1.2 的寄存器、写入、通用 Host、SCB、快速搜索及 Probe 证据按原版本单列，见第\ref{sec:evidence}节；局部通过不外推为全部定义可读写。\\
 仓库历史说明 & 历史说明须与本机可见原始记录、产物和日期对应；具体证据见各适配章节，不把配置配方当作实板结果。\\
 外部资料 & 核对 MI/RSP、探针协议、CoreSight/ADI、Trace 和芯片接口；通用架构能力不等于本地已实现或已验证。\\\bottomrule
 \end{tabularx}
 
-本次文档修订的工程根为 \path{D:/LiBo/Files/DATA/FreeRTOS/vscodegdb/debugtui}。STM32 历史记录来自 \path{G:/Data/GitFiles/DebugTUI} 与关联固件 \path{G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project}，这些旧路径表示当时的测试环境。THA6206/Bao 当前参考目录见第\ref{sec:tha6206}节，均不随 DebugTUI 分发。迁移时须核对实际路径、工具版本与同次构建产物。
+本次文档修订的工程根为 \path{G:/Data/GitFiles/DebugTUI}。文中保留的 \path{D:/LiBo/Files/DATA/FreeRTOS/vscodegdb/debugtui} 是旧版本分析环境，不是新工程必须采用的安装路径。STM32 历史记录来自 \path{G:/Data/GitFiles/DebugTUI} 与关联固件 \path{G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project}，这些旧路径表示当时的测试环境。THA6206/Bao 当前参考目录见第\ref{sec:tha6206}节，均不随 DebugTUI 分发。迁移时须核对实际路径、工具版本与同次构建产物。
 
-\notice{本地 J-Link 长会话曾在约 52--53 秒出现底层访问失效；用户怀疑所用探针为 clone，根因尚未确认，见第\ref{sec:jlink-duration}节。下载成功与进度显示正常也是两个独立结论；匿名 tuple 解析、SVD 默认端序和资料差异见第\ref{sec:limits}节。}
+\notice{本地 J-Link 长会话曾在约 52--53 秒出现底层访问失效；用户怀疑所用探针为 clone，根因尚未确认，见第\ref{sec:jlink-duration}节。下载成功与进度显示正常也是两个独立结论；匿名 tuple 解析、SVD 未知端序和资料差异见第\ref{sec:limits}节。}
 
 建议首次使用先阅读操作与协议栈；理解探针和片上调试时接着看第\ref{sec:probe}、\ref{sec:coresight}节，再进入工具配置和第\ref{sec:f429}节的 STM32F429 实操。THA6206 的 GHS 单核/多核见第\ref{sec:tha6206}节，Bao Hypervisor、Guest 符号和双 VM 调试见第\ref{sec:bao-tha6206}节。移植、自动化分别见第\ref{sec:porting}、\ref{sec:jsonl}节。图中箭头表达请求、数据或触发关系，具体含义由标注说明；均不是电气时序比例图。
-\clearpage{\small\setlength{\parskip}{0pt}\tableofcontents}
+\clearpage{\fontsize{9}{10.5}\selectfont\setlength{\parskip}{0pt}\tableofcontents}
 \clearpage\pagenumbering{arabic}
 
 \section{产品定位与功能边界}
@@ -106,11 +111,11 @@ DebugTUI 是基于 GDB/MI2 的原生终端调试工作台。Ratatui 绘制字符
 能力 & 用户可获得的行为\\\midrule
 执行控制 & Connect/Reconnect/Disconnect、Run、Continue、Pause、Reset、Step In/Over/Out、指令单步。Reset/Download 由环境动作决定。\\
 代码定位 & 源文件列表、标签、搜索、PC 定位、栈帧选择、反汇编、路径映射；源码选区、复制和加入当前核 Watch。源码是只读浏览。\\
-数据检查 & 系统寄存器、Watch、Locals、Memory、CMSIS-SVD 外设/寄存器/位域、独立进制设置。\\
+数据检查与编辑 & System Regs 目录、状态/来源/能力、MPU/cache、Watch/Locals、Memory 和 SVD；已适配对象提供 Preview/Apply/Cancel，权限与 writer 独立检查。\\
 断点 & 普通/硬件/临时代码断点，写/读/读写数据观察点，启停、条件、忽略次数、命中数、跨重连恢复。\\
 实时观察 & 可见项选择显式内存通道；OpenOCD TCL 能力允许时在运行中读内存；另有旧式 ELF 原始全局量 Live Watch。\\
 多核与多 ELF & 每核独立物理 GDB，会话组控制、断点联停、单步隔离、共享复位；1.3.0 可为每核常驻 Bao 与所属 VM 符号，见第\ref{sec:bao-symbols}节。\\
-工程操作 & Setup 项目/芯片/核心选择、镜像编辑、ELF 路径映射、字段帮助；Build/Download 外部命令、环境引用、偏好保存、日志和清理。\\
+工程操作 & Setup 项目/Probe/芯片/核心、镜像编辑、Generic GDB、源码映射与字段帮助；Build/Download、偏好、可选日志和收尾。\\
 自动化 & 标准输入/输出 JSONL、脚本串行执行、结构化快照、响应、日志与实时采样事件。\\\bottomrule
 \end{tabularx}
 
@@ -125,7 +130,7 @@ SVD 是寄存器描述，不是 Flash 算法，也不建立探针连接。旧式
 
 \subsection{v0.8.3 至 v0.9.3 的修订}
 \label{sec:local-084}
-本手册以 v0.8.3 标签为比较起点，覆盖至 0.9.3 本地源码和资料。旧的直接单核/显式 cores 配置继续兼容；启用 Chip/Core 选择时使用 version = 3。安装版本通过 EXE 的 --version 核对；实际发布附件和 Latest 状态以 GitHub Release 为准。
+本小节保留 v0.8.3 至 0.9.3 的历史演进；当前操作以其后 1.0--1.2 修订和当前章节为准。旧的直接单核/显式 cores 配置继续兼容；启用 Chip/Core 选择时使用 version = 3。安装版本通过 EXE 的 --version 核对；实际发布附件和 Latest 状态以 GitHub Release 为准。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{31mm}Y@{}}\toprule
 变更范围 & 本手册的对应内容与边界\\\midrule
@@ -143,6 +148,27 @@ Bao 外部适配更新 & 迁移至芯片/核心选择，Run 与整片复位分�
 本地 THA6206 板级修正 & 说明外部参考工程 OpenOCD 的 DBGRESET、复位顺序和 EDRCR.CSE 位修正，单列验证范围；该脚本不包含在 DebugTUI 程序包中。\\\bottomrule
 \end{tabularx}
 
+
+\Needspace{10\baselineskip}
+\subsection{0.9.3 之后：1.0--1.2 的功能与迁移}
+\label{sec:um-revisions}
+\begin{longtable}{@{}P{31mm}P{130mm}@{}}
+\toprule 版本或阶段 & 用户可见变化及迁移要点\\\midrule\endhead
+0.10 / 1.0.0 & ARM GDB/OpenOCD、Probe、芯片/SVD 配置内置到安装包；工程使用 \code{builtin:} 引用，不必复制工具至 \path{.vscode}。启动目录发现项目，无候选时创建最简配置；Setup 滚动条、鼠标滚轮和输入区悬停完善。\\
+1.0 的寄存器框架 & CPU/catalogue 选择、目录继承、来源和条件、按需读取、能力探测、状态与取消；每核 owner/context、M/R 核适配和受控 writer 分开判断，见第\ref{sec:system-registers}节。\\
+1.1.1 & THA6104/6206/6412 板级描述、核心子集和 MCAL 模板；探针与芯片独立。THA6206 实测为 R52+，不能沿用仅核对过 R52 身份的注入协议。SVD 是否随包以具体 Release 清单为准。\\
+1.1.2 & 默认关闭文件日志；Setup 可开关、编辑或清空日志路径，Console 仍可用；配置行悬停浮窗与 F1 帮助。\\
+1.1.3 & 修复无关能力更新误使有效样本 Stale，以及显示范围误用控制 scope；并发偏好写入重读并合并最新配置。\\
+1.1.4 & 扩展 M4 DWT/FPB 定义并实测部分浮点、NVIC、DWT、FPB；GDB writer 回执明确是 GDB 视图回读，不能据 write-back cache 宣称物理存储已写入。\\
+1.1.5 & 正式交付 F429 专用目录；修正权限、位域和缺少 reader 的自动读取资格。增加描述型接口与独立 write\_fields，未增加系统 writer 范围。\\
+1.2.0 & Generic GDB 连接现有 Server；带 \code{[chip]} 元数据的文件自动发现；F429 Automatic 默认关联完整专用目录及 PPB/DBGMCU 通道。\\
+1.2.1 & 搜索输入暂停自动读；SCB 尾部和位域滚动可见；工具栏换行、整行悬停、小窗口输入/弹窗保护。小于 45×12 时只保留安全退出/取消。\\
+1.2.2 & 将寄存器开发分支集成到 main 并正式发布；不表示所有寄存器类别、writer 或硬件矩阵均已验收。\\
+1.2.3 & 修复快速连续搜索后协调器内部队列未继续执行造成的等待；无需人为插入按键延时。\\
+1.2.4 & Probe 全程使用最终芯片目录策略，不能回退 CPU 模板绕过限制；通用 discovery、ETM/TPIU 身份/能力探测及实际 I/O 统计。\\\bottomrule
+\end{longtable}
+\src{\path{docs/release-1.0.0.md}、\path{docs/release-1.1.1.md} 至 \path{docs/release-1.2.4.md}；\path{tools/README.md}；\path{TESTING.md}。}
+
 \subsection{1.3.0：Bao 与 VM 常驻多 ELF 增补}
 每核在连接前加载 Bao 与对应 Guest ELF；真实停止后识别执行镜像，Source、Files、Symbols、反汇编、Watch 与断点保留镜像归属。源码浏览不会重连、复位、下载或改变物理执行位置；运行中不为识别镜像额外暂停。有效诊断快照还可只读查看挂起 Guest 的源码、寄存器、栈和局部变量，并在完整 HVC32 边界返回 Guest。配置、命令、状态与限制集中在第\ref{sec:bao-symbols}至\ref{sec:bao-130-validation}节，日常入口为 B 的 \code{debug-multi-images.toml}。
 
@@ -150,26 +176,29 @@ Bao 外部适配更新 & 迁移至芯片/核心选择，Run 与整片复位分�
 Symbol images 中的 Save config/Ctrl+S 直接保存工程，包含尚未按 Enter 确认的输入；Apply to draft 仅更新 Setup 草稿。基本字段默认展开，源码根覆盖、偏移、映射与内存通道收入 Advanced settings。未设置的镜像 Source root 继承首页，主镜像 ELF 与 Program/ELF 双向关联，VM 路径保持独立。保存失败保留修改并显示原因；保存本身不改变正在运行的调试会话。操作步骤见第\ref{sec:bao-image-config}节，已有回归范围见第\ref{sec:setup-132-validation}节。
 
 \newsection{安装、首次启动与日常工作流}
-\subsection{准备材料}
-当前发布目标为 Windows x64。运行调试至少需要 DebugTUI EXE、匹配目标架构的 GDB；远程嵌入式场景还需 GDB Server、探针驱动和板卡。源码调试需要与板上固件匹配的 ELF 和源码；外设视图另需 SVD。工具目录应放在工程或独立工具区，避免随 npm 升级被替换。
 
-本地构建与已有包安装示例：
+\subsection{准备材料、安装与升级}
+准备匹配的 ELF、探针驱动及板级连接；没有专用芯片描述时也可使用 Generic GDB。当前正式安装版本为 1.3.3；安装包、EXE 与校验和应来自同一 Release，工作树修订不自动替换已安装程序。
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
-# In the DebugTUI repository:
-./scripts/build.ps1 -Release
-./target/release/debugtui.exe --version
-./target/release/debugtui.exe --demo
+# Fixed public release:
+npm.cmd install -g --prefer-online --ignore-scripts=false --foreground-scripts "https://github.com/bei-li16/DebugTUI/releases/download/v1.3.2/debugtui-cli.tgz"
+debugtui --version
+# debugtui 1.3.2
 
-# Existing portable executable: run directly.
-# Existing npm archive: substitute its actual filename.
-npm install -g ./artifacts/debugtui-cli-1.3.2.tgz
-debugtui
+# Track the current public release instead of pinning:
+npm.cmd install -g --prefer-online --ignore-scripts=false --foreground-scripts "https://github.com/bei-li16/DebugTUI/releases/latest/download/debugtui-cli.tgz"
+
+# Local archive / removal:
+npm.cmd install -g ./debugtui-cli-1.3.2.tgz
+npm.cmd uninstall -g @debugtui/cli
 \end{lstlisting}
 \end{minipage}\par
-仓库 PUBLISHING.md 描述了 GitHub Release URL 安装流程；本文不将本地包版本等同于远端 Latest。当前 npm 包与便携 ZIP 包含随附 tools 和 SVD；独立 EXE 必须配套对应工具资源或引用已有工具环境。安装后用户芯片目录独立保存在用户配置区；若 npm 未执行 postinstall，可运行 \code{debugtui --init-profiles} 完成初始化，不必修改全局 npm 策略。已有目录会校验但不会覆盖，详见第\ref{sec:device-catalogue}节。
+便携用户完整解压 \path{debugtui-1.3.2-win-x64.zip} 后运行 EXE。升级前正常退出旧程序；用 \code{Get-Command debugtui -All} 排查 PATH 中多份安装，并核对附件 \path{SHA256SUMS.txt}。工程 TOML 和包外用户扩展保留；内置文件随包更新，自定义内容应放入工程或用户扩展目录。独立 EXE 需配套工具资源或引用已有工具环境。
 
-\subsection{内置工具与工程发现（0.10.0-readonly.5）}
+用户目录默认是 \path{%LOCALAPPDATA%/debugtui/profiles}，也可用 \code{DEBUGTUI_CONFIG_DIR} 指定根目录。npm 的 postinstall 调用 \code{debugtui --init-profiles} 初始化/校验扩展；已有客户文件保留，不连接板卡。缺少 SVD 时可继续基础调试，外设视图需另行提供匹配文件；可选 THA6 SVD 是否随包以具体 Release 清单为准。本手册 PDF/TeX 与运行包里的 Markdown 文档分别交付。
+
+\subsection{内置工具与工程发现}
 npm 包和便携 ZIP 已内置 GDB/OpenOCD、芯片与探针配置、SVD。工程使用 \code{[tools] profile="builtin:arm-openocd"}；\code{probe="cmsis-dap"} 可在 Setup 的 Probe 字段改为 jlink、stlink 或继承默认值。Chip config 对应 \code{tools.chip\_profile}，可指定工程相对的自定义芯片 TOML。内置模式按工程指定文件、用户 \path{profiles/chips/<chip>.toml}、包内默认文件的顺序选择；用户文件不会写入 npm 安装目录。自定义继承可使用 \code{extends="builtin:devices/tha6206.toml"}，板级 cfg/SVD 相对该文件。
 
 Tools / profile 和 SVD file 按 F2 可选择包内文件或浏览外部文件，列表显示实际安装路径。内置 SVD 引用为 \code{builtin:svd/STM32F429.svd}；Automatic 跟随芯片，Disabled 显式禁用。旧 profile 下切换 Probe 会提供兼容工具选择，选择内置 profile 后应用，Esc 取消保留原配置。切换时只迁移与包内文件完全相同的原始 SVD 副本；客户修改保留，Ctrl+S 才保存工程。
@@ -177,7 +206,7 @@ Tools / profile 和 SVD file 按 F2 可选择包内文件或浏览外部文件�
 无参数启动从工作目录优先加载 \path{debug.toml}，否则检索调试工程 TOML；唯一候选直接加载，多个候选显示列表，无候选则创建最简通用配置并进入 Setup。\code{--init-project} 只查找或创建配置后退出。已有工程保持其原配置，旧的外部 profile 与 \path{.vscode} 方式继续兼容。新工程无需复制工具或写入 npm 安装路径。
 
 \subsection{首次启动}
-无参数执行 \code{debugtui} 进入 Setup，不启动 GDB 或占用探针。依次检查 Project、Tools/profile、Program/ELF、Source root、SVD、Build/Download 和退出策略。GDB、目标连接、服务启动及工具超时在引用的 debug-env.toml 中维护。默认聚焦 Project；上下箭头只在可用配置项之间循环，跳过禁用项和顶部按钮。Tab、Shift+Tab 或鼠标可选择顶部按钮；点击 Start debugging，或使用 Ctrl+R、Ctrl+Enter、F5 启动。Save 只保存；Workspace/Esc 回到原工作区并保留草稿。\textbf{首页可直接点击 Exit 或按 Ctrl+Q 退出，无需先启动调试}；已有会话仍按正常退出流程清理。
+无参数执行 \code{debugtui} 进入 Setup，不连接 Server 或占用探针；源码映射等显式离线扫描可启动只加载 ELF 的 GDB。依次检查 Project、Tools/profile、Probe、Chip/Core、ELF、Source root、SVD、CPU/catalogue、任务与退出策略。工具参数由引用的环境维护。默认聚焦 Project，箭头跳过禁用项；Tab、Shift+Tab 或鼠标选择按钮。Start debugging、Ctrl+R、Ctrl+Enter 或 F5 校验并保存后启动；Save 只保存。Workspace/Esc 保留草稿。\textbf{首页可直接点击 Exit 或按 Ctrl+Q 退出，无需先启动调试}；已有会话仍执行正常清理。
 
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
@@ -188,7 +217,7 @@ debugtui --gdb C:/tools/arm-none-eabi-gdb.exe `
   --connect 127.0.0.1:3333 --elf ./build/app.elf
 \end{lstlisting}
 \end{minipage}\par
-\code{--connect} 和 \code{--local} 禁用自有 service 启动，但不会清除已选 profile 的其他连接动作。若只想建立通用连接，使用明确的 GDB/目标参数且不加载芯片 profile。只有工程中的 \code{tools/debug-env.toml} 在适当条件下会被发现，TUI 安装目录不作为隐式工具搜索根。
+\code{--connect} 和 \code{--local} 禁用自有 service 启动，但不会清除已选 profile 的其他连接动作。若只想建立通用连接，使用明确的 GDB/目标参数且不加载芯片 profile。显式 \code{builtin:arm-openocd}、\code{builtin:generic-gdb} 从当前安装位置读取资源；外部 profile 与兼容的 tools.root 仍按各自声明位置解析。
 
 \subsection{项目发现、选择与相对路径}
 \label{sec:setup-projects}
@@ -206,11 +235,54 @@ debugtui --gdb C:/tools/arm-none-eabi-gdb.exe `
 
 Project 字段以\textbf{启动工作目录}为相对路径基准。例如 \path{./debug.toml} 或 \path{./examples/debug.toml}；跨 Windows 盘符等无法相对表示的路径仍保留绝对路径。选择项目后，ELF、tools/profile、Source root、SVD、日志等项目资源的相对路径则按\textbf{所选 TOML 所在目录}解析。不能因为 Project 显示相对路径，就把全部字段都理解为相对启动目录。
 
+\subsection{首次自动生成的默认配置}
+\label{sec:um-default-project}
+下列内容来自 \path{tools/debug.toml}，适用于没有任何调试工程候选的启动目录。没有默认 STM32/R52、核心、ELF、构建或下载任务；日志文件默认关闭。空 Chip/Core 需在芯片模式启动前补齐，远程只看原始地址可不提供 ELF，源码/变量调试应提供匹配 ELF。
+\begin{lstlisting}
+version = 3
+[tools]
+profile = "builtin:arm-openocd"
+probe = "cmsis-dap"
+[debug]
+chip = ""
+cores = []
+[program]
+elf = ""
+source_root = "."
+[session]
+on_exit = "detach"
+\end{lstlisting}
+Chip config、SVD、CPU registers、Register catalogue 和 Memory channels 默认跟随芯片/环境；源码重映射默认关闭。日志填 \path{debug-logs} 才启用；清空恢复关闭，不会重新继承旧 profile 的日志目录。可仅执行 \code{debugtui --init-project} 进行发现/创建后退出。
+
+\subsection{Generic GDB：没有芯片描述也能连接}
+\label{sec:um-generic}
+先启动适合目标板的 GDB Server。在 Chip 选择器按 G，或 Tools/profile 的 F2 列表选择 Generic GDB / existing server。该入口不启动 OpenOCD，默认 endpoint 为 \code{127.0.0.1:3333}，寄存器按 GDB target description 动态列出，不假设某个状态寄存器一定存在。
+\begin{lstlisting}
+version = 3
+[tools]
+profile = "builtin:generic-gdb"
+[target]
+endpoint = "127.0.0.1:3333"
+[program]
+elf = "Debug/firmware.elf"
+source_root = "."
+\end{lstlisting}
+随包 GDB 支持 ARM；其他架构需要匹配的 GDB。切换到 Generic 会清除根级及每核 CPU/catalogue 选择，保留 ELF、任务、核心和显式端口/通道；工程显式配置的 service/actions/SVD 仍须自行检查。回到已安装芯片可恢复 ARM/OpenOCD 与 Automatic。Generic 的 \code{backend="generic-gdb"} 与兼容旧索引的 \code{backend="generic"} 不是同一个语义。
+
 \subsection{配置列表、模板与已有工程}
 \label{sec:setup-examples}
 当前 Setup 顶部保留 Start debugging、Save config、Workspace 和 Exit。旧版独立的 Projects 与 Examples 按钮已移除，\textbf{F3 配置列表仍保留，F4 不再打开示例}。在 Project 行按 Enter 或按 F3，选择现有 TOML 后返回 Setup；按 F2 可浏览其他目录。载入会替换当前草稿，尚未保存的修改应先保存；选择本身不写文件、不连接探针、不执行 Build/Download。
 
 新工程从自动创建的最简模板填写即可。单核选一个 Debug core，多核选所需核心；不同核心的附加 ELF 在 Symbol images 中维护。要复用 MCAL/Bao 的端口、复位、构建和下载动作，选择或复制已经验证的工程 TOML，并检查它引用的 profile；只选择核心数不会自动生成适用所有板卡的启动流程。本地程序使用声明 \code{target.mode="local"} 的匹配工具环境；Generic GDB 连接已有服务，不能代替芯片专用下载配方。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{40mm}Y@{}}\toprule
+模板 & 文件与需要自行补充的内容\\\midrule
+最简工程 & \path{tools/debug.toml}；默认无 Chip/Core/ELF，见第\ref{sec:um-default-project}节。\\
+现有 Server & 第\ref{sec:um-generic}节的 Generic GDB 项目；核对实际架构的 GDB、endpoint 和 ELF。\\
+THA6 MCAL & \path{profiles/tha6-bundled-project.toml.example}；补齐工程构建/烧录环境和型号，MCAL 启动策略不能直接套给 Bao。\\
+异构 M 核 & \path{profiles/registers-readonly-multicore.toml.example}；逐核配置 CPU、endpoint、PPB owner/通道及 ELF。\\
+原生 R52 & \path{profiles/registers-readonly-r52.toml.example}；仅用于符合 D13 身份及协议的目标，替换端口/target，不用于 R52+。\\\bottomrule
+\end{tabularx}
 
 \subsection{Setup 字段说明与操作入口}
 鼠标悬停在配置行时弹出该项帮助，自动避让终端边界；键盘选中字段后按 F1 查看用途、格式、路径基准和空值影响。红色必填项说明位于表单下方，ELF 是源码调试所需。窄屏下顶部按钮换行，字段列表可滚动。45×12 是布局回归用例，实际配置建议至少 80×24，完整工作台建议 120×36。
@@ -220,11 +292,11 @@ Project 字段以\textbf{启动工作目录}为相对路径基准。例如 \path
 \toprule 字段 & 示例或入口 & 用途与填写规则\\\midrule\endfirsthead
 \toprule 字段 & 示例或入口 & 用途与填写规则\\\midrule\endhead
 Project & \code{./debug.toml}；F2/F3 & 项目配置的读写目标，按启动目录解析。选择已有文件会更新整张配置表；新路径在保存前只是草稿。\\
-Tools / profile & \path{.vscode/debug-env.toml}；F2 & 引用工具/服务/动作配置，相对项目目录。留空使用独立 GDB 配置，不自动获得芯片复位和下载能力。\\
-Probe & Enter / 左右键 & 继承 profile 或选择 CMSIS-DAP、J-Link、ST-Link；内置 OpenOCD 下独立于芯片选择，保存为 \code{tools.probe}。\\
-Chip & Enter；目录选择 & 本地芯片能力声明；选择型号或新增客户型号。Legacy 保留原配置模式。\\
+Tools / profile & \code{builtin:arm-openocd}；F2 & 选择安装内资源或外部 TOML；Generic GDB 用 \code{builtin:generic-gdb}。外部文件相对项目解析。\\
+Probe & Enter / 左右键 & CMSIS-DAP、J-Link、ST-Link 或继承；保存为 tools.probe。旧 profile 需接受兼容工具选择才能应用。\\
+Chip & Enter；G=Generic & 已安装芯片自动发现；Legacy 保留原配置模式。目录选择不证明硬件身份。\\
 Debug cores & Enter；核心复选 & 选择该芯片支持的物理核心子集；至少一个。未选择 Chip 时灰显。配置示例见第\ref{sec:device-catalogue}节。\\
-Chip config & Automatic；F2 & 默认随 Chip 选择用户或内置 \code{<chip>.toml}；可指定自定义芯片 TOML，相对项目目录。清空覆盖路径恢复自动选择。\\
+Chip config & Automatic；F2 & tools.chip\_profile 指定客户文件；省略时用户同名入口优先于包内入口。\\
 Program / ELF & \code{build/firmware.elf}；F2 & 与目标固件匹配的符号文件，相对项目目录；不是自动烧录命令。无有效调试信息时无法完整进行 C 源码调试。\\
 Symbol images & Enter；镜像编辑器 & 管理常驻 ELF、核心和域；Advanced settings 展开源码根覆盖等选项。Ctrl+S 直接保存，Apply to draft 仅更新草稿，Start 才建立新会话，见第\ref{sec:bao-image-config}节。\\
 Source root & \code{.}；F2 & 本地源码定位根及 Build/Download 工作目录；相对项目目录。\\
@@ -232,16 +304,16 @@ Build command & \code{.\build.bat} & 可选构建命令；在 Source root 执行
 Download command & \code{.\flash.bat} & 可选下载命令；在 Source root 执行，使用工程自己的烧录脚本或工具。先核对输入产物和目标。\\
 On exit & detach / resume / disconnect & detach 脱离；resume 对远程目标先 Continue 再 Disconnect，对本地进程暂停后 Detach；disconnect 只关闭连接。最终运行状态仍受 Server 和板级配置影响。\\
 Log directory & 默认 not set；F2 & 空值关闭会话文件日志，Console 仍可用。左右键切换关闭或 \code{debug-logs}；Enter 输入自定义路径，F2 选文件夹、Space 确认。相对项目目录解析。\\
-SVD file & \code{device.svd}；F2 & 可选外设寄存器描述，相对项目目录；留空仍能使用基本调试，不提供相应外设树。\\
+SVD file & Automatic；F2 & 跟随芯片、Disabled 或选择内置/外部 SVD；包内保存 builtin: 逻辑引用。\\
 Source remap & Yes / No；Enter & 开关源码重映射；启用后离线扫描 ELF，关闭保留规则。\\
-ELF path prefix & Enter & 选择 ELF 中与 Source root 对应的目录层级；显示本地匹配预览。Source remap 为 No 时灰显，键盘跳过、鼠标不可选择或修改。详见附录~\ref{sec:ci-source}。\\
-CPU registers & Enter；预设选择 & 选择 CPU 寄存器预设、Automatic 或原始 GDB 列表；选择预设不等于后端已支持所有寄存器访问。\\
-Register catalogue & 可选 TOML；F2 & 架构寄存器目录覆盖文件，优先于 CPU 预设；工程路径相对项目，继承自工具的路径相对 profile。清空后使用所选预设。\\
-Memory channels & Enter；通道编辑器 & 配置 target、TCL 端点、名称与核心限制；运行中读取须获芯片与 OpenOCD 通道支持。Apply 更新工程草稿，Save/Start 持久化。\\
+ELF path prefix & Enter & 选择 ELF 旧目录前缀，映射至 Source root。Source remap 为 No 时禁用；见附录~\ref{sec:ci-source}。\\
+CPU registers & Automatic；Enter & 继承 profile/chip，选择 CPU preset，或显式 GDB target description only。F1 查看有效选择及来源。\\
+Register catalogue & 空；F2 & 显式文件优先于 CPU；相对声明它的项目/profile。清空不一定清除继承来源，见第\ref{sec:um-register-config}节。\\
+Memory channels & Enter & 配置 Tcl endpoint、target、核心限制及 while\_running；Apply 改草稿，Save/Start 持久化。\\
 \bottomrule
 \end{longtable}}
 
-\textbf{配置职责：}debug.toml 保存程序、源码映射、任务、SVD、Watch/断点、逐核映射、组策略和 \code{session.on_exit}；debug-env.toml 保存 GDB、OpenOCD/服务、连接默认值、板级动作和 \code{session.timeout_ms}，也可通过 \code{[program] svd} 提供芯片 SVD 默认值，其路径相对于 profile 所在目录。工程中的 SVD 配置优先，空字符串表示禁用；ELF 和源码路径仍由工程配置。随附工具需要 0.10.0-readonly.3 或更新版本；\path{tools/install.ps1} 将 \path{tools/debug.toml} 安装到工程根目录、其余工具资源安装到 \path{.vscode/}（旧工程兼容方式）；新工程直接使用 npm 包内工具。SVD 由芯片描述提供，工程不固定覆盖。\code{session.timeout_ms} 默认 8000 ms 是单条工具命令等待时间，不是工程退出策略。Setup 已移除六个工具编辑项，Tools/profile 只选择引用，On exit 仍是工程字段。旧工程内嵌工具覆盖继续有效；保存不展开环境值、不改共享 profile，并保留单核/多核的后台偏好。
+\textbf{配置职责：}debug.toml 保存程序、源码映射、任务、Probe、Chip/Core、寄存器选择、SVD、Watch/断点、逐核映射、组策略和 \code{session.on_exit}；debug-env.toml 保存 GDB、OpenOCD/服务、连接默认值、板级动作和 \code{session.timeout_ms}，也可通过 \code{[program] svd} 提供芯片 SVD 默认值，其路径相对于 profile 所在目录。工程中的 SVD 配置优先，空字符串表示禁用；ELF 和源码路径仍由工程配置。仓库中的 \path{tools/install.ps1} 仅供旧版复制工具的兼容用法，不随 npm 包分发；它将 \path{tools/debug.toml} 安装到工程根目录、其余工具资源安装到 \path{.vscode/}（旧工程兼容方式）；新工程直接使用 npm 包内工具。SVD 由芯片描述提供，工程不固定覆盖。\code{session.timeout_ms} 默认 8000 ms 是单条工具命令等待时间，不是工程退出策略。Setup 已移除六个工具编辑项，Tools/profile 只选择引用，On exit 仍是工程字段。旧工程内嵌工具覆盖继续有效；保存保留环境引用和逐核偏好，不改共享 profile。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{42mm}Y@{}}\toprule
 Setup 中的按键/按钮 & 行为\\\midrule
@@ -308,6 +380,18 @@ f / 右键 & 选中数值的格式菜单；Watch/外设中再按 r 可配置内�
 
 三组面板分别保存活动标签；点击右侧标签不切走源码。窄于 100 列时只显示当前焦点所属面板组，建议使用至少 120×36 的终端获得完整工作台。滚轮和滚动条作用于所在视图。Console 向上浏览后停止跟随，End 回到实时输出；输入区保持独立。
 \src{\path{src/ui.rs}: PANES、HELP、key、mouse；\path{src/ui/render.rs}；\path{src/ui/console.rs}。}
+
+
+\Needspace{9\baselineskip}
+\subsection{视图直达、放大、帮助与外观}
+\label{sec:workspace-extras}
+Alt+1 至 Alt+9 依次直达 Source、Asm、Files、Log、System Regs、Peripherals、Stack、Memory、Breaks；Alt+0 到 Watch，Alt+- 到 Locals。Tab/Shift+Tab 按同一顺序切换焦点。未处于文本输入时按 z 或执行 \code{:zoom}，让当前面板组占满工作区；再执行恢复。该操作只改变布局，不修改目标状态。
+
+\code{?} 打开快捷键帮助，Ctrl+P/Help 打开命令列表；帮助中 Tab 切换到 Commands。输入文字筛选，Enter/点击执行无参数命令，需要参数的命令先填入 Console 等待补全输入。Esc 关闭。所有冒号命令及别名见附录~\ref{sec:commands-complete}，不要求记住隐藏入口。
+
+\code{:appearance} 选择 Off/Subtle/Full 动画及 Unicode/ASCII 效果；也可用 \code{:animations off}、\code{:animations subtle}、\code{:animations full} 保存动画模式。动画表示选择、反馈或真实状态轨迹，不改变采样值、执行时序或硬件能力。\code{ui.animations} 默认 subtle，\code{ui.unicode} 默认 true；动画不是 Trace 播放功能。Console 输入、Watch 输入和 Symbols 输入分别保持自己的焦点/缓冲，输入时按键优先用于编辑。
+\src{\path{src/ui.rs}: PANE\_ORDER、SHORTCUTS、command；\path{src/ui/formats.rs}；\path{src/ui/effects.rs}。}
+
 
 \subsection{原始 GDB 命令与工作台命令}
 \par\noindent\begin{minipage}{\linewidth}
@@ -426,21 +510,227 @@ object.member
 \subsection{数值格式与 CPU 寄存器}
 Watch、Locals、Memory 字节默认十进制；CPU 寄存器、SVD 寄存器/位域默认十六进制；地址固定十六进制。右键或 f 独立选择二/八/十/十六进制。转换使用最多 128 位整数计算，不写目标，不改 GDB 全局 radix；负数保留负号，浮点/枚举/字符串等保留自然表示。Locals 格式键包含文件和函数，成员格式键包含树路径。
 
-原始 GDB 列表的寄存器名称和编号从后端动态取得；\code{gdb.registers = []} 默认读取所有命名寄存器。配置非空列表可避开复位时不可访问的浮点寄存器组，不存在的名称会报错。当前还可在 Setup 选择 CPU registers 预设或 Register catalogue，以目录和后端能力共同决定专用寄存器视图。符合写入条件的对象可通过下述显式编辑器修改。
+寄存器名称和编号从 GDB 动态取得；\code{gdb.registers = []} 默认读取所有命名寄存器。配置非空列表可避开复位时不可访问的浮点寄存器组，不存在的名称会报错。没有系统目录时沿用动态 GDB 列表；选择目录后，读取资格、位域、来源和 writer 由独立模型控制。Edit value 的受控写入见下节，原始 Console 命令仍会直接影响目标且不经过该预览器。
+
+
+\Needspace{9\baselineskip}
+\subsection{Memory：范围、通道与重新读取}
+\label{sec:memory-panel}
+在 Memory 选择 \textbf{Memory access}，或执行 \code{:memory-access}，依次填写 Address、Byte count 和 Channel。默认地址 \code{$sp}、256 字节，允许 1--4096 字节。GDB 通道在暂停时接受地址表达式；TCL/AP 通道要求十六进制或十进制字面地址，并核对末地址不溢出。更换通道不会把 \code{$sp} 偷换成某个旧地址，也不会为读取隐式停核。
+
+Tab/上下键切字段，左右键切通道，Ctrl+U 清空文本；\textbf{Apply and read} 保存范围/通道并发起单次读取，Cancel/Esc 丢弃草稿。\textbf{Read/Refresh} 或 \code{:memory-refresh} 重读当前范围。\code{:memory ADDRESS [COUNT]} 同样使用已选通道，未给 COUNT 时为 256；例如 \code{:memory 0x20000000 64}。范围设置自身不建立连续轮询；Watch/Peripherals 的定时刷新仍使用第\ref{sec:live}节的逐项策略。
+
+范围写入 \code{ui.memory} 的芯片/核心键，通道写入相同键的 \code{ui.refresh}，interval\_ms=0。切换核心不会把另一核的范围值显示为当前核的新样本。界面显示地址、长度、配置路线、实际读取来源、距上次采样时间，以及 sampled、not read、retained/stale 或 error。同 owner 读取失败可保留原样本和原时间；换线程、帧、会话、核心 endpoint、芯片或路线后旧数据清除/隐藏，迟到响应丢弃。Memory 是地址顺序字节视图，整段读取不承诺硬件原子性。
+
+\begin{lstlisting}
+# A saved example for stm32f429 / core.0. Choose a real available channel.
+[ui.memory."chip:stm32f429|core.0|memory:range"]
+address = "0x20000000"
+count = 64
+[ui.refresh."chip:stm32f429|core.0|memory:range"]
+channel = "ahb"
+interval_ms = 0
+\end{lstlisting}
+\src{\path{src/ui/memory.rs}；\path{src/session/memory.rs}: read\_memory\_dump；\path{src/config.rs}: MemoryRange。}
+
 
 \subsection{SVD 外设视图}
 \code{program.svd} 选择 CMSIS-SVD 文件。解析器展开 derivedFrom、数组、cluster 和属性继承，生成设备、外设、寄存器和位域模型；位域从父寄存器值按位偏移/宽度解码，不额外读总线。
 
 默认只在停止、外设面板可见、分组展开时读当前可见寄存器，每个停止代次读一次。只写寄存器跳过；声明 readAction 的寄存器或位域禁止自动刷新，可显式手动读其父寄存器。r / Refresh selected 触发单次读取，错误在行内展示。未声明的硬件副作用不能从 XML 推断。
 
-文件最大 32 MiB，要求字节寻址；读取只接受自然对齐的 8/16/32/64 位。\textbf{当前源码在缺失或未知 endian 时默认小端}，与旧说明中的“不猜测”不同；移植时必须核对 SVD。本地 STM32F429 为小端，不受该默认值差异影响。
+文件最大 32 MiB，要求字节寻址；读取只接受自然对齐的 8/16/32/64 位。\textbf{当前 SVD 缺失、未知或非明确 little/big 的 endian 保持 Unknown}，不再补猜小端；UI 禁止自动读取，写入也需要可核实的字节序。旧手册的默认小端结论已失效。
 \src{\path{src/session/watch.rs}；\path{src/ui/watch.rs}；\path{src/ui/formats.rs}；\path{src/svd.rs}: Device::parse；\path{src/ui/peripherals.rs}。}
 
-\subsection{显式修改选中对象}\label{sec:value-writes}
+\subsection{Edit value：统一的预览、应用与结果}\label{sec:value-writes}\label{sec:um-writing}
 在 Watch、Locals、System Regs、Memory 或 Peripherals 选中对象，按 e 或输入 \code{:edit-value} 打开写入窗口。先填写值和输入格式，选择 Preview 检查对象能力、目标、通道、范围/掩码与上下文；\textbf{Preview 不发送写操作}。检查后 Apply 提交一次写入，结果显示后端执行与验证信息。Cancel 取消未提交的草稿，不能撤销已经发送的 Apply。
 
 编辑要求当前有效的停止上下文，CPU 物理寄存器还要求物理 frame 0；只读对象、后端不支持项或已失效的上下文会显示原因并阻止提交。运行、切核或换帧导致上下文变化后应重新预览。SVD 权限、写副作用、内存访问和后端回读能力决定实际支持范围；回读结果也可能来自服务缓存，不代表独立硬件测量。多镜像隔离求值与挂起 Guest 的保存上下文仍只读，不能通过该窗口写任意镜像对象。
 \src{\path{src/ui.rs} 的 e / edit-value 路由；\path{src/ui/writes.rs}；\path{src/writes/} 与 \path{src/session/writes.rs}。}
+
+\newsection{System Regs：系统寄存器、能力与采样}
+\label{sec:system-registers}
+
+
+\subsection{从 GDB 基础列表到芯片专用目录}
+System Regs 和 Peripherals 是两套视图。GDB target description 提供服务器暴露的 CPU regfile；系统 TOML 补充 SCB/NVIC、MPU、FPU 配置及调试组件等定义、位域、条件和访问来源；CMSIS-SVD 提供外设元数据。选择 STM32F429、CPU registers 保持 Automatic，并且没有显式 CPU/catalogue 覆盖时，1.2.0 起自动加载 F429 专用目录。Generic GDB 只依赖服务器，不要求存在系统 TOML。
+
+F429 的 617 项是展开后定义数量，包含别名和架构容量位置，SCB 有 31 项；它不是 617 个独立硬件寄存器，也不是全部可读/可写。仅看到 R0--PC/xPSR 等基础项时，先检查 CPU/catalogue 的有效来源，再检查 Target/All、分组折叠、Find 和滚动位置，最后查看 Probe、Status 与通道；不要先用原始命令强行遍历全部地址。
+
+\subsection{目录选择、优先级和可安装芯片}
+\label{sec:um-register-config}
+\begin{enumerate}
+\item 工程显式 \code{tools.chip_profile} 优先于用户同名 \path{profiles/chips/<chip>.toml}，再到安装内 \path{tools/devices/<chip>.toml}。
+\item 工程/profile 显式 \code{registers.cpu/catalogue}（包括空字符串）优先于芯片默认值；非空 catalogue 文件优先于 CPU preset。只改 CPU 不会自动清除继承的 catalogue。
+\item CPU preset 先找用户 \path{profiles/registers/<cpu>.toml}，再找同名内置目录；无 CPU/catalogue 时回到 GDB。损坏、目录冒充文件、缺失显式文件不能静默回退。
+\item Setup 的 Automatic 移除工程选择，恢复 profile/chip 默认；GDB target description only 显式清空 CPU 和 catalogue。可选芯片默认文件未安装时回退 GDB 并显示诊断，已存在但损坏或缺少继承则报错。
+\item 路径相对声明字段的项目、profile 或芯片文件解析。芯片元数据的 \code{register_catalogue} 可用 \code{builtin:registers/stm32f429.toml} 引用安装内目录；工程 \code{registers.catalogue} 是普通文件路径，不把此 builtin 引用照抄进去。Automatic 可直接跟随安装资源，无需记录 npm 绝对路径。
+\end{enumerate}
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+# Optional project-owned copy: copy stm32f429.toml, cortex-m4.toml
+# and armv7m-common.toml together into the project's registers/.
+[registers]
+cpu = "cortex-m4"
+catalogue = "registers/stm32f429.toml"
+
+# CPU preset instead of an inherited catalogue:
+# [registers]
+# cpu = "cortex-m4"
+# catalogue = ""
+
+# GDB dynamic list:
+# [registers]
+# cpu = ""
+# catalogue = ""
+\end{lstlisting}
+\end{minipage}\par
+升级保留旧显式选择。因此旧工程若固定 cortex-m4，不会自动变成 F429 专用目录；在 Setup 恢复 Automatic 并重新 Start。保存只写工程，不改共享 profile 或用户目录。
+
+新增芯片在用户 \path{profiles/chips/} 放带 \code{[chip]} 的入口，寄存器目录放 \path{profiles/registers/}。重新打开 Chip 选择器即可发现，不必维护第二份 devices.toml 索引或重编译 Host；旧索引继续兼容。最小元数据骨架如下，\textbf{不是可直接连接的板级配置}：
+\begin{lstlisting}
+# profiles/chips/example-m3.toml
+[chip]
+cores = [0]
+backend = "example-m3"
+cpu = "cortex-m3"
+register_catalogue = "../registers/example-m3.toml"
+[core_targets."0"]
+endpoint = "127.0.0.1:3333"
+
+# profiles/registers/example-m3.toml is a different file:
+# version = 1
+# cpu = "cortex-m3"
+# architecture = "armv7-m"
+# extends = ["cortex-m3"]
+\end{lstlisting}
+使用内置 ARM/OpenOCD 还须补齐 service.args、正确 board/target cfg、core target/端口和 PPB/组件 owner；这些不能由芯片名字推断。文件可选择已实现的 reader/writer 协议；新访问协议仍需开发 Host/后端。
+
+\Needspace{12\baselineskip}
+\subsection{面板操作和按需读取}
+\begin{longtable}{@{}P{35mm}P{126mm}@{}}
+\toprule 入口 & 操作与边界\\\midrule\endhead
+Find / Group & 筛选名称与分类；输入期间暂停自动读，确认/退出后只读最终列表。清空输入本身不会要求遍历全部定义。\\
+Target / All & Target 隐藏当前已确认未实现的项；All 展示目录与阻断原因，不强制试读。该选择与执行 Scope Core/All 分离。\\
+Read & 显式重读选中对象；不会绕过 WO、缺 reader、权限、owner、存在性和使能条件。\\
+Probe caps & 仅在当前物理核、frame 0、暂停状态执行有界能力采样；既不自动 enable，也不读未知地址扫描硬件。\\
+Status / t & 查看上下文、状态、原因、原始值、来源、字段及统计；打开/滚动详情不触发 I/O。\\
+Read bank / MPU regions & 仅在对应身份、容量和恢复协议满足时执行受保护 bank 事务；打开总览本身只展示缓存。\\
+M7 cache & 查看/读取 I/D cache 身份配置；CSSELR 临时选择必须恢复，不执行 cache maintenance。\\
+Cancel read / Esc & 非搜索模式取消当前核读取；搜索模式 Esc 先退出搜索。当前原子事务完成恢复后停止后续项并丢弃该批新样本。\\
+Edit value & 进入预览/应用流程，见第\ref{sec:um-writing}节；有定义、有值和 RW 均不等于有 writer。\\\bottomrule
+\end{longtable}
+组/寄存器/位域可分别展开，位域从父 raw 解码；改变格式不写目标。自动调度只处理可见、安全、适合当前上下文的对象，折叠项不会被当作全表刷新。纯查状态、帮助、统计和格式操作不构成后台轮询。
+
+
+\Needspace{9\baselineskip}
+\subsection{寄存器显示格式、字段与偏好}
+\label{sec:register-formats}
+选中寄存器值后按 f/右键打开格式菜单。除二/八/十六进制和无符号十进制，还可选 \textbf{Signed decimal}；非字段的 32/64 位 raw 可按 \textbf{Float32/Float64} 解释。向量按较小且整除总宽度的 8/16/32/64 位 lane 分组，解释为 hex、unsigned、signed；float lane 仅支持 32/64 位。lane 0 是 raw 的最低有效位片段，不根据主机字节序反转。位域只能选择整数格式，不提供浮点/向量解释。
+
+这些操作只解释已取得的位串，既不执行目标浮点运算，也不证明目标具有相应 SIMD/双精度运算能力。Float 保留正负零及 Infinity；NaN 展示 quiet/signaling、符号和原始位。没有有效 raw 时不会以 0 填补。S/D/Q 重叠视图按存储映射去重，选择另一种视图不会多出一个独立硬件寄存器或 writer。
+
+分组展开、字段展开、Core/SIMD/System/All 分类、Target/All definitions、Find 查询和格式分别保存在 \code{ui.register_views}；作用域包含目录、芯片和核心。对象字段为 open、fields、filter、all\_definitions、query、formats；filter=0/1/2/3 分别为 All/Core/SIMD/System，默认展开 core、all\_definitions=false，其余集合/查询为空。单次 \code{register_preferences} 以 scope 和 preferences 只合并该作用域，避免普通 \code{ui_preferences} 覆盖其他目录/核。寄存器值、Probe 证据和有效性不属于持久显示偏好，重启后必须重新取得。
+
+\begin{lstlisting}
+# Example value inside one ui.register_views.<scope>.formats table:
+"d0" = { kind = "float", bits = 64 }
+"q0" = { kind = "vector", lane_bits = 32, interpretation = "float" }
+\end{lstlisting}
+上述 scope 应由 UI 生成；示例只有对象格式值，不是完整工程配置。菜单仅列当前位宽可用的格式。显示格式与写入输入格式、目标字节序及真实 writer 是三个不同维度。
+\src{\path{src/registers/display.rs}；\path{src/ui/formats.rs}；\path{src/ui/registers.rs}；\path{src/config.rs}: save\_register\_view。}
+
+
+\subsection{为什么有值却灰显：状态与新鲜度}
+Sample 绑定实际 owner、session、停止 generation 和适用 frame。Continue、换核、换帧、重连、目录/身份变化以及依赖失效会撤销不再适用的结果；旧 raw 可保留供查看，但标 Stale。1.1.3 修复了无关字段/能力更新把其他有效样本全部误灰的问题；不能通过去掉 Stale 标记来掩盖真实失效。
+\begin{longtable}{@{}P{31mm}P{130mm}@{}}
+\toprule 状态 & 含义和正确处理\\\midrule\endhead
+Not read & 尚无本上下文的有效读取；展开安全项、Probe 或显式 Read。未读取不等于值为 0。\\
+Valid & 当前上下文匹配且有 raw；仍须查看访问来源与硬件含义，不保证多项原子快照。\\
+Not implemented & 当前证据确认不在实际容量/实现范围，停止访问；不能由未使能的零值推断。\\
+Unavailable & Unknown、缺能力/使能或访问条件不满足；先看具体 reason，再按板级流程取得证据。\\
+Reader unsupported & 描述存在但没有可执行 reader，或实际后端协议不匹配；重复 Read/Probe 不会修复。\\
+Access restricted & 1.3.3 起支持的明确路径禁止或访问证据不满足；保留原因且不发送 I/O，不能靠手动 Read 或别名绕过。\\
+Error & 本次访问失败；旧值可保留，但状态和旧值 provenance 必须分开。\\
+Write only & 只写接口，不可当普通值读取，手动请求也不绕过限制。\\
+Stale & 旧样本不再属于当前上下文；正确暂停、重新 Probe 并重读。保留旧 raw 不表示本次读取成功。\\\bottomrule
+\end{longtable}
+表中 Access restricted 需要 1.3.3 或更新的配套 EXE；1.3.2 仍沿用此前八类。新增规则与访问保护见附录~\ref{sec:um-development}。Unknown、NeedEnable、AccessRestricted 等 reason 与样本状态分工，不能把全部灰色都解读为通信失败。
+
+Total 为全部定义；Shown 为筛选、展开后的寄存器行数，含视口外行，不含组标题和位域；Valid 为其中的新鲜有效样本。Status 的 probe 与样本统计可能重叠，别名/重叠视图共享请求。定义数、raw 数、未发 I/O 项、去重请求及响应数含义不同，不能相加作会话累计读取量。
+
+\subsection{Probe、芯片策略与 discovery}
+Probe 先核对实际 CPUID/MIDR 和物理上下文，再读取已适配的身份/容量。M 核 MPU、DWT、FPB、FPU 由当前物理观测决定；NVIC 优先级位数/IRQ 名称分别记录 SVD 或显式配置来源，配置不能冒充物理存在证据。DEMCR.TRCENA 未使能、FPU 能力未知或身份冲突时保留原因，不自动修改使能位。
+
+1.2.4 起 Probe 全程使用已经继承和芯片覆盖的最终 catalogue；缺项、RO/WO、读副作用、owner、权限及访问条件均在 I/O 前检查。不得拿通用 M4 模板绕过 F429 对 MVFR2 等项的限制。通用 \code{discovery} 可声明最多 128 个有界附加读取、64 条规则，每条最多 64 个同上下文字段条件；其内容不包含命令或 writer。配置声明、旧样本和读失败都不能生成新物理证明。
+
+F429 的 discovery 通过 CPUID、ROM 表项、CID/PID/DEVTYPE，再到 TPIU/ETM 的已适配身份和能力字段逐级核实；地址和判据在芯片 TOML。能力读成功不等于 Trace 已采集，Host 没有 SWO/ETM 解码面板，不自动解锁、开启 Trace 或进入集成测试模式。DHCSR、SysTick CTRL、DWT FUNCTION 等有副作用或专用条件的项遵守手动读取策略。
+
+\subsection{Cortex-M3/M4/M7、FPU、NVIC、DWT/FPB}
+\begin{longtable}{@{}P{31mm}P{130mm}@{}}
+\toprule 范围 & 已适配行为与使用限制\\\midrule\endhead
+M3/M4/M7 公共 & SCB、故障字段、NVIC、SysTick、MPU、Debug/DWT/FPB 目录与 CorePrivate。相同 PPB 地址在不同核是不同对象，必须独立绑定 AP/target。\\
+F429 专用 & SCB/NVIC/SysTick/MPU/FPU、调试/Trace 组件及 DBGMCU 的芯片覆盖；定义与实际实现分开。NVIC 架构位置上限不等于实际 IRQ 数。\\
+FPU 数据 & M4/M7 复用 GDB regfile；支持值/位格式及 S/D 重叠视图，先检查 ID、布局与实际后端。没有自动授予 D/S/FPSCR 系统 writer。\\
+DWT/FPB & 身份、容量、比较器和适配字段可按条件读取；不自动配置 watchpoint/断点命中实验。FUNCTION 的读取可能改变粘滞状态。\\
+M MPU & 暂停 frame 0 后 Probe，显式 Read 总览；一个 Tcl/AP 事务临时选择 RNR，读取容量内 RBAR/RASR，恢复并回读 RNR，不改 CTRL/区域配置。\\
+M7 cache/TCM & CLIDR/CTR/CCSIDR、CCR/CACR/TCM 配置；受保护 CSSELR bank 采样。维护命令保持 WO，不执行清/刷 cache，也不自动 enable。\\
+运行态安全读取 & 仅允许目录规则、owner 和显式 \code{while_running=true} 通道同时授权的 MMIO/CorePrivate 读取；GDB regfile、selector/bank/Probe 仍要求暂停。F429 默认 core-tcl 为 stopped-only。\\\bottomrule
+\end{longtable}
+普通 GDB/内存 fallback 不提供 selector 事务。MPU/cache bank 出错、取消或上下文变化时不发布部分结果；selector/scratch/target 恢复未确认则服务进入 FAULT，禁止换通道重试。依次采样多个寄存器不保证硬件原子快照。
+
+\subsection{R52、R52+、低 EL 与多核兼容}
+R52 目录可描述 CP15、banked、VFP、MPU、Timer、PMU、GIC、STM/Debug 等类别，但类别存在不代表当前工具与芯片全部可读。普通 R52 的 CP15、MPU/Timer/PMU/GIC/VFP 注入路径要求已核对的 Arm D13、AArch32、当前 Debug EL2 及新鲜身份/容量，逐事务核对 DSPSR/DLR、scratch 和 target 的保存/恢复。银行协议另允许当前 EL0 下七项 User 银行的 MOV32 路径，须用匹配的自定义目录；其他银行受限，EL1 完整读取仍未适配。停止前 CPSR/DSPSR 中的 User 状态不等于当前 Debug EL，也不授权访问。
+
+\begin{lstlisting}
+# Only for a verified D13 R52 board and matching patched OpenOCD.
+[registers]
+cpu = "cortex-r52"
+cp15_command = "aarch64 r52_read"
+selector_command = "aarch64 r52_select"
+isb_command = ""
+tcl_endpoint = "127.0.0.1:6666"
+[registers.targets]
+"core.0" = "soc.r52.0"
+"core.1" = "soc.r52.1"
+\end{lstlisting}
+此示例只说明协议选择，端口/target 须按真实板级配置核对；普通 stock OpenOCD、相似版本号或同名命令不能证明实现等价。MPU 容量/selector 协议与 Timer/PMU/GIC/VFP 专用协议分开；没有证明时返回 Unknown、Restricted 或 Unsupported，不改模式、trap、权限或控制位来强读。
+
+\notice{THA6206 在 2026-10-08 观测到外部 MIDR 为 \code{0x410FD161}，属于 R52+（D16）。随包注入后端只核对 R52（D13）；THA6206 默认不启用 CP15/banked/VFP/timer/PMU/GIC 注入协议。基础 GDB 整数寄存器、APB/AHB 内存和 SVD 不因此失效。不能改身份判断或套用上方 D13 示例来“解锁”R52+。Bao/EL1/Guest/User 的完整合法扩展读取仍有限制。}
+
+S/D/Q 是重叠存储视图，容量与 SIMD/FP 能力来自适配的真实证据；原始 64 位存储不证明支持 double 运算。视图共享物理请求，不把 alias 当作额外硬件寄存器。R52 专用后端的软件指令/恢复模型通过，不替代目标硅片执行和实板验收。
+
+\subsection{每核配置、组件归属和来源}
+项目 \code{[registers]} 是默认，\code{[cores.registers]} 可为每核选择不同 CPU、catalogue、targets 和 component\_owners。省略继承，显式空字符串清除相应选择；事实和映射整体覆盖时须完整提供。Core、Cluster、Chip、未知 owner 分开，不能从相同地址或 core ID 推断为同一个组件。Scope All 的运行控制不广播寄存器 Probe、bank 或写操作。
+
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+# A complete project also needs real GDB/service/ELF configuration.
+[registers]
+cpu = "cortex-m7"
+[[cores]]
+name = "core.0"
+endpoint = "127.0.0.1:3333"
+[cores.registers]
+cpu = "cortex-m7"
+catalogue = ""
+[[cores]]
+name = "core.2"
+endpoint = "127.0.0.1:3334"
+[cores.registers]
+cpu = "cortex-m4"
+catalogue = ""
+\end{lstlisting}
+\end{minipage}\par
+这只是异构选择骨架；两个核还须各有独占、已核实的 PPB channel/target。完整路由模板见 \path{profiles/registers-readonly-multicore.toml.example}。切核不复用另一核的容量、Probe、selector 或值。
+
+Status 分开显示 catalogue 来源、配置 CPU、Observed CPU、声明 reader、实际 acquisition 和 access route。实际来源包括 GDB 名称/索引、endpoint、Tcl target、地址、通道、位宽、字节序、请求阶段与时间；planned、started、responded 不等于同一种完成度。失败尝试和旧值原来源分别保存，别名沿用父请求。目录 source/reset/confidence 是描述依据，不能替代本次采样 provenance。
+
+\subsection{目录继承与扩展的约束}
+目录可用 \code{extends=["armv7m-common"]} 或相对文件复用定义；同 ID 替换须 \code{override=true} 且给出完整条目，不偷偷拼补父条目。循环、歧义、多余字段、缺父、过大输入与错误类型在连接前拒绝；上限为每文件 4 MiB、图 16 MiB/16 节点、三层、每节点四个父目录、4096 定义及 256 组。
+
+version 2 要求来源；未知 reset 不写，绝不补 0。confidence=verified 需要独立的日期/板卡/固件/报告声明，但输入声明不表示本次已经上板。结构化 present\_if、access\_rule、need\_enable、reader/writer 和组件映射共同控制访问；手动读不能绕过硬件不存在或权限限制。
+\src{\path{docs/chip-description-host.md}；\path{docs/stm32f429-registers.md}；\path{docs/register-catalogue-inheritance.md}；\path{docs/register-read-provenance.md}；\path{docs/register-r52-core-read.md}；\path{docs/register-storage-views.md}；\path{src/registers/}、\path{src/session/registers.rs}、\path{src/ui/registers/}。}
 
 \newsection{运行时内存读取与数据新鲜度}\label{sec:live}
 运行中显示的普通快照是上次停止值。若要在不暂停 CPU 的条件下读 SRAM 或外设，必须选择环境明确声明的 OpenOCD 通道，并理解读总线与 GDB 求表达式的区别。
@@ -457,12 +747,27 @@ Watch、Locals、Memory 字节默认十进制；CPU 寄存器、SVD 寄存器/�
 
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
-[ui.refresh."single|watch:xTickCount"]
+[ui.refresh."chip:stm32f429|core.0|watch:xTickCount"]
 channel = "ahb"
 interval_ms = 100
 \end{lstlisting}
 \end{minipage}\par
-channel 为空代表默认 GDB；interval\_ms 为 0 关闭循环。多核键由 UI 按核生成，优先通过菜单保存。根结构体策略可由成员继承，成员可单独覆盖。显式逐项策略优先于旧 live\_watch，包括关闭或手动设置。
+channel 为空代表默认 GDB；interval\_ms 为 0 关闭循环。新保存键由 UI 按芯片和核心生成，优先通过菜单保存；上例适用于选中 stm32f429/core.0 的工程。旧 single/core 键继续兼容。根结构体策略可由成员继承，成员可单独覆盖。显式逐项策略优先于旧 live\_watch，包括关闭或手动设置。
+
+
+\Needspace{9\baselineskip}
+\subsection{策略继承、Watch 绑定与读取回执}
+\label{sec:memory-binding}
+Watch、Peripherals 和 Memory 按以下次序查找刷新策略；每一级先查叶子对象，再查适用的 Watch 根：\code{chip:<chip>|<core>|<item>} → 旧 \code{<core>|<item>} → 无作用域 \code{<item>}。某级已显式配置关闭时不继续向下寻找开启策略。无配置为手动 GDB、interval\_ms=0。单核 UI 兼容键为 single，实际 worker 的 Context.core 为 default；通道 cores 限制应使用 default，多核则使用真实配置名称。一般数值 formats 没有同一套自动芯片前缀，不要照抄 refresh 键规则。
+
+\code{watch_resolve} 在暂停时用真实类型和 \code{&(expression)} 求址，表达式数值不是地址证明。根表达式和后端 path\_expr 均需只读语法校验：长度最多 256 字节、嵌套最多 16 层；孩子路径最多 8 层、每个索引小于 4096。成员、数组、解引用、只读算术和普通指针转换可用；函数调用、赋值、自增、逗号、调试器变量及 new/delete 等拒绝。解析期间保存/关闭/恢复 may-call-functions，并核对选中线程、所有同连接线程已停、帧级别/地址和 PC。清理或策略恢复失败进入 FAULT，不能发布可用绑定。
+
+成功响应除 address/bits/signed/float/little\_endian/type 外，还含 context、thread、frame\_address、state、source、binding\_id、selection\_epoch。后续 typed Watch \code{memory_read} 携带同一 \code{watch_binding}、context、selection\_epoch 和原地址/位宽/字节序。换帧、线程通知、重连、不透明 Console 边界、ELF/owner/路线变化使绑定失效；同根同路径重新解析替换旧绑定，缓存上限 256。稳定 RUNNING 时可由已授权 AP 读取停止时绑定的原地址，不额外求值或自动追踪指针新地址；下次停止须重建绑定。
+
+成功内存响应的 \code{access} 记录实际命令、route、上下文、started/responded 阶段和时间区间；UI 同时核对字节数量、范围、原始值、路线指纹和选中线程代次。配置 endpoint/target/source 只是配置声明；GDB 实际 endpoint 未知时保留 null，不能用配置冒充物理观测。失败保留值时保留原来源，不给旧值盖新时间。旧 Headless 客户端可省略绑定而按数值地址读取，但这种兼容调用没有 Watch 类型证明；channel 的 null/数字等错误类型会报错，不回退 GDB。
+
+\src{\path{docs/watch-address-resolution.md}、\path{docs/bus-read-boundary.md}、\path{docs/bus-read-provenance.md}；\path{src/session/memory/watch.rs}、\path{src/ui/memory_access.rs}。}
+
 
 \subsection{必须理解的地址和一致性限制}
 可取地址的标量、指针和成员可解析；临时结果、CPU 寄存器、位域和无地址表达式不能直接总线轮询。指针对象的采样可读到指针值，但已解析的解引用成员不会在运行中自动跟踪指针的新地址，下次暂停才重新解析。64 位值以两次 32 位读组合，不保证原子性。
@@ -474,8 +779,8 @@ channel 为空代表默认 GDB；interval\_ms 为 0 关闭循环。多核键由 
 \begin{tikzpicture}[node distance=8mm]
 \node[box,text width=105mm] (v) {当前可见项 + 刷新策略 + 间隔到期};
 \node[box,text width=105mm,below=of v] (g) {检查核 / generation / 用户请求优先级；最多一个采样请求在途};
-\node[box,text width=43mm,below=8mm of g.south,xshift=-29mm] (r) {暂停时解析表达式\\GDB → 地址/宽度/类型/端序};
-\node[box,text width=43mm,below=8mm of g.south,xshift=29mm] (t) {显式通道读内存\\TCL → target read\_memory};
+\node[box,text width=43mm,minimum height=20mm,below=8mm of g.south,xshift=-29mm] (r) {暂停时解析表达式\\GDB → 地址 / 宽度\\类型 / 端序};
+\node[box,text width=43mm,minimum height=20mm,below=8mm of g.south,xshift=29mm] (t) {显式通道读内存\\TCL → 命名 target\\read\_memory};
 \node[box,text width=105mm,below=10mm of r.south,xshift=29mm] (u) {验证响应的核与代次 → 解码 → 独立 LIVE 缓存 → 绘制};
 \draw[arr] (v)--(g);\draw[arr] (g)--(r);\draw[arr] (g)--(t);
 \draw[data] (r.south)--($(u.north)+(-29mm,0)$);
@@ -757,20 +1062,19 @@ SWO / ETM / RTT & 当前没有专用采集/解码 UI。RTT 是目标 RAM 缓冲�
 实际移植应先验证调试访问，再验证运行时读取或 CTI，最后单独验收 Trace 的完整采集链。即使外部工具能显示 SWV，也不意味着 DebugTUI 已接入该数据源。后续工具配置只建立本工程已实现的 GDB/TCL 路径，避免把芯片可选能力混入现有 profile 的承诺。
 
 \newsection{tools：GDB 与 OpenOCD}\label{sec:tools}
-\subsection{三个 profile 的差异}
-下表均为仓库实际配置。三者复用 ARM GDB、GDB 端口 3333 和 TCL 6666，telnet 禁用，仅监听本机。同一端口不能由两个服务同时占用。SEGGER J-Link GDB Server 不再随附，见第\ref{sec:jlink-server}节。
 
-\noindent\begin{tabularx}{\linewidth}{@{}P{31mm}Y Y Y@{}}\toprule
-项目 & OpenOCD/J-Link & OpenOCD/CMSIS-DAP & OpenOCD/ST-Link\\\midrule
-profile 文件 & \path{debug-env.toml} & \path{debug-env.toml} & \path{debug-env.toml}\\
-服务程序 & openocd & openocd & openocd\\
-探针驱动 & OpenOCD jlink & OpenOCD cmsis-dap & OpenOCD st-link（dapdirect）\\
-芯片/接口 & stm32f4x / SWD & stm32f4x / SWD & stm32f4x / SWD\\
-速度 & 1000 kHz & 1000 kHz & 1000 kHz\\
-TCL 实时读 & ahb / core-tcl & ahb / core-tcl & ahb / core-tcl\\
-退出前动作 & monitor resume & monitor resume & monitor resume\\
-本地证据 & 0.8.0/F429 运行读取等实板通过 & 2026-09-20 最新本地实板资料完整 & 仅配置解析，尚未上板\\\bottomrule
+\subsection{公共 profile、芯片与 Probe 的分工}
+当前 STM32 与 THA 系列共用 \path{tools/debug-env.toml}，以 \code{builtin:arm-openocd} 引用。Probe 只选 OpenOCD 驱动，芯片 TOML 决定 board/target、服务参数、核心端口、动作、SVD 与寄存器默认值。不存在必须为每个探针复制一份项目和 profile 的要求。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{32mm}Y Y Y@{}}\toprule
+项目 & CMSIS-DAP & J-Link & ST-Link\\\midrule
+tools.probe & cmsis-dap & jlink & stlink\\
+OpenOCD cfg & probes/cmsis-dap.cfg & probes/jlink.cfg & probes/stlink.cfg\\
+工具入口 & builtin:arm-openocd & builtin:arm-openocd & builtin:arm-openocd\\
+实板边界 & F429、THA6206 有分阶段记录 & F429 有历史记录；长会话问题另列 & 配置/软件支持不代表已上板\\\bottomrule
 \end{tabularx}
+
+以上 J-Link 是 OpenOCD 的探针驱动，不是 SEGGER GDB Server。选择 Generic GDB 时使用 \path{tools/debug-generic.toml}，连接外部 Server，不加载上述 OpenOCD 服务。F429 默认 SWD 1 MHz，THA6 默认 SWD 5 MHz；地址、频率和复位流程由各芯片/板级配置决定。相同端口不能由两个 Server 同时占用。
 
 \subsection{GDB 最小运行环境}
 仓库 GDB 的工具链发行标识为 GNU Tools for STM32 13.3.rel1.20240926-1715。调试器版本为 GDB 14.2.90.20240526-git。profile 不只指定 EXE，还设置 data-directory、debug-file-directory、auto-load 路径，移除继承的 PYTHONHOME/PYTHONPATH；这些安排用于该工具分发，不代表任意 GDB 都必须采用相同目录结构。
@@ -792,7 +1096,7 @@ init = ["set remotetimeout 5", "set tcp connect-timeout 5"]
 核心追加 \code{-nx -q --interpreter=mi2}，关闭分页与交互确认，尝试开启 mi-async。GDB 自身资源或 DLL 问题应先在独立命令行复现；TUI 不补造目标能力。
 
 \subsection{OpenOCD 服务和目标动作}
-仓库分发 DebugTUI 补丁版 OpenOCD：上游 \code{d3ebb8d} 加 \path{third_party/openocd-adapter} 的 ARMv8-R 寄存器适配，版本串为 \code{0.12.0+dev-gd3ebb8d-dirty}（2026-10-06）。它保留上游调试功能并提供 R52 寄存器专用协议，STM32 与 R52 工程共用；只完成构建、协议命令和配置解析的软件验证，未连接探针或板卡。配套 libusb、HIDAPI DLL 和精简后的 upstream scripts（STM32 系列 target、J-Link/CMSIS-DAP/ST-Link 接口与通用辅助脚本，共 40 个，内容未修改）已纳入工具校验清单；GPL 对应源码随 v0.10.0-readonly.1 Release 提供。其他芯片的脚本需从对应 OpenOCD 版本或厂商获取。
+仓库分发 DebugTUI 补丁版 OpenOCD：上游 \code{d3ebb8d} 加 \path{third_party/openocd-adapter} 的 ARMv8-R 寄存器适配，版本串为 \code{0.12.0+dev-gd3ebb8d-dirty}（2026-10-06）。STM32 与 R52 工程共用该程序；R52 专用注入协议的构建/入口/恢复模型软件验证与 F429 常规 OpenOCD 实板验证分开，不能相互替代。配套 DLL、精简 upstream scripts 和许可证按来源证明核对；各 Release 的 \path{corresponding-source.zip} 提供修改版 OpenOCD 对应源码，摘要须匹配 PROVENANCE。其他芯片的脚本需来自匹配 OpenOCD 或厂商版本。
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
 [service]
@@ -820,10 +1124,10 @@ before_disconnect = ["monitor resume"]
 on_exit = "detach"
 \end{lstlisting}
 \end{minipage}\par
-这是 STM32 芯片描述的配置示意；公共入口为 \path{.vscode/debug-env.toml}，芯片参数放在 \path{.vscode/devices/stm32f429.toml}。三种探针共用 \path{.vscode/openocd/stm32f429.cfg}，只修改公共入口的 \code{probe.config} 选择 \path{openocd/probes/} 下的驱动。实际逐核端口和 ready 由芯片描述的 core\_targets 提供。ready 是输出子串就绪条件，不代表符号已加载或应用完成启动；之后仍需 GDB 连接和实际状态查询。
+这是 STM32 芯片描述示意；新工程引用 \code{builtin:arm-openocd}，包内芯片文件为 \path{tools/devices/stm32f429.toml}，板级文件为 \path{tools/openocd/stm32f429.cfg}。三种 Probe 由工程 tools.probe 独立选择。\path{.vscode} 路径只用于兼容旧安装，不是新工程必需目录。实际逐核端口和 ready 由芯片描述的 core\_targets 提供。ready 是输出子串就绪条件，不代表符号已加载或应用完成启动；之后仍需 GDB 连接和实际状态查询。
 
 \subsection{自行安装的 J-Link Server}\label{sec:jlink-server}
-tools 不再包含 SEGGER J-Link 软件：其许可证要求每次再分发都事先取得 SEGGER 书面授权。需要 SEGGER Server 时，从 SEGGER 安装 J-Link Software，把 \path{docs/examples/jlink-gdb-server.toml} 复制到 tools 目录，并把 \code{service.command} 改为本机安装路径。该 Server 没有 OpenOCD TCL 端口，Memory access、Live refresh 和寄存器专用读取不可用。
+tools 不再包含 SEGGER J-Link 软件：其许可证要求每次再分发都事先取得 SEGGER 书面授权。需要 SEGGER Server 时，从 SEGGER 安装 J-Link Software，把 \path{docs/examples/jlink-gdb-server.toml} 复制到 tools 目录，并把 \code{service.command} 改为本机安装路径。该 Server 没有 OpenOCD TCL 端口，依赖 Tcl/AP 或 R52 专用协议的通道不可用；GDB 基础寄存器和已适配的停止态 GDB 内存路径仍按其能力使用。
 
 本地 J-Link Server 路径有普通调试成功记录，也有约 52--53 秒后的长会话访问失效记录。使用前应同时阅读第\ref{sec:jlink-duration}节；短程连接成功不能代替长会话稳定性验证。
 \par\noindent\begin{minipage}{\linewidth}
@@ -840,18 +1144,15 @@ timeout_ms = 15000
 该环境的 restart 依次执行 reset、halt 和刷新寄存器缓存。run 在此基础上继续，download 首先 \code{-target-download}。\code{-singlerun} 使 Server 在客户端断开后自行结束，外部服务也可能因此退出，不意味着 TUI 杀死了它。参数语义见\href{https://kb.segger.com/J-Link_GDB_Server}{SEGGER 官方 GDB Server 文档}；本地旧版使用 \code{-select USB}，不要直接照搬新版本专用参数。
 
 \subsection{手动启动与所有权}
+先在 Tools/profile 的资源说明确认实际安装 tools 路径。下面第一终端手动启动服务；第二终端使用第\ref{sec:um-generic}节的 Generic 项目，避免重复启动服务。旧版 \path{.vscode/bin} 工具副本也可使用，但需明确与当前安装的版本关系。
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
-# Installed project root, terminal 1:
-./.vscode/bin/openocd/bin/openocd.exe `
-  -s ./.vscode/bin/openocd/scripts `
-  -f ./.vscode/openocd/probes/cmsis-dap.cfg `
-  -f ./.vscode/openocd/stm32f429.cfg
+# Terminal 1: replace with the actual installed tools directory.
+$toolRoot = "<DebugTUI-installation>/tools"
+& "$toolRoot/bin/openocd/bin/openocd.exe" -s "$toolRoot/bin/openocd/scripts" -f "$toolRoot/openocd/probes/cmsis-dap.cfg" -f "$toolRoot/openocd/stm32f429.cfg"
 
-# Terminal 2, retaining this profile's GDB arguments and actions:
-debugtui --environment ./.vscode/debug-env.toml `
-  --chip stm32f429 --cores 0 `
-  --connect 127.0.0.1:3333 --elf <matching.elf>
+# Terminal 2: debug.toml contains builtin:generic-gdb.
+debugtui --project ./debug.toml --connect 127.0.0.1:3333 --elf ./Debug/FreeRTOS_Project.elf
 \end{lstlisting}
 \end{minipage}\par
 外部启动的服务由启动者管理。TUI 的工作区重建、任务执行或退出只终止自己启动的服务/GDB/子任务。OpenOCD 在 GDB 断开后继续运行，由启动者用 Ctrl+C 结束。
@@ -867,7 +1168,7 @@ debugtui --environment ./.vscode/debug-env.toml `
 主 Flash & 链接 ORIGIN=0x08000000，LENGTH=1024K。\\
 主 SRAM & 链接 ORIGIN=0x20000000，LENGTH=192K；栈顶 0x20030000。\\
 CCM RAM & 链接 ORIGIN=0x10000000，LENGTH=64K。声明区域不代表全部被使用或可经任意 AP 路径访问。\\
-程序文件 & \path{build/FreeRTOS_STM32F429.elf}，不要误选历史 \path{Debug/FreeRTOS_Project.elf}。\\
+程序文件 & 当前 CubeIDE 示例为 \path{Debug/FreeRTOS_Project.elf}；旧 \path{build/FreeRTOS_STM32F429.elf} 属于另一构建流程，须与实际烧录镜像匹配。\\
 编译参数 & \code{-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard -O0 -g3}。\\
 RTOS 配置 & FreeRTOS 抢占式；tick 1000 Hz，heap 配置 15360 字节。\\
 本地 DAP 探针 & 历史报告 ATK-FS-HID-CMSIS-DAP，固件 2.0.0，SWD 1000 kHz。\\\bottomrule
@@ -875,7 +1176,7 @@ RTOS 配置 & FreeRTOS 抢占式；tick 1000 Hz，heap 配置 15360 字节。\\
 芯片系列概况参\href{https://www.st.com/en/microcontrollers-microprocessors/stm32f429ig.html}{ST STM32F429IG 产品资料}；本表容量取自本地链接脚本和历史设备识别，不将系列“最大容量”误写为此板容量。主 SRAM 与 CCM 应分别看待，不应把它们当作从 0x20000000 开始连续的 256 KiB。
 
 \subsection{可复制的项目配置}
-以下配置以固件工程目录为根，先安装工具到 \path{.vscode}，在公共入口选择 CMSIS-DAP。芯片选择为 STM32F429/Core0；这是手册示例，本文未改写用户工程。
+以下配置以 FreeRTOS\_Project 根目录为基准，直接引用安装内工具，选择 STM32F429/Core0。外部工程脚本为 \path{G:/Data/GitFiles/Keil/STM32_CubeIDE/FreeRTOS_Project/debug-task.ps1}；它不随 DebugTUI 分发。本文核对脚本但没有执行构建或下载。
 \par\noindent\begin{minipage}{\linewidth}
 \begin{lstlisting}
 version = 3
@@ -883,17 +1184,18 @@ watch = ["xTickCount", "uwTick"]
 breakpoints = ["main"]
 
 [tools]
-profile = "./.vscode/debug-env.toml"
+profile = "builtin:arm-openocd"
+probe = "cmsis-dap"
 [debug]
 chip = "stm32f429"
 cores = [0]
 [program]
-elf = "build/FreeRTOS_STM32F429.elf"
+elf = "Debug/FreeRTOS_Project.elf"
 source_root = "."
-# SVD follows Chip from .vscode/svd/; no fixed project override.
+# SVD, CPU/catalogue and PPB/DBGMCU follow Chip/Automatic.
 [tasks]
-build = "mingw32-make -j8"
-download = ""
+build = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./debug-task.ps1 -Action Build"
+download = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File ./debug-task.ps1 -Action Download"
 timeout_ms = 300000
 [session]
 log_dir = "debug-logs"
@@ -901,7 +1203,7 @@ on_exit = "detach"
 timeout_ms = 8000
 \end{lstlisting}
 \end{minipage}\par
-\code{download = ""} 使下载回退至 profile 的 GDB action。旧工程如果仍保留启动 J-Link 的外部下载命令，它会优先于新的 CMSIS-DAP profile，必须检查清楚。Build 依赖工程自己的 GCC/make 和 PATH；tools 的最小包只含调试器/Server，不包含完整固件构建工具链。该 Makefile 使用 which、ls 等工具查找 GCC，构建环境还需提供对应命令或适配工程脚本。
+本例 Download 调用工程脚本，通过 CMSIS-DAP 执行 program/verify/reset；\code{download = ""} 则回退至 profile 的 GDB action。旧工程如果仍保留启动 J-Link 的外部下载命令，它会优先于新的 CMSIS-DAP profile，必须检查清楚。Build 依赖工程自己的 GCC/make 和 PATH；tools 的最小包只含调试器/Server，不包含完整固件构建工具链。本机脚本从 CubeIDE 插件发现 GCC 与 make/sh，只修改任务进程 PATH；须先由 CubeIDE 生成 Debug/makefile。其他安装根可用脚本 -CubeRoot 参数适配。脚本的 Download -CheckOnly 只解析配置并 shutdown，不初始化探针；真正 Download 会写 Flash 并复位。
 
 \subsection{板级 OpenOCD 脚本}
 以下为共用 \path{.vscode/openocd/stm32f429.cfg}；探针驱动先由独立的 \path{openocd/probes/*.cfg} 加载：
@@ -965,6 +1267,11 @@ SVD 文件版本 1.9，含 84 个外设描述，原文件 2118594 字节。其�
 \src{关联固件 \path{debug.toml}、\path{Makefile}、\path{STM32F429IGTX_FLASH.ld}、\path{Core/Inc/FreeRTOSConfig.h}、\path{BSP/USER_TASK/Src/user_task.c}；\path{resources/svd/stm32/catalog.json}；第\ref{sec:evidence}节证据表。}
 
 \newsection{THA6206：GHS 单核与多核适配}\label{sec:tha6206}
+\subsection{当前内置入口与 R52+ 边界}
+1.1.1 起 THA6104/6206/6412 共用内置工具，核心范围分别为 [0]、[0,1]、[0,1,2,3]。物理编号不重排：单选 core1 仍连接 3334，选择 [1,3] 对应 3334/3336。模板 \path{profiles/tha6-bundled-project.toml.example} 提供 MCAL 启动顺序与共享 chipreset；芯片复位由 core0 执行一次，不含 core0 的组合是附加调试，需先完成系统初始化。
+
+MCAL Build 仍依赖工程 GHS，Download 仍调用工程 \path{.vscode/Load.bat} 和厂商 jtag.exe；包内工具不提供 THA Flash 算法。Bao 使用自己的 ELF/构建/烧录和启动策略，不能照搬 MCAL 的复位屏障。THA6206 实测 R52+ 的注入限制见第\ref{sec:system-registers}节；不能以普通 GDB 成功推断扩展系统寄存器已适配。三个 THA SVD 的可获得性须核对实际发布附件。
+
 \subsection{参考工程、路径与证据边界}
 本节沿用 STM32 章节的“工具、连接、下载、执行、数据、验收”顺序，但采用 THA6206 的板级脚本。芯片为双 Cortex-R52，调试配置使用 Armv8-R、AArch32；不能直接替换 STM32 profile 的芯片名称后使用。
 
@@ -1083,7 +1390,7 @@ for {set _core 0} {$_core < $_cores} {incr _core} {
     catch {APB_1 mww [expr {$_dbgbase + 0x090}] 0x4}
 }
 \end{lstlisting}\end{minipage}\par
-上面仅摘录两个不同用途的写操作，不能替代完整 cfg。当前脚本仍以固定延时等待，没有显式轮询 EDPRSR.SR/HALTED 完成状态；catch 允许流程继续，但不证明写入成功，也不消除 Server 已输出的错误。应用复位和调试复位的影响应按芯片定义判断，不能由 DEBUGCORE=1/2 推导为单核隔离复位。
+以上写操作不能替代完整 cfg。脚本用固定延时，未轮询 EDPRSR.SR/HALTED；catch 不证明写入成功或清除 Server 错误。复位范围按芯片定义，DEBUGCORE=1/2 不表示只复位单核。
 
 本地离线 Tcl 检查覆盖 DEBUGCORE=1/2/3、首次与再次 chipreset、掩码 examine、CSE 写值和 target 恢复。2026-09-23 使用修正后脚本完成单核/多核实板回归，见第\ref{sec:tha-086-validation}节；未做 CSE 新旧值的硬件 A/B 试验，不能仅据功能通过证明复位过程中每次写入都被确认。
 \src{M：\path{.vscode/openocd.cfg}、\path{.vscode/THA6206/tha6206.svd}；Arm Cortex-R52 TRM 100026\_0104\_00\_en，11.6.2；\href{https://github.com/ARM-software/CSAL/blob/master/include/csregisters.h}{Arm CSAL 寄存器定义}。}
@@ -1189,7 +1496,7 @@ cores = [0]
 \end{figure}
 所选核至少一个且不能重复，必须在型号声明中；远程端口不能重复。配置逐核 ready 时，每个所选核都须提供就绪标记。core1-only 在界面和偏好中仍称 core.1，但其工作区 index 可以是 0。内部索引用于当前会话路由，不能拿来生成板级 DEBUGCORE 掩码。
 
-Watch/断点按 chip 加 core.N 存储；切换选择不丢失未选核定义。该隔离不应泛化为所有 UI 偏好：当前 formats/refresh 仍使用既有核心/对象键，应在换芯片时核对通道及寄存器读取策略。共享 Reset 的指定核未选中时只清除共享 restart 动作，不会自动给该核创建会话；各自的板级动作仍必须与目标启动条件匹配。
+Watch/断点按 chip 加 core.N 存储；切换选择不丢失未选核定义。刷新策略已优先使用 chip/core/object 键，并兼容旧键；一般 formats 使用另一套对象键，不能把所有 UI 偏好概括为同一隔离规则。完整优先级见第\ref{sec:memory-binding}节。共享 Reset 的指定核未选中时只清除共享 restart 动作，不会自动给该核创建会话；各自的板级动作仍必须与目标启动条件匹配。
 \src{\path{src/devices.rs}: resolve/Plan::apply；\path{src/config.rs}: from\_document/save\_preferences；\path{src/launch/devices.rs}；\path{profiles/devices.toml}。}
 
 \subsection{0.8.6 单核与多核实板结果}
@@ -1640,13 +1947,13 @@ RCC/PORT 读失败或值不更新 & CPU 当前 MPU 权限、ahb 通道、刷新�
 
 \newsection{项目与环境配置参考}\label{sec:config}
 \subsection{覆盖、路径和保存规则}
-配置优先级为：默认值 → tools 公共环境 → 所选 backend 分组 → 项目字段 → CLI。表按字段合并，数组整体替换；项目中写空数组会清空相应环境数组。环境普通配置允许 \code{gdb}、\code{target}、\code{service}、\code{actions}、\code{session}、\code{sync}、\code{memory_access}、\code{multicore}，另接受元数据 \code{backend}、\code{backends}、\code{core_targets}，由芯片解析层消费；不接受 \code{program}、\code{cores}、\code{live_watch} 等工程表。大部分结构启用 deny\_unknown\_fields，字段拼错会报错。
+配置优先级为：默认值 → tools 公共环境 → 所选 backend 分组 → 项目字段 → CLI。表按字段合并，数组整体替换；项目中写空数组会清空相应环境数组。环境提供 GDB/target/service/actions/session、同步、通道、多核、registers/writes 等工具默认值，并接受 backend/backends/core\_targets 元数据。program.svd 可作为芯片外设默认；ELF、源码与工程任务仍由项目维护。不得因允许 SVD 默认值而把完整工程表复制进环境。大部分结构启用 deny\_unknown\_fields，字段拼错会报错。
 
 含斜杠的 gdb.executable、service.command 和 cwd 相对定义它们的 TOML 文件；裸命令从 PATH 查找。\code{${profile_dir}} 只在环境文件展开。program、source\_map.to、live\_watch.elf、session.log\_dir 等最终相对项目目录解析；不要认为环境文件中的所有路径字段都会自动相对 profile。CLI 路径相对启动时 cwd 处理。
 
 0.8.4 的 Setup 将 Project 字段优先显示为相对启动目录的路径，但内部仍解析为确定的项目位置。资源路径遵守上述原规则；尤其 \code{gdb.args} 中 \code{-x} 后的相对文件名由 GDB 工作目录解释，未设置 \code{gdb.cwd} 时继承 DebugTUI 启动目录。完整操作见第\ref{sec:setup-projects}节。
 
-保存 Setup 时保留环境引用和工程显式配置，不把整个展开环境写回项目。运行时偏好写入使用全局互斥锁，将相关列表/UI 表合并到最新文档。检测到外部启动配置冲突时拒绝盲写并要求重新加载；跨进程修改及崩溃期间并非数据库式原子事务。
+保存 Setup 时保留环境引用和工程显式配置，不把整个展开环境写回项目。运行时偏好写入使用进程内互斥与跨进程文件锁，重读最新文档，只合并相关列表/UI 表，并通过同目录临时文件发布。检测到外部启动配置冲突时拒绝盲写并要求重新加载；该机制避免普通并发保存覆盖，不把文件发布等同于数据库事务。
 
 Project 行 Enter/F3 载入所选配置并重新派生所有显示字段，错误时保留此前有效草稿；当前没有旧版 Examples/F4 操作。无候选配置时，交互启动会创建最简 debug.toml；之后修改仍须保存。保存始终写所选 Project，不改写引用的 profile。Symbol images 的 Ctrl+S 直接保存，Apply to draft 只更新内存；高级设置、继承和主 ELF 联动见第\ref{sec:bao-image-config}节。
 
@@ -1678,14 +1985,77 @@ actions.before\_disconnect & 空数组 & 停止后、detach/disconnect 前执行
 session.on\_exit & detach & detach、resume、disconnect。\\
 session.timeout\_ms & 8000 & 普通 MI 请求超时；不是全部链路的唯一超时。\\
 session.log\_dir & 未配置 & 配置后创建独立会话日志。\\
+build.command / args / cwd & 可选旧结构 & tasks.build 为空时使用；直接启动 command 与 args，cwd 相对工程解析；新工程优先使用 tasks。\\
 tasks.build / download & 空字符串 & 单行 shell 命令，工作目录固定 source\_root。\\
 tasks.timeout\_ms & 300000 & 外部任务超时，必须大于 0。\\
 watch / breakpoints & 空数组 & 表达式列表 / 兼容字符串或详细断点对象。\\
 source\_map & 数组表 & from 是编译路径前缀，to 是本地目录。\\
 source\_remap & enabled/from/aliases & enabled 为可选布尔值；from 为 ELF 目录前缀，目标跟随 Source root；aliases 保存原路径拼写。\\
 ui.animations / unicode & subtle / true & off、subtle、full；Unicode 动效字符开关。\\
-ui.formats / refresh & 空映射 & 数值格式 / 按核按项的读取策略。\\\bottomrule
+ui.formats / refresh & 空映射 & 数值格式 / 按核按项读取策略。\\
+ui.memory / register\_views & 空映射 & 每芯片/核内存范围 / 每目录/芯片/核寄存器显示偏好；不保存硬件样本。\\
+registers.cpu / catalogue & 可省略 & CPU preset/显式目录；芯片默认及空字符串优先级见第\ref{sec:um-register-config}节。\\
+registers.* & 配置表 & 每核 targets、topology、facts、组件 owner、访问命令与只读/探测开关；不同协议不可随意互换。\\
+writes & 显式配置 & RAM/MMIO 区域、owner、通道和副作用授权；不把未知地址默认视为可写。\\
+tools.probe / chip\_profile & 探针/可选文件 & Probe 与 Chip 独立；客户芯片文件优先于用户同名入口和内置入口。\\\bottomrule
 \end{longtable}
+
+
+\Needspace{9\baselineskip}
+\subsection{可写区域、SVD 覆盖与实际写入}
+\label{sec:write-config-complete}
+\code{[[writes.regions]]} 声明经工程确认的地址域；\code{end} 是排他末地址，start/end 使用地址字符串，不能使用可能失真的浮点 JSON 数。它不下载固件、不分配 RAM，也不自动取得目标写权限。Flash 修改走已配置 Download，普通 Memory 不能用原始地址绕过 SVD 语义写 MMIO。
+
+\begin{longtable}{@{}P{39mm}P{122mm}@{}}\toprule
+区域字段 & 含义与限制\\\midrule\endhead
+id / kind & 唯一简单标识；kind 为 ram、flash、mmio。\\
+start / end & 字符串形式的起点/排他终点，start < end；同通道且 owner 重叠的范围不得歧义重叠。\\
+channel / cores & 空 channel 为 GDB；非空须匹配已声明通道。cores 空表示所有适用核，非空须为已配置核心。\\
+scope & core、cluster 或 chip；写入按该 owner 资格检查，不按 Scope All 广播。\\
+little\_endian & 可选布尔；有实际依据才填。变量依据实际 GDB 类型/布局，MMIO 必须取得明确字节序。\\
+byte\_writable / widths & byte\_writable 默认 false；RAM 字节写需要显式 true。widths 为允许宽度集合；MMIO 仅一次自然对齐的 8/16/32 位操作。\\
+halted\_targets & 需要核实已停的物理 CPU target 名，不能将 mem\_ap 名冒充 CPU。默认空不创造物理停核证明。\\\bottomrule
+\end{longtable}
+
+下面是完整工程中可追加的最小 RAM 声明片段。地址仅说明 F429 主 SRAM 的结构；必须先核对板卡、链接脚本和实际用途，不将整段空闲当成可随意试写。
+\par\noindent\begin{minipage}{\linewidth}
+\begin{lstlisting}
+[[writes.regions]]
+id = "main-sram"
+kind = "ram"
+start = "0x20000000"
+end = "0x20030000"
+channel = ""
+scope = "core"
+little_endian = true
+byte_writable = true
+widths = [8, 16, 32, 64, 128]
+\end{lstlisting}
+\end{minipage}\par
+
+\code{[[writes.svd_overrides]]} 以展开后的 \code{peripheral.register} 名定位，按真实设备资料补 reserved=unknown/preserve/zero/one、read\_only\_write=unknown/ignored/preserve，以及 verification。verification 的 kind 为 none、modified 或 stable；stable 还要求明确的 RawValue mask（bits/hex）。缺省信息不补猜 0/ignored。字段访问、枚举、约束与 modifiedWriteValues 来自已解析元数据；单次写、只写、W1C/W0C 等未适配时明确拒绝，不能因加 override 就跳过权限。
+
+\Needspace{8\baselineskip}
+\subsection{编辑器输入、草稿和结果判读}
+\label{sec:write-contract-complete}
+Unsigned/Signed 是与位宽匹配的整数；Float 仅接受 32/64 位，有限值溢出拒绝，显式 Infinity/NaN 仍受实际后端限制。Bytes 为按地址序给出的十六进制字节对，需要明确 little\_endian；Enumeration 必须匹配唯一且可写的名称。单值最多 128 位、1024 个可打印输入字符；RAM byte range 使用专用路径，可写 1--4096 字节，不能把该范围上限套到标量寄存器。位域选择使用 selection.kind=field 及 name；整对象使用 register。
+
+变量 target.kind=variable，pane=watch/locals，expression 必须是当前面板的根，path 为孩子索引；typed assignment 要求有效的普通 RAM 与 GDB 通道，不对显式 AP 策略做隐式 GDB 回退。引用写入 referent；指针引用修改指针对象。位域通过已核对的 DWARF 布局核验父存储和相邻位，无法证明布局时拒绝。Memory target 使用 kind=memory、字面 address、bits、channel；Peripherals 使用已选 SVD 外设/寄存器身份，由元数据产生精确地址和写规则。System Regs 使用 catalogue ID 及独立 writer。
+
+Preview 返回 draft、有效期、目标/owner/context 及规划。worker 最多保存 128 份草稿，有效期 600 秒；不是跨进程或跨版本的持久令牌。Apply 要求同一活会话并只消费一次；Cancel 仅删除尚未发送草稿。切核、换帧、继续、重连或目录/ELF 变化后重新 Preview。不同写类别的回执字段有所不同，不能只看 response.ok：必须看 sent、outcome、error、observed、verification\_mask，以及适用的 physical\_storage\_verified/verification\_basis。
+
+\begin{longtable}{@{}P{30mm}P{131mm}@{}}\toprule
+outcome & 正确解释\\\midrule\endhead
+not\_sent & 前置条件、预览或取消阶段未发出目标赋值。\\
+accepted & 后端接受写入，但未完成适用的独立核验；不等于验证通过。\\
+verified & 已按回执声明的依据核验，仍须区分 GDB 寄存器视图与物理存储。\\
+mismatch & 写后读值与规划比较不符；保留实际值，不自动重复写。\\
+partial & 分段操作已有部分发送/完成；例如 Q 的两个 D 存储不构成原子写。\\
+unknown & 发送后超时、断线或恢复结果不明；不能当成未发送或可安全重试。\\\bottomrule
+\end{longtable}
+F429 writer 范围见第\ref{sec:um-writing}节。R52 VFP 写入另需 \code{vfp_write_command} 配置，并核对真实容量、启用和当前 Debug EL；不写 FPSCR/FPEXC 控制，不由 reader 自动授权。完整区域模板见 \path{profiles/write-regions.toml.example}。
+\src{\path{src/writes.rs}；\path{src/writes/memory.rs}；\path{src/session/writes.rs}；\path{src/session/memory_writes.rs}、\path{src/session/variable_writes.rs}、\path{src/session/vfp_writes.rs}。}
+
 
 \subsection{多核和总线字段}
 \noindent\begin{tabularx}{\linewidth}{@{}P{43mm}Y@{}}\toprule
@@ -2002,7 +2372,7 @@ step / next / stepi / finish & \texttt{\{\}} & 源级进入/越过、指令进�
 restart & \texttt{\{\}} & 执行配置的复位，组策略另见前节。\\
 evaluate & \code{expression} & 停止求值，返回 value 文本。\\
 watch / unwatch & \code{expression} & 增删根表达式；非停止时新增先占位。\\
-watch\_expand & expression、path 数组、expanded；可选 more & path 为子索引路径；展开需停止，折叠本地处理。\\
+watch\_expand / local\_expand & expression、path 数组、expanded；可选 more & path 为子索引路径；展开需停止，折叠本地处理。\\
 watch\_resolve & expression，可选 path & 停止时返回 address、bits、signed、float、little\_endian、type。\\
 memory\_read & 数值 address、bits、little\_endian；可选 channel & channel 空走默认 GDB；非空走命名 TCL。\\
 peripheral\_read & 数值 address、bits、little\_endian & 停止读单寄存器，不修改 Memory 面板。\\
@@ -2010,6 +2380,9 @@ memory & 文本 address，可选 count & 停止；count 默认 256，限制 1--4
 disassemble & 可选文本 address & 默认 \code{$pc}，读取起点之后 128 字节范围。\\
 frame & level & 选择栈帧并刷新上下文。\\
 files / refresh & \texttt{\{\}} & 文件列表 / 刷新当前停止上下文。\\
+symbols & query & 1--128 字符；READY/STOPPED 下查函数/变量/类型；返回 symbols、truncated、warnings，允许部分类别不支持。\\
+memory\_channels & \texttt{\{\}} & 返回当前核心、配置 source、各 channel 的 configuration、available\_for\_core、while\_running\_declared；不发硬件探测。\\
+memory\_dump & 文本 address、count；可选 channel/context/selection\_epoch & 读取 1--4096 字节，返回地址序 bytes、路线、context 和 access；不是文件导出。GDB 停止表达式/AP 字面地址的约束见第\ref{sec:memory-panel}节。\\
 break & location；可选 hardware、temporary、enabled、condition、ignore\_count & 代码断点可在 READY/STOPPED 创建。\\
 data\_break & expression；access=write/read/access；可选 enabled、condition、ignore\_count & 数据断点需 STOPPED。\\
 enable\_break & number 和 enabled；或 all=true、enabled & 启停；number 是字符串。\\
@@ -2025,9 +2398,61 @@ guest\_context & image；可选 level、expressions & 在有效的物理停止�
 return\_guest / cancel\_guest\_return & image / 空参数 & 当前核完整 HVC32 返回与取消；物理状态/资源约束见第\ref{sec:bao-guest-return}节。\\
 set\_elf & path & 仅单核且已断开；多 ELF 在 Setup 维护主 ELF 与 images 后重新 Start，不提供运行中热替换。\\
 build / download & \texttt{\{\}} & 执行配置动作；headless 无 UI 下载确认。\\
-ui\_preferences & Ui 对象 & 保存 UI 配置，无 MI；建议先读取工程并完整合并。\\\bottomrule
+ui\_preferences & Ui 对象 & 保存一般 UI 配置，无 MI；寄存器视图用 register\_preferences，避免覆盖其他核/目录。\\\bottomrule
 \end{longtable}
-\code{break_apply}、\code{synchronize}、\code{restart_shared} 为协调实现内部使用的方法，客户端应使用上表公开操作，避免绕过组控制约束。当前接口是项目自定义 JSONL，不含 \code{jsonrpc:"2.0"}，没有网络多客户端服务或正式协商版本字段；自动化应固定程序版本并保留原始事件。
+\code{break_apply}、\code{synchronize}、\code{restart_shared}、\code{register_boundary}、\code{register_shared_invalidate}、\code{write_discard}、\code{write_invalidate} 为协调或失效处理内部使用的方法，客户端应使用上表公开操作，避免绕过组控制约束。当前接口是项目自定义 JSONL，不含 \code{jsonrpc:"2.0"}，没有网络多客户端服务或正式协商版本字段；自动化应固定程序版本并保留原始事件。
+
+
+\Needspace{10\baselineskip}
+\subsection{系统寄存器与受控写入 API}
+\begin{longtable}{@{}P{44mm}P{117mm}@{}}
+\toprule method & 参数与行为\\\midrule\endhead
+registers\_list & 返回有效 catalogue、定义、来源、context 与缓存；无目录时保持 GDB 基础列表，不发 capability Probe。\\
+registers\_matrix & 当前目录/后端资格矩阵与原因；不是全芯片扫描。\\
+registers\_probe & 当前核、物理 frame 0、STOPPED 下执行有界能力探测，返回 probe 与 statistics。\\
+registers\_read & ids 为 1--128 个定义 ID；建议携带最新 context。manual=true 是明确手动读取，但不绕过权限/owner/reader。\\
+registers\_select & context、kind 为 \code{mpu_el1}/\code{mpu_el2}/pmu、index；固定 selector 事务读取一组，协议、容量及恢复证明必须匹配。\\
+registers\_mpu & context、bank=m/el1/el2、read；M 核使用 m，R52 使用 el1/el2；read=true 执行事务，否则只取缓存。\\
+registers\_cache & M7 的 context、read；读取 I/D 身份配置和受保护 bank，不执行维护命令。\\
+register\_preferences & scope 字符串与 preferences 对象；合并该目录/芯片/核心的显示偏好，不能与执行 control\_scope 混用。\\
+write\_preview & context、target、selection、input，返回一次性 draft 与规划；后端准备可有只读检查，零目标赋值。\\
+write\_apply & draft；重新核对上下文并消费一次，回执保留实际发送、结果及验证范围。\\
+write\_cancel & draft；取消尚未发送的草稿；已发送写入不能撤回。\\\bottomrule
+\end{longtable}
+\begin{lstlisting}
+{"id":10,"method":"registers_list","params":{}}
+{"id":11,"method":"registers_read","params":{"ids":["r0","pc","scb.cpuid"]}}
+{"id":12,"method":"registers_probe","params":{"context":{"session":1,"generation":2,"core":"core.0","frame":0}}}
+\end{lstlisting}
+ID 必须来自当前 registers\_list；不同 CPU/自定义目录不保证存在同名条目。第 12 条的 context 数值仅演示结构，须替换为第 10 条实时返回的 context。Probe/Write/MPU/cache 应使用当前物理核和实时 context，不能复制另一会话的 session/generation/frame。
+
+示意写请求如下，数值 context 仅演示结构，执行前替换为实际返回值；只有目标 writer 已适配才成功。
+\begin{lstlisting}
+{"id":20,"method":"write_preview","params":{"context":{"session":1,"generation":2,"core":"core.0","frame":0},"target":{"kind":"register","id":"r0"},"selection":{"kind":"register"},"input":{"kind":"unsigned","text":"0x1"}}}
+{"id":21,"method":"write_cancel","params":{"draft":"<draft-from-preview>"}}
+\end{lstlisting}
+Apply 传 preview 的 draft；本例 Cancel 不构成写入验收。Headless 无跨进程寄存器取消 API；TUI Cancel read / Rust Request::cancel\_read 只在进程内取消，无 \code{registers_cancel}。
+
+
+\Needspace{8\baselineskip}
+\subsection{内存、成员展开与写入的请求实例}
+\label{sec:api-examples-complete}
+以下请求按同一活进程的响应逐步提交；不能把绑定、context 或 draft 固定复制到下一次会话。独立数值读取允许省略可选 context；需要类型证明的 Watch 客户端应从实时 \code{watch_resolve} 复制绑定和实际参数。
+\begin{lstlisting}
+{"id":30,"method":"symbols","params":{"query":"Task"}}
+{"id":31,"method":"local_expand","params":{"expression":"object","path":[],"expanded":true}}
+{"id":32,"method":"memory_channels","params":{}}
+{"id":33,"method":"memory_dump","params":{"address":"0x20000000","count":16,"channel":""}}
+{"id":34,"method":"watch_resolve","params":{"expression":"xTickCount"}}
+\end{lstlisting}
+第 31 条需要当前 Locals 中确有 object；第 33 条地址须在目标可读区域。\code{memory_dump} 返回 bytes 数组，不改变目标，也不写宿主文件。标量 \code{memory_read} 返回精确值/位宽等，channel 为空走 GDB；显式通道须存在且适用当前核，RUNNING 还要求 while\_running。watch\_binding 句柄来自第 34 条，不是地址访问权限令牌。
+
+\begin{lstlisting}
+{"id":40,"method":"write_preview","params":{"context":{"session":1,"generation":2,"core":"core.0","frame":0},"target":{"kind":"memory","address":"0x20000000","bits":32,"channel":""},"selection":{"kind":"register"},"input":{"kind":"unsigned","text":"0x12345678"}}}
+{"id":41,"method":"write_cancel","params":{"draft":"<draft-from-40>"}}
+\end{lstlisting}
+该例只演示 Preview/Cancel，地址和 context 是结构样例，要求已有真实 RAM 声明；不会因为例子出现就写入。实际 Apply 将第 41 条 method 改为 write\_apply 并使用第 40 条真实返回 draft；检查实际回执与恢复方案后执行。JSONL 的 response.ok 表示请求处理结果，写入是否发送/核验须以 outcome 等字段为准，见第\ref{sec:write-contract-complete}节。
+
 
 \subsection{客户端实现注意事项}
 \begin{enumerate}
@@ -2242,10 +2667,37 @@ v0.8.3 初版源码 & 137 项单元测试、1 项 CLI 集成测试通过，0 失
 \end{longtable}
 401=122+75+70+93+41，是请求数而非独立功能数。历史实板报告的源码 SHA 为 \path{8c74f72e4139d62cc3b3034266d22bbfe1a2a14e}，与当前文档基线不同；本次以源码确认相关实现，不能声称历史二进制就是当前重新构建的 EXE。
 
+
+\Needspace{10\baselineskip}
+\subsection{1.0--1.2 发布和实板证据的使用}
+\begin{longtable}{@{}P{31mm}P{130mm}@{}}
+\toprule 阶段 & 可使用的结论及保留边界\\\midrule\endhead
+1.1.3 / 1.1.4 & F429 状态/MPU/偏好组 9/9；模块组 15/15 读取 200 个不同定义，包含 PPB、浮点参考及四个手动 FUNCTION，5 项临时 MMIO 写入恢复。不是全部定义、所有 writer 或 FPU 物理存储写入通过。\\
+1.1.5 & F429 目录语义与自动资格软件审计、包内/参考目录展开一致；无新增实板验收。\\
+1.2.0 & Generic GDB、芯片文件自动发现、默认目录和配置优先级软件验证；没有交付经过实板认证的 F103 专用包。\\
+1.2.1 & FreeRTOS\_Project 的 SCB 31 项读取、独立 OpenOCD 比对及 CPACR/位域滚动，另有终端尺寸回归；R52 不因此新增实板认证。\\
+1.2.2 & main 集成、构建/库/分发回归；沿用 1.2.1 历史实板证据，不冒充新版本重新上板。\\
+1.2.3 & 修复前两个队列用例失败、修复后通过；升版前 Debug/Release 各五次板卡连接及每次 60 个快速搜索检查，另有 MMIO 独立比对。正式发布后全局安装复验另见 validation 附件。\\
+1.2.4 & 发布记录的 F429 当次自动样本：617 定义中 423 Valid、18 未读、170 不支持、6 因未使能不可用，0 Error；Probe 36 定义、35 次实际请求/响应；SCB 31 项有效。这些是特定板卡/固件状态，不是安装后固定计数。\\
+2026-10-23 手册 & 只核对源文件、版本文档、配置/API 和 PDF 构建/排版；不重新执行上述硬件操作。开发工作树的新结论单列附录。\\\bottomrule
+\end{longtable}
+发布证据以相应 \path{validation-<version>.json}、\path{SHA256SUMS.txt}、\path{docs/release-<version>.md} 和 \path{TESTING.md} 为入口，保留其 EXE/目录/固件摘要与 ignored/SKIPPED。阶段性文档中的“尚未 release”或旧 TODO 是历史账本，不覆盖后续已发布结论；同样不能把发布版本号当作全部 Goal 已完成。
+
+\subsection{验证后的空间收尾与恢复}
+本地 Cargo 回归使用如下入口；成功后只清理本轮新夹具再清 target，失败、活跃进程、未完成 lease 和进行中审计保留。打包在成功后删除本轮 staging/verify，14/14 分发通过后删除安装副本与专用 npm cache；Node 全部通过的软件轮次去重大型夹具并无损归档事件。
+\begin{lstlisting}
+pwsh -NoProfile -File scripts/test-and-clean.ps1 test --locked --offline
+pwsh -NoProfile -File scripts/cleanup-build.ps1 -Apply
+# Historical duplicates: preview before applying or restoring.
+pwsh -NoProfile -File scripts/cleanup-test-artifacts.ps1
+pwsh -NoProfile -File scripts/cleanup-test-artifacts.ps1 -RestorePath "<original-absolute-path>"
+\end{lstlisting}
+\code{DEBUGTUI_KEEP_TEST_PAYLOADS=1} 保留诊断夹具。共享 \path{artifacts/.fixture-store/manifest.jsonl} 与 gzip 内容、旧归档清单、报告、原上板证据、源码/工具链/会话/附件和正式 Release 资产都保留；归档验证 SHA256 后才删除重复原文件，恢复拒绝覆盖/越界/链接。不能把移动到 C/F/G 的另一盘当作释放；收尾记录实际磁盘可用空间。运行其他测试时不要执行无边界的全目录清理。
+
 \subsection{分发和许可证}
 package.json 的 files 包含 EXE、profiles、docs、内置 tools、说明与许可证，开发脚本及构建缓存不进入 npm 包。TUI 以 Apache-2.0 分发；GDB、OpenOCD、SEGGER 工具及 SVD 遵从各自许可证，不能用应用许可证替代第三方条款。
 
-\path{scripts/package.ps1} 核对 npm/EXE 版本并拒绝开发/工具依赖泄入 TUI 包；\path{scripts/package-tools.ps1} 检查 GDB/OpenOCD 主程序存在，按实际 \path{bin/} 内容与配置目录生成 \path{debugtui-tools-arm-win-x64.zip}；\path{openocd-adapter/} 源码不进入该包。安装器同样按实际工具目录复制，无需依赖清单。
+\path{scripts/package.ps1} 核对 npm/EXE 版本及包内正式文件；\path{scripts/release-assets.ps1} 生成完整 npm/ZIP、独立 EXE、校验和及 OpenOCD 对应源码附件，并验证资源。兼容的独立工具包由 \path{scripts/package-tools.ps1} 生成；工具依赖依据实际文件和来源证明核对，不恢复已删除的依赖锁清单。源码适配器在 \path{third_party/openocd-adapter/}，不作为运行期依赖。
 \src{\path{Cargo.toml}、\path{Cargo.lock}、\path{package.json}；\path{scripts/}；\path{scripts/package-tools.ps1}；\path{NOTICE}、\path{THIRD_PARTY_NOTICES.md}、\path{licenses/}。}
 
 \newsection{已知问题、实现限制与维护建议}\label{sec:limits}
@@ -2266,9 +2718,9 @@ package.json 的 files 包含 EXE、profiles、docs、内置 tools、说明与�
 \subsection{当前代码与旧说明的差异}
 \noindent\begin{tabularx}{\linewidth}{@{}P{36mm}Y@{}}\toprule
 项目 & 本手册采用的当前结论\\\midrule
-SVD 字节序 & Device::parse 对未知/缺失 endian 使用 unwrap\_or(true)；默认小端。不能沿用“未知只展示”的旧说法。\\
+SVD 字节序 & 当前为 Option：明确 little/big 才能授权读取；缺失/未知保留 Unknown。旧版默认小端结论已失效。\\
 SVD 是否实现 & 已实现解析和 Peripherals，README 部分旧段落“尚未实现”已过时。\\
-环境表数量 & 八类普通 section 加 backend/backends/core\_targets 元数据；新字段由芯片选择层处理。\\
+配置层 & 环境可带寄存器/写入默认和芯片 SVD；工程选择、每核覆盖与空值优先级见配置章节，不沿用固定“八类表”的旧枚举。\\
 tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动寻找 tools”只适合旧版本描述。\\
 单核 Server 日志 & Session 将全部 stderr 标为 server-error；Coordinator 的新分帧器区分普通 stderr/真正错误。不能仅凭单核通道名断言发生错误。\\
 下载栏空值 & tasks.download 空仍可能回退 actions.download；应查看确认框/实际动作。\\
@@ -2281,19 +2733,19 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \item refresh 的若干栈/locals/寄存器查询使用容错分支，个别子查询失败可能保留旧列表；错误日志和停止代次比单纯“面板有值”更可靠。
 \item 可见项轮询与旧 live\_watch 的调度不同；旧采样队列容量 64，使用 try\_send，高负载下可能丢采样，不能用作无损数据记录仪。
 \item 旧 live\_watch 的配置只要求正间隔，实际循环 clamp 到 10--60000 ms；逐项 UI 则要求 50--60000 ms，二者不能混用。
-\item 软件组控制不是硬件同步；运行时总线读取不是跨多个值的一致事务；工程偏好写入不是跨进程原子提交；用户芯片目录另有跨进程锁和同目录临时文件发布。
-\item 通用终端 Files 用例 TERM-03 改用 Tab 后通过；该 ConPTY 宿主未交付注入的 SGR 鼠标事件，旧失败报告保留。真实终端鼠标仍未完成端到端验收，应用内部鼠标命中测试不能替代该结果。
+\item 软件组控制不等于硬件同步，普通总线多值读取不保证原子快照。Windows 偏好保存使用跨进程锁和同目录临时发布，仍不构成数据库事务。
+\item 早期 TERM-03 的 ConPTY 宿主未交付 SGR 鼠标事件，旧失败记录保留；内部命中测试不能代替相应宿主的端到端鼠标验收。
 \item 当前已提供选中对象的 Preview/Apply/Cancel 写入 UI，受对象权限、上下文及回读限制，见第\ref{sec:value-writes}节；多镜像隔离求值和保存的 Guest 上下文仍为只读。默认面板读取不等于整个调试连接过程零修改。
+\item 原始 Console 命令及连接/复位动作不经过 Edit value 的 Preview/Apply 流程，仍可能直接影响目标。
 \item Source 选区改变 Ctrl+C 的优先级：聚焦源码且有选区时复制，确定暂停使用 F6。加入 Watch 仍受当前核、当前帧和运行时读取通道限制，不自动启用实时采样。
 \item THA6206 修正后的脚本已有 9 月 23 日及 29 日功能回归，不能再将 9 月 22 日旧失败描述为所有当前流程均失败；CSE 新旧值的专项硬件 A/B 和偶发复位/深栈限制仍按第\ref{sec:tha-086-validation}节单列。
 \end{itemize}
 
-优先维护方向是修复真实下载状态解析、统一两条服务日志路径、对缺省 SVD 字节序给出明确策略或提示，并同步过期 README。若扩展到异构核、线程/RTOS 视图或网络 API，应同时定义数据归属、状态代次、清理及错误契约，再扩展 UI。
-\src{\path{src/mi.rs}: parse；\path{src/svd.rs}: Device::parse；\path{src/session.rs}: refresh/start\_server；\path{src/live_watch.rs}: spawn；\path{artifacts/dap-ui-20260920-2307/REPORT.md}。}
+仍须跟踪 \path{src/mi.rs} 的匿名 tuple 下载解析及硬件矩阵（见 \path{TESTING.md}）。\path{src/svd.rs} 已保留未知端序；系统 writer、R52+、Guest 权限和 Trace 不能由目录或模型测试承诺支持。扩展异构实板、RTOS、网络 API 须保留 owner、状态代次、清理和错误契约。
 
 \clearpage\appendix
-\newsection{全工程源文件与职责索引}
-2026-10-03 核对的 0.9.3 发布前工作树中，\code{src} 共 48 个 Rust 文件（含模块测试），下表覆盖全部文件。近期新增模块包括芯片目录及选择、离线源码目录扫描和搜索相关模块。
+\newsection{主要源文件与职责索引}
+下表索引主要生产源文件及模块组；系统寄存器、受控写入和 Setup 的新增实现已纳入。模块内测试与辅助文件不逐一枚举，不再沿用 0.9.3 时“48 个文件覆盖全部源码”的历史计数。
 
 \begin{longtable}{@{}P{55mm}P{106mm}@{}}\toprule
 文件（相对工程根） & 职责与关键入口\\\midrule\endhead
@@ -2311,6 +2763,11 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{src/source.rs} & 跨主机路径拼写、目录边界、GDB 映射别名、离线 ELF 源文件扫描与取消。\\
 \path{src/search.rs} & 文件模糊匹配评分、大小写处理及 GDB 符号正则构造。\\
 \path{src/session.rs} & Engine/Gdb/Snapshot、命令执行、异步 record、停止刷新、任务/连接/清理。\\
+\path{src/registers/} & 系统目录、继承、能力/访问策略、owner/context、M/R 读后端、selector、字段、统计和来源。\\
+\path{src/session/registers.rs} & 按需读取、Probe、目录策略、上下文和缓存；能力、MPU/cache 在相应会话模块协作。\\
+\path{src/writes/}、\path{src/session/writes.rs} & 写入规划、一次性草稿、RAM/MMIO/变量/寄存器适配与实际回执。\\
+\path{src/ui/registers/}、\path{src/ui/writes.rs} & 系统树、筛选、状态/Probe、bank/cache、来源及编辑预览。\\
+\path{src/launch/registers.rs} & Setup 有效 CPU/catalogue、来源/继承及 Automatic/GDB 选择。\\
 \path{src/session/breakpoints.rs} & MI 断点编解码、创建/修改/恢复、失败处理及立即持久化。\\
 \path{src/session/watch.rs} & GDB variable object 树、分页、展开映射和变化标记。\\
 \path{src/session/memory.rs} & watch\_resolve、命名内存读、宽度/对齐/端序校验、TCP 缓存。\\
@@ -2358,7 +2815,7 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{profiles/} & 默认芯片目录、npm 初始化脚本及 THA 项目/环境示例；不附带调试驱动或工具二进制。\\
 \path{tests/} & mock-gdb、SVD/ELF fixture、ConPTY 终端宿主、覆盖矩阵及实际 shell CLI 集成测试。\\
 \path{scripts/} & 构建、许可证生成、打包、发布资产及模拟/本机/硬件验证。\\
-\path{tools/} & 可选调试环境、BAT、三个 F429 profile、板级 cfg、独立打包与依赖锁。\\
+\path{tools/} & 内置通用 ARM/OpenOCD 与 Generic GDB 入口、项目模板、芯片/探针/板级 cfg 和 SVD；不再维护依赖锁清单。\\
 \path{tools/bin/} & 第三方 GDB、OpenOCD 程序/依赖/脚本/许可证；未宣称分析其全部实现。\\
 \path{resources/svd/stm32/} & STM32F429 原始 SVD、catalog、出处和许可。\\
 \path{licenses/} & Rust 标准库和 SVD/相关依赖许可资料。\\
@@ -2375,7 +2832,9 @@ CLI 参数 & 行为\\\midrule\endhead
 --project PATH & 工程目录或配置文件；显式启动选项。\\
 --setup & 强制先检查启动表单。\\
 --chip ID / --cores IDS & 覆盖芯片及物理核心子集，例如 --chip tha6206 --cores 0,1；切换为格式 3，仍需匹配 profile/端口。\\
---init-profiles & 初始化或校验用户芯片目录，输出其路径并退出，不连接板卡。\\
+--init-profiles & 初始化/校验用户芯片与寄存器扩展目录，不连接板卡。\\
+--init-project & 从当前目录发现/创建最简调试工程后退出，不连接板卡。\\
+--probe / --chip-profile & 选择独立 Probe / 客户芯片入口；同 Setup 工程字段。\\
 --gdb PATH / --gdb-arg ARG & 指定 GDB/追加参数；gdb-arg 可重复。\\
 --environment FILE & 指定工具环境 TOML。\\
 --tools-dir PATH & 简写为 PATH/debug-env.toml。\\
@@ -2415,6 +2874,53 @@ LIVE / cached & 来自实时采样的有效值 / 保留的历史值；标记不�
 watch / watchpoint & Watch 表达式观察 / 硬件或 GDB 数据断点，删除前者不删除后者。\\\bottomrule
 \end{longtable}
 
+
+\newsection{1.3.3 寄存器访问策略与验证}
+\label{sec:um-development}
+本附录记录基于正式 1.3.2（\code{24959e5}）整合的 1.3.3 修订。1.3.2 及更早安装包不包含以下新字段或 UI 分类；描述与 Host 需成套升级。2026-10-30 的新 Release EXE 已完成下述 STM32 实板验证。GitHub Release 交付同一 EXE、配套描述、手册、验证摘要、对应源码及校验和；发布不自动升级现有全局安装。
+
+本轮整合回归还修正了 Watch 解析被取消或运行上下文变化后的清理：停止后续表达式/目标读取，仍删除临时 GDB variable object 并恢复原来的 \code{may-call-functions} 策略。清理失败继续进入故障处理，不发布失效地址绑定；该修订与多镜像的独立求值和 Guest 只读边界共同保留。
+
+\begin{longtable}{@{}P{36mm}P{125mm}@{}}
+\toprule 工作树变更 & 行为与限制\\\midrule\endhead
+access\_rule.requires & 最多 64 个同作用域新鲜字段比较的合取。缺观测为 Unknown，不满足为 AccessRestricted；只决定访问资格，不把读零当实现证明。配置事实不能冒充物理观测，别名继承全部限制。\\
+access\_rule.deny & 非空原因描述当前 Host 路径永久限制；自动、手动、Probe 和 alias 均在 I/O 前拒绝。UI 独立 Access restricted，统计 access\_restricted，不再混作缺 reader。不能附 writer，不自动解锁。\\
+F429 PCSR / ITM LSR & 以 CPUID、ROM 表项和 DEMCR.TRCENA 约束受控只读资格；读取成功仍不把实现状态升级为已证实。PCSR 全 1 不是有效 PC，DAP 的 LSR 读值不证明处理器软件锁状态。\\
+F429 描述位域 & 工作树展开仍为 617 项，普通/读取位域从旧发布记录的 1464 修订为 1466；32 项 write\_fields 与 16 个既有整数 GDB writer 不因此扩大。\\
+板级检查脚本 & F429 可选项、分块固件比较及快速搜索已由本轮新 EXE 上板执行；范围及未执行项见下表，不外推为所有芯片或写入能力通过。\\\bottomrule
+\end{longtable}
+
+开发文档记载 2026-10-16 的一次 FreeRTOS\_Project 观察：停机 PCSR 为 \code{0xFFFFFFFF}，ITM LSR 经 Host 与独立 OpenOCD 读取均为 \code{0x00000001}。LSR 非零与所引通用 DAP RAZ 条款存在路径/集成适用性差异；仅能确认当次原始读取一致，不应归一化为零或推断“已经解锁”。最终使用须绑定测试 EXE、目录摘要、目标身份和事务来源，不能把此观察写成所有 F429 的固定值。
+\src{1.3.3 的 \path{docs/register-structured-policy.md}、\path{docs/stm32f429-registers.md}、\path{profiles/registers/stm32f429.toml}、\path{src/registers/policy.rs} 和相应测试；不能把这些行为归入旧版 1.3.2 EXE。}
+
+\subsection{1.3.3 Release 的 STM32 实板验证}
+2026-10-30 使用 CMSIS-DAP、现有 FreeRTOS\_Project ELF 与 STM32F429 实板。CPUID 为 \code{0x410fc241}、DBGMCU 设备号为 \code{0x419}；Flash 只读节逐字节匹配 ELF。测试使用隔离项目副本，原工程 TOML、ELF、SVD 与工具 profile 摘要保持不变。
+
+\begin{longtable}{@{}P{36mm}P{125mm}@{}}
+\toprule 验证 & 本轮结果和边界\\\midrule\endhead
+基础调试 & 17 项通过，0 失败，1 项跳过。覆盖断点编辑、临时断点、源码/指令单步、栈/反汇编、Watch、PC/SP/xPSR、运行态 AHB、重连及复位运行；固件下载未执行。\\
+寄存器与保护 & 8 项通过。617 个定义自动扫描为 Valid 425、Not read 16、Unsupported 169、Unavailable 7，无读取错误；SCB 31 项全部有效，与 NVIC、SysTick 合计 37 项独立 OpenOCD 读值一致。\\
+受控可选项 & DWT PCSR 为 \code{0xffffffff}、ITM LSR 为 \code{0x00000001}，保留实现 Unknown；ETM LAR 自动/手动/Probe 均禁止且无 I/O，MVFR2 与 SCS PID5--7 保持未知保护。\\
+Unavailable & 六项 ETM/TPIU 集成测试功能未启用，加一项 ETM LAR 访问受限；未通过开启集成模式或解锁来扩大读取。Probe 为 41 定义、39 唯一请求、39 响应、2 no IO。\\
+压力及额外保护 & 8 项通过，含 30 次继续/暂停、写入草稿取消及越界/只读/未声明 RAM 写入拦截；源码 step/finish 三轮与正常退出共 4 项通过。\\
+真实终端 & 三轮无输入间隔的快速搜索，36 项检查通过，未卡在 registers\_read；另验证 SCB 位域展开、窗口缩放、状态统计及 DWT/ITM/ETM/TPIU 显示。\\\bottomrule
+\end{longtable}
+
+本轮未重建或下载 FreeRTOS 固件，未执行应用 RAM 或系统寄存器写入，也未测试 Trace 数据输出或 THA/R52 实板。完整结果、EXE SHA256、输入摘要、MI/Tcl 事务及终端记录保留在 \path{artifacts/release-candidate-1.3.3-20261030/}；大事件证据以校验 SHA256 的无损 gzip 保留并索引原路径。软件完整基线仍引用 \path{artifacts/stash-merge-latest-20261029/}，不把旧 EXE 测试记为新 EXE 上板结果。
+
+\subsection{核心参考的绝对路径}
+为避免后续移交丢失资料，下列引用保留原绝对路径；它们是源码/设计参考，不要求运行机器采用这些目录：
+\begin{itemize}
+\item \code{G:/Data/GitFiles/DebugTUI/tui-debugger-spec.md}
+\item \code{G:/Data/GitFiles/ARM/File/Arm® Cortex®-R52 Processor Technical Reference Manual.pdf}
+\item \code{G:/Data/GitFiles/ARM/File/Armv8-R AArch32.pdf}
+\end{itemize}
+指定的 \code{Armv8-R AArch32.pdf} 是架构介绍，External Debug 的详细约束另参考以下补充手册（DDI 0568A.c）：
+\begin{lstlisting}
+G:/Data/GitFiles/ARM/File/ARM Architecture Reference Manual Supplement - ARMv8, for the ARMv8-R AArch32 architecture profile.pdf
+\end{lstlisting}
+这些引用不能替代当前工具协议匹配、目标身份或物理恢复证明。
+
 \newsection{外部参考与文档复现}
 主要架构资料于 2026-09-21 核对；2026-09-22 补充 Cortex-R52 EDRCR.CSE 与本地复位脚本核对。实现细节仍以本地源码和本地工具版本为准；网页当前版本可能新于分发工具。
 \begin{enumerate}
@@ -2453,7 +2959,6 @@ xelatex -interaction=nonstopmode -halt-on-error usermanual.tex
 
 本文中的实板日志不因 PDF 编译而重新生成；复现硬件行为必须另行准备相同芯片、探针、工具、固件和 profile。文档构建结果不替代源码测试和实板验证。
 
-\clearpage
 \newsection{流水线产物的本地源码映射}\label{sec:ci-source}
 \subsection{适用场景与现有能力}
 本地提交代码后，流水线编译测试失败；下载该次构建的 HEX 和 ELF，在本地调试时却因 ELF 中的绝对源码路径指向构建机而无法打开 C 文件。DebugTUI 0.8.3 已支持通过工程 TOML 中的 \code{[[source_map]]} 解决此问题，无需修改 DebugTUI 源码或为了改路径重新编译 ELF。
@@ -2595,4 +3100,161 @@ THA6206 当前使用 GHS，不能直接套用 GCC 参数；编译时路径重写
 
 参考：\href{https://sourceware.org/gdb/current/onlinedocs/gdb.html/Source-Path.html}{GDB Source Path}（前缀替换、目录边界和规则顺序）；\href{https://gcc.gnu.org/onlinedocs/gcc/Debugging-Options.html}{GCC Debugging Options}（调试信息目录重写）。
 \src{\path{src/config.rs}：Project::from\_document / source\_path；\path{src/session.rs}：加载 ELF 后设置 substitute-path；\path{src/coordinator.rs}：derive\_project；\path{src/ui/source_tabs.rs}：read\_source。}
+
+\newsection{完整命令与配置扩展参考}
+\label{sec:commands-complete}
+本附录补足工作台接受的全部冒号命令及寄存器/工具/写入配置字段。普通用户按前文流程操作；本表用于查入口、开发自动化和适配芯片。命令名使用连字符；JSONL 方法多使用下划线，二者不是可互换的协议。所有命令仍受当前面板、状态、owner 和后端能力限制。
+
+\Needspace{8\baselineskip}
+\subsection{工作台命令与别名}
+\begin{longtable}{@{}P{59mm}P{102mm}@{}}\toprule
+Console 中的命令 & 操作、参数与限制\\\midrule\endhead
+\code{:setup}；\code{:help} & 打开 Setup / 命令帮助；不连接硬件。\\
+\code{:connect} / \code{:reconnect} / \code{:disconnect} / \code{:quit} & 连接、清理后重连、断开、按退出策略关闭；quit 仍执行资源清理。\\
+\code{:run} / \code{:continue} / \code{:pause} & Run 按环境动作启动；Continue/Pause 按多核 Scope 运行控制。\\
+\code{:step} / \code{:next} / \code{:stepi} / \code{:finish} & 当前检查核的源级进入、越过、指令进入和跳出，不广播其他核。\\
+\code{:restart}；\code{:build}；\code{:download}；\code{:refresh} & 复位、外部构建、下载、刷新；动作、连接恢复及确认规则见第\ref{sec:config}节和状态机章节。\\
+\code{:cores}；\code{:core NAME_OR_INDEX}；\code{:select_core NAME_OR_INDEX} & 查看核列表/切当前检查核；索引是工作区索引，不是物理 core ID。\\
+\code{:scope all} / \code{:scope core}；\code{:scope-toggle} & 设置/切换执行范围；不改变寄存器 Target/All definitions。\\
+\code{:watch EXPRESSION}；\code{:unwatch EXPRESSION} & 当前核增删根表达式，不创建/删除数据观察点。\\
+\code{:frame NUMBER} & 选择当前核栈帧，更新 Locals/Watch 并使旧绑定失效。\\
+\code{:break LOCATION}；\code{:delete NUMBER} & 创建代码断点/删除编号；复杂属性使用编辑器。\\
+\code{:data-break [read|write|access] EXPR} & 创建数据观察点，省略类型为 write；read-write 是 access 的兼容别名。\\
+\code{:enable NUMBER|all} / \code{:disable NUMBER|all} & 启停指定编号或全部；关联断点遵守跨核协调。\\
+\code{:break-new} / \code{:break-data} / \code{:break-edit} & 代码/数据断点创建及现有定义编辑器。\\
+\code{:break-toggle} / \code{:break-remove} / \code{:break-cores} & 当前选中断点启停、删除、编辑关联核。\\
+\code{:break-enable-all} / \code{:break-disable-all} & 全部启停，包括当前列表中的关联外核。\\
+\code{:memory ADDRESS [COUNT]} & 使用当前 Memory 通道读范围，缺省 256 字节。\\
+\code{:memory-access} / \code{:memory-refresh} & 打开范围/通道编辑器、单次重读。\\
+\code{:watch-access} / \code{:peripheral-access} & 选中对应面板，打开所选对象的通道/刷新策略。\\
+\code{:peripheral-refresh} & 单次读取选中 SVD 寄存器，遵守访问限制。\\
+\code{:disasm [ADDRESS]}；\code{:files}；\code{:symbols} & 反汇编（空为 PC）、ELF 文件列表、符号搜索框。\\
+\code{:open PATH}；\code{:find TEXT} & 只读打开源码；从当前行后搜索下一处区分大小写的包含匹配，不等于 Files 的模糊筛选。\\
+\code{:elf PATH} & 修改单核、已断开会话的 ELF；多核共享 ELF 用 Setup。\\
+\code{:images}；\code{:guest IMAGE} & 镜像清单与挂起 Guest 的只读上下文查看；不把保存的 Guest 状态当作当前物理核状态，见第\ref{sec:bao-symbols}节。\\
+\code{:guest-return IMAGE}；\code{:guest-return-cancel} & 在已验证边界发起或取消受控 Guest 返回；保持运行控制和写入保护，详见 Bao/VM 章节。\\
+\code{:edit-value}；\code{:format} & 当前对象受控编辑 / 显示格式菜单。\\
+\code{:register-refresh} / \code{:register-search} / \code{:register-filter} & 选中寄存器读、Find、分组分类切换。\\
+\code{:register-definitions} / \code{:register-probe} / \code{:register-status} & Target/All definitions、能力采样、当前对象详情。\\
+\code{:register-cancel} / \code{:register-bank-read} & 取消本核读批次 / 读取当前适用的 selector bank。\\
+\code{:mpu [m|el1|el2]}；\code{:cache} & M 核用 m，R52 用 el1/el2；MPU/cache 总览打开只看缓存，显式 Read 才发事务。\\
+\code{:appearance}；\code{:animations off|subtle|full}；\code{:zoom} & 外观面板、动画模式、当前面板组放大。\\\bottomrule
+\end{longtable}
+未列在快捷命令弹窗中的兼容别名仍可在 Console 输入；无冒号输入按原始 GDB 命令处理。命令参数包含空格时，open/elf/break 的外层双引号会去除；不要由此推断所有命令都支持完整 shell 引号语法。
+
+\Needspace{8\baselineskip}
+\subsection{工具环境和芯片描述扩展字段}
+\label{sec:chip-schema-complete}
+除第\ref{sec:config}节的 Project 字段，工具环境接受下列控制元数据。它们不是可随意加入项目根部的通用键；加载时严格检查所属层级。普通程序路径和用户配置继续使用相对路径与安装资源引用。
+\begin{longtable}{@{}P{54mm}P{107mm}@{}}\toprule
+字段 & 解释\\\midrule\endhead
+backend / backends.<name> & 根后端名称/按后端覆盖公共工具配置；选 Chip 后必须匹配。\\
+chip\_profiles.directory / file & 按型号选择目录中的 <chip>.toml；file 可显式指定。路径相对工具 profile，directory 不得为空。\\
+probes.<name>.config & Probe 配置文件路径；由所选 cmsis-dap/jlink/stlink 解析，不绑定某个 STM32 型号。\\
+core\_targets.<id>.endpoint / ready & 物理 ID 的 GDB 地址/可选服务就绪片段；不自动从 ID 猜端口。\\
+芯片 extends & 字符串父文件，相对当前芯片文件，逐层加载并检查循环；不是寄存器 catalogue 的数组继承语法。\\
+芯片 [chip].cores/backend/cpu & 可选自描述元数据，供目录发现和 CPU 默认；名称取文件名。\\
+芯片 [chip].register\_catalogue & 可选默认目录，路径相对声明文件；随包资源可用 builtin:registers/...。\\
+芯片/环境 [program].svd & 可选默认外设描述，不接管项目 ELF、源码和工程任务。\\\bottomrule
+\end{longtable}
+用户芯片文件位于用户 profiles 的 chips 目录，可独立安装；不存在同名入口时使用内置 tools/devices。损坏的无关文件不会破坏所有项目，但选中它会显示精确错误。旧 devices.toml 索引仍兼容；选择优先级和新增芯片步骤见第\ref{sec:device-catalogue}节。内置 tools 根据 EXE 安装位置查找，安装版不从项目 cwd 加载同名 tools 冒充运行资源。
+
+\Needspace{8\baselineskip}
+\subsection{registers 与每核覆盖的完整字段}
+\label{sec:register-schema-complete}
+\code{[registers]} 是默认；\code{[cores.registers]} 可覆盖下表除 topology 外的字段。topology 属于共享工程结构，不能写入每核覆盖表。省略继承，显式空值按该字段的清空规则处理。工具 profile/chip/project 的来源由 register\_sources 保留，不能把最终有效配置全部写回公共 profile。
+\begin{longtable}{@{}P{51mm}P{110mm}@{}}\toprule
+字段 & 用途和使用边界\\\midrule\endhead
+cpu / catalogue & CPU preset / 显式目录文件。空值、Automatic、GDB-only 的优先级见第\ref{sec:um-register-config}节。\\
+topology.chip / topology.clusters & 芯片身份与核心到 cluster 的显式映射；不从连续 core ID 推断 cluster。\\
+facts & 配置事实数值表；标记配置来源，不能生成本次物理身份、容量或字段观测。\\
+components & 组件名到 base/channel/little\_endian 的映射；base 是数值地址。\\
+component\_owners & 组件名 → owner 标识 → Component；用于 core:/cluster:/chip: 的精确路由。需要 owner 映射时不回退其他核默认基址。\\
+mmio\_probe & 默认 false；启用要求适配组件取得本 owner 的新鲜 MMIO 证明，不等于扫描任意地址。\\
+tcl\_endpoint / targets & 专用协议服务地址及核心名到实际 target 的映射，不与普通 memory\_access 自动等同。\\
+cp15\_command / cp15\_64\_command & 明确选择 MRC32/MRRC64 协议；64 位不能拼成不相关的两个 MRC。\\
+banked\_command & 独立银行读取协议，核对当前 Debug 状态与 DSPSR/DLR/scratch 恢复。\\
+vfp\_command / vfp\_write\_command & 独立 VFP 读/写 opt-in；两者不互相授权。\\
+timer\_command / pmu\_command / gic\_command & 分别选择专用只读协议，核对真实身份、当前 EL、容量、权限和采样来源。\\
+selector\_command / isb\_command & 受保护选择器事务及同步机制；空 ISB 保留受保护 legacy 路线，不表示所有平台均安全适用。\\\bottomrule
+\end{longtable}
+上述命令字段不是任意用户输入的脚本执行器：具体适配器核对固定命令、协议标识、响应宽度与证明，旧协议/裸值/未适配身份拒绝。THA R52+ 不因名称相似而使用 D13 注入协议。共享组件的读/写由服务 lease 串行化；恢复失败会隔离服务，不能通过换面板清除故障。
+
+\Needspace{8\baselineskip}
+\subsection{寄存器描述模型：reader、writer、字段和证据}
+\label{sec:catalogue-schema-complete}
+目录根包括 version/cpu/architecture/description、extends、meta、groups、registers 和 discovery。Group 的 id/name/parent/description 建立树；寄存器的 id/name/group/bits/access/scope/description 定义对象，字段用 name/description/segments/access/enums；Segment 是 offset/width，可分段组合，例如 CPSR 的 IT 位。枚举包含 value/name，值用精确字符串。
+
+\begin{longtable}{@{}P{43mm}P{118mm}@{}}\toprule
+reader.kind & 必需定位信息及读取含义\\\midrule\endhead
+gdb & name；动态 regfile 的唯一名称。\\
+cp15 / cp15\_64 & cp/op1/crn/crm/op2，或 cp/op1/crm；限固定受支持编码和相应协议。\\
+backend / banked / vfp & name；受后端专用支持、身份、状态和权限校验，不是任意字符串命令。\\
+mmio & component/offset，及可选 require\_owner\_mapping；地址由本 owner 板级映射得到。\\
+core\_private & address；Cortex-M 当前物理核 PPB 路线。相同地址不共享不同核心的值。\\
+description\_only / description\_unsupported & location 为 core\_private 地址或 mmio 组件/偏移；前者记录只写接口，后者记录当前无适用 reader 的可读接口，均不发送 I/O。\\
+alias & source/offset；从父原始存储截取位，继承权限、条件、来源与失效，不能借 alias 绕过拒绝。\\\bottomrule
+\end{longtable}
+writer 只有显式 gdb\_integer（name）或 vfp（name）路径，并须配独立 write 语义；reader 和 RW 不产生 writer。write 模型含 bits、access、effect、constraint、read\_side\_effect、fields、reserved、read\_only\_write、verification。effect 支持声明的 modify、写 1/0 触发 clear/set/toggle、整体 clear/set，constraint 为 none、range、enumerated、write\_as\_read；支持规划不等于具体后端/设备允许执行。write\_fields 独立记录可写含义，不把 WO 命令字段当普通读值解码。
+
+register 的 reset/source/confidence/verification/fields\_missing 与 definition\_origin 保存描述依据和继承来源。meta 的 document/version/number/url、source 的 document/version/number/section/page/line/url，以及 verified 的 date/board/firmware/report 是资料链，不是现场采样结果。reset 未知保持未声明。override\_definition 对应 TOML 的 override，替换必须明确且完整。conditions 是 fact/min/max 的有界实现条件；present\_if 是 reg/field/op/value 的新鲜物理字段比较，op 接受 eq/ne/lt/le/gt/ge。
+
+access\_rule 支持 need\_halt、min\_el、need\_enable，以及 1.3.3 新增的 requires、deny。运行态 NeedHalt=false 仅适用内存 reader，仍需实际通道能力；min\_el 使用当前 Debug 证据，不使用保存 CPSR。requires/deny 的语义和 Access restricted 状态见附录~\ref{sec:um-development}；1.3.2 及更早 EXE 不识别这两个新键，须成套升级 Host 和描述。access\_condition 是人可读条件文字，不能替代结构化规则。
+
+discovery 含 registers 数组和 rules 数组；每条规则有 fact、description、requires 字段比较。registers 列出附加探测定义 ID；读取只用最终目录的合法定义，满足全部新鲜字段条件才产生该事实，条件失效撤销旧事实；不执行命令、写入或未知地址探索。能力采样、值样本、资格原因、尝试 provenance 和旧值来源分别保留。Status/统计可观察它们，不以 Total 冒充成功 I/O。
+
+\src{\path{src/registers.rs}、\path{src/registers/core_config.rs}、\path{src/registers/metadata.rs}、\path{src/registers/policy.rs}、\path{src/registers/discovery.rs}；\path{src/config/chip_profiles.rs}；\path{src/writes.rs}。}
+
+
+\newsection{实现功能覆盖与维护索引}
+\label{sec:feature-index}
+原索引于 2026-10-23 核对 src、CLI/工作台/JSONL 路由、Project/寄存器/写入结构及 tools/profiles/scripts/tests 文档；现接续正式 1.3.2 并补入多 ELF/Guest 的入口。功能按使用者可观察行为分组，不把每个私有函数、测试函数或第三方工具内部命令计为一个产品 feature。1.3.3 的寄存器规则、合并范围与新增 F429 实板结果见附录~\ref{sec:um-development}，不代表重测本索引的所有功能。
+
+{\small
+\begin{longtable}{@{}P{37mm}P{124mm}@{}}\toprule
+实现域 & 功能与 UM 入口\\\midrule\endhead
+入口与运行资源 & CLI、Setup/直接启动、demo/snapshot、内置资源、用户目录和可安装芯片；见第\ref{sec:chip-schema-complete}节。\\
+工程配置与持久偏好 & 严格 TOML、层级覆盖、相对路径、来源、每核默认、锁与增量合并；见第\ref{sec:config}节。\\
+Setup 与选择器 & 工程发现、字段编辑、文件/目录浏览、芯片/核心/通道、帮助、滚动与重映射；见第\ref{sec:setup-projects}节。\\
+多核协调 & 共享服务、逐核启动/回滚、控制范围、队列、关联断点和共享 owner 失效；见第\ref{sec:multi}节。\\
+会话与进程 & GDB/服务生命周期、串行请求、事件、超时、取消、服务 lease/隔离和唤醒；见第\ref{sec:architecture}节。\\
+源码与搜索 & 源码定位、只读选区、剪贴板、符号搜索、文件筛选与映射；见第\ref{sec:source-selection}节。\\
+变量与普通断点 & Watch/Locals 树、补全、代码/硬件/数据断点、条件、启停与关联；见第\ref{sec:jsonl}节。\\
+总线与实时内存 & 范围/标量读、类型地址绑定、receipt、运行态通道、逐项刷新及旧 Live Watch；见第\ref{sec:memory-binding}节。\\
+SVD 外设 & SVD 继承/数组/字段、端序/读副作用、按需采样及受控编辑入口；见第\ref{sec:um-writing}节。\\
+寄存器模型与来源 & 目录、继承、声明/物理事实、资格、实际/保留来源、状态和去重统计；见第\ref{sec:catalogue-schema-complete}节。\\
+寄存器读取与资格矩阵 & 可见安全项、Probe、取消、后端匹配、MMIO 身份证明与运行态资格；见第\ref{sec:system-registers}节。\\
+Cortex-M MPU/cache & M3/M4/M7、PPB、FPU/NVIC/DWT/FPB 容量、MPU bank 和 M7 cache 只读事务；见第\ref{sec:system-registers}节。\\
+能力、R52 与存储视图 & 真实身份/当前 Debug EL、CP15、banked、S/D/Q、选择器保存/恢复与 R52+ 拒绝边界；见第\ref{sec:system-registers}节。\\
+Timer/PMU/GIC/STM & 固定只读模块协议、64 位容量/证明、物理/虚拟视图和无 Trace 采集边界；见第\ref{sec:system-registers}节。\\
+受控写入 & 规划、字段/副作用、typed 变量、RAM/MMIO、GDB 整数/VFP、一次性草稿和回执；见第\ref{sec:write-contract-complete}节。\\
+UI 布局、格式与诊断 & 11 面板、快捷键、滚动/放大/外观、寄存器格式/MPU/详情、日志、MI 解析与库组织；见第\ref{sec:workspace-extras}节。\\
+\bottomrule\end{longtable}}
+
+
+上述域已为每个生产 Rust 模块建立路径、SHA256 和对应 UM 标签的机器清单；测试模块单列，不用软件模型冒充实板能力。CLI 的 25 个长选项均见附录命令行速查；63 个 method 常量按 56 个客户端操作和 7 个内部协调/失效方法核对。UI 的命令列表与兼容路由一起收录在附录~\ref{sec:commands-complete}。结构字段的代码拼写和示例均按源码检查，名称出现本身不作为全部硬件测试通过的证明。
+
+\Needspace{8\baselineskip}
+\subsection{专项模块的操作入口和边界}
+\begin{longtable}{@{}P{31mm}P{130mm}@{}}\toprule
+模块 & 使用与验证边界\\\midrule\endhead
+银行/VFP & 当前核 frame 0 暂停，核对身份、当前 Debug EL 与启用证据，再读 bank/原始存储；不切 CPU 模式、不自动使能。VFP writer 独立 opt-in，Q 可部分完成，低 EL 和 R52+ 仍按实际适配拒绝。\\
+Timer & 专用 timer\_command，核对计数/频率/控制/偏移的固定只读协议和完整 64 位。移动计数器的两个采样不能要求恒等；不改计时器 enable、比较值或权限。\\
+PMU & 专用 pmu\_command 和新鲜物理容量；PMCR.N、HDCR 分区值与可读数量分开。观测不启动计数、改事件或授权 Guest。外部 PMU MMIO 与系统 PMU 不混用。\\
+GIC & 物理 ICC 与虚拟 ICH/ICV backing 分开；容量来自对应接口。IAR 读取具有 acknowledge 副作用，观测后端拒绝；不写 EOIR/DIR、不发送 SGI、不配置路由。\\
+STM/Debug & 按明确 owner/base/channel、身份和访问规则读取适配配置/状态；不可从 Debug base 猜 STM/PMU 地址。不解锁、不启用集成测试、不采集 Trace。\\
+MMIO/共享组件 & 对 core/cluster/chip owner 分开映射、缓存、Probe 和失效；同地址不证明同组件，缺 owner 不借其他核映射。Scope All 不广播探测或写入。\\
+M MPU/cache & 总览打开仅缓存；Read 执行临时 selector、读取、恢复及回读证明，失败不发布部分新结果；不进行区域配置、cache maintenance 或 TCM 开启。\\\bottomrule
+\end{longtable}
+
+\Needspace{8\baselineskip}
+\subsection{文档、描述生成、打包与测试入口}
+寄存器说明在 \path{docs/register-*.md} 和 \path{docs/registers-*.md}，设备/目录在 tools/devices 与 profiles/registers，参考审计在 reference。\path{scripts/generate-register-catalogues.py}、CMSIS 解析及各 register\_\ldots\_metadata.py 从固定资料生成模型；它们是开发入口，不在用户每次启动时生成目录。修改源资料后同步生成、验证继承/字段/策略，不能只改安装副本。
+
+\path{scripts/test-functional.cjs} 汇总选定软件套件，Cargo 和真实本机 GDB、终端、分发、硬件驱动分层执行；默认 skipped 的硬件 case 不会因脚本存在变成通过。硬件驱动只在明确 --run 及真实工程/固件/owner 条件下使用。FreeRTOS 的构建/下载脚本来自固件工程，DebugTUI 只调用命令；不将用户工程复制到 npm 包。
+
+npm 启动/安装脚本、Windows 便携包、EXE、许可证、修改 OpenOCD 对应源码和校验清单按发布流程交付。工具路径随安装定位，程序运行不依赖 Node 常驻。1.3.3 的源码、标签与正式包成套发布，软件基线、实板与最终分发结果分别记录，见第\ref{sec:evidence}节及发布附件。会话、客户配置和测试原始证据按收尾规则保留。
+
+维护时先更新功能入口/配置/API 与实现域对应关系，再验证示例，三遍 XeLaTeX，渲染最终 PDF 全页并单独放大所有图；自动文字检查不能替代箭头、框线、表格和分页的人工视觉检查。新增 feature 应同时给出使用步骤、限制与证据类别，避免只在版本记录中出现一个名称。
+
 \end{document}

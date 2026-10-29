@@ -4,6 +4,7 @@ const {stm32ChipSelection} = require('./test-support/session.cjs');
 const {spawnSync} = require('node:child_process');
 const fs = require('node:fs'), path = require('node:path'), assert = require('node:assert/strict');
 const {root, quote, delay, hash, outputDirectory, parseOptions, Cases, Session} = require('./test-support/session.cjs');
+const {compareFirmware} = require('./test-support/firmware-compare.cjs');
 const options = parseOptions(process.argv.slice(2), ['--binary','--elf','--profile','--source-root','--svd','--project','--break-location','--function'], ['--allow-reset','--allow-download']);
 assert(options.elf && options.profile && options['source-root'], 'Required: --elf FILE --profile FILE --source-root DIR');
 assert(!options['allow-download'] || options['allow-reset'], '--allow-download also requires --allow-reset');
@@ -49,11 +50,8 @@ const temporaryStop = async () => {
     });
     if (!connected) return;
     matched = await suite.test('HW-02', 'All read-only firmware sections match the supplied ELF', async () => {
-      await cmd('console',{command:'compare-sections -r'});
-      const logs = session.logs('gdb');
-      assert(!logs.some(e => /MIS-MATCH|does not match/i.test(e.text)));
-      const sections = logs.filter(e => /Section .*matched\./.test(e.text)).map(e => e.text.trim());
-      assert(sections.some(s => s.includes('.text')) && sections.some(s => s.includes('.isr_vector')), 'Missing .text/vector confirmation');
+      const sections = await compareFirmware(cmd, fs.readFileSync(elf), {start:0x08000000,end:0x08200000});
+      assert(sections.some(s => s.name === '.text') && sections.some(s => s.name === '.isr_vector'), 'Missing .text/vector confirmation');
       return sections;
     });
     // Do not execute or interpret variable addresses against mismatched firmware.
@@ -97,9 +95,12 @@ const temporaryStop = async () => {
       return {before:before.frame,next:next.frame,step:stepped.frame};
     });
     await suite.test('HW-08', 'Stack/frame navigation, locals, CPU registers and disassembly', async () => {
-      const snapshot = await status(); assert(snapshot.stack.length > 0); assert(snapshot.registers.some(r => r.name === 'pc'));
+      const snapshot = await status(); assert(snapshot.stack.length > 0);
+      const listing = await cmd('registers_list');
+      const core = await cmd('registers_read',{ids:['pc','sp','xpsr'],context:listing.context});
+      assert.equal(core.samples.length,3); assert(core.samples.every(r => r.state === 'valid' && r.value?.hex));
       await cmd('frame',{level:0}); await cmd('disassemble'); const assembly = (await status()).assembly; assert(assembly.length > 0);
-      return {stack:snapshot.stack.length,locals:snapshot.locals.length,registers:snapshot.registers.length,assembly:assembly.length};
+      return {stack:snapshot.stack.length,locals:snapshot.locals.length,registers:core.samples,assembly:assembly.length};
     });
     await suite.test('HW-09', 'Pointer/structure and array Watch expansion, collapse and removal', async () => {
       for (const expression of ['pxCurrentTCB','pxReadyTasksLists']) {
@@ -146,8 +147,8 @@ const temporaryStop = async () => {
       await cmd('restart'); await cmd('break',{location:'main',temporary:true}); await cmd('run'); await cmd('wait_stopped'); assert.equal((await status()).frame.function,'main');
     }); else suite.skip('HW-15','Configured reset/run','Requires --allow-reset');
     if (options['allow-download']) await suite.test('HW-16', 'GDB download and read-only section verification', async () => {
-      await cmd('download'); const start = session.logs().length; await cmd('console',{command:'compare-sections -r'});
-      const logs = session.logs().slice(start); assert(!logs.some(e => /MIS-MATCH/.test(e.text))); assert(logs.some(e => /Section .text.*matched/.test(e.text)));
+      await cmd('download');
+      return compareFirmware(cmd, fs.readFileSync(elf), {start:0x08000000,end:0x08200000});
     }); else suite.skip('HW-16','Actual firmware download','Requires --allow-reset --allow-download');
   } finally {
     await suite.test('HW-17','Clean debugger exit and owned process cleanup',async () => {

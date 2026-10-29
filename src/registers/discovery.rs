@@ -124,6 +124,9 @@ pub fn denial(
     register: &Register,
     facts: &BTreeMap<String, u64>,
 ) -> Option<(Reason, String)> {
+    if let Some(denial) = catalogue.declared_read_denial(register) {
+        return Some(denial);
+    }
     if register.scope != Scope::Core {
         return Some((
             Reason::AccessRestricted,
@@ -134,15 +137,6 @@ pub fn denial(
         return Some((
             Reason::WriteOnly,
             "Probe skipped write-only definition; no IO sent".into(),
-        ));
-    }
-    if catalogue.read_dependencies(register).is_ok_and(|deps| {
-        deps.iter()
-            .any(|r| matches!(r.reader, Reader::DescriptionUnsupported { .. }))
-    }) {
-        return Some((
-            Reason::ReaderUnsupported,
-            "Described location has no applicable read route; no IO sent".into(),
         ));
     }
     if catalogue.read_policy(register).1 {

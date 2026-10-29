@@ -427,20 +427,20 @@ impl Engine {
                 eligibility: Some(evidence),
                 last_value_eligibility: None,
             };
-            if implementation == Implementation::No {
+            if let Some((reason, detail)) = catalogue.declared_read_denial(register) {
+                sample.state = if reason == Reason::AccessRestricted {
+                    State::Unavailable
+                } else {
+                    State::Unsupported
+                };
+                sample.reason = reason;
+                sample.detail = detail;
+            } else if implementation == Implementation::No {
                 sample.state = State::Unsupported;
                 sample.reason = Reason::HardwareNotImplemented;
             } else if !readable {
                 sample.reason = Reason::WriteOnly;
                 sample.detail = "Register or alias dependency is write-only; no read sent".into();
-            } else if catalogue.read_dependencies(register).is_ok_and(|deps| {
-                deps.iter()
-                    .any(|r| matches!(r.reader, Reader::DescriptionUnsupported { .. }))
-            }) {
-                sample.state = State::Unsupported;
-                sample.reason = Reason::ReaderUnsupported;
-                sample.detail =
-                    "Described location has no applicable read route; no IO sent".into();
             } else if sample.owner.is_none() {
                 sample.state = State::Unavailable;
                 sample.detail = "Register owner is unknown; configure chip/cluster topology".into();
@@ -625,6 +625,9 @@ impl Engine {
         self.check_register_read_cancelled()
             .map_err(|error| (Reason::Unknown, error))?;
         self.register_value_access = None;
+        if let Some(denial) = catalogue.declared_read_denial(register) {
+            return Err(denial);
+        }
         if matches!(register.reader, Reader::DescriptionOnly { .. }) {
             return Err((
                 Reason::WriteOnly,
@@ -1226,14 +1229,7 @@ reader = { kind = "alias", source = "alias", offset = 0 }
                 let (reason, detail) = engine
                     .read_register_value(catalogue.register(id).unwrap(), &catalogue, &mut cache)
                     .unwrap_err();
-                assert_eq!(
-                    reason,
-                    if manual {
-                        Reason::ReaderUnsupported
-                    } else {
-                        Reason::AccessRestricted
-                    }
-                );
+                assert_eq!(reason, Reason::ReaderUnsupported);
                 if manual {
                     assert!(detail.contains("no IO sent"));
                 }

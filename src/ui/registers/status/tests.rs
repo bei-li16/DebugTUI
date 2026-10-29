@@ -20,6 +20,31 @@ fn counts(app: &App) -> Counts {
         app.snapshot.state == state::STOPPED,
     )
 }
+
+#[test]
+fn declared_access_restriction_has_its_own_row_count_and_never_schedules_io() {
+    let mut app = app();
+    let position = index(&app, "r0");
+    let c = app.register_view.catalogue.as_mut().unwrap();
+    c.registers[position].access_rule.deny =
+        Some("Debugger access prohibited by the selected description".into());
+    c.registers[position].writer = None;
+    app.register_view.query = "r0 in the core register group.".into();
+    app.register_view.rebuild();
+    let (engine, requests) = engine();
+    for has_value in [false, true] {
+        if has_value {
+            put(&mut app, "r0", State::Valid, Reason::Unknown);
+        }
+        assert_eq!(counts(&app).get(Category::AccessRestricted), 1);
+        assert_eq!(counts(&app).get(Category::ReaderUnsupported), 0);
+        let mut terminal = Terminal::new(TestBackend::new(110, 18)).unwrap();
+        terminal.draw(|f| app.draw_registers(f, f.area())).unwrap();
+        assert!(text(&terminal).contains("Access restricted"));
+        assert!(!app.ensure_registers(Some(&engine)));
+        assert!(requests.try_recv().is_err());
+    }
+}
 fn put(app: &mut App, id: &str, state: State, reason: Reason) {
     let mut value = sample(app, id, "0x80000001");
     value.state = state;
@@ -601,7 +626,10 @@ fn register_status_counts_expanded_rows_once_and_separates_failures_from_last_va
     for category in CATEGORIES {
         assert_eq!(
             result.get(category),
-            usize::from(category != Category::NotRead),
+            usize::from(!matches!(
+                category,
+                Category::NotRead | Category::AccessRestricted
+            )),
             "{category:?}"
         );
     }

@@ -179,7 +179,12 @@ impl Report {
                 .expect("Validated catalogue");
             let root = dependencies.last().expect("Register dependency");
             let owner = config.topology.owner(register.scope, &self.context.core);
-            let plan = plan(root, &self.environment, &self.context, owner.as_deref());
+            let mut plan = plan(root, &self.environment, &self.context, owner.as_deref());
+            let declared_denial = catalogue.declared_read_denial(register);
+            if let Some((_, detail)) = &declared_denial {
+                plan.available = false;
+                plan.detail = detail.clone();
+            }
             let (readable, manual_only) = catalogue.read_policy(register);
             let (implementation, implementation_detail) =
                 catalogue.implementation(register, &facts);
@@ -189,17 +194,18 @@ impl Report {
                 self.environment.target_state == state::STOPPED
                     && s.applies_at(&self.context, owner.as_deref(), &self.owner_generations)
             });
-            let support = if owner.is_none() {
+            let support = if let Some((reason, _)) = declared_denial {
+                if reason == Reason::AccessRestricted {
+                    Support::AccessRestricted
+                } else {
+                    Support::ReaderUnsupported
+                }
+            } else if owner.is_none() {
                 Support::UnknownOwner
             } else if implementation == Implementation::No {
                 Support::ConditionsExcluded
             } else if !readable {
                 Support::WriteOnly
-            } else if catalogue.read_dependencies(register).is_ok_and(|deps| {
-                deps.iter()
-                    .any(|r| matches!(r.reader, Reader::DescriptionUnsupported { .. }))
-            }) {
-                Support::ReaderUnsupported
             } else if let Some(sample) = sample {
                 if !current {
                     Support::Stale
@@ -271,6 +277,13 @@ impl Report {
                     .map(|r| format!("{}: {}", r.id, r.access_condition)),
             );
             for dependency in &dependencies {
+                for condition in &dependency.access_rule.requires {
+                    state_conditions.push(format!(
+                        "{} requires access evidence: {}",
+                        dependency.id,
+                        condition.description()
+                    ));
+                }
                 if let Some(condition) = &dependency.present_if {
                     state_conditions.push(format!(
                         "{} present_if: {}",

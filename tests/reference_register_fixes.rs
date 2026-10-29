@@ -1138,7 +1138,9 @@ fn f429_mpu_aliases_optional_components_and_existing_address_write_policies() {
     }
     for (id, fact) in [
         ("fpu.mvfr2", "stm32f429.mvfr2.present"),
-        ("dwt.pcsr", "stm32f429.dwt.pcsr.present"),
+        ("scs.pid5", "stm32f429.scs.pid5.present"),
+        ("scs.pid6", "stm32f429.scs.pid6.present"),
+        ("scs.pid7", "stm32f429.scs.pid7.present"),
     ] {
         let reg = c.register(id).unwrap();
         let (state, reason) = reg.implementation(&Default::default());

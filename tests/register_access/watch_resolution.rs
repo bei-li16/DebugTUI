@@ -548,7 +548,21 @@ fn watch_resolution_discards_silent_thread_frame_pc_changes_and_mid_operation_no
         assert!(error.contains(expected), "{scenario}: {error}");
         let commands = fs::read_to_string(&transcript).unwrap();
         assert!(
-            commands.contains("-var-delete") && commands.contains("-gdb-set may-call-functions on")
+            commands.contains("-var-delete") && commands.contains("-gdb-set may-call-functions on"),
+            "{scenario}: {commands}"
+        );
+        assert_eq!(
+            commands
+                .lines()
+                .filter(|line| line.starts_with("-var-delete "))
+                .count(),
+            1,
+            "{scenario}: temporary object must be deleted exactly once"
+        );
+        assert_eq!(
+            fs::read_to_string(transcript.parent().unwrap().join("policy.txt")).unwrap(),
+            "on",
+            "{scenario}: original function-call policy must be restored"
         );
         if matches!(scenario, "running" | "stop-again" | "thread-notice") {
             assert!(

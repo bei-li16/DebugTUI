@@ -1,7 +1,7 @@
 use super::*;
 use debugtui::registers::{Access, Catalogue, Condition, Reader};
 
-fn run_probe(p: Project) -> (EngineHandle, Value) {
+pub(super) fn run_probe(p: Project) -> (EngineHandle, Value) {
     p.validate().unwrap();
     let engine = coordinator::spawn(p);
     call(&engine, 1, "connect", json!({}));
@@ -179,7 +179,7 @@ fn f429_discovery_requires_rom_identity_power_and_current_enable_without_writes(
             fault == "none",
             "{fault}: {read}"
         );
-        assert_eq!(read["samples"][1]["reason"], "reader_unsupported");
+        assert_eq!(read["samples"][1]["reason"], "access_restricted");
         for sample in &read["samples"].as_array().unwrap()[1..] {
             assert!(sample["provenance"]["access"].is_null());
         }

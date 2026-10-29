@@ -9,16 +9,18 @@ pub(super) enum Category {
     NotImplemented,
     Unavailable,
     ReaderUnsupported,
+    AccessRestricted,
     Error,
     WriteOnly,
     Stale,
 }
-const CATEGORIES: [Category; 8] = [
+const CATEGORIES: [Category; 9] = [
     Category::NotRead,
     Category::Valid,
     Category::NotImplemented,
     Category::Unavailable,
     Category::ReaderUnsupported,
+    Category::AccessRestricted,
     Category::Error,
     Category::WriteOnly,
     Category::Stale,
@@ -31,6 +33,7 @@ impl Category {
             Self::NotImplemented => "Not implemented",
             Self::Unavailable => "Unavailable",
             Self::ReaderUnsupported => "Reader unsupported",
+            Self::AccessRestricted => "Access restricted",
             Self::Error => "Error",
             Self::WriteOnly => "Write only",
             Self::Stale => "Stale",
@@ -41,7 +44,7 @@ pub(super) struct Counts {
     pub total: usize,
     pub shown: usize,
     pub readable: usize,
-    categories: [usize; 8],
+    categories: [usize; 9],
 }
 impl Counts {
     pub(super) fn get(&self, category: Category) -> usize {
@@ -65,6 +68,18 @@ impl RegisterView {
         stopped: bool,
     ) -> Category {
         let register = &self.catalogue.as_ref().unwrap().registers[index];
+        if let Some((reason, _)) = self
+            .catalogue
+            .as_ref()
+            .unwrap()
+            .declared_read_denial(register)
+        {
+            return if reason == Reason::AccessRestricted {
+                Category::AccessRestricted
+            } else {
+                Category::ReaderUnsupported
+            };
+        }
         if self
             .catalogue
             .as_ref()
@@ -77,22 +92,6 @@ impl RegisterView {
         }
         if !self.catalogue.as_ref().unwrap().read_policy(register).0 {
             return Category::WriteOnly;
-        }
-        if self
-            .catalogue
-            .as_ref()
-            .unwrap()
-            .read_dependencies(register)
-            .is_ok_and(|deps| {
-                deps.iter().any(|r| {
-                    matches!(
-                        r.reader,
-                        crate::registers::Reader::DescriptionUnsupported { .. }
-                    )
-                })
-            })
-        {
-            return Category::ReaderUnsupported;
         }
         let Some(sample) = self.sample(project, context, index) else {
             return Category::NotRead;
@@ -114,6 +113,9 @@ impl RegisterView {
         if sample.reason == Reason::ReaderUnsupported {
             return Category::ReaderUnsupported;
         }
+        if sample.reason == Reason::AccessRestricted {
+            return Category::AccessRestricted;
+        }
         match sample.state {
             State::Valid if sample.value.is_some() => Category::Valid,
             State::Valid | State::Error => Category::Error,
@@ -127,7 +129,7 @@ impl RegisterView {
             total: self.catalogue.as_ref().map_or(0, |c| c.registers.len()),
             shown: 0,
             readable: 0,
-            categories: [0; 8],
+            categories: [0; 9],
         };
         for row in &self.rows {
             let Row::Register(index, _) = row else {

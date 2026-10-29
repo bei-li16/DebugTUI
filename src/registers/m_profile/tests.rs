@@ -83,7 +83,20 @@ fn f429_discovery_fixture() -> (Catalogue, Probe) {
     let mut p = probe(&c, 0x410fc241);
     p.samples.push(sample(&c, "dcb.demcr", 1 << 24));
     for id in &c.discovery.registers {
+        if let Some((reason, detail)) = c.declared_read_denial(c.register(id).unwrap()) {
+            let mut s = sample(&c, "scb.cpuid", 0);
+            s.id = id.clone();
+            s.state = State::Unavailable;
+            s.reason = reason;
+            s.detail = detail;
+            s.value = None;
+            s.provenance = Some(Provenance::declared(&c.register(id).unwrap().reader));
+            p.samples.push(s);
+            continue;
+        }
         let value = match id.as_str() {
+            "rom.dwt" => 0xfff02003,
+            "rom.itm" => 0xfff01003,
             "rom.tpiu" => 0xfff41003,
             "rom.etm" => 0xfff42003,
             "tpiu.devid" => 0xca1,

@@ -3,6 +3,8 @@
 mod discovery_cases;
 #[path = "m_capability_access/m_modules_cases.rs"]
 mod m_modules_cases;
+#[path = "m_capability_access/remaining_cases.rs"]
+mod remaining_cases;
 use debugtui::{
     config::{Core, Project},
     coordinator,

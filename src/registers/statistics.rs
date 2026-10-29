@@ -32,6 +32,8 @@ pub fn summarize(catalogue: &Catalogue, samples: &[Sample]) -> Summary {
             "valid"
         } else if sample.state == State::Stale {
             "stale"
+        } else if sample.reason == Reason::AccessRestricted {
+            "access_restricted"
         } else if sample.reason == Reason::HardwareNotImplemented {
             "hardware_not_implemented"
         } else if policy.is_some_and(|p| !p.0) {
@@ -44,8 +46,6 @@ pub fn summarize(catalogue: &Catalogue, samples: &[Sample]) -> Summary {
             "read_error"
         } else if policy.is_some_and(|p| p.1) {
             "manual_side_effect"
-        } else if sample.reason == Reason::AccessRestricted {
-            "access_restricted"
         } else if register.is_some_and(|r| r.access_rule.need_enable.is_some())
             && sample.state == State::Unavailable
         {

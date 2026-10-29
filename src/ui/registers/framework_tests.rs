@@ -289,7 +289,7 @@ fn native_selector_failures_keep_distinct_reasons_and_the_original_debug_proof()
         (
             "Selector read AccessRestricted: debugtui-r52:access-restricted",
             Reason::AccessRestricted,
-            status::Category::Unavailable,
+            status::Category::AccessRestricted,
         ),
         (
             "Selector read HardwareNotImplemented: debugtui-r52:not-implemented",

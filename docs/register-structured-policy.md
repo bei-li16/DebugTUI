@@ -25,6 +25,18 @@ access_rule = { min_el = 2 }
 
 `need_enable` 为假时返回 FeatureDisabled / NeedEnable；没有观测时返回 Unknown。不会自动使能、自动补读依赖或因为手动操作忽略条件。用户先手动读无副作用的源寄存器，或运行适配的 capability probe。
 
+`access_rule.requires` 是最多 64 个同作用域字段比较的合取，使用与 `need_enable` 相同的当前物理观测要求。它决定访问资格，不把结果写成寄存器实现状态：缺少观测返回 Unknown，比较不满足返回 AccessRestricted。别名继承全部要求；配置事实不能冒充字段观测，过期上下文和依赖失效会撤销资格。它适用于“未实现时保证读零，但需先核对核身份、组件地址和访问路径”的只读位置。
+
+```toml
+access_rule = { need_halt = false, requires = [{ reg = "component_rom", field = "PRESENT", op = "eq", value = 1 }] }
+```
+
+`access_rule.deny` 声明当前 Host 访问路径的永久限制，必须提供非空原因。自动、手动、Probe 和别名均在 IO 前拒绝；状态为 Unavailable / AccessRestricted，UI 单列 Access restricted，统计原因是 `access_restricted`。该限制优先于 `description_unsupported` 的缺少 reader 诊断，不能附加 writer。它不改变产品寄存器本身的 RO/RW 属性，也不会尝试解锁。
+
+```toml
+access_rule = { deny = "Architecture forbids debugger access to this interface" }
+```
+
 `min_el` 接受 0～3，必须由当前事务的后端 Debug-state 证据满足；配置 `cpu.mode`/`cpu.debug_el` 或停止前 CPSR 都不能满足它。本批通用入口尚未接入这样的后端证据，因此声明 min_el 的通用读取在数据请求前返回 Unknown。纯策略函数已有已证明 EL、低 EL 和缺证据的正/负测试；R52 生产成功路径由 C03 继续接通，不将通用拒绝视作 R52 权限已完成。
 
 省略 `need_halt` 保持停止态要求。只有最终 reader 为 MMIO/CorePrivate 才能声明 `need_halt=false`；别名不能降低父项要求。实际通道、后端和请求入口还会检查自身限制。本批公开读取入口仍要求 STOPPED，运行态的 UI/采样接入属于 B11。

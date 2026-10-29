@@ -734,7 +734,8 @@ impl Register {
         } else if self.conditions.is_empty() && self.present_if.is_none() {
             (
                 Implementation::Unknown,
-                "Target identity not yet verified".into(),
+                "Implementation is not established by access permission or a successful read"
+                    .into(),
             )
         } else {
             (
@@ -745,6 +746,7 @@ impl Register {
     }
     pub fn auto_read(&self, implementation: Implementation) -> bool {
         self.access.readable()
+            && self.access_rule.deny.is_none()
             && !matches!(self.reader, Reader::DescriptionUnsupported { .. })
             && !self.read_side_effect
             && implementation != Implementation::No

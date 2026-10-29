@@ -2,6 +2,64 @@ use super::*;
 use serde_json::json;
 
 #[test]
+fn declared_access_denial_is_generic_inherited_and_cannot_attach_a_writer() {
+    let mut c = catalogue();
+    c.registers[1].access_rule.deny = Some("Debugger path is architecturally forbidden".into());
+    c.validate().unwrap();
+    for id in ["optional", "alias"] {
+        let r = c.register(id).unwrap();
+        let denial = c.declared_read_denial(r).unwrap();
+        assert_eq!(denial.0, Reason::AccessRestricted);
+        assert!(denial.1.contains("architecturally forbidden"));
+        assert_eq!(
+            c.access_denial(r, &BTreeMap::new(), false, None),
+            Some(denial)
+        );
+        assert!(!c.automatic_read(r, &BTreeMap::new()));
+    }
+    c.registers[2].writer = Some(Writer::GdbInteger { name: "r0".into() });
+    assert!(c.validate().is_err());
+    c.registers[2].writer = None;
+    c.registers[1].access_rule.deny = Some(" ".into());
+    assert!(c.validate().is_err());
+}
+
+#[test]
+fn access_requirements_need_current_observations_without_claiming_implementation() {
+    let mut c = catalogue();
+    c.registers[1].present_if = None;
+    c.registers[1].access_rule.requires = vec![FieldCondition {
+        reg: "identity".into(),
+        field: "COUNT".into(),
+        op: Compare::Eq,
+        value: 4,
+    }];
+    c.validate().unwrap();
+    let r = c.register("alias").unwrap();
+    let samples = [sample(&c, 0x410)];
+    let declared = BTreeMap::from([
+        (field_key("identity", "COUNT"), 4),
+        (field_key("identity", "ENABLE"), 1),
+    ]);
+    let facts = c.observation_facts(&declared, None, &[], &context());
+    assert!(c.access_denial(r, &facts, true, None).is_some());
+    let facts = c.observation_facts(&declared, None, &samples, &context());
+    assert!(c.access_denial(r, &facts, true, None).is_none());
+    assert_eq!(c.implementation(r, &facts).0, Implementation::Unknown);
+    let mut stale = context();
+    stale.generation += 1;
+    let facts = c.observation_facts(&declared, None, &samples, &stale);
+    assert!(c.access_denial(r, &facts, true, None).is_some());
+    let facts = c.observation_facts(&declared, None, &[sample(&c, 0x510)], &context());
+    assert_eq!(
+        c.access_denial(r, &facts, true, None).unwrap().0,
+        Reason::AccessRestricted
+    );
+    c.registers[1].access_rule.requires[0].reg = "alias".into();
+    assert!(c.validate().is_err());
+}
+
+#[test]
 fn bounded_el2_preflight_delegates_only_el_and_preserves_alias_owner_enable_and_halt_rules() {
     let mut c = catalogue();
     c.registers[1].reader = Reader::Cp15 {

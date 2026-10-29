@@ -1,10 +1,10 @@
-//! Independent source/formula and negative-path tests. Pure memory; no device IO.
+//! Audited-baseline regressions, independent formulas and negative paths. No device IO.
 use debugtui::registers::{
     self, Access, Catalogue, Component, Config, Context, Implementation, RawValue, Reader, Scope,
 };
 use registers::matrix::{Environment, Report, Support};
 use serde_json::Value;
-use std::{collections::BTreeMap, fs, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf};
 
 fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -106,25 +106,34 @@ fn all16_bcr_split_bas_and_ro_mirrors_all_raw_patterns() {
 }
 
 #[test]
-fn gic_all1519_source_formula_fields_conditions_and_origins_in_real_loader() {
-    // Independently authored primary-table inventory; no repair generator is used.
-    let evidence: Value = serde_json::from_slice(
-        &fs::read(root().join(
-            "artifacts/system-registers-reaudit-r52-f429/gic-mmio-all-structural-and-semantic.json",
-        ))
-        .unwrap(),
-    )
-    .unwrap();
+fn gic_all1519_audited_baseline_fields_conditions_and_origins_in_real_loader() {
+    // A fixed published/audited regression oracle belongs with the tests, not
+    // in disposable artifacts. This does not recreate the old primary-source
+    // audit; the independent capacity/owner formulas below remain separate.
+    let evidence: Value =
+        serde_json::from_str(include_str!("fixtures/r52-gic-audited-baseline.json")).unwrap();
+    assert_eq!(
+        evidence["baseline_commit"],
+        "bbdb12d39fdf91c92aa0a58b4e33bdd634d72efd"
+    );
     let c = r52();
-    let checks = evidence["checks"].as_array().unwrap();
+    let checks = evidence["registers"].as_array().unwrap();
     assert_eq!(checks.len(), 1519);
+    assert_eq!(
+        c.registers
+            .iter()
+            .filter(|r| r.id.starts_with("gicd.")
+                || r.id.starts_with("gicr.")
+                || r.id.starts_with("gicr_export."))
+            .count(),
+        checks.len()
+    );
     let mut fields = 0;
     for case in checks {
-        let id = case["register"].as_str().unwrap();
+        let id = case[0].as_str().unwrap();
         let r = c.register(id).unwrap();
-        let e = &case["expected"];
-        assert_eq!(u64::from(r.bits), e["bits"].as_u64().unwrap(), "{id}");
-        assert_eq!(serde_json::to_value(r.access).unwrap(), e["access"], "{id}");
+        assert_eq!(u64::from(r.bits), case[1].as_u64().unwrap(), "{id}");
+        assert_eq!(serde_json::to_value(r.access).unwrap(), case[2], "{id}");
         let component = id.split('.').next().unwrap();
         assert_eq!(
             r.scope,
@@ -136,38 +145,45 @@ fn gic_all1519_source_formula_fields_conditions_and_origins_in_real_loader() {
             "{id}"
         );
         assert!(
-            matches!(&r.reader,Reader::Mmio{component:c,offset,require_owner_mapping:true} if c==component && *offset==e["offset"].as_u64().unwrap()),
+            matches!(&r.reader,Reader::Mmio{component:c,offset,require_owner_mapping:true} if c==component && *offset==case[3].as_u64().unwrap()),
             "{id}"
         );
         assert!(r.writer.is_none() && r.write.is_none() && r.write_fields.is_empty());
-        assert_eq!(r.reset, e["reset"].as_u64());
-        let expected_fields = e["fields"].as_array().unwrap();
+        assert_eq!(r.reset, case[4].as_u64());
+        let layout = case[5].as_u64().unwrap() as usize;
+        let expected_fields = evidence["layouts"][layout].as_array().unwrap();
         assert_eq!(r.fields.len(), expected_fields.len(), "{id}");
         for (f, exp) in r.fields.iter().zip(expected_fields) {
-            assert_eq!(f.name, exp["name"].as_str().unwrap(), "{id}");
+            assert_eq!(f.name, exp[0].as_str().unwrap(), "{id}");
             assert_eq!(f.segments.len(), 1);
-            assert_eq!(
-                u64::from(f.segments[0].offset),
-                exp["offset"].as_u64().unwrap()
-            );
-            assert_eq!(
-                u64::from(f.segments[0].width),
-                exp["width"].as_u64().unwrap()
-            );
+            assert_eq!(u64::from(f.segments[0].offset), exp[1].as_u64().unwrap());
+            assert_eq!(u64::from(f.segments[0].width), exp[2].as_u64().unwrap());
             assert_eq!(
                 serde_json::to_value(f.access.unwrap()).unwrap(),
-                exp["access"],
+                exp[3],
                 "{id}:{}",
                 f.name
             );
             fields += 1;
+        }
+        let conditions = case[7].as_array().unwrap();
+        assert_eq!(r.conditions.len(), conditions.len(), "{id}");
+        for (actual, expected) in r.conditions.iter().zip(conditions) {
+            assert_eq!(actual.fact, expected["fact"].as_str().unwrap(), "{id}");
+            assert_eq!(actual.min, expected["min"].as_u64().unwrap(), "{id}");
+            assert_eq!(actual.max, expected["max"].as_u64(), "{id}");
         }
         let origin = r.definition_origin.as_ref().unwrap();
         assert_eq!(
             normalized(&origin.declared_in),
             normalized(&format!(
                 "file:{}",
-                case["current_origin"]["file"].as_str().unwrap()
+                root()
+                    .join(format!(
+                        "reference/r52-gic/gic-mmio-{}.toml",
+                        case[6].as_u64().unwrap()
+                    ))
+                    .display()
             )),
             "{id}"
         );

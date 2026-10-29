@@ -180,7 +180,7 @@ fn running_ui_rejects_stopped_samples_and_shows_needhalt_as_unavailable_without_
     assert_eq!(
         app.register_view
             .category(&app.project, &context, index(&app, "r0"), false),
-        status::Category::Unavailable
+        status::Category::AccessRestricted
     );
     assert!(requests.try_recv().is_err());
 }

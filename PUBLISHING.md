@@ -2,6 +2,10 @@
 
 GitHub 仓库：<https://github.com/bei-li16/debugtui>。当前通过 GitHub Release 分发安装包，npm 从 Release URL 安装；源码 push 和 Release 附件发布是两个独立操作。
 
+## 1.3.3 发布与安装
+
+1.3.3 包含寄存器访问策略、F429 受控读取和 Watch 清理修复，从 main 发布为正式版 v1.3.3。新 EXE 与描述文件成套交付，版本说明区分此前完整软件基线、新 EXE 的 STM32F429 实板结果、分发升级及公网安装验证。使用下文 Latest URL 升级，详见 [1.3.3 说明](docs/release-1.3.3.md)；PDF/TeX 手册、验证摘要、OpenOCD 对应源码和 SHA256 作为独立附件交付。
+
 ## 1.3.2 发布与安装
 
 1.3.2 修复 Symbol images 的直接保存，增加源码根继承、基本/高级设置折叠及主 ELF 双向联动。正式版通过 GitHub Release 分发，并保持固定名称 npm 附件供 Latest URL 安装。安装步骤、验证范围及限制见 [1.3.2 说明](docs/release-1.3.2.md)。运行包沿用只收录 Markdown 的规则；更新后的完整 TeX/PDF 手册作为独立附件发布，OpenOCD 对应源码及 SHA256 同时交付。1.3.0 实板基线与 1.3.2 的编辑、持久化、软件及分发验证分别列明，不混记不同二进制的结果。

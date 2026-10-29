@@ -54,6 +54,8 @@ fn unsupported_locations_and_aliases_are_readable_descriptions_without_automatic
             assert!(row.readable, "architectural RW permission remains visible");
             assert!(!row.automatic_eligible, "{id}, present={present:?}");
             assert!(!row.plan.available);
+            assert_eq!(row.support, Support::AccessRestricted);
+            assert!(row.plan.detail.contains("UNPREDICTABLE"));
         }
     }
 }
