@@ -1,4 +1,4 @@
-# Bao 与每核 VM 的多 ELF 调试（1.3.1）
+# Bao 与每核 VM 的多 ELF 调试
 
 同一物理核心的 Bao 与 Guest ELF 常驻 GDB。停止后，根据可执行 section、PC 和停止前程序 CPSR 识别镜像；源码显示切换不重连、不复位、不重新下载，也不为识别镜像额外暂停运行中的核心。
 
@@ -8,24 +8,24 @@
 
 ## 配置镜像
 
-Setup 的 **Symbol images** 可添加、选择和编辑镜像，设置 ID、ELF、核心、源码根/映射、Hyp/Guest 域、重定位偏移和 Global memory channel。保存写入工程，Start 后装入；这一步不下载固件。高级 section 地址和诊断提供者在 TOML 中配置，Setup 编辑会保留它们。
+Setup 的 **Symbol images** 管理镜像。1.3.2 默认展开 ID、ELF、核心和 Hyp/Guest 运行域；**Advanced settings** 展开源码根覆盖、重定位偏移、源码映射和 Global memory channel。默认不必重复填写 Source root：镜像未设置或留空时继承首页 Source root。已有显式设置继续保留；清空覆盖可恢复继承。其他工程的 VM 源码可以指定不同根目录，路径相对项目 TOML。
 
-文本字段按 Enter 进入编辑，1.3.1 显示 Editing 标题和插入光标；Enter 确认，Esc 撤销，Ctrl+U 清空，Home/End 移动到首尾。长路径窗口跟随光标；Apply to draft 后返回首页 Save config，才写入工程。
+选中文本字段按 Enter，出现 `▏` 光标和 Editing 提示。直接输入或粘贴，Ctrl+U 清空，Home/End 移动到首尾；Enter 确认本字段，Esc 撤销本字段。长路径窗口跟随光标。**Ctrl+S 或 Save config 会提交当前输入、校验并直接写入工程文件**，不再需要回首页保存第二次。成功返回首页显示 `Saved <项目路径>`；保存失败保留窗口、输入和错误原因。**Apply to draft** 仅更新首页草稿，之后仍需 Save config 或 Start；Cancel 丢弃本次窗口修改。保存不会下载固件、重连或改变运行状态。
 
-从 1.3.1 开始，选中文本字段按 Enter 后会显示 `▏` 光标、编辑标题和 Editing 提示。直接输入或粘贴，Ctrl+U 清空，Home/End 移动到首尾；Enter 确认本字段，Esc 撤销本字段。编辑长路径时显示窗口跟随光标。完成后选择 Apply to draft（或 Ctrl+S）返回 Setup，再按 Ctrl+S 保存到项目。鼠标切换行会先提交原字段；无法解析的输入会保留焦点及原因。修改 Id 后，使用旧 `@image:` 名称的引用需要相应更新。
+修改与首页 Program / ELF 关联的主镜像 ELF 时，两处路径同步；修改首页主 ELF 也同步已有的关联镜像，VM 路径独立保留。高级 section 地址和诊断提供者仍在 TOML 中配置，界面修改、折叠和保存都会保留它们。修改 Id 后，使用旧 `@image:` 名称的引用需要相应更新。
 
 ```toml
 [[images]]
 id = "bao"
 elf = "bin/tha6xxx/tha6206-dual/bao.elf" # 与 program.elf 一致
-source_root = "."
+# 未设置 source_root，继承首页 Source root
 domain = "hyp"
 memory_channel = "ahb"
 
 [[images]]
 id = "vm0"
 elf = "build/tha6xxx/tha6206-dual/guest/guest0.elf"
-source_root = "."
+# 未设置 source_root，继承首页 Source root
 cores = ["core.0"]
 domain = "guest"
 memory_channel = "ahb"

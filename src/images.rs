@@ -11,12 +11,17 @@ use std::{
 #[cfg(test)]
 mod tests;
 
+fn empty_path(path: &Path) -> bool {
+    path.as_os_str().is_empty()
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Image {
     pub id: String,
     pub elf: PathBuf,
     pub cores: Vec<String>,
+    #[serde(skip_serializing_if = "empty_path")]
     pub source_root: PathBuf,
     pub source_map: Vec<SourceMap>,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -512,12 +517,16 @@ pub fn source_path(image: &Image, file: &str) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-pub(crate) fn absolute_paths(images: &mut [Image], base: &Path) {
+pub(crate) fn absolute_paths(images: &mut [Image], base: &Path, source_root: &Path) {
     for image in images {
         if !image.elf.is_absolute() {
             image.elf = base.join(&image.elf);
         }
-        image.source_root = base.join(&image.source_root);
+        image.source_root = if image.source_root.as_os_str().is_empty() {
+            source_root.to_owned()
+        } else {
+            base.join(&image.source_root)
+        };
         for map in &mut image.source_map {
             if !map.to.is_absolute() {
                 map.to = base.join(&map.to);

@@ -949,7 +949,7 @@ impl Project {
             p.program.elf = absolute(&base, &p.program.elf);
         }
         p.program.source_root = absolute(&base, &p.program.source_root);
-        crate::images::absolute_paths(&mut p.images, &base);
+        crate::images::absolute_paths(&mut p.images, &base, &p.program.source_root);
         if !p.program.svd.as_os_str().is_empty() {
             p.program.svd = crate::bundled_tools::resolve_svd(&p.program.svd, &base)?;
         }

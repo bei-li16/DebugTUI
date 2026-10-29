@@ -70,7 +70,7 @@ const HINTS: [&str; 21] = [
     "Enter: choose a built-in or user CPU preset, Automatic, or the original GDB register list.\nA project catalogue file takes precedence over the CPU preset. Selection does not prove hardware or backend support.\nUser presets live in the local profiles/registers directory and are preserved during upgrades.",
     "Optional TOML architecture register catalogue. Enter: type a path. F2: browse.\nRelative paths are resolved against Project; a path inherited from Tools remains relative to that profile.\nBlank uses the selected CPU preset. Catalogue selection only changes the draft until Start.",
     "Enter: configure the target, TCL endpoint, label and core restrictions of each memory access channel.\nRunning reads must be supported by the chosen OpenOCD bus/AP target. Core access can remain stopped-only.\nApply creates a project override; Save config or Start persists it. The tools profile is never rewritten.",
-    "Enter: configure resident ELF images, core restrictions, source roots and relocation.\nProgram / ELF remains the primary executable. Additional symbols are loaded before connecting.\nEach stopped PC is matched to executable sections; overlaps remain explicitly ambiguous.",
+    "Enter: configure resident ELF images, core restrictions and program domain.\nSource root inherits Setup unless overridden in Advanced settings. Ctrl+S saves the project directly.\nEditing the primary image's ELF also updates Program / ELF; symbols load before connecting.",
     "Start with the reviewed settings: Enter, F5 or Ctrl+R. The previous session is closed first.\nThe configuration is saved to Project before the new session starts.\nFor a new project, select Tools / profile, Probe, Chip, Debug cores and the matching ELF.",
     "Save config / Ctrl+S writes the draft to Project without starting GDB or connecting to hardware.\nA missing Project TOML is created; the referenced tools profile is never rewritten.\nStart also saves the configuration. Use Exit to leave without saving draft edits.",
 ];
@@ -819,8 +819,16 @@ impl Setup {
     fn image_action(&mut self, action: images::Action) -> Result<(), String> {
         match action {
             images::Action::None => return Ok(()),
-            images::Action::Cancel => self.symbol_images = None,
-            images::Action::Apply(mut images) => {
+            images::Action::Cancel => {
+                self.symbol_images = None;
+                self.message = "Symbol image edits cancelled; project unchanged.".into();
+                return Ok(());
+            }
+            images::Action::Apply {
+                mut images,
+                primary_elf,
+                save,
+            } => {
                 for image in &mut images {
                     if image.elf.is_absolute() {
                         image.elf = relative_path(self.document.base(), &image.elf).into();
@@ -836,6 +844,9 @@ impl Setup {
                     }
                 }
                 let mut document = self.document.clone();
+                if let Some(elf) = primary_elf {
+                    document.set_path("program", "elf", &absolute(document.base(), &elf));
+                }
                 document.raw.as_table_mut().unwrap().insert(
                     "images".into(),
                     toml::Value::try_from(images).map_err(|e| e.to_string())?,
@@ -846,13 +857,21 @@ impl Setup {
                     }
                     return Err(error);
                 }
+                if save {
+                    if let Err(error) = document.save() {
+                        if let Some(dialog) = &mut self.symbol_images {
+                            dialog.message = error.clone();
+                        }
+                        return Err(error);
+                    }
+                    self.message = format!("Saved {}", document.path.display());
+                } else {
+                    self.message = "Symbol image draft updated. Ctrl+S saves; Start loads symbols before connecting.".into();
+                }
                 self.document = document;
                 self.symbol_images = None;
             }
         }
-        self.message =
-            "Symbol image draft updated. Ctrl+S saves; Start loads symbols before connecting."
-                .into();
         Ok(())
     }
     fn values(&self) -> Vec<String> {
@@ -1036,6 +1055,22 @@ impl Setup {
                 doc.select_chip_profile(Some(value));
             }
             ELF | SOURCE => {
+                let linked = if self.selected == ELF {
+                    doc.project()
+                        .map(|project| {
+                            project
+                                .images
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(index, image)| {
+                                    (image.elf == project.program.elf).then_some(index)
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default()
+                } else {
+                    vec![]
+                };
                 let key = if self.selected == ELF {
                     "elf"
                 } else {
@@ -1046,6 +1081,20 @@ impl Setup {
                 } else {
                     let path = absolute(doc.base(), Path::new(value));
                     doc.set_path("program", key, &path);
+                }
+                let elf = doc.raw.get("program").and_then(|p| p.get("elf")).cloned();
+                if let Some(elf) = elf
+                    && let Some(images) = doc
+                        .raw
+                        .get_mut("images")
+                        .and_then(toml::Value::as_array_mut)
+                {
+                    for index in linked {
+                        images[index]
+                            .as_table_mut()
+                            .unwrap()
+                            .insert("elf".into(), elf.clone());
+                    }
                 }
             }
             BUILD | DOWNLOAD => doc.set(
@@ -1402,7 +1451,7 @@ impl Setup {
                 ))
             }
             KeyCode::Enter if self.selected == IMAGES => {
-                self.symbol_images = Some(images::Images::new(self.document.project()?));
+                self.symbol_images = Some(images::Images::from_document(&self.document)?);
             }
             KeyCode::Enter if matches!(self.selected, SOURCE_REMAP | ON_EXIT | PROBE) => {
                 self.cycle(false)?

@@ -20,11 +20,11 @@
 \definecolor{accent}{HTML}{A65028}
 \definecolor{pale}{HTML}{F2F5F7}
 \definecolor{line}{HTML}{B7C8D2}
-\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={v1.3.1 文档；Bao 与 VM 常驻多 ELF 和镜像编辑；保留历史实板资料}}
+\hypersetup{pdftitle={DebugTUI 用户手册：实现、架构与嵌入式调试},pdfauthor={DebugTUI 工程文档},pdfsubject={v1.3.2 文档；镜像配置直接保存、继承与 ELF 联动；保留 Bao/VM 历史实板资料}}
 \ctexset{section={format=\Large\bfseries\color{ink}},subsection={format=\large\bfseries\color{ink}}}
 \pagestyle{fancy}\fancyhf{}
 \fancyhead[L]{\small\sffamily DebugTUI / User Manual}
-\fancyhead[R]{\small v1.3.1 增补 · 2026-10-28}
+\fancyhead[R]{\small v1.3.2 增补 · 2026-10-29}
 \fancyfoot[L]{\footnotesize 本地源码与测试证据版}
 \fancyfoot[R]{\thepage}
 \renewcommand{\headrulewidth}{0.4pt}
@@ -66,10 +66,10 @@
 \end{tikzpicture}
 \vfill
 \begin{tabular}{@{}ll}
-工程版本 & 1.3.1；工程配置使用 version = 3\\
-分析基线 & 1.3.0 多 ELF 实板基线 + 1.3.1 镜像编辑修复\\
-修订范围 & Bao/VM 常驻多 ELF 增补；其余历史章节保留日期\\
-修订日期 & 2026-10-28（Asia/Singapore）\\
+工程版本 & 本地 1.3.2；工程配置使用 version = 3\\
+分析基线 & 1.3.0 多 ELF 实板基线 + 1.3.2 配置编辑回归\\
+修订范围 & 镜像保存、继承、ELF 联动及当前 Setup 操作\\
+修订日期 & 2026-10-29（Asia/Singapore）\\
 适用平台 & 当前发布及本地验证：Windows x64\\
 文档文件 & \code{docs/usermanual.tex} / \code{docs/usermanual.pdf}
 \end{tabular}
@@ -80,12 +80,12 @@
 \addcontentsline{toc}{section}{阅读说明与证据范围}
 本手册面向使用者、芯片适配人员和维护者。内容以本地工程的 Rust 实现、TOML 配置、板级脚本、测试脚本和实际日志为依据，覆盖从终端操作到探针、芯片的完整链路。第三方 OpenOCD/GDB 二进制按可见版本、配置及接口分析，不将二进制分发目录误当作 DebugTUI 自研代码。
 
-本次以 2026-10-28 的 1.3.0 安装版多 ELF 实板验收为基线，补充 Bao 与每核 VM 的配置、操作、限制，并纳入 1.3.1 的镜像编辑反馈修复。旧版“不支持多镜像”的表述已修正。其余章节沿用此前手册的专题和历史记录，并非对 0.9.3 以来所有功能重新作全量审计。远端发布状态以 GitHub Release 为准；工程行为以当前代码为准，实板结论以报告中记录的 EXE 哈希、固件和日期为准，不把 1.3.0 的 EXE 验收数字改记为 1.3.1 的新实板结果。
+本次按本地 1.3.2 更新 Symbol images 的直接保存、Source root 继承、高级设置折叠和主 ELF 联动，并修正过时的 Setup 入口及写入 UI 说明。Bao 与每核 VM 的实板结论继续引用 2026-10-28 的 1.3.0 安装版验收。其余章节保留各专题的原日期与历史记录，并非对 0.9.3 以来所有功能重新作全量审计。远端发布状态以 GitHub Release 为准；实板结论以报告中的 EXE 哈希、固件和日期为准，1.3.2 的配置软件回归不改记为新的实板结果。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{27mm}Y@{}}\toprule
 证据类别 & 本手册的使用方式\\\midrule
 当前源码 & 功能、默认值、路由和约束的首要依据；与旧 README 冲突时采用代码事实。\\
-源码验证 & Bao 多 ELF 增补按 1.3.0 核对，安装版 Rust 库测试 606 项、集成 7 项通过，原有 3 项忽略单列；旧章节继续保留各自版本，见第\ref{sec:evidence}节。\\
+源码验证 & 1.3.2 已有库测试 615 项通过、3 项忽略，以及镜像编辑、持久化和分发回归，见第\ref{sec:setup-132-validation}节；1.3.0 的 606 项库测试、7 项集成及旧章节结果保留原版本。\\
 本地实板 & 保留 STM32、THA6206 历史证据；新增 2026-10-28 已安装 1.3.0 的 THA6206 双核 Bao/VM 与真实终端 74 项通过记录，见第\ref{sec:bao-130-validation}节。本次编辑和编译手册未再次操作板卡。\\
 仓库历史说明 & 历史说明须与本机可见原始记录、产物和日期对应；具体证据见各适配章节，不把配置配方当作实板结果。\\
 外部资料 & 核对 MI/RSP、探针协议、CoreSight/ADI、Trace 和芯片接口；通用架构能力不等于本地已实现或已验证。\\\bottomrule
@@ -110,7 +110,7 @@ DebugTUI 是基于 GDB/MI2 的原生终端调试工作台。Ratatui 绘制字符
 断点 & 普通/硬件/临时代码断点，写/读/读写数据观察点，启停、条件、忽略次数、命中数、跨重连恢复。\\
 实时观察 & 可见项选择显式内存通道；OpenOCD TCL 能力允许时在运行中读内存；另有旧式 ELF 原始全局量 Live Watch。\\
 多核与多 ELF & 每核独立物理 GDB，会话组控制、断点联停、单步隔离、共享复位；1.3.0 可为每核常驻 Bao 与所属 VM 符号，见第\ref{sec:bao-symbols}节。\\
-工程操作 & Setup 项目/芯片/核心选择、示例、ELF 路径映射、字段帮助；Build/Download 外部命令、环境引用、偏好保存、日志和清理。\\
+工程操作 & Setup 项目/芯片/核心选择、镜像编辑、ELF 路径映射、字段帮助；Build/Download 外部命令、环境引用、偏好保存、日志和清理。\\
 自动化 & 标准输入/输出 JSONL、脚本串行执行、结构化快照、响应、日志与实时采样事件。\\\bottomrule
 \end{tabularx}
 
@@ -146,6 +146,9 @@ Bao 外部适配更新 & 迁移至芯片/核心选择，Run 与整片复位分�
 \subsection{1.3.0：Bao 与 VM 常驻多 ELF 增补}
 每核在连接前加载 Bao 与对应 Guest ELF；真实停止后识别执行镜像，Source、Files、Symbols、反汇编、Watch 与断点保留镜像归属。源码浏览不会重连、复位、下载或改变物理执行位置；运行中不为识别镜像额外暂停。有效诊断快照还可只读查看挂起 Guest 的源码、寄存器、栈和局部变量，并在完整 HVC32 边界返回 Guest。配置、命令、状态与限制集中在第\ref{sec:bao-symbols}至\ref{sec:bao-130-validation}节，日常入口为 B 的 \code{debug-multi-images.toml}。
 
+\subsection{1.3.2：镜像配置编辑与保存}
+Symbol images 中的 Save config/Ctrl+S 直接保存工程，包含尚未按 Enter 确认的输入；Apply to draft 仅更新 Setup 草稿。基本字段默认展开，源码根覆盖、偏移、映射与内存通道收入 Advanced settings。未设置的镜像 Source root 继承首页，主镜像 ELF 与 Program/ELF 双向关联，VM 路径保持独立。保存失败保留修改并显示原因；保存本身不改变正在运行的调试会话。操作步骤见第\ref{sec:bao-image-config}节，已有回归范围见第\ref{sec:setup-132-validation}节。
+
 \newsection{安装、首次启动与日常工作流}
 \subsection{准备材料}
 当前发布目标为 Windows x64。运行调试至少需要 DebugTUI EXE、匹配目标架构的 GDB；远程嵌入式场景还需 GDB Server、探针驱动和板卡。源码调试需要与板上固件匹配的 ELF 和源码；外设视图另需 SVD。工具目录应放在工程或独立工具区，避免随 npm 升级被替换。
@@ -160,11 +163,11 @@ Bao 外部适配更新 & 迁移至芯片/核心选择，Run 与整片复位分�
 
 # Existing portable executable: run directly.
 # Existing npm archive: substitute its actual filename.
-npm install -g ./artifacts/debugtui-cli-0.9.3.tgz
+npm install -g ./artifacts/debugtui-cli-1.3.2.tgz
 debugtui
 \end{lstlisting}
 \end{minipage}\par
-仓库 PUBLISHING.md 描述了 GitHub Release URL 安装流程；本文不将本地包版本等同于远端 Latest。主程序包不包含 tools 和 SVD，交付时须分别准备。安装后用户芯片目录独立保存在用户配置区；若 npm 未执行 postinstall，可运行 \code{debugtui --init-profiles} 完成初始化，不必修改全局 npm 策略。已有目录会校验但不会覆盖，详见第\ref{sec:device-catalogue}节。
+仓库 PUBLISHING.md 描述了 GitHub Release URL 安装流程；本文不将本地包版本等同于远端 Latest。当前 npm 包与便携 ZIP 包含随附 tools 和 SVD；独立 EXE 必须配套对应工具资源或引用已有工具环境。安装后用户芯片目录独立保存在用户配置区；若 npm 未执行 postinstall，可运行 \code{debugtui --init-profiles} 完成初始化，不必修改全局 npm 策略。已有目录会校验但不会覆盖，详见第\ref{sec:device-catalogue}节。
 
 \subsection{内置工具与工程发现（0.10.0-readonly.5）}
 npm 包和便携 ZIP 已内置 GDB/OpenOCD、芯片与探针配置、SVD。工程使用 \code{[tools] profile="builtin:arm-openocd"}；\code{probe="cmsis-dap"} 可在 Setup 的 Probe 字段改为 jlink、stlink 或继承默认值。Chip config 对应 \code{tools.chip\_profile}，可指定工程相对的自定义芯片 TOML。内置模式按工程指定文件、用户 \path{profiles/chips/<chip>.toml}、包内默认文件的顺序选择；用户文件不会写入 npm 安装目录。自定义继承可使用 \code{extends="builtin:devices/tha6206.toml"}，板级 cfg/SVD 相对该文件。
@@ -189,36 +192,28 @@ debugtui --gdb C:/tools/arm-none-eabi-gdb.exe `
 
 \subsection{项目发现、选择与相对路径}
 \label{sec:setup-projects}
-没有指定项目时，默认路径是启动目录下的 \code{./debug.toml}。\textbf{进入 Setup 不会自动创建这个文件}：没有现成配置时只是建立内存草稿，点击 Save config/Ctrl+S 或启动调试时才保存。
+无参数启动优先加载启动目录下的 \code{./debug.toml}。没有默认文件时发现其他工程；没有候选工程则\textbf{创建最简 debug.toml 并进入 Setup}，不会启动 GDB 或连接板卡。后续配置修改仍先留在内存中，Save config/Ctrl+S 或 Start 才写回；文件创建失败会报告原因。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{45mm}Y@{}}\toprule
 启动目录情况 & 默认行为及可执行操作\\\midrule
-存在 \code{debug.toml} & 载入默认项目并显示其配置；用 Projects/F3 换到其他调试项目。\\
-没有默认文件，但有项目 TOML & 首次空草稿启动时打开候选列表，选择后重新解析并刷新 Setup 各项。返回已编辑的草稿时不强制再次选择。\\
-没有项目 TOML & 显示 \code{./debug.toml} 草稿；可直接填写，也可先用 Examples/F4 套用示例。\\
+存在 \code{debug.toml} & 载入默认项目；选中 Project 后按 Enter，或按 F3 切换其他调试配置。\\
+没有默认文件，但有项目 TOML & 唯一候选直接加载；多个候选显示配置列表，选择后重新解析并刷新 Setup。返回已编辑草稿时不强制再次选择。\\
+没有项目 TOML & 创建最简 \code{./debug.toml}；依次选择 Tools/profile、Probe、Chip、Debug cores 和匹配的 ELF。日志默认关闭。\\
 配置在其他目录 & 在 Project 字段按 F2 浏览目录及 TOML 文件，或直接编辑路径；加载失败显示错误并保留此前的有效草稿。\\\bottomrule
 \end{tabularx}
 
-Projects 列表筛选调试项目配置，排除 \code{Cargo.toml} 和 \code{debug-env*.toml} 等工具配置；并非所有 TOML 都是可启动项目。\code{debug-*.toml} 即使损坏也可出现在列表，选择时会报告解析错误。F2 是文件浏览，F3 是项目选择，两者用途不同。
+配置列表筛选调试项目，排除 \code{Cargo.toml} 和 \code{debug-env*.toml} 等工具配置；并非所有 TOML 都可启动。\code{debug-*.toml} 即使损坏也可出现在列表，选择时报告解析错误。F2 是文件浏览，F3 是当前目录的配置选择，两者用途不同。
 
 Project 字段以\textbf{启动工作目录}为相对路径基准。例如 \path{./debug.toml} 或 \path{./examples/debug.toml}；跨 Windows 盘符等无法相对表示的路径仍保留绝对路径。选择项目后，ELF、tools/profile、Source root、SVD、日志等项目资源的相对路径则按\textbf{所选 TOML 所在目录}解析。不能因为 Project 显示相对路径，就把全部字段都理解为相对启动目录。
 
-\subsection{Examples：从示例建立可修改的配置}
+\subsection{配置列表、模板与已有工程}
 \label{sec:setup-examples}
-在 Setup 点击 Examples 或按 F4，选中示例后按 Enter 应用。该操作替换当前配置草稿并立即刷新字段，\textbf{不会写文件、连接探针或执行 Build/Download}；检查并修改后再保存或启动。需要保留尚未保存的自定义内容时，应先保存再切换示例。
+当前 Setup 顶部保留 Start debugging、Save config、Workspace 和 Exit。旧版独立的 Projects 与 Examples 按钮已移除，\textbf{F3 配置列表仍保留，F4 不再打开示例}。在 Project 行按 Enter 或按 F3，选择现有 TOML 后返回 Setup；按 F2 可浏览其他目录。载入会替换当前草稿，尚未保存的修改应先保存；选择本身不写文件、不连接探针、不执行 Build/Download。
 
-\noindent\begin{tabularx}{\linewidth}{@{}P{40mm}Y@{}}\toprule
-示例 & 填入的主要配置及需要自行补充的内容\\\midrule
-单核工程 & \code{./build/firmware.elf}；自行选择 ARM、RISC-V 或其他目标的工具 profile，示例不内嵌工具参数。\\
-本地程序 & Windows 程序示例为 \code{./build/app.exe}；选择声明 \code{target.mode='local'} 的工具 profile。\\
-双核工程 & core0/core1 分别连接 3333/3334，默认 Scope All 和联停；共享 ELF，需选用兼容的工具环境并核对逐核配置。\\
-本地工具配置 & 若项目下有 \code{debug-env.toml}、\code{.vscode/debug-env.toml} 或 \code{tools/debug-env.toml}，提供引用选项，不改写 profile。\\\bottomrule
-\end{tabularx}
-
-通用示例使用 \code{./build/firmware.elf}、Source root = \code{.}、detach 退出策略和 \code{debug_log} 日志目录。示例不生成 GDB、target、service 或工具超时字段；保留已选 profile 和旧工程覆盖值。SVD 与构建/下载命令按工程补齐。双核示例只有在 Server 确实暴露两个对应核心端口时才能使用。
+新工程从自动创建的最简模板填写即可。单核选一个 Debug core，多核选所需核心；不同核心的附加 ELF 在 Symbol images 中维护。要复用 MCAL/Bao 的端口、复位、构建和下载动作，选择或复制已经验证的工程 TOML，并检查它引用的 profile；只选择核心数不会自动生成适用所有板卡的启动流程。本地程序使用声明 \code{target.mode="local"} 的匹配工具环境；Generic GDB 连接已有服务，不能代替芯片专用下载配方。
 
 \subsection{Setup 字段说明与操作入口}
-选中字段后，表单下方显示对应的用途、填写格式、路径基准和空值影响；长说明随宽度换行。窄屏下顶部按钮换行，字段列表可滚动。45×12 是布局回归用例，实际配置建议至少 80×24，完整工作台建议 120×36。
+鼠标悬停在配置行时弹出该项帮助，自动避让终端边界；键盘选中字段后按 F1 查看用途、格式、路径基准和空值影响。红色必填项说明位于表单下方，ELF 是源码调试所需。窄屏下顶部按钮换行，字段列表可滚动。45×12 是布局回归用例，实际配置建议至少 80×24，完整工作台建议 120×36。
 
 {\small
 \begin{longtable}{@{}P{30mm}P{38mm}P{93mm}@{}}
@@ -226,18 +221,23 @@ Project 字段以\textbf{启动工作目录}为相对路径基准。例如 \path
 \toprule 字段 & 示例或入口 & 用途与填写规则\\\midrule\endhead
 Project & \code{./debug.toml}；F2/F3 & 项目配置的读写目标，按启动目录解析。选择已有文件会更新整张配置表；新路径在保存前只是草稿。\\
 Tools / profile & \path{.vscode/debug-env.toml}；F2 & 引用工具/服务/动作配置，相对项目目录。留空使用独立 GDB 配置，不自动获得芯片复位和下载能力。\\
+Probe & Enter / 左右键 & 继承 profile 或选择 CMSIS-DAP、J-Link、ST-Link；内置 OpenOCD 下独立于芯片选择，保存为 \code{tools.probe}。\\
 Chip & Enter；目录选择 & 本地芯片能力声明；选择型号或新增客户型号。Legacy 保留原配置模式。\\
 Debug cores & Enter；核心复选 & 选择该芯片支持的物理核心子集；至少一个。未选择 Chip 时灰显。配置示例见第\ref{sec:device-catalogue}节。\\
+Chip config & Automatic；F2 & 默认随 Chip 选择用户或内置 \code{<chip>.toml}；可指定自定义芯片 TOML，相对项目目录。清空覆盖路径恢复自动选择。\\
 Program / ELF & \code{build/firmware.elf}；F2 & 与目标固件匹配的符号文件，相对项目目录；不是自动烧录命令。无有效调试信息时无法完整进行 C 源码调试。\\
-Symbol images & Enter；镜像编辑器 & 1.3.0 的多 ELF 工程入口；维护 ID、ELF、核心、域、源码根/映射、偏移和内存通道。Apply 更新草稿，Save 保存，Start 才建立符号会话，见第\ref{sec:bao-image-config}节。\\
+Symbol images & Enter；镜像编辑器 & 管理常驻 ELF、核心和域；Advanced settings 展开源码根覆盖等选项。Ctrl+S 直接保存，Apply to draft 仅更新草稿，Start 才建立新会话，见第\ref{sec:bao-image-config}节。\\
 Source root & \code{.}；F2 & 本地源码定位根及 Build/Download 工作目录；相对项目目录。\\
-Build command & \code{.\build.bat} & 可选构建命令；在 Source root 执行。保存、应用示例或单纯启动 Setup 不会执行它。\\
+Build command & \code{.\build.bat} & 可选构建命令；在 Source root 执行。保存或单纯启动 Setup 不会执行它。\\
 Download command & \code{.\flash.bat} & 可选下载命令；在 Source root 执行，使用工程自己的烧录脚本或工具。先核对输入产物和目标。\\
 On exit & detach / resume / disconnect & detach 脱离；resume 对远程目标先 Continue 再 Disconnect，对本地进程暂停后 Detach；disconnect 只关闭连接。最终运行状态仍受 Server 和板级配置影响。\\
-Log directory & \code{debug_log}；F2 & 可选会话日志目录，相对项目目录；建议排查多核问题时保留各核 MI 与 Server 日志。\\
+Log directory & 默认 not set；F2 & 空值关闭会话文件日志，Console 仍可用。左右键切换关闭或 \code{debug-logs}；Enter 输入自定义路径，F2 选文件夹、Space 确认。相对项目目录解析。\\
 SVD file & \code{device.svd}；F2 & 可选外设寄存器描述，相对项目目录；留空仍能使用基本调试，不提供相应外设树。\\
 Source remap & Yes / No；Enter & 开关源码重映射；启用后离线扫描 ELF，关闭保留规则。\\
 ELF path prefix & Enter & 选择 ELF 中与 Source root 对应的目录层级；显示本地匹配预览。Source remap 为 No 时灰显，键盘跳过、鼠标不可选择或修改。详见附录~\ref{sec:ci-source}。\\
+CPU registers & Enter；预设选择 & 选择 CPU 寄存器预设、Automatic 或原始 GDB 列表；选择预设不等于后端已支持所有寄存器访问。\\
+Register catalogue & 可选 TOML；F2 & 架构寄存器目录覆盖文件，优先于 CPU 预设；工程路径相对项目，继承自工具的路径相对 profile。清空后使用所选预设。\\
+Memory channels & Enter；通道编辑器 & 配置 target、TCL 端点、名称与核心限制；运行中读取须获芯片与 OpenOCD 通道支持。Apply 更新工程草稿，Save/Start 持久化。\\
 \bottomrule
 \end{longtable}}
 
@@ -245,14 +245,14 @@ ELF path prefix & Enter & 选择 ELF 中与 Source root 对应的目录层级；
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{42mm}Y@{}}\toprule
 Setup 中的按键/按钮 & 行为\\\midrule
-Projects / F3；Examples / F4 & 打开项目列表；打开示例列表。选择后回到 Setup 查看更新的字段。\\
+Project 行 Enter / F3 & 打开当前目录的配置列表，选择后回到 Setup。旧 Examples/F4 入口已移除。\\
 F2；Enter & 在支持的路径字段浏览；激活当前按钮、字段或列表项。\\
 Save config / Ctrl+S & 保存当前项目配置，不启动或重连调试；遇到外部修改冲突时报告错误，避免覆盖新内容。\\
 Start / Ctrl+R / F5 & 校验配置，结束旧会话，保存配置并启动新会话。\\
 Workspace / Esc & 从表单返回工作区并保留草稿；在编辑器或选择弹窗中先退出当前编辑/弹窗。\\
 Exit / Ctrl+Q & 直接结束程序并执行正常清理；无需先进入调试工作区。\\\bottomrule
 \end{tabularx}
-\src{\path{src/launch.rs}: Document、Setup、字段提示及相对路径；\path{src/launch/choices.rs}: 项目发现与示例；\path{src/ui.rs}: 启动和退出路由。}
+\src{\path{src/launch.rs}: Document、Setup、字段提示及相对路径；\path{src/launch/choices.rs}: 项目与资源选择；\path{src/ui.rs}: 启动和退出路由。}
 
 \subsection{按钮、焦点与保存行为}
 0.9.3 使用深蓝灰分层面板、蓝色焦点和真实圆角边框。按钮、搜索框只填充边框内部，悬停、按下和输入反馈也不会给圆角外围染色；禁用项灰显，核心选择保留独立身份色，工作区背景仅施加轻微核心色调。范围包括 Setup 顶部、Project/运行控制工具栏、核心切换、源码页签、检查器与 Watch/Locals。
@@ -335,7 +335,7 @@ Files 页的 Find 框支持点击、Ctrl+F 或 / 开始输入，不区分大小�
 
 顶部 Symbols 框通过点击、Ctrl+K 或 \code{:symbols} 打开，检索 ELF 中的函数、全局/静态变量和类型。结果显示类别、文件和行号，选中后跳到映射后的本地源码；不切换 GDB 栈帧、PC 或断点。输入停顿 200 ms 后查询，每类最多 200 项；遇到上限需缩小查询，F4 可重试。
 
-新符号查询要求 READY/STOPPED，运行时只可使用已返回的结果，不会隐式暂停目标；切核、重连或换 ELF 时丢弃过期结果。缺少调试信息、位置或对应文件时显示原因，不猜测跳转位置。宏、未编入 ELF 的文件和普通函数局部变量不属于全局索引。Symbols、Files 和 Watch 输入区均显示边框和聚焦状态；Watch 输入框用于添加表达式。
+物理会话的常规符号查询要求 READY/STOPPED，运行时可使用已返回的结果；多镜像工程还可通过镜像离线符号会话检索，见第\ref{sec:bao-image-workflow}节，不会为此暂停目标。切核、重连或换 ELF 时丢弃过期结果。缺少调试信息、位置或对应文件时显示原因，不猜测跳转位置。宏、未编入 ELF 的文件和普通函数局部变量不属于全局索引。Symbols、Files 和 Watch 输入区均显示边框和聚焦状态；Watch 输入框用于添加表达式。
 \src{\path{src/search.rs}、\path{src/session/symbols.rs}、\path{src/ui/search.rs}；实板终端结果见 \path{artifacts/regression-0.8.6-20260923/hardware-results.json}。}
 
 \subsection{源码选区、复制与加入 Watch}
@@ -426,7 +426,7 @@ object.member
 \subsection{数值格式与 CPU 寄存器}
 Watch、Locals、Memory 字节默认十进制；CPU 寄存器、SVD 寄存器/位域默认十六进制；地址固定十六进制。右键或 f 独立选择二/八/十/十六进制。转换使用最多 128 位整数计算，不写目标，不改 GDB 全局 radix；负数保留负号，浮点/枚举/字符串等保留自然表示。Locals 格式键包含文件和函数，成员格式键包含树路径。
 
-寄存器名称和编号从 GDB 动态取得；\code{gdb.registers = []} 默认读取所有命名寄存器。配置非空列表可避开复位时不可访问的浮点寄存器组，不存在的名称会报错。专用面板用于读取；需要修改寄存器或内存时使用明确的原始 GDB 命令，修改会影响目标运行。
+原始 GDB 列表的寄存器名称和编号从后端动态取得；\code{gdb.registers = []} 默认读取所有命名寄存器。配置非空列表可避开复位时不可访问的浮点寄存器组，不存在的名称会报错。当前还可在 Setup 选择 CPU registers 预设或 Register catalogue，以目录和后端能力共同决定专用寄存器视图。符合写入条件的对象可通过下述显式编辑器修改。
 
 \subsection{SVD 外设视图}
 \code{program.svd} 选择 CMSIS-SVD 文件。解析器展开 derivedFrom、数组、cluster 和属性继承，生成设备、外设、寄存器和位域模型；位域从父寄存器值按位偏移/宽度解码，不额外读总线。
@@ -435,6 +435,12 @@ Watch、Locals、Memory 字节默认十进制；CPU 寄存器、SVD 寄存器/�
 
 文件最大 32 MiB，要求字节寻址；读取只接受自然对齐的 8/16/32/64 位。\textbf{当前源码在缺失或未知 endian 时默认小端}，与旧说明中的“不猜测”不同；移植时必须核对 SVD。本地 STM32F429 为小端，不受该默认值差异影响。
 \src{\path{src/session/watch.rs}；\path{src/ui/watch.rs}；\path{src/ui/formats.rs}；\path{src/svd.rs}: Device::parse；\path{src/ui/peripherals.rs}。}
+
+\subsection{显式修改选中对象}\label{sec:value-writes}
+在 Watch、Locals、System Regs、Memory 或 Peripherals 选中对象，按 e 或输入 \code{:edit-value} 打开写入窗口。先填写值和输入格式，选择 Preview 检查对象能力、目标、通道、范围/掩码与上下文；\textbf{Preview 不发送写操作}。检查后 Apply 提交一次写入，结果显示后端执行与验证信息。Cancel 取消未提交的草稿，不能撤销已经发送的 Apply。
+
+编辑要求当前有效的停止上下文，CPU 物理寄存器还要求物理 frame 0；只读对象、后端不支持项或已失效的上下文会显示原因并阻止提交。运行、切核或换帧导致上下文变化后应重新预览。SVD 权限、写副作用、内存访问和后端回读能力决定实际支持范围；回读结果也可能来自服务缓存，不代表独立硬件测量。多镜像隔离求值与挂起 Guest 的保存上下文仍只读，不能通过该窗口写任意镜像对象。
+\src{\path{src/ui.rs} 的 e / edit-value 路由；\path{src/ui/writes.rs}；\path{src/writes/} 与 \path{src/session/writes.rs}。}
 
 \newsection{运行时内存读取与数据新鲜度}\label{sec:live}
 运行中显示的普通快照是上次停止值。若要在不暂停 CPU 的条件下读 SRAM 或外设，必须选择环境明确声明的 OpenOCD 通道，并理解读总线与 GDB 求表达式的区别。
@@ -1377,41 +1383,50 @@ core1-only 在 Setup 直接选 [1]，无需再复制配置并手改端口。前�
 以下为本地已安装版本的日常入口，在 B 根目录执行：
 \begin{lstlisting}
 debugtui --version
-# debugtui 1.3.1
+# debugtui 1.3.2
 debugtui --project .\debug-multi-images.toml
 \end{lstlisting}
 直接运行 \code{debugtui} 仍读取当前目录默认项目 \code{debug.toml} 并进入 Setup；默认文件若是旧单 ELF 配置，不会自动变成多 ELF 工程。可在 Setup 的 Project 行选择 \code{debug-multi-images.toml}，也可使用上面的显式命令。PowerShell 独立终端即可使用，无需 VS Code、外部 Python 服务或另外安装辅助 GDB。
 
 \subsection{Symbol images 与每核镜像配置}\label{sec:bao-image-config}
-在 Setup 选 \textbf{Symbol images}，Enter 打开镜像编辑器。先选 Image，维护 ID、ELF file、Source root、Cores、Program domain、Section offset、Source maps 和 Global memory channel；Add/Remove 管理条目，Apply to draft 更新工程草稿，Save config 保存，Start 应用到新的符号会话。文本字段 Enter 后进入编辑，1.3.1 显示 Editing 标题和插入光标，长路径窗口跟随光标；Enter 确认，Esc 撤销，Ctrl+U 清空。编辑本身不连接目标、不下载固件；高级 section 地址与 saved\_context 诊断声明在 TOML 中维护，编辑器会保留它们。
+在 Setup 选 \textbf{Symbol images}，Enter 打开镜像编辑器。先通过 Image 选择条目；默认只展开 Id、ELF file、Cores 和 Program domain。Add image/Remove image 管理条目；\textbf{Advanced settings 默认折叠}，展开后可编辑 Source root、Section offset、Source maps 和 Global memory channel，收起不会清空已有值。\code{sections} 与 \code{saved_context} 诊断声明仍在 TOML 中维护，编辑和保存会保留它们。
+
+文本字段按 Enter 开始编辑，窗口显示 Editing 和插入光标；长路径窗口跟随光标，Enter 确认输入，Ctrl+U 清空。编辑状态按 Esc 先撤销当前字段输入；非编辑状态按 Esc 等同于 Cancel，丢弃本次窗口修改。确认输入仅改变窗口内容，不等于已保存。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{35mm}Y@{}}\toprule
+操作 & 1.3.2 的结果\\\midrule
+Save config / Ctrl+S & 提交当前输入，即使尚未按 Enter；校验全部镜像后直接写入所选工程 TOML。成功关闭窗口，首页显示 \code{Saved <project path>}。\\
+Apply to draft & 确认窗口内修改并返回 Setup，仅更新内存草稿；之后仍须首页 Save config/Ctrl+S 或 Start 才写入工程。\\
+Cancel & 放弃窗口内未应用的修改，返回原 Setup 草稿；不会撤销此前已完成的保存。\\
+校验或保存失败 & 窗口保持打开，保留输入并显示错误。文件被外部修改时拒绝覆盖，先保留需要的内容、核对并重新加载工程后再处理。\\\bottomrule
+\end{tabularx}
+
+\textbf{推荐步骤：}选择镜像和字段 → Enter 编辑 → Ctrl+S → 确认首页 Saved 路径。仅需暂存时选择 Apply to draft。保存配置不会连接目标、下载固件、重载当前符号或改变运行/暂停状态；Start 才将配置应用到新会话。已经建立的调试会话不会因改了 ELF 路径自动切换符号。
+
+\textbf{Source root 的继承与覆盖：}镜像未写 \code{source_root} 或其值为空字符串时，继承 Setup 首页的 \code{[program].source_root}；在 Advanced settings 清空覆盖可恢复继承。镜像中显式 \code{source_root="."} 表示工程 TOML 所在目录，\textbf{不表示跟随首页}，已有显式配置保留原语义。VM 使用独立源码树时可填 \code{../vm0-src}，仍以工程 TOML 为基准；首页 Source root 变化不改变该覆盖。
+
+\textbf{主 ELF 双向关联：}打开编辑器时，按 ELF 路径确定与 Program/ELF 对应的主镜像，不依赖 ID 叫 bao 或域为 hyp。修改该镜像 ELF 后 Apply/Save 会同步 Program/ELF；在首页修改 Program/ELF 也会更新原来对应的镜像路径。修改 VM0 的 ELF 不改主 ELF 或 VM1。路径联动只维护配置一致性，仍须使用同次构建的固件与符号，运行中跨 Bao/VM 浏览使用预先常驻镜像。
 
 以下片段应\textbf{合并到已有、可正常连接的 Bao 工程}，不是完整板级 profile。本地 \path{debug-multi-images.toml} 已包含端口、启动动作、AHB 通道、Build/Download 和下文的 Guest 诊断配置。已有同名 TOML 表不可重复追加。
 \begin{lstlisting}
 version = 3
-
 [tools]
 profile = "builtin:arm-openocd"
 probe = "cmsis-dap"
-
 [debug]
 chip = "tha6206"
 cores = [0, 1]
-
 [program]
 elf = "bin/tha6xxx/tha6206-dual/bao.elf"
 source_root = "."
-
 [[images]]
 id = "bao"
 elf = "bin/tha6xxx/tha6206-dual/bao.elf"
-source_root = "."
 domain = "hyp"
 memory_channel = "ahb"
-
 [[images]]
 id = "vm0"
 elf = "build/tha6xxx/tha6206-dual/guest/guest0.elf"
-source_root = "."
 cores = ["core.0"]
 domain = "guest"
 memory_channel = "ahb"
@@ -1419,11 +1434,9 @@ memory_channel = "ahb"
 [[images]]
 id = "vm1"
 elf = "build/tha6xxx/tha6206-dual/guest/guest1.elf"
-source_root = "."
 cores = ["core.1"]
 domain = "guest"
 memory_channel = "ahb"
-
 [[source_map]]
 from = "/mnt/d/"
 to = "D:/"
@@ -1433,7 +1446,7 @@ enabled = true
 \end{lstlisting}
 Bao 未限制 cores，适用于本项目全部核；VM0/VM1 分别只属于 core.0/core.1。镜像 ID 必须唯一，\code{program.elf} 与主镜像 Bao 对应；旧单 ELF 工程可不声明 images。这里的核心名是会话名，与 \code{[debug].cores} 的物理索引分开。双 VM 不是 SMP Guest，也没有因此支持迁移/复用 vCPU 的自动调度发现。
 
-ELF、Source root 和映射目标的相对路径以工程 TOML 为基准。参考 Guest 按 RAM 运行地址链接，\code{offset} 默认 0，不填 Flash 的嵌入位置；其他布局可显式配置 offset/sections，主 ELF 保持其链接地址。先核对同次构建的 Bao ELF、Guest ELF、HEX、源码提交及 SHA 清单，源码映射不能修正错误的固件或重定位。
+此示例省略三份镜像的 Source root 覆盖，因此都继承首页的 \code{source_root="."}；若首页改为另一目录，三份镜像会随之变化。外部已有参考工程可能仍显式填写 \code{"."}，不自动迁移或改写。ELF、显式 Source root 和映射目标的相对路径以工程 TOML 为基准。参考 Guest 按 RAM 运行地址链接，\code{offset} 默认 0，不填 Flash 的嵌入位置；其他布局可显式配置 offset/sections，主 ELF 保持其链接地址。先核对同次构建的 Bao ELF、Guest ELF、HEX、源码提交及 SHA 清单，源码映射不能修正错误的固件或重定位。
 
 镜像还可独立声明 \code{[[images.source_map]]}，位置放在所属 \code{[[images]]} 后、下一个镜像前。相同远端前缀可分别映射至不同本地目录；同前缀优先使用镜像规则，再使用公共规则，按最长前缀匹配。Source remap 为 No 时两类规则均停用。正斜杠、反斜杠和混合路径均可匹配，包括带盘符的 Windows 路径。命中映射但本地文件缺失时明确报错，不借用别的镜像同名文件；相对 DWARF 文件名用本 ELF 编译目录定位，不能唯一定位时不猜测。
 
@@ -1531,6 +1544,20 @@ Rust Release & 606 + 7 & 库测试通过 606 项、集成通过 7 项；原有 3
 原有忽略项涉及 Windows 剪贴板写入、缺失 STM32 UI replay 及需要显式环境的 THA6206 源码选区测试；新实板/TUI 回归按自己的报告验收，不用新结果覆盖历史未执行项。已安装 EXE 的 SHA-256 为 \path{e18469afc910c8ffdea4e40a5af615b936265d7588efce364721ab11bd98979a}。这些结果证明当前最小 dual Guest 参考场景，不等于通用 RTOS/SMP/迁移 vCPU 的验收。
 \src{T：\path{artifacts/validation-1.3.0.json} 及其中列出的原始 report.json、固件摘要、终端/进程证据；\path{docs/bao-multi-elf.md}、\path{docs/bao-multi-elf-development.md}；B：\path{debug-multi-images.toml}、\path{scripts/tha6206-build.ps1}。实现：\path{src/images.rs}、\path{src/session/images.rs}、\path{src/session/image_values.rs}、\path{src/session/guest/}、\path{src/launch/images.rs}、\path{src/ui/guest/}。}
 
+\subsection{1.3.2 镜像配置的软件回归}\label{sec:setup-132-validation}
+2026-10-29 的本地 1.3.2 验证针对配置编辑、继承和持久化。以下引用已有报告；本次更新手册仅重新编译和核对文档，未重跑软件套件或操作板卡。
+
+\noindent\begin{tabularx}{\linewidth}{@{}P{38mm}P{25mm}Y@{}}\toprule
+类别 & 已记录结果 & 覆盖与边界\\\midrule
+Rust 库 / Clippy & 615 / 通过 & 库测试 615 通过、0 失败、3 忽略；严格 Clippy 全目标通过，忽略项不计为通过。\\
+原生终端镜像编辑 & 8 + 8 & Release 和全局安装版各 8 项，编辑光标、路径输入及高级声明保留。\\
+原生终端持久化 & 12 + 12 & Release 和全局安装版各 12 项，直接保存、未确认输入、草稿/取消、根目录继承、ELF 联动及高级声明保留。\\
+多镜像软件 / 分发 & 10 / 14 & 分别通过模拟多镜像和安装分发回归；不属于实板测试。\\\bottomrule
+\end{tabularx}
+
+安装版 EXE 的 SHA-256 为 \path{b9b845fc85a3e07b21fe1184f2d32af51057b8ddda1c574f3ccba980ac941e1a}。1.3.1 的旧版失败复现仍保留：Ctrl+S 只更新草稿，未显示 Saved、工程文件未变化；1.3.2 回归用于确认该问题修复，不能把旧失败报告改记为通过。用户 Bao 工程配置的校验摘要在报告中保持不变。THA6206 的板上多 ELF 能力仍以第\ref{sec:bao-130-validation}节的 1.3.0 原始证据为基线。
+\src{\path{artifacts/validation-1.3.2.json} 及其引用的 report.json；\path{scripts/test-symbol-images-setup.ps1}、\path{scripts/test-symbol-images-persistence.ps1}、\path{docs/release-1.3.2.md}；实现：\path{src/launch.rs}、\path{src/launch/images.rs}、\path{src/images.rs}、\path{src/config.rs}。}
+
 \subsection{运行时观察：状态块、Timer、IPC 与 UART}
 Bao profile 已配置 \code{[[memory_access]] id="ahb"}，TCL 6666，target=\code{AHB_3}，允许运行中读取。CPU 在启用 MPU 后可能无法直接读某些 RCC/PORT 地址，而 AP3 仍可观察总线侧数据；不要为让 GDB 读寄存器方便而随意扩大 Guest 的设备权限。
 
@@ -1621,7 +1648,7 @@ RCC/PORT 读失败或值不更新 & CPU 当前 MPU 权限、ahb 通道、刷新�
 
 保存 Setup 时保留环境引用和工程显式配置，不把整个展开环境写回项目。运行时偏好写入使用全局互斥锁，将相关列表/UI 表合并到最新文档。检测到外部启动配置冲突时拒绝盲写并要求重新加载；跨进程修改及崩溃期间并非数据库式原子事务。
 
-Examples 是主动替换启动草稿的操作，不能理解为只填补空字段；它不立即写文件。Projects 则载入所选项目并重新派生所有显示字段，错误时保留此前有效草稿。保存始终写所选 Project，不改写引用的 profile；没有 TOML 的目录在 Save config 或 Start 时才产生文件，进入 Setup 本身不保存。
+Project 行 Enter/F3 载入所选配置并重新派生所有显示字段，错误时保留此前有效草稿；当前没有旧版 Examples/F4 操作。无候选配置时，交互启动会创建最简 debug.toml；之后修改仍须保存。保存始终写所选 Project，不改写引用的 profile。Symbol images 的 Ctrl+S 直接保存，Apply to draft 只更新内存；高级设置、继承和主 ELF 联动见第\ref{sec:bao-image-config}节。
 
 \subsection{核心字段}
 \begin{longtable}{@{}P{42mm}P{32mm}P{87mm}@{}}\toprule
@@ -1666,7 +1693,7 @@ ui.formats / refresh & 空映射 & 数值格式 / 按核按项的读取策略。
 \code{backend / backends} & 工具环境中的单后端标识/多后端覆盖分组，与用户目录中芯片的 backend 匹配。\\
 \code{[core_targets."N"]} & 工具环境提供该物理核的 endpoint 和可选 ready 字符串；也可放入所选 backend 分组。\\
 \code{[[cores]]} & name 唯一；远程 endpoint 唯一；startup\_order 默认 0。可配 init、after\_connect、run、watch、breakpoints。\\
-\code{[[images]]} & 1.3.0 的常驻镜像：唯一 id、elf、可选 cores、domain、source\_root/source\_map、offset/sections、memory\_channel；配置及限制见第\ref{sec:bao-image-config}节。\\
+\code{[[images]]} & 常驻镜像：唯一 id、elf、可选 cores、domain、source\_root/source\_map、offset/sections、memory\_channel。1.3.2 的 source\_root 未设置或为空时继承 program.source\_root，显式点号仍指项目目录；见第\ref{sec:bao-image-config}节。\\
 \code{[images.saved_context]} & 所属 Guest 的显式快照 ABI、身份、索引、通道和允许内存区；只读 Guest 视图见第\ref{sec:bao-guest-context}节。\\
 \code{[multicore]} & scope 默认 core；halt\_peers 默认 true；共享复位由 restart\_core 和 restart 数组定义。\\
 \code{[[memory_access]]} & 唯一 id、label、tcl\_endpoint、target、while\_running；cores 可选限制通道可用于哪些核。\\
@@ -2173,7 +2200,7 @@ node ./scripts/test-functional.cjs --binary ./target/release/debugtui.exe --only
 \end{longtable}
 
 \subsection{源码测试与历史证据复核}
-以下按执行阶段记录结果，不把不同时点的测试数量相加。初版的 137 项记录属于 v0.8.3；9 月 21 日的 THA6206/Bao 文档补充曾做配置离线加载、Guest ELF 解析和产物哈希核对。9 月 23 日补充了已安装 v0.8.6 的 MCAL 回归；9 月 27--29 日新增功能验收、源码重映射、芯片选择及 Bao 构建下载证据。下面保留各自原日期；2026-10-03 的界面、分发验证不是重新跑过这些硬件测试。最新 1.3.0 的独立结果见第\ref{sec:bao-130-validation}节，不覆盖此前失败或未执行项。
+以下按执行阶段记录结果，不把不同时点的测试数量相加。初版的 137 项记录属于 v0.8.3；9 月 21 日的 THA6206/Bao 文档补充曾做配置离线加载、Guest ELF 解析和产物哈希核对。9 月 23 日补充了已安装 v0.8.6 的 MCAL 回归；9 月 27--29 日新增功能验收、源码重映射、芯片选择及 Bao 构建下载证据。下面保留各自原日期；界面、配置与分发验证不是重新跑过这些硬件测试。1.3.0 实板与 1.3.2 配置软件回归分别见第\ref{sec:bao-130-validation}、\ref{sec:setup-132-validation}节，不覆盖此前失败或未执行项。
 
 \noindent\begin{tabularx}{\linewidth}{@{}P{38mm}Y@{}}\toprule
 阶段 & 已记录的结果及边界\\\midrule
@@ -2194,6 +2221,7 @@ v0.8.3 初版源码 & 137 项单元测试、1 项 CLI 集成测试通过，0 失
 10 月 3 日 v0.9.3 & 185 单元 + 1 集成通过、2 忽略；CLI 12/12、隔离 npm 生命周期 7/7 通过。全局 EXE 与构建哈希一致，15 份工程及芯片目录文件不变；Bao 隔离项目 core0/core1/双核选择与保存通过，无实板操作。\\
 10 月 3 日终端 & 键盘、搜索、配置页、缩放、退出 8/8 通过；独立事件探针未收到该宿主注入的 SGR 鼠标记录，Files 原生用例改用 Tab。此结果不包含真实终端鼠标的端到端验收；鼠标命中保留 App 测试覆盖。\\
 10 月 28 日 1.3.0 & 全局安装版 THA6206 Bao/VM 实板与终端 74/74；Rust 606 库测试 + 7 集成通过、3 忽略，软件 10、分发 14、本机 GDB 21 组分别通过。EXE/固件摘要及限制见第\ref{sec:bao-130-validation}节与 \path{artifacts/validation-1.3.0.json}。\\
+10 月 29 日 1.3.2 & 库测试 615 通过、3 忽略；严格 Clippy 通过；Release/安装版终端编辑各 8、持久化各 12、软件 10、分发 14 通过。仅配置软件回归，无新增实板结果，见第\ref{sec:setup-132-validation}节。\\
 保留的失败 & 旧 ConPTY 通用终端 7/8 及 10 月 3 日首次 TERM-03 鼠标注入失败报告仍保留，不改记为通过；应用内部鼠标命中测试不能替代此端到端结果。\\\bottomrule
 \end{longtable}
 \src{\path{TESTING.md} 的对应日期记录；\path{artifacts/devices-tha6206-1790653885250-7b45250a/report.json}；\path{artifacts/ui-controls-20260929/install.json}；\path{artifacts/terminal-20260929-203508-1db44c3a/report.json}。}
@@ -2255,7 +2283,7 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \item 旧 live\_watch 的配置只要求正间隔，实际循环 clamp 到 10--60000 ms；逐项 UI 则要求 50--60000 ms，二者不能混用。
 \item 软件组控制不是硬件同步；运行时总线读取不是跨多个值的一致事务；工程偏好写入不是跨进程原子提交；用户芯片目录另有跨进程锁和同目录临时文件发布。
 \item 通用终端 Files 用例 TERM-03 改用 Tab 后通过；该 ConPTY 宿主未交付注入的 SGR 鼠标事件，旧失败报告保留。真实终端鼠标仍未完成端到端验收，应用内部鼠标命中测试不能替代该结果。
-\item 当前没有专门的变量/寄存器写入 UI；原始 GDB 可写，用户应理解实际目标副作用。默认面板读取不等于整个调试连接过程零修改。
+\item 当前已提供选中对象的 Preview/Apply/Cancel 写入 UI，受对象权限、上下文及回读限制，见第\ref{sec:value-writes}节；多镜像隔离求值和保存的 Guest 上下文仍为只读。默认面板读取不等于整个调试连接过程零修改。
 \item Source 选区改变 Ctrl+C 的优先级：聚焦源码且有选区时复制，确定暂停使用 F6。加入 Watch 仍受当前核、当前帧和运行时读取通道限制，不自动启用实时采样。
 \item THA6206 修正后的脚本已有 9 月 23 日及 29 日功能回归，不能再将 9 月 22 日旧失败描述为所有当前流程均失败；CSE 新旧值的专项硬件 A/B 和偶发复位/深栈限制仍按第\ref{sec:tha-086-validation}节单列。
 \end{itemize}
@@ -2273,10 +2301,10 @@ tools 自动发现 & Setup 有工程目录发现逻辑；“完全不会自动�
 \path{src/lib.rs} & 库模块导出，供二进制和测试共享。\\
 \path{src/cli.rs} & Options::parse/document，参数解析、CLI 覆盖、路径绝对化。\\
 \path{src/launch.rs} & Document、Setup、相对路径、字段帮助、文件浏览器、保存冲突/草稿、直接退出和启动动作。\\
-\path{src/launch/choices.rs} & 调试项目 TOML 筛选、Projects 列表和可选 Examples；不保存或启动进程。\\
+\path{src/launch/choices.rs} & 调试项目 TOML 筛选、配置与资源列表；不保存或启动进程。\\
 \path{src/launch/devices.rs} & Chip 列表、Add chip 表单、核心复选、Legacy 和草稿选择。\\
 \path{src/launch/remap.rs} & ELF 目录选择、父子层级、匹配预览、重新扫描和取消。\\
-\path{src/launch/images.rs} & 1.3.0 的 Symbol images 草稿编辑器；不连接目标，高级声明保存时保留。\\
+\path{src/launch/images.rs} & Symbol images 编辑器、基本/高级字段、主 ELF 关联、直接保存或仅应用草稿；不连接目标，保留高级声明。\\
 \path{src/clipboard.rs} & Windows 原生 Unicode 剪贴板、失败清理与其他平台工具回退。\\
 \path{src/config.rs} & 全配置模型、默认值、递归合并、校验、路径解析、偏好写锁。\\
 \path{src/devices.rs} & 用户目录初始化/追加锁、能力校验、backend 合并、模板展开与所选核派生。\\
@@ -2421,7 +2449,7 @@ xelatex -interaction=nonstopmode -halt-on-error usermanual.tex
 xelatex -interaction=nonstopmode -halt-on-error usermanual.tex
 \end{lstlisting}
 \end{minipage}\par
-三轮编译稳定目录、页码和交叉引用。随附脚本在 docs 下创建独立临时目录，成功后仅复制 PDF 并清理该次中间文件；失败时保留临时日志以便定位。没有系统 XeLaTeX 时，也可使用支持 XeTeX 的 Tectonic：例如 \code{tectonic --keep-logs --reruns 2 --outdir <临时目录> docs/usermanual.tex}，首次运行需要下载其 TeX 资源，Windows 字体要求相同。2026-10-28 增补使用隔离缓存的 Tectonic 0.17.0 构建；编译器来源和摘要保留在本轮文档验证记录，未将工具加入 DebugTUI 运行依赖。需要图形化质量检查时，将最终 PDF 全页渲染为 PNG，检查裁切、遮挡、缺字、表格续页、箭头与标注，然后删除本次临时渲染产物。
+三轮编译稳定目录、页码和交叉引用。随附脚本在 docs 下创建独立临时目录，成功后仅复制 PDF 并清理该次中间文件；失败时保留临时日志以便定位。没有系统 XeLaTeX 时，也可使用支持 XeTeX 的 Tectonic：例如 \code{tectonic --keep-logs --reruns 2 --outdir <临时目录> docs/usermanual.tex}，首次运行需要下载其 TeX 资源，Windows 字体要求相同。2026-10-29 的 1.3.2 增补使用隔离缓存的 Tectonic 0.17.0 构建；编译器来源和摘要保留在本轮文档验证记录，未将工具加入 DebugTUI 运行依赖。需要图形化质量检查时，将最终 PDF 全页渲染为 PNG，检查裁切、遮挡、缺字、表格续页、箭头与标注，然后删除本次临时渲染产物。
 
 本文中的实板日志不因 PDF 编译而重新生成；复现硬件行为必须另行准备相同芯片、探针、工具、固件和 profile。文档构建结果不替代源码测试和实板验证。
 

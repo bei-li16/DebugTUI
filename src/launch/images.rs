@@ -3,7 +3,7 @@ use super::*;
 use crate::images::{Domain, Image};
 use unicode_width::UnicodeWidthChar;
 
-const FIELDS: [&str; 13] = [
+const FIELDS: [&str; 15] = [
     "Image",
     "Id",
     "ELF file",
@@ -17,11 +17,17 @@ const FIELDS: [&str; 13] = [
     "Remove image",
     "Apply to draft",
     "Cancel",
+    "Advanced settings",
+    "Save config",
 ];
 pub(super) enum Action {
     None,
     Cancel,
-    Apply(Vec<Image>),
+    Apply {
+        images: Vec<Image>,
+        primary_elf: Option<PathBuf>,
+        save: bool,
+    },
 }
 pub(super) struct Images {
     images: Vec<Image>,
@@ -29,20 +35,48 @@ pub(super) struct Images {
     selected: usize,
     field: usize,
     editor: Option<Editor>,
+    advanced: bool,
+    primary: Option<usize>,
     hits: Vec<(Rect, usize)>,
     pub message: String,
 }
 impl Images {
     pub fn new(project: Project) -> Self {
         Self {
+            primary: project
+                .images
+                .iter()
+                .position(|i| i.elf == project.program.elf),
             images: project.images.clone(),
             project,
             selected: 0,
             field: 0,
             editor: None,
+            advanced: false,
             hits: vec![],
             message: String::new(),
         }
+    }
+    pub fn from_document(document: &Document) -> Result<Self, String> {
+        let mut dialog = Self::new(document.project()?);
+        // Keep blank inheritance and project-relative paths editable. The loaded
+        // Project has already expanded both, so it cannot serve as the draft.
+        dialog.images = document
+            .raw
+            .get("images")
+            .cloned()
+            .map(|v| v.try_into().map_err(|e| format!("Images: {e}")))
+            .transpose()?
+            .unwrap_or_default();
+        Ok(dialog)
+    }
+    fn fields(&self) -> Vec<usize> {
+        let mut fields = vec![0, 1, 2, 4, 5, 13];
+        if self.advanced {
+            fields.extend([3, 6, 7, 8]);
+        }
+        fields.extend([9, 10, 11, 14, 12]);
+        fields
     }
     fn help(&self) -> &'static str {
         match self.field {
@@ -56,7 +90,7 @@ impl Images {
                 "ELF file: Enter edits the symbol file path, relative to Project. Use the ELF matching the target firmware."
             }
             3 => {
-                "Source root: Enter edits the local source directory, relative to Project. This does not relocate the image."
+                "Source root override: blank inherits Setup Source root. Enter edits a different local root, relative to Project."
             }
             4 => {
                 "Cores: Enter edits core names, such as core.0, core.1. Blank applies this image to all selected cores."
@@ -81,6 +115,12 @@ impl Images {
             }
             11 => {
                 "Apply to draft: validates these images and returns to Setup. Save config persists them; Start loads symbols."
+            }
+            13 => {
+                "Advanced: optional source root override, relocation, source maps and memory channel. Hidden settings are retained; blank source root inherits Setup."
+            }
+            14 => {
+                "Save config / Ctrl+S: commits this field, validates all images and writes the project file. No connection or firmware download."
             }
             _ => "Cancel: discards this image dialog's changes and returns to Setup.",
         }
@@ -168,18 +208,33 @@ impl Images {
         self.editor = None;
         Ok(())
     }
-    fn apply(&mut self) -> Action {
+    fn apply(&mut self, save: bool) -> Action {
         if let Err(error) = self.commit() {
             self.message = error;
             return Action::None;
         }
         let mut project = self.project.clone();
         project.images = self.images.clone();
+        if let Some(index) = self.primary {
+            project.program.elf = self.images[index].elf.clone();
+        }
+        let base = self
+            .project
+            .path
+            .as_deref()
+            .and_then(Path::parent)
+            .unwrap_or(Path::new("."));
+        project.program.elf = absolute(base, &project.program.elf);
+        crate::images::absolute_paths(&mut project.images, base, &project.program.source_root);
         if let Err(error) = crate::images::validate(&project) {
             self.message = error;
             return Action::None;
         }
-        Action::Apply(self.images.clone())
+        Action::Apply {
+            images: self.images.clone(),
+            primary_elf: self.primary.map(|index| self.images[index].elf.clone()),
+            save,
+        }
     }
     pub fn paste(&mut self, text: &str) {
         if let Some(editor) = &mut self.editor {
@@ -191,7 +246,7 @@ impl Images {
             return Action::None;
         }
         if key.code == KeyCode::Char('s') && key.modifiers.contains(KeyModifiers::CONTROL) {
-            return self.apply();
+            return self.apply(true);
         }
         if let Some(editor) = &mut self.editor {
             match key.code {
@@ -214,14 +269,19 @@ impl Images {
             KeyCode::Esc => return Action::Cancel,
             KeyCode::Up | KeyCode::Down | KeyCode::Tab | KeyCode::BackTab => {
                 self.message.clear();
+                let fields = self.fields();
+                let mut at = fields
+                    .iter()
+                    .position(|&field| field == self.field)
+                    .unwrap_or(0);
                 loop {
-                    self.field = (self.field
-                        + if matches!(key.code, KeyCode::Up | KeyCode::BackTab) {
-                            FIELDS.len() - 1
+                    at =
+                        (at + if matches!(key.code, KeyCode::Up | KeyCode::BackTab) {
+                            fields.len() - 1
                         } else {
                             1
-                        })
-                        % FIELDS.len();
+                        }) % fields.len();
+                    self.field = fields[at];
                     if self.enabled(self.field) {
                         break;
                     }
@@ -265,7 +325,6 @@ impl Images {
                     }
                     self.images.push(Image {
                         id: format!("image-{n}"),
-                        source_root: self.project.program.source_root.clone(),
                         ..Default::default()
                     });
                     self.selected = self.images.len() - 1;
@@ -273,11 +332,23 @@ impl Images {
                 }
                 10 => {
                     self.message.clear();
+                    self.primary = self.primary.and_then(|index| {
+                        if index == self.selected {
+                            None
+                        } else {
+                            Some(index - usize::from(index > self.selected))
+                        }
+                    });
                     self.images.remove(self.selected);
                     self.selected = self.selected.min(self.images.len().saturating_sub(1));
                 }
-                11 => return self.apply(),
+                11 => return self.apply(false),
                 12 => return Action::Cancel,
+                13 => {
+                    self.message.clear();
+                    self.advanced = !self.advanced;
+                }
+                14 => return self.apply(true),
                 _ => {}
             },
             _ => {}
@@ -316,7 +387,7 @@ impl Images {
         let screen = frame.area();
         frame.render_widget(Block::default().style(theme::base()), screen);
         let width = screen.width.min(112);
-        let height = screen.height.min(23);
+        let height = screen.height.min(if self.advanced { 25 } else { 21 });
         let rect = Rect::new(
             screen.x + (screen.width - width) / 2,
             screen.y + (screen.height - height) / 2,
@@ -337,11 +408,30 @@ impl Images {
             return;
         }
         let height = usize::from(inner.height.saturating_sub(3));
-        let top = self.field.saturating_sub(height.saturating_sub(1));
-        for (row, field) in (top..FIELDS.len()).take(height).enumerate() {
+        let fields = self.fields();
+        let at = fields
+            .iter()
+            .position(|&field| field == self.field)
+            .unwrap_or(0);
+        let top = at.saturating_sub(height.saturating_sub(1));
+        for (row, field) in fields.into_iter().skip(top).take(height).enumerate() {
             let hit = Rect::new(inner.x, inner.y + row as u16, inner.width, 1);
-            let text = if field >= 9 {
-                Line::from(format!("  [ {} ]", FIELDS[field]))
+            let text = if field == 13 {
+                Line::from(format!(
+                    "{} Advanced settings             {}",
+                    if field == self.field { "›" } else { " " },
+                    if self.advanced {
+                        "Shown · Enter: hide"
+                    } else {
+                        "Hidden · Enter: show"
+                    }
+                ))
+            } else if field >= 9 {
+                Line::from(format!(
+                    "{} [ {} ]",
+                    if field == self.field { "›" } else { " " },
+                    FIELDS[field]
+                ))
             } else {
                 let prefix = format!(
                     "{} {:<30} ",
@@ -364,7 +454,14 @@ impl Images {
                     )
                 } else {
                     (
-                        visible_tail(&self.value(field), available),
+                        visible_tail(
+                            &if field == 3 && self.value(field).is_empty() {
+                                "(inherit Setup Source root)".into()
+                            } else {
+                                self.value(field)
+                            },
+                            available,
+                        ),
                         Style::default(),
                     )
                 };
@@ -401,10 +498,10 @@ impl Images {
                 if inner.width < 75 {
                     "Editing · Enter: accept · Esc: undo"
                 } else {
-                    "Editing · Enter: accept · Esc: undo · Ctrl+U: clear · Ctrl+S: apply"
+                    "Editing · Enter: accept · Esc: undo · Ctrl+U: clear · Ctrl+S: save"
                 }
             } else {
-                "Tab/↑↓: fields  ←→: images  Enter: edit  Ctrl+S: apply  Esc: cancel"
+                "Tab/↑↓: fields  ←→: images  Enter: edit  Ctrl+S: save  Esc: cancel"
             })
             .style(Style::default().fg(theme::MUTED)),
             Rect::new(inner.x, inner.bottom() - 1, inner.width, 1),
@@ -523,6 +620,7 @@ mod tests {
     #[test]
     fn clicking_another_row_commits_the_original_field_and_invalid_input_keeps_focus() {
         let mut dialog = dialog();
+        dialog.advanced = true;
         dialog.field = 1;
         press(&mut dialog, KeyCode::Enter);
         dialog.key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
@@ -588,12 +686,13 @@ mod tests {
         assert!(dialog.help().starts_with("Id:"));
         press(&mut dialog, KeyCode::Enter);
         press(&mut dialog, KeyCode::Char('x'));
-        let Action::Apply(images) =
+        let Action::Apply { images, save, .. } =
             dialog.key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL))
         else {
             panic!("valid editing should apply: {}", dialog.message)
         };
         assert_eq!(images[0].id, "vm0x");
+        assert!(save);
         assert_eq!(
             serde_json::to_value(&images[0].saved_context).unwrap(),
             saved
@@ -610,6 +709,7 @@ mod tests {
             ..Default::default()
         });
         let mut dialog = Images::new(project);
+        dialog.advanced = true;
         for (width, height) in [(45, 12), (112, 30)] {
             let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
             for field in 0..FIELDS.len() {
@@ -622,10 +722,191 @@ mod tests {
             }
         }
         dialog.images[0].cores = vec!["missing".into()];
-        assert!(matches!(dialog.apply(), Action::None));
+        assert!(matches!(dialog.apply(false), Action::None));
         dialog.images[0].cores.clear();
-        assert!(matches!(dialog.apply(), Action::Apply(_)));
+        assert!(matches!(
+            dialog.apply(false),
+            Action::Apply { save: false, .. }
+        ));
         dialog.images.push(dialog.images[0].clone());
-        assert!(matches!(dialog.apply(), Action::None));
+        assert!(matches!(dialog.apply(false), Action::None));
+    }
+
+    fn setup_fixture() -> (super::super::tests::Fixture, Setup) {
+        let fixture = super::super::tests::Fixture::new();
+        let path = fixture.0.join("debug.toml");
+        fs::write(&path, "version=2\n[target]\nmode='local'\n[program]\nelf='bao.elf'\nsource_root='src'\n[[cores]]\nname='core.0'\nendpoint='localhost:3333'\n[[cores]]\nname='core.1'\nendpoint='localhost:3334'\n[[images]]\nid='bao'\nelf='./bao.elf'\ndomain='hyp'\n[[images]]\nid='vm0'\nelf='guest.elf'\ncores=['core.0']\ndomain='guest'\n[images.sections]\n'.text'=268566528\n[images.saved_context]\nprovider='bao_v1'\nsymbol='bao_debug_guest_contexts'\nchannel='ahb'\nmemory=[{start=268566528,size=32768}]\n").unwrap();
+        let setup = Setup::new(Document::open(&path).unwrap());
+        (fixture, setup)
+    }
+    fn open_image(setup: &mut Setup, image: usize, field: usize) {
+        setup.selected = IMAGES;
+        setup.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        let dialog = setup.symbol_images.as_mut().unwrap();
+        dialog.selected = image;
+        dialog.advanced = true;
+        dialog.field = field;
+    }
+    fn replace(setup: &mut Setup, text: &str) {
+        setup.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        setup.key(KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        setup.paste(text);
+    }
+    fn save(setup: &mut Setup) {
+        setup.key(KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL));
+    }
+    #[test]
+    fn ctrl_s_persists_every_text_field_without_a_second_save_and_preserves_advanced_data() {
+        let (_fixture, mut setup) = setup_fixture();
+        let advanced = toml::Value::try_from(
+            setup.document.project().unwrap().images[1]
+                .saved_context
+                .as_ref()
+                .unwrap(),
+        )
+        .unwrap();
+        for (field, input, name, expected) in [
+            (1, "guest0", "id", toml::Value::from("guest0")),
+            (
+                2,
+                "build/新 路径/guest.elf",
+                "elf",
+                "build/新 路径/guest.elf".into(),
+            ),
+            (3, "local sources", "source_root", "local sources".into()),
+            (
+                4,
+                "core.0, core.1",
+                "cores",
+                toml::Value::Array(vec!["core.0".into(), "core.1".into()]),
+            ),
+            (6, "0x20", "offset", 32.into()),
+            (
+                7,
+                "/ci/build => sources | C:\\ci => more",
+                "source_map",
+                toml::Value::Array(vec![
+                    toml::Value::Table(toml::Table::from_iter([
+                        ("from".into(), "/ci/build".into()),
+                        ("to".into(), "sources".into()),
+                    ])),
+                    toml::Value::Table(toml::Table::from_iter([
+                        ("from".into(), "C:\\ci".into()),
+                        ("to".into(), "more".into()),
+                    ])),
+                ]),
+            ),
+            (8, "ahb", "memory_channel", "ahb".into()),
+        ] {
+            open_image(&mut setup, 1, field);
+            replace(&mut setup, input);
+            save(&mut setup);
+            assert!(setup.symbol_images.is_none(), "{name}: {}", setup.message);
+            assert!(setup.message.starts_with("Saved "));
+            let disk = Document::open(&setup.document.path).unwrap();
+            assert_eq!(disk.raw["images"][1][name], expected, "{name}");
+            assert_eq!(disk.raw["images"][1]["saved_context"], advanced);
+            assert_eq!(
+                disk.raw["images"][1]["sections"][".text"].as_integer(),
+                Some(268566528)
+            );
+            setup = Setup::new(disk);
+        }
+        // A domain with a saved Guest context cannot be changed silently.
+        open_image(&mut setup, 0, 5);
+        setup.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        save(&mut setup);
+        assert_eq!(
+            Document::open(&setup.document.path).unwrap().raw["images"][0]["domain"].as_str(),
+            Some("guest")
+        );
+    }
+    #[test]
+    fn primary_elf_edits_are_linked_in_both_directions_and_draft_apply_is_not_a_save() {
+        let (_fixture, mut setup) = setup_fixture();
+        let before = fs::read(&setup.document.path).unwrap();
+        open_image(&mut setup, 0, 2);
+        replace(&mut setup, "new/bao.elf");
+        setup.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        setup.symbol_images.as_mut().unwrap().field = 11;
+        setup.key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(fs::read(&setup.document.path).unwrap(), before);
+        assert_eq!(
+            setup.document.raw["program"]["elf"].as_str(),
+            Some("new/bao.elf")
+        );
+        setup.selected = ELF;
+        setup.set_value("second/bao.elf").unwrap();
+        save(&mut setup);
+        let disk = Document::open(&setup.document.path).unwrap();
+        assert_eq!(disk.raw["program"]["elf"], disk.raw["images"][0]["elf"]);
+        assert_eq!(disk.raw["images"][1]["elf"].as_str(), Some("guest.elf"));
+    }
+    #[test]
+    fn empty_image_root_inherits_setup_and_explicit_override_survives_source_root_changes() {
+        let (_fixture, mut setup) = setup_fixture();
+        let root = setup.document.base().to_owned();
+        open_image(&mut setup, 1, 3);
+        assert!(setup.symbol_images.as_ref().unwrap().value(3).is_empty());
+        assert!(
+            screen(setup.symbol_images.as_mut().unwrap(), 112, 25)
+                .contains("inherit Setup Source root")
+        );
+        replace(&mut setup, "separate");
+        save(&mut setup);
+        setup.selected = SOURCE;
+        setup.set_value("common").unwrap();
+        let project = setup.document.project().unwrap();
+        assert_eq!(project.images[0].source_root, root.join("common"));
+        assert_eq!(project.images[1].source_root, root.join("separate"));
+        fs::create_dir_all(root.join("common")).unwrap();
+        fs::create_dir_all(root.join("separate")).unwrap();
+        fs::write(root.join("common/main.c"), "// Bao").unwrap();
+        fs::write(root.join("separate/main.c"), "// VM").unwrap();
+        assert_eq!(
+            project.image_source_path("main.c", Some("bao")),
+            Some(root.join("common/main.c"))
+        );
+        assert_eq!(
+            project.image_source_path("main.c", Some("vm0")),
+            Some(root.join("separate/main.c"))
+        );
+        open_image(&mut setup, 1, 3);
+        replace(&mut setup, "");
+        save(&mut setup);
+        let disk = Document::open(&setup.document.path).unwrap();
+        assert!(disk.raw["images"][1].get("source_root").is_none());
+        assert_eq!(
+            disk.project().unwrap().images[1].source_root,
+            root.join("common")
+        );
+    }
+    #[test]
+    fn failed_save_keeps_dialog_and_edits_and_does_not_overwrite_external_changes() {
+        let (_fixture, mut setup) = setup_fixture();
+        open_image(&mut setup, 1, 2);
+        replace(&mut setup, "changed.elf");
+        let external = fs::read_to_string(&setup.document.path)
+            .unwrap()
+            .replace("source_root='src'", "source_root='external'");
+        fs::write(&setup.document.path, &external).unwrap();
+        save(&mut setup);
+        let dialog = setup.symbol_images.as_ref().unwrap();
+        assert!(dialog.message.contains("changed on disk"));
+        assert_eq!(dialog.images[1].elf, PathBuf::from("changed.elf"));
+        assert_eq!(fs::read_to_string(&setup.document.path).unwrap(), external);
+    }
+    #[test]
+    fn advanced_fields_are_hidden_by_default_and_toggle_preserves_values() {
+        let mut dialog = dialog();
+        dialog.images[0].source_root = "override".into();
+        let simple = screen(&mut dialog, 112, 25);
+        assert!(!simple.contains("Source root"));
+        assert!(!simple.contains("Section offset"));
+        dialog.field = 13;
+        press(&mut dialog, KeyCode::Enter);
+        assert!(screen(&mut dialog, 112, 25).contains("override"));
+        press(&mut dialog, KeyCode::Enter);
+        assert_eq!(dialog.images[0].source_root, PathBuf::from("override"));
     }
 }

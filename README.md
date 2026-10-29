@@ -4,7 +4,7 @@
 
 DebugTUI 是基于 GDB/MI 的终端调试工作台，可在 PowerShell、Windows Terminal 或 VS Code 终端中使用。支持源码断点、单步、Watch、寄存器与 SVD 外设查看、单核/多核调试，以及调用工程的 Build / Download 命令。
 
-当前版本 **1.3.1**，支持 **Windows x64**，新增 Bao＋每核 VM 的多 ELF 调试。npm/完整 ZIP 内置 ARM GDB、OpenOCD、STM32F429 与 THA6104/6206/6412 芯片配置及 STM32F429 SVD；THA SVD 按本地实际文件打包。调试时无需 Node、Python 或 VS Code 常驻。工程保存一份 `debug.toml`，通过 Probe、Chip 和 Debug cores 选择目标。更新与安装方法见 [1.3.1 说明](docs/release-1.3.1.md)，多 ELF 用法见 [Bao＋VM 调试](docs/bao-multi-elf.md)。
+当前版本 **1.3.2**，支持 **Windows x64** 和 Bao＋每核 VM 的多 ELF 调试。Symbol images 支持 Ctrl+S 直接保存、源码根继承与主 ELF 路径联动。npm/完整 ZIP 内置 ARM GDB、OpenOCD、STM32F429 与 THA6104/6206/6412 芯片配置及 STM32F429 SVD；THA SVD 按本地实际文件打包。调试时无需 Node、Python 或 VS Code 常驻。工程保存一份 `debug.toml`，通过 Probe、Chip 和 Debug cores 选择目标。更新与安装方法见 [1.3.2 说明](docs/release-1.3.2.md)，多 ELF 用法见 [Bao＋VM 调试](docs/bao-multi-elf.md)。
 
 ## 怎么用
 

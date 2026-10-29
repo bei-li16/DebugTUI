@@ -7,6 +7,7 @@ $bao=(Split-Path $Project).Replace('\','/')
 $out=Join-Path $root ('artifacts/symbol-images-setup-'+[guid]::NewGuid().ToString('N').Substring(0,8))
 New-Item -ItemType Directory -Path $out | Out-Null
 $text=[IO.File]::ReadAllText($Project)
+$text=[regex]::Replace($text,'(?m)^\[images\.sections\]\r?\n(?=\s*(?:\[|$))','')
 $text=[regex]::Replace($text,'(?m)^elf = "(?![A-Za-z]:|/)','elf = "'+$bao+'/').Replace('source_root = "."','source_root = "'+$bao+'"')
 # Existing advanced fields must survive the UI edit/serialize/reload cycle.
 $at=$text.IndexOf('[images.saved_context]')
@@ -23,9 +24,23 @@ function Wait-Screen([string]$Pattern) {
     throw "Missing terminal state: $Pattern"
 }
 function Send-Key([string]$Text) { $terminal.Send($Text);Start-Sleep -Milliseconds 200 }
+function Open-Images {
+    Select-Field 'Symbol images';Send-Key "`r";Wait-Screen 'Symbol images · project draft'
+}
 function Start-Setup {
     $script:terminal=[DebugTuiTerminal]::new($Binary,('--setup --project "'+$fixture+'"'),$out,120,36)
     Wait-Screen 'Launch setup';Send-Key "${esc}[A";Wait-Screen '› Symbol images';Send-Key "`r";Wait-Screen 'Symbol images · project draft'
+}
+function Select-Field([string]$Name) {
+    $pattern='›\s+(?:\[\s+)?'+[regex]::Escape($Name)+'(?:\s|$)'
+    for($i=0;$i -lt 24;$i++) {if($terminal.Screen() -match $pattern) {return};Send-Key "${esc}[B"}
+    throw "Could not focus $Name"
+}
+function Edit-Field([string]$Name,[string]$Value) {
+    Select-Field $Name;Send-Key "`r";Wait-Screen ('editing '+[regex]::Escape($Name));Send-Key ([string][char]21+$Value)
+}
+function Show-Advanced {
+    Select-Field 'Advanced settings';Send-Key "`r";Wait-Screen 'Shown · Enter: hide'
 }
 function Stop-Setup {
     Send-Key ([string][char]17)
@@ -34,7 +49,6 @@ function Stop-Setup {
     $terminal.Dispose();$script:terminal=$null
 }
 function Apply-Save {
-    Send-Key ([string][char]19);Wait-Screen 'Symbol image draft updated'
     Send-Key ([string][char]19);Wait-Screen 'Saved '
 }
 function Normal-Path([string]$Path) {
@@ -61,6 +75,7 @@ try {
     $before=@(Inventory 'before')
     Test-Case 'IMAGE-EDIT-OPEN' 'Open the real Setup image dialog and choose VM0' {
         Start-Setup;Send-Key "${esc}[C";Send-Key "${esc}[B";Wait-Screen '› Id.*vm0'
+        if($terminal.Screen() -match 'Source root|Section offset|Global memory channel') {throw 'Advanced fields were expanded by default'}
     }
     Test-Case 'IMAGE-EDIT-ID' 'Enter visibly edits text, Escape discards, and Enter accepts the new id' {
         Send-Key "`r";Wait-Screen 'editing Id';Wait-Screen 'vm0▏';Wait-Screen 'Editing · Enter: accept'
@@ -73,8 +88,8 @@ try {
         Send-Key ([string]$esc);Send-Key "`r";Send-Key "${esc}[F";Wait-Screen 'guest0.elf▏';Send-Key ([string]$esc)
     }
     Test-Case 'IMAGE-EDIT-ERROR' 'Invalid maps retain editing; cancel and focus changes remove stale error text' {
-        Send-Key ("${esc}[B"*5);Send-Key "`r";Send-Key ([string][char]21+'invalid');Send-Key "`r";Wait-Screen 'Use from => to'
-        Wait-Screen 'editing Source maps';Send-Key ([string]$esc);Send-Key ("${esc}[A"*6);Wait-Screen '› Id';Wait-Screen 'Id: Enter edits'
+        Show-Advanced;Select-Field 'Source maps';Send-Key "`r";Send-Key ([string][char]21+'invalid');Send-Key "`r";Wait-Screen 'Use from => to'
+        Wait-Screen 'editing Source maps';Send-Key ([string]$esc);Select-Field 'Id';Wait-Screen 'Id: Enter edits'
         if ($terminal.Screen() -match 'Use from => to; separate') {throw 'A previous map error leaked into Id help'}
     }
     Test-Case 'IMAGE-EDIT-PERSIST' 'Apply/save persists the edited id and retains saved_context, sections and valid ELF paths' {
@@ -90,9 +105,9 @@ try {
         Send-Key ([string][char]21+'vm0');Wait-Screen 'vm0▏';$terminal.Resize(120,36);Start-Sleep -Milliseconds 250;Send-Key "`r"
     }
     Test-Case 'IMAGE-EDIT-ADD-REMOVE' 'Add/remove remain reachable and editing changes stay in the project draft' {
-        Send-Key ("${esc}[B"*8);Wait-Screen 'Add image';Send-Key "`r";Wait-Screen 'image-1'
+        Select-Field 'Add image';Send-Key "`r";Wait-Screen 'image-1'
         Send-Key "`r";Wait-Screen 'editing ELF file';Send-Key 'discard.elf';Send-Key ([string]$esc)
-        Send-Key ("${esc}[B"*8);Send-Key "`r";Wait-Screen '3 / 3';Apply-Save
+        Select-Field 'Remove image';Send-Key "`r";Wait-Screen '3 / 3';Apply-Save
     }
     Test-Case 'IMAGE-EDIT-EXIT' 'Fresh file inventory contains the original three images and the user project is untouched' {
         Stop-Setup;$final=@(Inventory 'final');if ($final.Count -ne 3 -or @($final | Where-Object id -eq 'vm0').Count -ne 1) {throw 'Draft add/remove did not restore the three images'}
